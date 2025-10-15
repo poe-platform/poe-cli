@@ -1,0 +1,30 @@
+{
+  "name": "poe-setup",
+  "version": "0.1.0",
+  "description": "CLI tool to configure Poe API for various development tools.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "bin": {
+    "poe-setup": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "handlebars": "^4.7.8",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "memfs": "^4.7.3",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.1"
+  }
+}
