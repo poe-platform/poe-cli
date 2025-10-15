@@ -19,6 +19,7 @@ export interface CliDependencies {
     homeDir: string;
   };
   logger?: LoggerFn;
+  exitOverride?: boolean;
 }
 
 interface InitCommandOptions {
@@ -37,13 +38,22 @@ const DEFAULT_MODEL = "gpt-5";
 const DEFAULT_REASONING = "medium";
 
 export function createProgram(dependencies: CliDependencies): Command {
-  const { fs, prompts, env, logger = console.log } = dependencies;
+  const {
+    fs,
+    prompts,
+    env,
+    logger = console.log,
+    exitOverride = true
+  } = dependencies;
 
   const program = new Command();
   program
     .name("poe-setup")
-    .description("CLI tool to configure Poe API for various development tools.")
-    .exitOverride();
+    .description("CLI tool to configure Poe API for various development tools.");
+
+  if (exitOverride) {
+    program.exitOverride();
+  }
 
   program
     .command("init")
