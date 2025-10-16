@@ -1,203 +1,207 @@
+<!-- Important: This document must be kept up to date! -->
 # Poe Setup Scripts
 
-CLI tool to configure Poe API for various development tools.
+Poe CLI is a Node.js toolkit that streamlines connecting local developer tools to the Poe API. It can bootstrap sample Python projects, configure IDE agents such as Claude Code and Codex, and generate an npm placeholder package to reserve the `poe-cli` name.
+
+## Features
+- Bootstrap a ready-to-run Python starter that calls the Poe API.
+- Configure Claude Code and Codex to proxy Anthropic/OpenAI requests through Poe.
+- Remove or restore configurations with automatic timestamped backups.
+- Generate a publishable placeholder npm package in one command.
+- Run any command in `--dry-run` mode to preview filesystem writes.
+- Remember your Poe API key automatically (prompt, flag, or `login`) and wipe it with `logout`.
+- Validate credentials end-to-end with the built-in `test` command (calls the Poe EchoBot).
+
+## Prerequisites
+- Node.js 18 or newer (`package.json` enforces this via the `engines` field).
+- A Poe API key for interactive commands (stored in your shell or passed on the CLI).
+- For global installs, ensure your npm global bin directory is in `PATH`.
 
 ## Installation
 
 ```bash
-# Run directly with npx (no installation needed)
-npx poe-cli
+# Run without installing (recommended)
+npx poe-cli --help
 
-# Or install globally
+# Install globally
 npm install -g poe-cli
 
-# Install from a local clone
-# (Run inside the repository directory)
-npm run build       # compile TypeScript to dist/
-npm install -g .
-# If the binary is still not found, make sure your global npm bin dir is on PATH:
-# export PATH="$(npm bin -g):$PATH"
+# Local development setup
+git clone <your-fork-url>
+cd poe-setup-scripts
+npm install
+npm run build
+npm link  # optional: exposes `poe-cli` from the local dist build
 ```
 
-## Usage
+> 💡 If the global binary cannot be found, export `PATH="$(npm bin -g):$PATH"`.
+
+## Quick Start
 
 ```bash
-# Interactive mode
-npx poe-cli
-# or if installed globally: poe-cli
-
-# Initialize new Python project with Poe API
+# Interactive usage (prompts for missing values)
 npx poe-cli init
-# Creates: .env, main.py (joke request example), requirements.txt
 
-# Configure specific service (prompts for API key)
+# Store your Poe API key once
+npx poe-cli login --api-key YOUR_KEY
+
+# Configure tools
 npx poe-cli configure claude-code
-npx poe-cli configure codex
+npx poe-cli configure codex --model gpt-5 --reasoning-effort medium
 
-# Prepare placeholder package to reserve the npm name
-npx poe-cli publish-placeholder --output ./placeholder-package
-# then run: npm publish ./placeholder-package
-
-# Non-interactive mode (skip prompts)
-npx poe-cli configure claude-code --api-key="your-key-here"
-
-# Remove configuration
+# Remove configurations
 npx poe-cli remove claude-code
 npx poe-cli remove codex
 
-# Append --dry-run to any command to preview without changes.
+# Verify credentials
+npx poe-cli test
+
+# Reserve the npm package name
+npx poe-cli publish-placeholder --output ./placeholder-package
+
+# Inspect changes without writing to disk
+npx poe-cli --dry-run configure claude-code --api-key YOUR_KEY
 ```
 
-## Commands
+## CLI Reference
 
-### `init` - Initialize Python Project
-Creates a new Python project with Poe API integration:
-- `.env` - Environment variables with POE_API_KEY placeholder
-- `main.py` - Example script that requests a joke from the API
-- `requirements.txt` - Python dependencies (openai, python-dotenv)
+### Global Flags
+- `--dry-run` – wraps the filesystem with an in-memory recorder so you can audit the planned writes. The command prints a summary plus the individual operations that would run.
 
-Interactive prompts (similar to `npm init`):
-- Project name
-- POE API key
-- Model selection (GPT-5, Claude-Sonnet-4.5, etc.)
+### `init`
+Scaffolds a Python project configured to call the Poe API.
 
-### `configure` - Setup Development Tools
-- **claude-code**: Sets up Anthropic API environment variables for Claude Code
-- **codex**: Creates `~/.codex/config.toml` with Poe provider configuration
+```bash
+poe-cli init [--project-name <name>] [--api-key <key>] [--model <model>]
+```
 
-### `remove` - Cleanup Configurations
-Removes service configurations and restores from backup if available
+- Prompts for missing arguments (project name, API key, model) using `prompts`.
+- Fails fast if the target directory already exists.
+- Generates `.env`, `main.py`, and `requirements.txt` from Handlebars templates stored under `src/templates/python/`.
+- Automatically persists the provided API key (skipped in `--dry-run` mode).
 
-### `publish-placeholder` - Reserve npm Package Name
-Generates a minimal placeholder package in the chosen directory so you can `npm publish` it and reserve the `poe-cli` name. Accepts `--output <dir>` (defaults to `placeholder-package`) and supports `--dry-run`.
+### `configure`
+Sets up editor integrations.
+
+```bash
+poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
+```
+
+- `claude-code` – appends environment variable exports to `~/.bashrc` using the `claude-code/bashrc.hbs` template, after creating a timestamped backup.
+- `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
+- Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
+
+### `remove`
+Restores or removes configuration for a given service.
+
+```bash
+poe-cli remove <service>
+```
+
+- Removes only the CLI-managed snippets/config files using pattern matching; leaves custom content intact.
+- Backups created during `configure` remain available for manual restoration.
+- Returns exit code `0` when nothing has to be removed.
+
+### `login`
+Persists a Poe API key for future commands.
+
+```bash
+poe-cli login [--api-key <key>]
+```
+
+- Prompts for the key when `--api-key` is omitted.
+- Stores credentials at `~/.poe-cli/credentials.json` (JSON file with `{ apiKey }`).
+- Supports `--dry-run` via the standard recorder.
+
+### `logout`
+Deletes the stored Poe API key.
+
+```bash
+poe-cli logout
+```
+
+- No-ops (and exits successfully) when no credentials are on disk.
+- Works with `--dry-run`, showing the planned deletion.
+
+### `test`
+Confirms that the current Poe API key works by querying EchoBot.
+
+```bash
+poe-cli test [--api-key <key>]
+```
+
+- Uses the stored key by default, falling back to CLI option or an interactive prompt.
+- Sends `"Ping"` to the `EchoBot` model and expects the same text back.
+- Respects `--dry-run` by skipping the network request and logging the planned verification.
+
+### `publish-placeholder`
+Creates a minimal package you can publish to reserve the `poe-cli` name on npm.
+
+```bash
+poe-cli publish-placeholder [--output <dir>]
+```
+
+- Produces `package.json`, `index.js`, and `README.md` at the target directory.
+- Defaults to version `0.0.0-placeholder` with an executable that prints a friendly placeholder message.
+
+## Generated Files & Templates
+
+| Command | Target | Template | Notes |
+| --- | --- | --- | --- |
+| `init` | `<project>/.env` | `src/templates/python/env.hbs` | Injects `POE_API_KEY`, base URL, and default model. |
+| `init` | `<project>/main.py` | `src/templates/python/main.py.hbs` | Demonstrates a chat completion request. |
+| `init` | `<project>/requirements.txt` | `src/templates/python/requirements.txt.hbs` | Pins `openai` and `python-dotenv`. |
+| `configure claude-code` | `~/.bashrc` | `src/templates/claude-code/bashrc.hbs` | Exports Poe keys for Anthropic tooling. |
+| `configure codex` | `~/.codex/config.toml` | `src/templates/codex/config.toml.hbs` | Sets model provider configuration. |
+
+Template rendering is handled by `src/utils/templates.ts` using Handlebars. Add additional templates under `src/templates/` and reuse the helper to keep everything consistent.
+
+## Dry Run Mode
+
+When `--dry-run` is supplied, the CLI swaps the filesystem dependency with `createDryRunFileSystem` (`src/utils/dry-run.ts`). The command executes fully, but instead of touching disk it records a list of intended operations (mkdir, writeFile, unlink, etc.) and prints them after the summary so you can review the plan safely.
+
+## Development Workflow
+
+```bash
+npm install         # install dependencies
+npm run dev         # run the CLI via tsx with live reload
+npm run build       # compile TypeScript and copy templates into dist
+npm test            # execute the Vitest suite (required before committing)
+```
+
+- Follow the guidelines in `AGENTS.md` (`TDD`, `SOLID`, `YAGNI`, and `KISS`).
+- Keep documentation in sync with feature changes—update this README, command help text, and templates together.
+- Builds output to `dist/`; the published package exposes `dist/index.js` as the `poe-cli` binary.
+
+## Testing
+
+- `npm test` runs `vitest run`. Use `npm test -- --watch` during TDD.
+- Filesystem interactions are exercised against `memfs` volumes through the `FileSystem` abstraction in `src/utils/file-system.ts`. Tests must not write to the real disk.
+- Prefer adding focused unit tests alongside each command/service before implementing new behaviour.
+
+Example test snippet:
+
+```typescript
+import { Volume, createFsFromVolume } from "memfs";
+import type { FileSystem } from "../src/utils/file-system.js";
+
+const volume = Volume.fromJSON({});
+const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
+```
 
 ## Project Structure
 
-```
-src/
-  commands/
-    init.ts        # Python project scaffolding
-  services/
-    claude-code.ts # Claude Code setup/removal
-    codex.ts       # Codex setup/removal
-  templates/
-    python/
-      env.hbs           # .env template
-      main.py.hbs       # main.py template
-      requirements.txt.hbs
-    codex/
-      config.toml.hbs   # Codex config template
-    claude-code/
-      bashrc.hbs        # Bash exports template
-  ui/
-    interactive.tsx # React + Ink UI
-  utils/
-    bashrc.ts      # bashrc file operations
-    files.ts       # file write/delete helpers
-    backup.ts      # automatic file backup before changes
-  index.ts         # CLI entry point
-```
+- `src/index.ts` – CLI entrypoint that wires `commander`, prompts, and dependencies.
+- `src/cli/program.ts` – command registration and shared wiring (dry-run orchestration lives here).
+- `src/commands/` – feature-specific command implementations (`init`, `publish-placeholder`, etc.).
+- `src/services/` – service adapters (Claude Code, Codex) including backup logic.
+- `src/utils/` – shared helpers for backups, dry runs, templates, and filesystem abstractions.
+- `tests/` – Vitest suites mirroring the command/service structure.
 
-## Configuration Files
+## Roadmap
 
-**Note:** All file modifications automatically create timestamped backups (e.g., `~/.bashrc.backup.2024-01-15T10-30-00`)
-
-### Claude Code
-Inserts into `~/.bashrc` from [`bashrc.hbs`](src/templates/claude-code/bashrc.hbs) template
-
-### Codex
-Creates `~/.codex/config.toml` from [`config.toml.hbs`](src/templates/codex/config.toml.hbs) template
-
-## Templates
-
-Template files use Handlebars (`.hbs`) for variable substitution with editor support.
-
-### `env.hbs` → `.env`
-```handlebars
-POE_API_KEY={{apiKey}}
-POE_BASE_URL=https://api.poe.com/v1
-MODEL={{model}}
-```
-
-### `main.py.hbs` → `main.py`
-```handlebars
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
-
-client = OpenAI(
-    api_key=os.getenv("POE_API_KEY"),
-    base_url=os.getenv("POE_BASE_URL")
-)
-
-response = client.chat.completions.create(
-    model=os.getenv("MODEL", "{{model}}"),
-    messages=[{"role": "user", "content": "Tell me a joke"}]
-)
-
-print(response.choices[0].message.content)
-```
-
-### `requirements.txt.hbs` → `requirements.txt`
-```handlebars
-openai>=1.0.0
-python-dotenv>=1.0.0
-```
-
-### `config.toml.hbs` → `~/.codex/config.toml`
-```handlebars
-model_provider = "poe"
-model = "{{model}}"
-model_reasoning_effort = "{{reasoningEffort}}"
-
-[model_providers.poe]
-name = "poe"
-base_url = "https://api.poe.com/v1"
-wire_api = "chat"
-env_key = "POE_API_KEY"
-```
-
-### `bashrc.hbs` → inserted into `~/.bashrc`
-```handlebars
-export POE_API_KEY="{{apiKey}}"
-export ANTHROPIC_API_KEY=$POE_API_KEY
-export ANTHROPIC_BASE_URL="https://api.poe.com"
-```
-
-## Development
-
-```bash
-# Install dependencies
-bun install
-
-# Run in dev mode
-bun run dev
-
-# Build
-bun run build
-
-# Test
-bun test
-```
-
-### Tech Stack
-- **Bun**: Runtime and build tool
-- **React + Ink**: Interactive CLI UI
-- **Yoga**: Terminal layout system
-- **Handlebars**: Template engine for file generation
-
-### Adding New Services
-
-Create a new file in [`src/services/`](src/services/):
-
-```typescript
-// src/services/your-service.ts
-export async function configure(apiKey: string) {
-  // Add env vars or create config files
-}
-
-export async function remove() {
-  // Remove env vars or delete config files
-}
+- [x] Replace backup-based removal with pure pattern matching for Claude Code and Codex.
+- [x] Introduce login/logout commands to securely store the Poe API key.
+- [x] Add a `test` command that pings the Poe EchoBot to validate credentials end-to-end.
+- [x] claude code should create/edit config json see docs/claude-code.md
+- [x] Add command `query` <model> <text> that will query openai compat api with api key and return the response
