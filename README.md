@@ -169,10 +169,17 @@ When `--dry-run` is supplied, the CLI swaps the filesystem dependency with `crea
 
 ```bash
 npm install         # install dependencies
-npm run dev         # run the CLI via tsx with live reload
+npm run dev         # run the CLI via tsx
 npm run build       # compile TypeScript and copy templates into dist
 npm test            # execute the Vitest suite (required before committing)
 ```
+
+- During development, run commands without rebuilding via `npm run dev -- <command>`. For example:
+
+  ```bash
+  npm run dev -- configure claude-code --api-key YOUR_KEY
+  npm run dev -- test
+  ```
 
 - Follow the guidelines in `AGENTS.md` (`TDD`, `SOLID`, `YAGNI`, and `KISS`).
 - Keep documentation in sync with feature changes—update this README, command help text, and templates together.
