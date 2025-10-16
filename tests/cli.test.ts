@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import { createProgram } from "../src/cli/program.js";
+import type { CommandRunner } from "../src/utils/prerequisites.js";
 
 interface PromptCall {
   name: string;
   message?: string;
+}
+
+interface CommandCall {
+  command: string;
+  args: string[];
 }
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
@@ -31,6 +37,35 @@ function createPromptStub(responses: Record<string, unknown>) {
   };
 
   return { prompt, calls };
+}
+
+function createCommandRunnerStub(options?: {
+  whichExitCode?: number;
+  claudeExitCode?: number;
+  claudeStdout?: string;
+}): { runner: CommandRunner; calls: CommandCall[] } {
+  const {
+    whichExitCode = 0,
+    claudeExitCode = 0,
+    claudeStdout = "CLAUDE_CODE_OK\n"
+  } = options ?? {};
+  const calls: CommandCall[] = [];
+  const runnerImpl = async (command: string, args: string[]) => {
+    calls.push({ command, args });
+    if (command === "which") {
+      if (whichExitCode !== 0) {
+        return { stdout: "", stderr: "not found", exitCode: whichExitCode };
+      }
+      return { stdout: "/usr/bin/claude\n", stderr: "", exitCode: 0 };
+    }
+    if (command === "claude") {
+      return { stdout: claudeStdout, stderr: "", exitCode: claudeExitCode };
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  const runner = vi.fn(runnerImpl) as unknown as CommandRunner;
+
+  return { runner, calls };
 }
 
 describe("CLI program", () => {
@@ -171,11 +206,13 @@ describe("CLI program", () => {
 
   it("prompts for missing api key when configuring claude-code", async () => {
     const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
     });
 
     await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
@@ -192,13 +229,113 @@ describe("CLI program", () => {
       env: {
         POE_API_KEY: "prompted-key",
         ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: "prompted-key"
+      ANTHROPIC_API_KEY: "prompted-key"
       }
     });
 
     const bashrc = await fs.readFile(path.join(homeDir, ".bashrc"), "utf8");
     expect(bashrc).toBe("# env");
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
+    expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
+      "which",
+      "claude"
+    ]);
+    expect(commandRunnerStub.calls[0]).toEqual({
+      command: "which",
+      args: ["claude"]
+    });
+    expect(commandRunnerStub.calls[1]).toEqual({
+      command: "claude",
+      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
+    });
+  });
+
+  it("fails when the claude binary is missing", async () => {
+    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub({ whichExitCode: 1 });
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await expect(
+      program.parseAsync(["node", "cli", "configure", "claude-code"])
+    ).rejects.toThrow(/Claude CLI binary not found/);
+    expect(commandRunnerStub.calls).toEqual([
+      { command: "which", args: ["claude"] }
+    ]);
+    await expect(
+      fs.readFile(path.join(homeDir, ".claude", "settings.json"), "utf8")
+    ).rejects.toThrow();
+  });
+
+  it("fails when the claude check does not emit the expected marker", async () => {
+    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub({ claudeStdout: "nope" });
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
+      encoding: "utf8"
+    });
+
+    await expect(
+      program.parseAsync(["node", "cli", "configure", "claude-code"])
+    ).rejects.toThrow(/Claude CLI health check failed/);
+    expect(commandRunnerStub.calls).toHaveLength(2);
+    expect(commandRunnerStub.calls[0]).toEqual({
+      command: "which",
+      args: ["claude"]
+    });
+    expect(commandRunnerStub.calls[1]).toEqual({
+      command: "claude",
+      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
+    });
+  });
+
+  it("is idempotent when configuring claude-code", async () => {
+    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub();
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
+      encoding: "utf8"
+    });
+
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+    const firstSettings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+    const secondSettings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(firstSettings).toEqual(secondSettings);
+    expect(commandRunnerStub.calls).toHaveLength(4);
+    expect(
+      commandRunnerStub.calls.map((call) => `${call.command}:${call.args.join(" ")}`)
+    ).toEqual([
+      "which:claude",
+      "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text",
+      "which:claude",
+      "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text"
+    ]);
   });
 
   it("removes codex configuration", async () => {
@@ -231,11 +368,13 @@ describe("CLI program", () => {
   it("stores prompted api key during configure", async () => {
     const responses: Record<string, unknown> = { apiKey: "prompted-key" };
     const promptStub = createPromptStub(responses);
+    const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
     });
     const bashrcPath = path.join(homeDir, ".bashrc");
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
@@ -250,11 +389,13 @@ describe("CLI program", () => {
 
   it("stores api key provided via option", async () => {
     const { prompt } = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
     });
     const bashrcPath = path.join(homeDir, ".bashrc");
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
@@ -277,6 +418,7 @@ describe("CLI program", () => {
   it("stores api key via login and reuses it for configure", async () => {
     const responses: Record<string, unknown> = { apiKey: "stored-key" };
     const promptStub = createPromptStub(responses);
+    const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
       fs,
@@ -284,7 +426,8 @@ describe("CLI program", () => {
       env: { cwd, homeDir },
       logger: (message) => {
         logs.push(message);
-      }
+      },
+      commandRunner: commandRunnerStub.runner
     });
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
     const bashrcPath = path.join(homeDir, ".bashrc");
@@ -354,11 +497,13 @@ describe("CLI program", () => {
   it("prompts again after logout removes stored api key", async () => {
     const responses: Record<string, unknown> = { apiKey: "initial-key" };
     const promptStub = createPromptStub(responses);
+    const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
     });
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
     const bashrcPath = path.join(homeDir, ".bashrc");
@@ -399,11 +544,13 @@ describe("CLI program", () => {
   it("writes claude settings json with env configuration", async () => {
     const responses: Record<string, unknown> = { apiKey: "claude-key" };
     const promptStub = createPromptStub(responses);
+    const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
     });
     const bashrcPath = path.join(homeDir, ".bashrc");
 
@@ -518,7 +665,14 @@ describe("CLI program", () => {
       "--api-key",
       "secret-key"
     ]);
-    await program.parseAsync(["node", "cli", "query", "gpt-5", "Hello there"]);
+    await program.parseAsync([
+      "node",
+      "cli",
+      "query",
+      "--model",
+      "gpt-5",
+      "Hello there"
+    ]);
 
     expect(fetchCalls).toHaveLength(1);
     const [call] = fetchCalls;
@@ -532,7 +686,56 @@ describe("CLI program", () => {
       model: "gpt-5",
       messages: [{ role: "user", content: "Hello there" }]
     });
-    expect(logs).toContain("Query response: Hello from Poe");
+    expect(logs).toContain("gpt-5: Hello from Poe");
+  });
+
+  it("queries poe api with the default model when none is provided", async () => {
+    const responses: Record<string, unknown> = {};
+    const promptStub = createPromptStub(responses);
+    const fetchCalls: Array<{
+      url: string;
+      init?: { method?: string; headers?: Record<string, string>; body?: string };
+    }> = [];
+    const fetchStub = async (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string>; body?: string }
+    ) => {
+      fetchCalls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "Response with default model" } }]
+        })
+      };
+    };
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      httpClient: fetchStub
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "login",
+      "--api-key",
+      "default-model-key"
+    ]);
+    await program.parseAsync(["node", "cli", "query", "Hello there"]);
+
+    expect(fetchCalls).toHaveLength(1);
+    const [call] = fetchCalls;
+    expect(JSON.parse(call.init?.body as string)).toEqual({
+      model: "Claude-Sonnet-4.5",
+      messages: [{ role: "user", content: "Hello there" }]
+    });
+    expect(logs).toContain("Claude-Sonnet-4.5: Response with default model");
   });
 
   it("does not call poe api when query runs in dry-run mode", async () => {
@@ -566,19 +769,14 @@ describe("CLI program", () => {
       httpClient: fetchStub
     });
 
-    await program.parseAsync([
-      "node",
-      "cli",
-      "--dry-run",
-      "query",
-      "gpt-5",
-      "Hello there"
-    ]);
+    await program.parseAsync(["node", "cli", "--dry-run", "query", "Hello there"]);
 
     expect(fetchCalls).toHaveLength(0);
     expect(
       logs.find((line) =>
-        line.includes('Dry run: would query "gpt-5" with text "Hello there".')
+        line.includes(
+          'Dry run: would query "Claude-Sonnet-4.5" with text "Hello there".'
+        )
       )
     ).toBeTruthy();
   });
