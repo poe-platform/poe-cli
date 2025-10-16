@@ -215,4 +215,296 @@ describe("CLI program", () => {
       fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8")
     ).rejects.toThrow();
   });
+
+  it("stores prompted api key during configure", async () => {
+    const responses: Record<string, unknown> = { apiKey: "prompted-key" };
+    const promptStub = createPromptStub(responses);
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+    const bashrcPath = path.join(homeDir, ".bashrc");
+    const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
+
+    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
+
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+
+    const stored = await fs.readFile(credentialsPath, "utf8");
+    expect(JSON.parse(stored)).toEqual({ apiKey: "prompted-key" });
+  });
+
+  it("stores api key provided via option", async () => {
+    const { prompt } = createPromptStub({});
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+    const bashrcPath = path.join(homeDir, ".bashrc");
+    const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
+
+    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "configure",
+      "claude-code",
+      "--api-key",
+      "option-key"
+    ]);
+
+    const stored = await fs.readFile(credentialsPath, "utf8");
+    expect(JSON.parse(stored)).toEqual({ apiKey: "option-key" });
+  });
+
+  it("stores api key via login and reuses it for configure", async () => {
+    const responses: Record<string, unknown> = { apiKey: "stored-key" };
+    const promptStub = createPromptStub(responses);
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+    const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
+    const bashrcPath = path.join(homeDir, ".bashrc");
+
+    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
+
+    await program.parseAsync(["node", "cli", "login"]);
+
+    const stored = await fs.readFile(credentialsPath, "utf8");
+    expect(JSON.parse(stored)).toEqual({ apiKey: "stored-key" });
+
+    delete responses.apiKey;
+
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+
+    const bashrc = await fs.readFile(bashrcPath, "utf8");
+    expect(bashrc).toContain('export POE_API_KEY="stored-key"');
+  });
+
+  it("prompts again after logout removes stored api key", async () => {
+    const responses: Record<string, unknown> = { apiKey: "initial-key" };
+    const promptStub = createPromptStub(responses);
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+    const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
+    const bashrcPath = path.join(homeDir, ".bashrc");
+
+    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
+
+    await program.parseAsync(["node", "cli", "login"]);
+    await expect(fs.readFile(credentialsPath, "utf8")).resolves.toBeTruthy();
+
+    await program.parseAsync(["node", "cli", "logout"]);
+    await expect(fs.readFile(credentialsPath, "utf8")).rejects.toThrow();
+
+    responses.apiKey = "prompted-key";
+
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+
+    const bashrc = await fs.readFile(bashrcPath, "utf8");
+    expect(bashrc).toContain('export POE_API_KEY="prompted-key"');
+
+    const apiKeyPrompts = promptStub.calls.filter(
+      (call) => call.name === "apiKey"
+    );
+    expect(apiKeyPrompts.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("writes claude settings json with env configuration", async () => {
+    const responses: Record<string, unknown> = { apiKey: "claude-key" };
+    const promptStub = createPromptStub(responses);
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+    const bashrcPath = path.join(homeDir, ".bashrc");
+
+    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+
+    const settings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(JSON.parse(settings)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_API_KEY: "claude-key"
+      }
+    });
+  });
+
+  it("tests stored api key with the test command", async () => {
+    const responses: Record<string, unknown> = {};
+    const promptStub = createPromptStub(responses);
+    const fetchCalls: Array<{
+      url: string;
+      init?: { method?: string; headers?: Record<string, string>; body?: string };
+    }> = [];
+    const fetchStub = async (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string>; body?: string }
+    ) => {
+      fetchCalls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "Ping" } }]
+        })
+      };
+    };
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      httpClient: fetchStub
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "login",
+      "--api-key",
+      "secret-key"
+    ]);
+    await program.parseAsync(["node", "cli", "test"]);
+
+    expect(fetchCalls).toHaveLength(1);
+    const [call] = fetchCalls;
+    expect(call.url).toBe("https://api.poe.com/v1/chat/completions");
+    expect(call.init?.method).toBe("POST");
+    expect(call.init?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer secret-key"
+    });
+    expect(JSON.parse(call.init?.body as string)).toEqual({
+      model: "EchoBot",
+      messages: [{ role: "user", content: "Ping" }]
+    });
+    expect(
+      logs.find((line) => line.includes("Poe API key verified"))
+    ).toBeTruthy();
+  });
+
+  it("queries poe api with provided text and logs the response", async () => {
+    const responses: Record<string, unknown> = {};
+    const promptStub = createPromptStub(responses);
+    const fetchCalls: Array<{
+      url: string;
+      init?: { method?: string; headers?: Record<string, string>; body?: string };
+    }> = [];
+    const fetchStub = async (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string>; body?: string }
+    ) => {
+      fetchCalls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "Hello from Poe" } }]
+        })
+      };
+    };
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      httpClient: fetchStub
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "login",
+      "--api-key",
+      "secret-key"
+    ]);
+    await program.parseAsync(["node", "cli", "query", "gpt-5", "Hello there"]);
+
+    expect(fetchCalls).toHaveLength(1);
+    const [call] = fetchCalls;
+    expect(call.url).toBe("https://api.poe.com/v1/chat/completions");
+    expect(call.init?.method).toBe("POST");
+    expect(call.init?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer secret-key"
+    });
+    expect(JSON.parse(call.init?.body as string)).toEqual({
+      model: "gpt-5",
+      messages: [{ role: "user", content: "Hello there" }]
+    });
+    expect(logs).toContain("Query response: Hello from Poe");
+  });
+
+  it("does not call poe api when query runs in dry-run mode", async () => {
+    const responses: Record<string, unknown> = {};
+    const promptStub = createPromptStub(responses);
+    const fetchCalls: Array<{
+      url: string;
+      init?: { method?: string; headers?: Record<string, string>; body?: string };
+    }> = [];
+    const fetchStub = async (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string>; body?: string }
+    ) => {
+      fetchCalls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "unused" } }]
+        })
+      };
+    };
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      httpClient: fetchStub
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "query",
+      "gpt-5",
+      "Hello there"
+    ]);
+
+    expect(fetchCalls).toHaveLength(0);
+    expect(
+      logs.find((line) =>
+        line.includes('Dry run: would query "gpt-5" with text "Hello there".')
+      )
+    ).toBeTruthy();
+  });
 });
