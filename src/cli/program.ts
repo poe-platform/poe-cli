@@ -1,12 +1,17 @@
 import { Command } from "commander";
 import path from "node:path";
-import type { FileSystem } from "../utils/file-system";
-import { initProject } from "../commands/init";
+import type { FileSystem } from "../utils/file-system.js";
+import { initProject } from "../commands/init.js";
 import {
   configureClaudeCode,
   removeClaudeCode
-} from "../services/claude-code";
-import { configureCodex, removeCodex } from "../services/codex";
+} from "../services/claude-code.js";
+import { configureCodex, removeCodex } from "../services/codex.js";
+import {
+  DryRunRecorder,
+  createDryRunFileSystem,
+  formatDryRunOperations
+} from "../utils/dry-run.js";
 
 type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
 type LoggerFn = (message: string) => void;
@@ -39,7 +44,7 @@ const DEFAULT_REASONING = "medium";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const {
-    fs,
+    fs: baseFs,
     prompts,
     env,
     logger = console.log,
@@ -48,8 +53,9 @@ export function createProgram(dependencies: CliDependencies): Command {
 
   const program = new Command();
   program
-    .name("poe-setup")
+    .name("poe-cli")
     .description("CLI tool to configure Poe API for various development tools.");
+  program.option("--dry-run", "Simulate commands without writing changes.");
 
   if (exitOverride) {
     program.exitOverride();
@@ -62,6 +68,12 @@ export function createProgram(dependencies: CliDependencies): Command {
     .option("--api-key <key>", "Poe API key")
     .option("--model <model>", "Model identifier")
     .action(async (options: InitCommandOptions) => {
+      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+      const context = createCommandContext({
+        baseFs,
+        isDryRun,
+        logger
+      });
       const projectName = await ensureOption(
         options.projectName,
         prompts,
@@ -79,13 +91,16 @@ export function createProgram(dependencies: CliDependencies): Command {
         (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
 
       await initProject({
-        fs,
+        fs: context.fs,
         cwd: env.cwd,
         projectName,
         apiKey,
         model
       });
-      logger(`Initialized project "${projectName}".`);
+      context.complete({
+        success: `Initialized project "${projectName}".`,
+        dry: `Dry run: would initialize project "${projectName}".`
+      });
     });
 
   program
@@ -96,6 +111,12 @@ export function createProgram(dependencies: CliDependencies): Command {
     .option("--model <model>", "Model identifier")
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .action(async (service: string, options: ConfigureCommandOptions) => {
+      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+      const context = createCommandContext({
+        baseFs,
+        isDryRun,
+        logger
+      });
       if (service === "claude-code") {
         const apiKey = await ensureOption(
           options.apiKey,
@@ -104,8 +125,11 @@ export function createProgram(dependencies: CliDependencies): Command {
           "POE API key"
         );
         const bashrcPath = path.join(env.homeDir, ".bashrc");
-        await configureClaudeCode({ fs, bashrcPath, apiKey });
-        logger("Configured Claude Code.");
+        await configureClaudeCode({ fs: context.fs, bashrcPath, apiKey });
+        context.complete({
+          success: "Configured Claude Code.",
+          dry: "Dry run: would configure Claude Code."
+        });
         return;
       }
 
@@ -124,12 +148,15 @@ export function createProgram(dependencies: CliDependencies): Command {
           ));
         const configPath = path.join(env.homeDir, ".codex", "config.toml");
         await configureCodex({
-          fs,
+          fs: context.fs,
           configPath,
           model,
           reasoningEffort
         });
-        logger("Configured Codex.");
+        context.complete({
+          success: "Configured Codex.",
+          dry: "Dry run: would configure Codex."
+        });
         return;
       }
 
@@ -141,25 +168,33 @@ export function createProgram(dependencies: CliDependencies): Command {
     .description("Remove existing Poe API tooling configuration.")
     .argument("<service>", "Service to remove (claude-code | codex)")
     .action(async (service: string) => {
+      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+      const context = createCommandContext({
+        baseFs,
+        isDryRun,
+        logger
+      });
       if (service === "claude-code") {
         const bashrcPath = path.join(env.homeDir, ".bashrc");
-        const removed = await removeClaudeCode({ fs, bashrcPath });
-        logger(
-          removed
+        const removed = await removeClaudeCode({ fs: context.fs, bashrcPath });
+        context.complete({
+          success: removed
             ? "Removed Claude Code configuration."
-            : "No Claude Code configuration found."
-        );
+            : "No Claude Code configuration found.",
+          dry: "Dry run: would remove Claude Code configuration."
+        });
         return;
       }
 
       if (service === "codex") {
         const configPath = path.join(env.homeDir, ".codex", "config.toml");
-        const removed = await removeCodex({ fs, configPath });
-        logger(
-          removed
+        const removed = await removeCodex({ fs: context.fs, configPath });
+        context.complete({
+          success: removed
             ? "Removed Codex configuration."
-            : "No Codex configuration found."
-        );
+            : "No Codex configuration found.",
+          dry: "Dry run: would remove Codex configuration."
+        });
         return;
       }
 
@@ -167,6 +202,41 @@ export function createProgram(dependencies: CliDependencies): Command {
     });
 
   return program;
+}
+
+interface CommandContextInit {
+  baseFs: FileSystem;
+  isDryRun: boolean;
+  logger: LoggerFn;
+}
+
+interface CommandContext {
+  fs: FileSystem;
+  complete(messages: { success: string; dry: string }): void;
+}
+
+function createCommandContext(init: CommandContextInit): CommandContext {
+  if (!init.isDryRun) {
+    return {
+      fs: init.baseFs,
+      complete(messages) {
+        init.logger(messages.success);
+      }
+    };
+  }
+
+  const recorder = new DryRunRecorder();
+  const dryFs = createDryRunFileSystem(init.baseFs, recorder);
+
+  return {
+    fs: dryFs,
+    complete(messages) {
+      init.logger(messages.dry);
+      for (const line of formatDryRunOperations(recorder.drain())) {
+        init.logger(line);
+      }
+    }
+  };
 }
 
 async function ensureOption(

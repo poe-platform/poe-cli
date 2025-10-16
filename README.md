@@ -6,33 +6,42 @@ CLI tool to configure Poe API for various development tools.
 
 ```bash
 # Run directly with npx (no installation needed)
-npx poe-setup
+npx poe-cli
 
 # Or install globally
-npm install -g poe-setup
+npm install -g poe-cli
+
+# Install from a local clone
+# (Run inside the repository directory)
+npm run build       # compile TypeScript to dist/
+npm install -g .
+# If the binary is still not found, make sure your global npm bin dir is on PATH:
+# export PATH="$(npm bin -g):$PATH"
 ```
 
 ## Usage
 
 ```bash
 # Interactive mode
-npx poe-setup
-# or if installed globally: poe-setup
+npx poe-cli
+# or if installed globally: poe-cli
 
 # Initialize new Python project with Poe API
-npx poe-setup init
+npx poe-cli init
 # Creates: .env, main.py (joke request example), requirements.txt
 
 # Configure specific service (prompts for API key)
-npx poe-setup configure claude-code
-npx poe-setup configure codex
+npx poe-cli configure claude-code
+npx poe-cli configure codex
 
 # Non-interactive mode (skip prompts)
-npx poe-setup configure claude-code --api-key="your-key-here"
+npx poe-cli configure claude-code --api-key="your-key-here"
 
 # Remove configuration
-npx poe-setup remove claude-code
-npx poe-setup remove codex
+npx poe-cli remove claude-code
+npx poe-cli remove codex
+
+# Append --dry-run to any command to preview without changes.
 ```
 
 ## Commands

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
-import type { FileSystem } from "../src/utils/file-system";
-import { createProgram } from "../src/cli/program";
+import type { FileSystem } from "../src/utils/file-system.js";
+import { createProgram } from "../src/cli/program.js";
 
 interface PromptCall {
   name: string;
@@ -43,6 +43,72 @@ describe("CLI program", () => {
     ({ fs, vol } = createMemFs());
     vol.mkdirSync(cwd, { recursive: true });
     vol.mkdirSync(homeDir, { recursive: true });
+  });
+
+  it("exposes poe-cli as the command name", () => {
+    const { prompt } = createPromptStub({});
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+
+    expect(program.name()).toBe("poe-cli");
+  });
+
+  it("simulates commands without writing when using --dry-run", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "configure",
+      "codex",
+      "--model",
+      "gpt-5",
+      "--reasoning-effort",
+      "medium"
+    ]);
+
+    await expect(
+      fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8")
+    ).rejects.toThrow();
+    expect(logs).toContain("Dry run: would configure Codex.");
+    expect(
+      logs.find((line) =>
+        line.includes("write /home/user/.codex/config.toml")
+      )
+    ).toBeTruthy();
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "init",
+      "--project-name",
+      "demo",
+      "--api-key",
+      "secret"
+    ]);
+
+    await expect(
+      fs.readFile(path.join(cwd, "demo", ".env"), "utf8")
+    ).rejects.toThrow();
+    expect(logs).toContain('Dry run: would initialize project "demo".');
+    expect(
+      logs.find((line) => line.includes("write /workspace/demo/.env"))
+    ).toBeTruthy();
   });
 
   it("runs init command with provided options", async () => {
