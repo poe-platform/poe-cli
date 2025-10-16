@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import * as nodeFs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
 import prompts from "prompts";
-import { createProgram } from "./cli/program";
-import type { FileSystem } from "./utils/file-system";
+import { createProgram } from "./cli/program.js";
+import type { FileSystem } from "./utils/file-system.js";
 
 const fsAdapter = nodeFs as unknown as FileSystem;
 
@@ -38,12 +39,29 @@ async function main(): Promise<void> {
   }
 }
 
-const isMainModule =
-  typeof process.argv[1] === "string" &&
-  pathToFileURL(process.argv[1]).href === import.meta.url;
-
-if (isMainModule) {
+if (isCliInvocation(process.argv, import.meta.url)) {
   void main();
 }
 
-export { main };
+function isCliInvocation(
+  argv: string[],
+  moduleUrl: string,
+  realpath: (path: string) => string = realpathSync
+): boolean {
+  const entry = argv.at(1);
+  if (typeof entry !== "string") {
+    return false;
+  }
+
+  const candidates = [pathToFileURL(entry).href];
+
+  try {
+    candidates.push(pathToFileURL(realpath(entry)).href);
+  } catch {
+    // Ignore resolution errors; fall back to direct comparison.
+  }
+
+  return candidates.includes(moduleUrl);
+}
+
+export { main, isCliInvocation };
