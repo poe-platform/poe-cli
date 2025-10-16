@@ -1,0 +1,16 @@
+{
+  "name": "poe-cli",
+  "version": "0.0.0-placeholder",
+  "description": "Placeholder release for poe-cli to reserve the package name.",
+  "bin": {
+    "poe-cli": "index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "keywords": [
+    "placeholder"
+  ],
+  "license": "MIT"
+}
