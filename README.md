@@ -34,7 +34,11 @@ npm run build
 npm link  # optional: exposes `poe-cli` from the local dist build
 ```
 
-> 💡 If the global binary cannot be found, export `PATH="$(npm bin -g):$PATH"`.
+Local
+
+`npm run build`
+`npm install -g .`
+
 
 ## Quick Start
 
@@ -87,7 +91,7 @@ Sets up editor integrations.
 poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
 
-- `claude-code` – appends environment variable exports to `~/.bashrc` using the `claude-code/bashrc.hbs` template, after creating a timestamped backup.
+- `claude-code` – writes `~/.claude/settings.json` with Poe environment variables and removes any legacy exports previously managed in `~/.bashrc`.
 - `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
 - Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
 
@@ -151,7 +155,7 @@ poe-cli publish-placeholder [--output <dir>]
 | `init` | `<project>/.env` | `src/templates/python/env.hbs` | Injects `POE_API_KEY`, base URL, and default model. |
 | `init` | `<project>/main.py` | `src/templates/python/main.py.hbs` | Demonstrates a chat completion request. |
 | `init` | `<project>/requirements.txt` | `src/templates/python/requirements.txt.hbs` | Pins `openai` and `python-dotenv`. |
-| `configure claude-code` | `~/.bashrc` | `src/templates/claude-code/bashrc.hbs` | Exports Poe keys for Anthropic tooling. |
+| `configure claude-code` | `~/.claude/settings.json` | _n/a_ | Persists Poe keys for Anthropic tooling. |
 | `configure codex` | `~/.codex/config.toml` | `src/templates/codex/config.toml.hbs` | Sets model provider configuration. |
 
 Template rendering is handled by `src/utils/templates.ts` using Handlebars. Add additional templates under `src/templates/` and reuse the helper to keep everything consistent.
@@ -205,3 +209,4 @@ const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
 - [x] Add a `test` command that pings the Poe EchoBot to validate credentials end-to-end.
 - [x] claude code should create/edit config json see docs/claude-code.md
 - [x] Add command `query` <model> <text> that will query openai compat api with api key and return the response
+- [ ] query - model should be optional, default to Claude-Sonnet-4.5, maybe use --model argument

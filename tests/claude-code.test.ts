@@ -31,71 +31,59 @@ describe("claude-code service", () => {
     await fs.writeFile(bashrcPath, "# existing config", { encoding: "utf8" });
   });
 
-  it("appends configuration block and creates backup", async () => {
+  it("leaves bashrc untouched when no snippet is present", async () => {
     await configureClaudeCode({
       fs,
       bashrcPath,
       apiKey,
-      settingsPath,
-      timestamp: () => "20240101T000000"
+      settingsPath
     });
 
-    const content = await fs.readFile(bashrcPath, "utf8");
-    expect(content.trimEnd()).toBe(`# existing config\n\n${templateOutput}`);
-
-    const backup = await fs.readFile(
-      `${bashrcPath}.backup.20240101T000000`,
-      "utf8"
-    );
-    expect(backup).toBe("# existing config");
-  });
-
-  it("removes configuration block without restoring from backup", async () => {
-    await configureClaudeCode({
-      fs,
-      bashrcPath,
-      apiKey,
-      settingsPath,
-      timestamp: () => "20240101T000000"
-    });
-    await fs.writeFile(
-      `${bashrcPath}.backup.20240101T000000`,
-      "# backup",
-      { encoding: "utf8" }
-    );
-    await fs.writeFile(
-      bashrcPath,
-      "# overwritten\n\n" + templateOutput,
-      {
-        encoding: "utf8"
-      }
-    );
-
-    const removed = await removeClaudeCode({ fs, bashrcPath });
-    expect(removed).toBe(true);
-
-    const content = await fs.readFile(bashrcPath, "utf8");
-    expect(content).toBe("# overwritten");
-  });
-
-  it("removes configuration block when backup missing", async () => {
-    await configureClaudeCode({
-      fs,
-      bashrcPath,
-      apiKey,
-      settingsPath,
-      timestamp: () => "20240101T000000"
-    });
-    await fs.unlink(`${bashrcPath}.backup.20240101T000000`);
-
-    const removed = await removeClaudeCode({ fs, bashrcPath });
-    expect(removed).toBe(true);
+    await expect(
+      fs.readFile(`${bashrcPath}.backup.20240101T000000`, "utf8")
+    ).rejects.toThrow();
 
     const content = await fs.readFile(bashrcPath, "utf8");
     expect(content).toBe("# existing config");
   });
 
-  it("returns false when configuration block not present", async () => {
+  it("removes legacy configuration snippet from bashrc when present", async () => {
+    await fs.writeFile(
+      bashrcPath,
+      `# existing config\n\n${templateOutput}\n# footer`,
+      { encoding: "utf8" }
+    );
+
+    await configureClaudeCode({
+      fs,
+      bashrcPath,
+      apiKey,
+      settingsPath
+    });
+
+    const content = await fs.readFile(bashrcPath, "utf8");
+    expect(content).not.toContain("export POE_API_KEY");
+    expect(content).toContain("# existing config");
+    expect(content).toContain("# footer");
+  });
+
+  it("removeClaudeCode removes configuration block", async () => {
+    await fs.writeFile(
+      bashrcPath,
+      `# existing\n${templateOutput}\n# footer`,
+      { encoding: "utf8" }
+    );
+
+    const removed = await removeClaudeCode({ fs, bashrcPath });
+    expect(removed).toBe(true);
+
+    const content = await fs.readFile(bashrcPath, "utf8");
+    expect(content).not.toContain("export POE_API_KEY");
+    expect(content).toContain("# existing");
+    expect(content).toContain("# footer");
+  });
+
+  it("removeClaudeCode returns false when configuration block not present", async () => {
     await fs.writeFile(bashrcPath, "# custom config", { encoding: "utf8" });
 
     const removed = await removeClaudeCode({ fs, bashrcPath });

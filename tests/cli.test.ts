@@ -184,8 +184,19 @@ describe("CLI program", () => {
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
+    const settings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(JSON.parse(settings)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_API_KEY: "prompted-key"
+      }
+    });
+
     const bashrc = await fs.readFile(path.join(homeDir, ".bashrc"), "utf8");
-    expect(bashrc).toContain('export POE_API_KEY="prompted-key"');
+    expect(bashrc).toBe("# env");
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
   });
 
@@ -285,8 +296,19 @@ describe("CLI program", () => {
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
+    const settings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(JSON.parse(settings)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_API_KEY: "stored-key"
+      }
+    });
+
     const bashrc = await fs.readFile(bashrcPath, "utf8");
-    expect(bashrc).toContain('export POE_API_KEY="stored-key"');
+    expect(bashrc).toBe("# env");
   });
 
   it("prompts again after logout removes stored api key", async () => {
@@ -313,8 +335,19 @@ describe("CLI program", () => {
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
+    const settings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(JSON.parse(settings)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_API_KEY: "prompted-key"
+      }
+    });
+
     const bashrc = await fs.readFile(bashrcPath, "utf8");
-    expect(bashrc).toContain('export POE_API_KEY="prompted-key"');
+    expect(bashrc).toBe("# env");
 
     const apiKeyPrompts = promptStub.calls.filter(
       (call) => call.name === "apiKey"
