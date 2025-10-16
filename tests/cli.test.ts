@@ -57,6 +57,36 @@ describe("CLI program", () => {
     expect(program.name()).toBe("poe-cli");
   });
 
+  it("prepares placeholder package using publish-placeholder command", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "publish-placeholder",
+      "--output",
+      "placeholder"
+    ]);
+
+    const manifest = await fs.readFile(
+      path.join(cwd, "placeholder", "package.json"),
+      "utf8"
+    );
+    expect(JSON.parse(manifest).name).toBe("poe-cli");
+    expect(
+      logs.find((line) => line.includes("Placeholder package ready"))
+    ).toBeTruthy();
+  });
+
   it("simulates commands without writing when using --dry-run", async () => {
     const { prompt } = createPromptStub({});
     const logs: string[] = [];

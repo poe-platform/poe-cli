@@ -7,6 +7,7 @@ import {
   removeClaudeCode
 } from "../services/claude-code.js";
 import { configureCodex, removeCodex } from "../services/codex.js";
+import { preparePlaceholderPackage } from "../commands/publish-placeholder.js";
 import {
   DryRunRecorder,
   createDryRunFileSystem,
@@ -199,6 +200,40 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
 
       throw new Error(`Unknown service "${service}".`);
+    });
+
+  program
+    .command("publish-placeholder")
+    .description(
+      "Prepare a placeholder package folder to reserve the poe-cli name on npm."
+    )
+    .option(
+      "--output <dir>",
+      "Directory (relative to cwd) for the placeholder package.",
+      "placeholder-package"
+    )
+    .action(async (options: { output?: string }) => {
+      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+      const context = createCommandContext({
+        baseFs,
+        isDryRun,
+        logger
+      });
+      const output = options.output ?? "placeholder-package";
+      const targetDir = path.isAbsolute(output)
+        ? output
+        : path.join(env.cwd, output);
+
+      await preparePlaceholderPackage({
+        fs: context.fs,
+        targetDir,
+        packageName: "poe-cli"
+      });
+
+      context.complete({
+        success: `Placeholder package ready at ${targetDir}. Run "npm publish ${targetDir}" to reserve the name.`,
+        dry: `Dry run: would prepare placeholder package at ${targetDir}.`
+      });
     });
 
   return program;

@@ -34,6 +34,10 @@ npx poe-cli init
 npx poe-cli configure claude-code
 npx poe-cli configure codex
 
+# Prepare placeholder package to reserve the npm name
+npx poe-cli publish-placeholder --output ./placeholder-package
+# then run: npm publish ./placeholder-package
+
 # Non-interactive mode (skip prompts)
 npx poe-cli configure claude-code --api-key="your-key-here"
 
@@ -63,6 +67,9 @@ Interactive prompts (similar to `npm init`):
 
 ### `remove` - Cleanup Configurations
 Removes service configurations and restores from backup if available
+
+### `publish-placeholder` - Reserve npm Package Name
+Generates a minimal placeholder package in the chosen directory so you can `npm publish` it and reserve the `poe-cli` name. Accepts `--output <dir>` (defaults to `placeholder-package`) and supports `--dry-run`.
 
 ## Project Structure
 
