@@ -1,11 +1,13 @@
+import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
-import { createBackup, restoreLatestBackup } from "../utils/backup.js";
+import { createBackup } from "../utils/backup.js";
 import { renderTemplate } from "../utils/templates.js";
 
 export interface ConfigureClaudeCodeOptions {
   fs: FileSystem;
   bashrcPath: string;
   apiKey: string;
+  settingsPath: string;
   timestamp?: () => string;
 }
 
@@ -19,7 +21,7 @@ const CLAUDE_TEMPLATE = "claude-code/bashrc.hbs";
 export async function configureClaudeCode(
   options: ConfigureClaudeCodeOptions
 ): Promise<void> {
-  const { fs, bashrcPath, apiKey, timestamp } = options;
+  const { fs, bashrcPath, apiKey, settingsPath, timestamp } = options;
 
   const existing = (await readFileIfExists(fs, bashrcPath)) ?? "";
   await createBackup(fs, bashrcPath, timestamp);
@@ -29,17 +31,13 @@ export async function configureClaudeCode(
   const nextContent = trimmed.length > 0 ? `${trimmed}\n\n${snippet}` : snippet;
 
   await fs.writeFile(bashrcPath, nextContent, { encoding: "utf8" });
+  await updateSettingsFile(fs, settingsPath, apiKey);
 }
 
 export async function removeClaudeCode(
   options: RemoveClaudeCodeOptions
 ): Promise<boolean> {
   const { fs, bashrcPath } = options;
-
-  const restored = await restoreLatestBackup(fs, bashrcPath);
-  if (restored) {
-    return true;
-  }
 
   const current = await readFileIfExists(fs, bashrcPath);
   if (current == null) {
@@ -71,12 +69,29 @@ async function readFileIfExists(
 
 function removeSnippet(content: string): string {
   const block =
-    'export POE_API_KEY="[^"\\n]+"\n' +
-    "export ANTHROPIC_API_KEY=\\$POE_API_KEY\n" +
-    'export ANTHROPIC_BASE_URL="https://api\\.poe\\.com"';
+    'export POE_API_KEY="[^"\\n]+"' +
+    "(?:\\r?\\n)export ANTHROPIC_API_KEY=\\$POE_API_KEY" +
+    '(?:\\r?\\n)export ANTHROPIC_BASE_URL="https://api\\.poe\\.com"';
 
-  const pattern = new RegExp(`(?:\\r?\\n){0,2}${block}\\s*$`);
-  return content.replace(pattern, "");
+  const trailingPattern = new RegExp(`(?:\\r?\\n){0,2}${block}\\s*$`);
+  if (trailingPattern.test(content)) {
+    return content.replace(trailingPattern, "");
+  }
+
+  const inlinePattern = new RegExp(
+    `(?:^|\\r?\\n)${block}(?:\\r?\\n|$)`,
+    "g"
+  );
+
+  return content.replace(inlinePattern, (match) => {
+    if (match.startsWith("\r\n") && match.endsWith("\r\n")) {
+      return "\r\n";
+    }
+    if (match.startsWith("\n") && match.endsWith("\n")) {
+      return "\n";
+    }
+    return "";
+  });
 }
 
 function isNotFound(error: unknown): boolean {
@@ -85,5 +100,68 @@ function isNotFound(error: unknown): boolean {
     error !== null &&
     "code" in error &&
     (error as { code?: string }).code === "ENOENT"
+  );
+}
+
+type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
+type JsonObject = Record<string, JsonValue>;
+type JsonArray = JsonValue[];
+
+async function updateSettingsFile(
+  fs: FileSystem,
+  settingsPath: string,
+  apiKey: string
+): Promise<void> {
+  const desired: JsonObject = {
+    env: {
+      ANTHROPIC_BASE_URL: "https://api.poe.com",
+      ANTHROPIC_API_KEY: apiKey
+    }
+  };
+
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  const existing = await readJsonIfExists(fs, settingsPath);
+  const merged = deepMergeJson(existing ?? {}, desired);
+  const payload = JSON.stringify(merged, null, 2);
+  await fs.writeFile(settingsPath, `${payload}\n`, { encoding: "utf8" });
+}
+
+async function readJsonIfExists(
+  fs: FileSystem,
+  settingsPath: string
+): Promise<JsonObject | null> {
+  try {
+    const raw = await fs.readFile(settingsPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return isJsonObject(parsed) ? parsed : {};
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function deepMergeJson(
+  target: JsonObject,
+  source: JsonObject
+): JsonObject {
+  const result: JsonObject = { ...target };
+  for (const [key, value] of Object.entries(source)) {
+    const existing = result[key];
+    if (isJsonObject(existing) && isJsonObject(value)) {
+      result[key] = deepMergeJson(existing, value);
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
   );
 }
