@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
-import type { FileSystem } from "../src/utils/file-system";
+import type { FileSystem } from "../src/utils/file-system.js";
 import {
   configureClaudeCode,
   removeClaudeCode
-} from "../src/services/claude-code";
+} from "../src/services/claude-code.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();

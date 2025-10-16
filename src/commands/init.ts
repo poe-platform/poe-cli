@@ -1,6 +1,6 @@
 import path from "node:path";
-import type { FileSystem } from "../utils/file-system";
-import { renderTemplate } from "../utils/templates";
+import type { FileSystem } from "../utils/file-system.js";
+import { renderTemplate } from "../utils/templates.js";
 
 export interface InitOptions {
   fs: FileSystem;

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { Volume } from "memfs";
 import { createFsFromVolume } from "memfs";
 import path from "node:path";
-import type { FileSystem } from "../src/utils/file-system";
-import { initProject } from "../src/commands/init";
+import type { FileSystem } from "../src/utils/file-system.js";
+import { initProject } from "../src/commands/init.js";
 
 function createMemFs(): FileSystem {
   const vol = new Volume();

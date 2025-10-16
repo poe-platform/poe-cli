@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { FileSystem } from "../utils/file-system";
-import { createBackup, restoreLatestBackup } from "../utils/backup";
-import { renderTemplate } from "../utils/templates";
+import type { FileSystem } from "../utils/file-system.js";
+import { createBackup, restoreLatestBackup } from "../utils/backup.js";
+import { renderTemplate } from "../utils/templates.js";
 
 export interface ConfigureCodexOptions {
   fs: FileSystem;
