@@ -114,6 +114,7 @@ async function updateSettingsFile(
 ): Promise<void> {
   const desired: JsonObject = {
     env: {
+      POE_API_KEY: apiKey,
       ANTHROPIC_BASE_URL: "https://api.poe.com",
       ANTHROPIC_API_KEY: apiKey
     }

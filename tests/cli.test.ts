@@ -190,6 +190,7 @@ describe("CLI program", () => {
     );
     expect(JSON.parse(settings)).toEqual({
       env: {
+        POE_API_KEY: "prompted-key",
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: "prompted-key"
       }
@@ -276,11 +277,14 @@ describe("CLI program", () => {
   it("stores api key via login and reuses it for configure", async () => {
     const responses: Record<string, unknown> = { apiKey: "stored-key" };
     const promptStub = createPromptStub(responses);
+    const logs: string[] = [];
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: (message) => {
+        logs.push(message);
+      }
     });
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
     const bashrcPath = path.join(homeDir, ".bashrc");
@@ -291,6 +295,9 @@ describe("CLI program", () => {
 
     const stored = await fs.readFile(credentialsPath, "utf8");
     expect(JSON.parse(stored)).toEqual({ apiKey: "stored-key" });
+    expect(logs).toContain(
+      `Poe API key stored at ${credentialsPath}.`
+    );
 
     delete responses.apiKey;
 
@@ -302,6 +309,7 @@ describe("CLI program", () => {
     );
     expect(JSON.parse(settings)).toEqual({
       env: {
+        POE_API_KEY: "stored-key",
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: "stored-key"
       }
@@ -309,6 +317,38 @@ describe("CLI program", () => {
 
     const bashrc = await fs.readFile(bashrcPath, "utf8");
     expect(bashrc).toBe("# env");
+  });
+
+  it("shows credentials path when login runs in dry-run mode", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+    const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "login",
+      "--api-key",
+      "dry-key"
+    ]);
+
+    expect(
+      logs
+    ).toContain(`Dry run: would store Poe API key at ${credentialsPath}.`);
+    expect(
+      logs.find((line) =>
+        line.includes(`write ${credentialsPath}`)
+      )
+    ).toBeTruthy();
   });
 
   it("prompts again after logout removes stored api key", async () => {
@@ -341,6 +381,7 @@ describe("CLI program", () => {
     );
     expect(JSON.parse(settings)).toEqual({
       env: {
+        POE_API_KEY: "prompted-key",
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: "prompted-key"
       }
@@ -375,6 +416,7 @@ describe("CLI program", () => {
     );
     expect(JSON.parse(settings)).toEqual({
       env: {
+        POE_API_KEY: "claude-key",
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: "claude-key"
       }

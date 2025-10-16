@@ -91,7 +91,7 @@ Sets up editor integrations.
 poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
 
-- `claude-code` – writes `~/.claude/settings.json` with Poe environment variables and removes any legacy exports previously managed in `~/.bashrc`.
+- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`, while removing any legacy exports previously managed in `~/.bashrc`.
 - `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
 - Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
 
@@ -115,6 +115,7 @@ poe-cli login [--api-key <key>]
 
 - Prompts for the key when `--api-key` is omitted.
 - Stores credentials at `~/.poe-cli/credentials.json` (JSON file with `{ apiKey }`).
+- Prints the credential path after storing (and in dry-run mode).
 - Supports `--dry-run` via the standard recorder.
 
 ### `logout`
@@ -155,7 +156,7 @@ poe-cli publish-placeholder [--output <dir>]
 | `init` | `<project>/.env` | `src/templates/python/env.hbs` | Injects `POE_API_KEY`, base URL, and default model. |
 | `init` | `<project>/main.py` | `src/templates/python/main.py.hbs` | Demonstrates a chat completion request. |
 | `init` | `<project>/requirements.txt` | `src/templates/python/requirements.txt.hbs` | Pins `openai` and `python-dotenv`. |
-| `configure claude-code` | `~/.claude/settings.json` | _n/a_ | Persists Poe keys for Anthropic tooling. |
+| `configure claude-code` | `~/.claude/settings.json` | _n/a_ | Persists Poe keys (POE/Anthropic) for tooling. |
 | `configure codex` | `~/.codex/config.toml` | `src/templates/codex/config.toml.hbs` | Sets model provider configuration. |
 
 Template rendering is handled by `src/utils/templates.ts` using Handlebars. Add additional templates under `src/templates/` and reuse the helper to keep everything consistent.

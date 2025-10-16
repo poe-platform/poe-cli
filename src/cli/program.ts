@@ -284,8 +284,8 @@ export function createProgram(dependencies: CliDependencies): Command {
         apiKey
       });
       context.complete({
-        success: "Poe API key stored.",
-        dry: "Dry run: would store Poe API key."
+        success: `Poe API key stored at ${credentialsPath}.`,
+        dry: `Dry run: would store Poe API key at ${credentialsPath}.`
       });
     });
 

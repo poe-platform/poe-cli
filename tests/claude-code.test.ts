@@ -105,6 +105,7 @@ describe("claude-code service", () => {
     const parsed = JSON.parse(content);
     expect(parsed).toEqual({
       env: {
+        POE_API_KEY: apiKey,
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: apiKey
       }
@@ -141,6 +142,7 @@ describe("claude-code service", () => {
     expect(parsed).toEqual({
       theme: "dark",
       env: {
+        POE_API_KEY: apiKey,
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_API_KEY: apiKey,
         CUSTOM: "value"
