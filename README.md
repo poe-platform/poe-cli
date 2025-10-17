@@ -1,4 +1,6 @@
 <!-- Important: This document must be kept up to date! -->
+# The name poe-cli is taken, we need a new name 
+
 # Poe Setup Scripts
 
 Poe CLI connects your local developer tools to the Poe API in minutes—bootstrap projects, wire up editors, and validate credentials with one tool.
