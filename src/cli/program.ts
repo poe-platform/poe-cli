@@ -1,9 +1,11 @@
 import { Command } from "commander";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
 import { initProject } from "../commands/init.js";
 import {
   configureClaudeCode,
+  registerClaudeCodePrerequisites,
   removeClaudeCode
 } from "../services/claude-code.js";
 import { configureCodex, removeCodex } from "../services/codex.js";
@@ -18,9 +20,26 @@ import {
   createDryRunFileSystem,
   formatDryRunOperations
 } from "../utils/dry-run.js";
+import {
+  createPrerequisiteManager,
+  type CommandRunner,
+  type CommandRunnerResult,
+  type PrerequisiteManager
+} from "../utils/prerequisites.js";
 
 type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
 type LoggerFn = (message: string) => void;
+
+interface CommandRunnerResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export type CommandRunner = (
+  command: string,
+  args: string[]
+) => Promise<CommandRunnerResult>;
 
 interface HttpResponse {
   ok: boolean;
@@ -46,6 +65,7 @@ export interface CliDependencies {
   logger?: LoggerFn;
   exitOverride?: boolean;
   httpClient?: HttpClient;
+  commandRunner?: CommandRunner;
 }
 
 interface InitCommandOptions {
@@ -70,10 +90,12 @@ interface TestCommandOptions {
 
 interface QueryCommandOptions {
   apiKey?: string;
+  model?: string;
 }
 
 const DEFAULT_MODEL = "gpt-5";
 const DEFAULT_REASONING = "medium";
+const DEFAULT_QUERY_MODEL = "Claude-Sonnet-4.5";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const {
@@ -82,7 +104,8 @@ export function createProgram(dependencies: CliDependencies): Command {
     env,
     logger = console.log,
     exitOverride = true,
-    httpClient: providedHttpClient
+    httpClient: providedHttpClient,
+    commandRunner: providedCommandRunner
   } = dependencies;
 
   const httpClient: HttpClient =
@@ -95,6 +118,9 @@ export function createProgram(dependencies: CliDependencies): Command {
         json: () => response.json()
       };
     });
+
+  const commandRunner: CommandRunner =
+    providedCommandRunner ?? createDefaultCommandRunner();
 
   const program = new Command();
   program
@@ -176,7 +202,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
       const projectName = await ensureOption(
         options.projectName,
@@ -214,9 +241,13 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
+      const { prerequisites } = context;
       if (service === "claude-code") {
+        registerClaudeCodePrerequisites(prerequisites);
+        await prerequisites.run("before");
         const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
         const bashrcPath = path.join(env.homeDir, ".bashrc");
         const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
@@ -226,6 +257,7 @@ export function createProgram(dependencies: CliDependencies): Command {
           apiKey,
           settingsPath
         });
+        await prerequisites.run("after");
         context.complete({
           success: "Configured Claude Code.",
           dry: "Dry run: would configure Claude Code."
@@ -272,7 +304,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
       const input =
         options.apiKey ??
@@ -297,7 +330,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
       const stored = await getStoredApiKey();
       if (!stored) {
@@ -336,11 +370,12 @@ export function createProgram(dependencies: CliDependencies): Command {
     .description(
       "Send a prompt to a Poe model via the OpenAI-compatible API and print the response."
     )
-    .argument("<model>", "Model identifier")
     .argument("<text>", "Prompt text to send")
+    .option("--model <model>", "Model identifier", DEFAULT_QUERY_MODEL)
     .option("--api-key <key>", "Poe API key")
-    .action(async (model: string, text: string, options: QueryCommandOptions) => {
+    .action(async (text: string, options: QueryCommandOptions) => {
       const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+      const model = options.model ?? DEFAULT_QUERY_MODEL;
       if (isDryRun) {
         logger(`Dry run: would query "${model}" with text "${text}".`);
         return;
@@ -352,7 +387,7 @@ export function createProgram(dependencies: CliDependencies): Command {
         model,
         prompt: text
       });
-      logger(`Query response: ${content}`);
+      logger(`${model}: ${content}`);
     });
 
   program
@@ -364,7 +399,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
       if (service === "claude-code") {
         const bashrcPath = path.join(env.homeDir, ".bashrc");
@@ -408,7 +444,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const context = createCommandContext({
         baseFs,
         isDryRun,
-        logger
+        logger,
+        runCommand: commandRunner
       });
       const output = options.output ?? "placeholder-package";
       const targetDir = path.isAbsolute(output)
@@ -434,17 +471,25 @@ interface CommandContextInit {
   baseFs: FileSystem;
   isDryRun: boolean;
   logger: LoggerFn;
+  runCommand: CommandRunner;
 }
 
 interface CommandContext {
   fs: FileSystem;
+  prerequisites: PrerequisiteManager;
   complete(messages: { success: string; dry: string }): void;
 }
 
 function createCommandContext(init: CommandContextInit): CommandContext {
+  const prerequisites = createPrerequisiteManager({
+    isDryRun: init.isDryRun,
+    runCommand: init.runCommand
+  });
+
   if (!init.isDryRun) {
     return {
       fs: init.baseFs,
+      prerequisites,
       complete(messages) {
         init.logger(messages.success);
       }
@@ -456,6 +501,7 @@ function createCommandContext(init: CommandContextInit): CommandContext {
 
   return {
     fs: dryFs,
+    prerequisites,
     complete(messages) {
       init.logger(messages.dry);
       for (const line of formatDryRunOperations(recorder.drain())) {
@@ -463,6 +509,54 @@ function createCommandContext(init: CommandContextInit): CommandContext {
       }
     }
   };
+}
+
+function createDefaultCommandRunner(): CommandRunner {
+  return async (command, args) =>
+    new Promise<CommandRunnerResult>((resolve) => {
+      const child = spawn(command, args, {
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      let stdout = "";
+      let stderr = "";
+
+      if (child.stdout) {
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (data: string | Buffer) => {
+          stdout += data.toString();
+        });
+      }
+
+      if (child.stderr) {
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (data: string | Buffer) => {
+          stderr += data.toString();
+        });
+      }
+
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        const exitCode =
+          typeof error.code === "number"
+            ? error.code
+            : typeof error.errno === "number"
+            ? error.errno
+            : 127;
+        const message = error instanceof Error ? error.message : String(error);
+        resolve({
+          stdout,
+          stderr: stderr ? `${stderr}${message}` : message,
+          exitCode
+        });
+      });
+
+      child.on("close", (code) => {
+        resolve({
+          stdout,
+          stderr,
+          exitCode: code ?? 0
+        });
+      });
+    });
 }
 
 async function ensureOption(

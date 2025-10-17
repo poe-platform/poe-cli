@@ -60,6 +60,9 @@ npx poe-cli remove codex
 # Verify credentials
 npx poe-cli test
 
+# Query a model (defaults to Claude-Sonnet-4.5)
+npx poe-cli query "Hello there"
+
 # Reserve the npm package name
 npx poe-cli publish-placeholder --output ./placeholder-package
 
@@ -91,7 +94,7 @@ Sets up editor integrations.
 poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
 
-- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`, while removing any legacy exports previously managed in `~/.bashrc`.
+- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`, while removing any legacy exports previously managed in `~/.bashrc`. Before and after writing configuration it verifies that the `claude` CLI is available (`which claude`) and that `claude -p 'Output exactly: CLAUDE_CODE_OK' --output-format text` responds with `CLAUDE_CODE_OK`.
 - `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
 - Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
 
@@ -217,4 +220,47 @@ const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
 - [x] Add a `test` command that pings the Poe EchoBot to validate credentials end-to-end.
 - [x] claude code should create/edit config json see docs/claude-code.md
 - [x] Add command `query` <model> <text> that will query openai compat api with api key and return the response
-- [ ] query - model should be optional, default to Claude-Sonnet-4.5, maybe use --model argument
+- [x] query - model should be optional, default to Claude-Sonnet-4.5, maybe use --model argument
+
+
+## Architecture revamp
+
+We are reshaping the `services/` layer so every integration can be described declaratively. The CLI should be able to “read” a service definition, prime prerequisites, execute file mutations, or render a dry-run without bespoke glue code.
+
+### Goals
+- Treat each provider as a manifest that lists what must exist (files, directories, JSON keys) instead of embedding imperative logic in command handlers.
+- Keep the happy-path simple (`configure` applies the manifest; `remove` walks the inverse) while leaving room for provider-specific checks.
+- Make dry-run output deterministic by driving it from the same manifest objects we use during real execution.
+- Ensure prerequisites are explicit, reusable, and testable in isolation.
+
+### Building blocks
+- **Service manifest module** – each service keeps a single TypeScript file under `src/services/<service>.ts`. Export a declarative manifest (plain data, no side effects) plus any tiny helper types the engine needs. The module still exports the imperative helpers for CLI wiring, but they delegate to the shared runner using the manifest definition.
+- **Mutations** – normalised operations executed by the shared runner:
+  - `ensureDirectory({ path })`
+  - `writeTemplate({ target, templateId, context })`
+  - `jsonDeepMerge({ target, templateId, strategy })`
+  - `removeJsonKeys({ target, keys })`
+  - `removeFile({ target, whenEmpty })`
+- **Execution engine** – a thin utility that accepts a manifest, a `FileSystem`, and the `DryRunRecorder`. It loops over the mutations, dispatching to the correct helper (real or dry-run). Failures are surfaced with manifest/step context to aid debugging.
+- **Removal manifest** – optional mirror that lists cleanup operations. When omitted, we derive the inverse automatically (`jsonDeepMerge` ⇢ `removeJsonKeys`, `writeTemplate` ⇢ `removeFile` when untouched).
+
+### Prerequisites
+- `PrerequisiteManager` continues to orchestrate **before** (environment validation) and **after** (health checks) steps.
+- Each manifest references prerequisite IDs. Registration happens in `register<Service>Prerequisites`, keeping the implementations collocated with the manifest.
+- Prerequisites should be idempotent, surface actionable errors, and rely on the injected `commandRunner`.
+
+### Testing strategy
+- Every manifest ships with unit tests that run against `memfs`, asserting:
+  1. The positive path applies all declared mutations.
+  2. `Dry-run` produces the expected operation list.
+  3. Cleanup removes only manifest-owned keys/files (leave user content intact).
+- Health checks and failure branches are covered by targeted tests around the prerequisite functions.
+
+### Common patterns
+
+`json_file_deep_merge(json_filename, json_handlebars_template)`
+- Read the existing file (treat missing as `{}`) and deserialize to a plain object.
+- Render the Handlebars template with the manifest context and parse it back into JSON.
+- Perform a deep merge that keeps user customisations unless they overlap with manifest-managed keys.
+- During cleanup walk the merged tree from the deepest level upwards, removing keys that match the manifest payload and pruning empty parents.
+- Tests should execute the merge in memory, assert the intermediate diff, and confirm the prune logic restores the original content.

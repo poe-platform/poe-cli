@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
+import type { PrerequisiteManager } from "../utils/prerequisites.js";
 
 export interface ConfigureClaudeCodeOptions {
   fs: FileSystem;
@@ -165,4 +166,43 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
     value !== null &&
     !Array.isArray(value)
   );
+}
+
+export function registerClaudeCodePrerequisites(
+  prerequisites: PrerequisiteManager
+): void {
+  prerequisites.registerBefore({
+    id: "claude-cli-binary",
+    description: "Claude CLI binary must exist",
+    async run({ runCommand }) {
+      const result = await runCommand("which", ["claude"]);
+      if (result.exitCode !== 0) {
+        throw new Error("Claude CLI binary not found on PATH.");
+      }
+    }
+  });
+
+  prerequisites.registerAfter({
+    id: "claude-cli-health",
+    description: "Claude CLI health check must succeed",
+    async run({ runCommand }) {
+      const result = await runCommand("claude", [
+        "-p",
+        "Output exactly: CLAUDE_CODE_OK",
+        "--output-format",
+        "text"
+      ]);
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `Claude CLI health check failed with exit code ${result.exitCode}.`
+        );
+      }
+      const output = result.stdout.trim();
+      if (output !== "CLAUDE_CODE_OK") {
+        throw new Error(
+          `Claude CLI health check failed: expected "CLAUDE_CODE_OK" but received "${output}".`
+        );
+      }
+    }
+  });
 }

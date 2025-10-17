@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import {
   configureClaudeCode,
-  removeClaudeCode
+  removeClaudeCode,
+  registerClaudeCodePrerequisites
 } from "../src/services/claude-code.js";
+import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -147,6 +149,35 @@ describe("claude-code service", () => {
         ANTHROPIC_API_KEY: apiKey,
         CUSTOM: "value"
       }
+    });
+  });
+
+  it("registers prerequisite checks for the Claude CLI", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runCommand = vi.fn(async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (command === "which") {
+        return { stdout: "/usr/bin/claude\n", stderr: "", exitCode: 0 };
+      }
+      if (command === "claude") {
+        return { stdout: "CLAUDE_CODE_OK\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    registerClaudeCodePrerequisites(manager);
+    await manager.run("before");
+    await manager.run("after");
+
+    expect(calls.map((entry) => entry.command)).toEqual(["which", "claude"]);
+    expect(calls[0]).toEqual({ command: "which", args: ["claude"] });
+    expect(calls[1]).toEqual({
+      command: "claude",
+      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
     });
   });
 });

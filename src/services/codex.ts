@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
-import { createBackup, restoreLatestBackup } from "../utils/backup.js";
+import { createBackup } from "../utils/backup.js";
 import { renderTemplate } from "../utils/templates.js";
 
 export interface ConfigureCodexOptions {
@@ -39,29 +39,81 @@ export async function removeCodex(
 ): Promise<boolean> {
   const { fs, configPath } = options;
 
-  const restored = await restoreLatestBackup(fs, configPath);
-  if (restored) {
-    return true;
-  }
-
-  if (!(await exists(fs, configPath))) {
+  const content = await readFileIfExists(fs, configPath);
+  if (content == null) {
     return false;
   }
 
-  await fs.unlink(configPath);
+  if (isGeneratedConfig(content)) {
+    await fs.unlink(configPath);
+    return true;
+  }
+
+  const cleaned = removeGeneratedBlock(content);
+  if (cleaned === content) {
+    return false;
+  }
+
+  if (cleaned.trim().length === 0) {
+    await fs.unlink(configPath);
+  } else {
+    await fs.writeFile(configPath, cleaned, { encoding: "utf8" });
+  }
   return true;
 }
 
-async function exists(fs: FileSystem, target: string): Promise<boolean> {
+async function readFileIfExists(
+  fs: FileSystem,
+  target: string
+): Promise<string | null> {
   try {
-    await fs.stat(target);
-    return true;
+    return await fs.readFile(target, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      return false;
+      return null;
     }
     throw error;
   }
+}
+
+const CODEX_BLOCK_LINES = [
+  'model_provider = "poe"',
+  'model = "[^"\\r\\n]+"',
+  'model_reasoning_effort = "[^"\\r\\n]+"',
+  "",
+  "\\[model_providers\\.poe\\]",
+  'name = "poe"',
+  'base_url = "https://api\\.poe\\.com/v1"',
+  'wire_api = "chat"',
+  'env_key = "POE_API_KEY"'
+] as const;
+
+const CODEX_BLOCK_PATTERN = new RegExp(
+  CODEX_BLOCK_LINES.map((line, index) => {
+    if (line === "") {
+      return "(?:\\r?\\n){1}";
+    }
+    const suffix = index === CODEX_BLOCK_LINES.length - 1 ? "" : "(?:\\r?\\n)";
+    return `${line}${suffix}`;
+  }).join(""),
+  "g"
+);
+
+function removeGeneratedBlock(content: string): string {
+  return content.replace(CODEX_BLOCK_PATTERN, (match) => {
+    if (/^\s*$/.test(match)) {
+      return "";
+    }
+    return "\n";
+  });
+}
+
+function isGeneratedConfig(content: string): boolean {
+  const trimmed = content.trim();
+  const anchoredPattern = new RegExp(
+    `^${CODEX_BLOCK_PATTERN.source}$`
+  );
+  return anchoredPattern.test(trimmed);
 }
 
 function isNotFound(error: unknown): boolean {

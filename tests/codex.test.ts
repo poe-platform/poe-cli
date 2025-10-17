@@ -43,7 +43,7 @@ describe("codex service", () => {
     ).rejects.toThrow();
   });
 
-  it("restores backup on remove", async () => {
+  it("removes generated config without restoring backup", async () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(configPath, "original", { encoding: "utf8" });
 
@@ -55,21 +55,18 @@ describe("codex service", () => {
       timestamp: () => "20240101T000000"
     });
 
-    const backup = await fs.readFile(
+    await fs.writeFile(
       `${configPath}.backup.20240101T000000`,
-      "utf8"
+      "legacy",
+      { encoding: "utf8" }
     );
-    expect(backup).toBe("original");
-
-    await fs.writeFile(configPath, "modified", { encoding: "utf8" });
     const removed = await removeCodex({ fs, configPath });
     expect(removed).toBe(true);
 
-    const content = await fs.readFile(configPath, "utf8");
-    expect(content).toBe("original");
+    await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
   });
 
-  it("deletes config when no backup exists", async () => {
+  it("deletes config when content matches template", async () => {
     await configureCodex({
       fs,
       configPath,
@@ -82,5 +79,18 @@ describe("codex service", () => {
     expect(removed).toBe(true);
 
     await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
+  });
+
+  it("keeps config when file differs from template", async () => {
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(configPath, 'model = "custom"', {
+      encoding: "utf8"
+    });
+
+    const removed = await removeCodex({ fs, configPath });
+    expect(removed).toBe(false);
+
+    const content = await fs.readFile(configPath, "utf8");
+    expect(content).toBe('model = "custom"');
   });
 });
