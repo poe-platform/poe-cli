@@ -7,8 +7,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/copy-templates.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "vitest run",
-    "publish:placeholder": "tsx src/index.ts publish-placeholder --output placeholder-package"
+    "test": "vitest run"
   },
   "bin": {
     "poe-setup": "dist/index.js"

@@ -48,12 +48,6 @@ npx poe-setup test
 # Query a model (defaults to Claude-Sonnet-4.5)
 npx poe-setup query "Hello there"
 
-# Reserve the npm package name (prompts for package name)
-npx poe-setup publish-placeholder --output ./placeholder-package
-
-# Or specify the package name directly
-npx poe-setup publish-placeholder --name my-package-name --output ./placeholder-package
-
 # Inspect changes without writing to disk
 npx poe-setup --dry-run configure claude-code --api-key YOUR_KEY
 ```
@@ -143,19 +137,6 @@ poe-setup test [--api-key <key>]
 - Uses the stored key by default, falling back to CLI option or an interactive prompt.
 - Sends `"Ping"` to the `EchoBot` model and expects the same text back.
 - Respects `--dry-run` by skipping the network request and logging the planned verification.
-
-### `publish-placeholder`
-Creates a minimal package you can publish to reserve a package name on npm.
-
-```bash
-poe-setup publish-placeholder [--name <name>] [--output <dir>]
-```
-
-- `--name` – the package name to reserve (prompts if not provided)
-- `--output` – target directory for the placeholder package (defaults to `placeholder-package`)
-- Produces `package.json`, `index.js`, and `README.md` at the target directory.
-- Defaults to version `0.0.0-placeholder` with an executable that prints a friendly placeholder message.
-- After generating the package, run `npm publish <output-dir>` to reserve the name on npm.
 
 ## Dry Run Mode
 

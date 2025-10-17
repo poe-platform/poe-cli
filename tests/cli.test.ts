@@ -131,35 +131,18 @@ describe("CLI program", () => {
     });
   });
 
-  it("prepares placeholder package using publish-placeholder command", async () => {
-    const promptStub = createPromptStub({ name: "my-package" });
-    const logs: string[] = [];
+  it("does not register publish-placeholder command", () => {
+    const { prompt } = createPromptStub({});
     const program = createProgram({
       fs,
-      prompts: promptStub.prompt,
+      prompts: prompt,
       env: { cwd, homeDir },
-      logger: (message) => {
-        logs.push(message);
-      }
+      logger: () => {}
     });
 
-    await program.parseAsync([
-      "node",
-      "cli",
-      "publish-placeholder",
-      "--output",
-      "placeholder"
-    ]);
-
-    const manifest = await fs.readFile(
-      path.join(cwd, "placeholder", "package.json"),
-      "utf8"
+    expect(program.commands.map((command) => command.name())).not.toContain(
+      "publish-placeholder"
     );
-    expect(JSON.parse(manifest).name).toBe("my-package");
-    expect(
-      logs.find((line) => line.includes("Placeholder package ready"))
-    ).toBeTruthy();
-    expect(promptStub.calls.map((c) => c.name)).toContain("name");
   });
 
   it("configures opencode CLI integration", async () => {
@@ -225,38 +208,6 @@ describe("CLI program", () => {
 
     expect(
       logs.find((line) => line.includes("Configured OpenCode CLI."))
-    ).toBeTruthy();
-  });
-
-  it("prepares placeholder package with provided name option", async () => {
-    const { prompt } = createPromptStub({});
-    const logs: string[] = [];
-    const program = createProgram({
-      fs,
-      prompts: prompt,
-      env: { cwd, homeDir },
-      logger: (message) => {
-        logs.push(message);
-      }
-    });
-
-    await program.parseAsync([
-      "node",
-      "cli",
-      "publish-placeholder",
-      "--name",
-      "custom-cli",
-      "--output",
-      "placeholder"
-    ]);
-
-    const manifest = await fs.readFile(
-      path.join(cwd, "placeholder", "package.json"),
-      "utf8"
-    );
-    expect(JSON.parse(manifest).name).toBe("custom-cli");
-    expect(
-      logs.find((line) => line.includes("Placeholder package ready"))
     ).toBeTruthy();
   });
 

@@ -10,7 +10,6 @@ import {
 } from "../services/claude-code.js";
 import { configureCodex, removeCodex } from "../services/codex.js";
 import { configureOpenCode, removeOpenCode } from "../services/opencode.js";
-import { preparePlaceholderPackage } from "../commands/publish-placeholder.js";
 import {
   deleteCredentials,
   loadCredentials,
@@ -637,48 +636,6 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
 
       throw new Error(`Unknown service "${service}".`);
-    });
-
-  program
-    .command("publish-placeholder")
-    .description(
-      "Prepare a placeholder package folder to reserve a package name on npm."
-    )
-    .option(
-      "--output <dir>",
-      "Directory (relative to cwd) for the placeholder package.",
-      "placeholder-package"
-    )
-    .option("--name <name>", "Package name to reserve")
-    .action(async (options: { output?: string; name?: string }) => {
-      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
-      const context = createCommandContext({
-        baseFs,
-        isDryRun,
-        logger,
-        runCommand: commandRunner
-      });
-      const packageName = await ensureOption(
-        options.name,
-        prompts,
-        "name",
-        "Package name"
-      );
-      const output = options.output ?? "placeholder-package";
-      const targetDir = path.isAbsolute(output)
-        ? output
-        : path.join(env.cwd, output);
-
-      await preparePlaceholderPackage({
-        fs: context.fs,
-        targetDir,
-        packageName
-      });
-
-      context.complete({
-        success: `Placeholder package ready at ${targetDir}. Run "npm publish ${targetDir}" to reserve the name.`,
-        dry: `Dry run: would prepare placeholder package at ${targetDir}.`
-      });
     });
 
   return program;

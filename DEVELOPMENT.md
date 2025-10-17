@@ -61,7 +61,7 @@ const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
 
 - `src/index.ts` – CLI entrypoint wiring `commander`, prompts, and dependencies.
 - `src/cli/program.ts` – command registration and shared wiring (dry-run orchestration).
-- `src/commands/` – feature-specific implementations (`init`, `publish-placeholder`, etc.).
+- `src/commands/` – feature-specific implementations (init, configure, query, etc.).
 - `src/services/` – service adapters (Claude Code, Codex) including backup logic.
 - `src/utils/` – shared helpers for backups, dry runs, templates, and filesystem abstractions.
 - `tests/` – Vitest suites mirroring the command/service structure.
