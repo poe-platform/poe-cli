@@ -1,9 +1,9 @@
 {
-  "name": "poe-cli",
+  "name": "poe-ai",
   "version": "0.0.0-placeholder",
-  "description": "Placeholder release for poe-cli to reserve the package name.",
+  "description": "Placeholder release for poe-ai to reserve the package name.",
   "bin": {
-    "poe-cli": "index.js"
+    "poe-ai": "index.js"
   },
   "files": [
     "index.js",
