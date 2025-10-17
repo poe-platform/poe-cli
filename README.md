@@ -1,23 +1,34 @@
 <!-- Important: This document must be kept up to date! -->
 # Poe Setup Scripts
 
-Poe CLI is a Node.js toolkit that streamlines connecting local developer tools to the Poe API. It can bootstrap sample Python projects, configure IDE agents such as Claude Code and Codex, and generate an npm placeholder package to reserve the `poe-cli` name.
+Poe CLI connects your local developer tools to the Poe API in minutes—bootstrap projects, wire up editors, and validate credentials with one tool.
 
-## Features
-- Bootstrap a ready-to-run Python starter that calls the Poe API.
-- Configure Claude Code and Codex to proxy Anthropic/OpenAI requests through Poe.
-- Remove or restore configurations with automatic timestamped backups.
-- Generate a publishable placeholder npm package in one command.
-- Run any command in `--dry-run` mode to preview filesystem writes.
-- Remember your Poe API key automatically (prompt, flag, or `login`) and wipe it with `logout`.
-- Validate credentials end-to-end with the built-in `test` command (calls the Poe EchoBot).
+## Try It in 30 Seconds
 
-## Prerequisites
-- Node.js 18 or newer (`package.json` enforces this via the `engines` field).
-- A Poe API key for interactive commands (stored in your shell or passed on the CLI).
-- For global installs, ensure your npm global bin directory is in `PATH`.
+```bash
+npx poe-cli init
+```
 
-## Installation
+- Scaffolds a ready-to-run Python project preconfigured for the Poe API.
+- Prompts for your Poe API key when needed and stores it for later.
+
+Prefer to wire up an editor?
+
+```bash
+npx poe-cli configure claude-code
+```
+
+- Injects your Poe credentials into Claude Code via a guided flow.
+- Supports dry-run mode so you can preview filesystem changes safely.
+
+## What You Get
+- Ready-to-run Python starter that already talks to Poe.
+- One-command configuration for Claude Code and Codex.
+- Automatic backups so you can undo integrations without fear.
+- A `publish-placeholder` command to claim an npm package name instantly.
+- Built-in dry-run recorder and credential tester.
+
+## Install Options
 
 ```bash
 # Run without installing (recommended)
@@ -26,8 +37,6 @@ npx poe-cli --help
 # Install globally
 npm install -g poe-cli
 ```
-
-Looking to contribute? See `DEVELOPMENT.md` for the full contributor setup.
 
 ## Quick Start
 
@@ -160,18 +169,6 @@ poe-cli publish-placeholder [--name <name>] [--output <dir>]
 - Produces `package.json`, `index.js`, and `README.md` at the target directory.
 - Defaults to version `0.0.0-placeholder` with an executable that prints a friendly placeholder message.
 - After generating the package, run `npm publish <output-dir>` to reserve the name on npm.
-
-## Generated Files & Templates
-
-| Command | Target | Template | Notes |
-| --- | --- | --- | --- |
-| `init` | `<project>/.env` | `src/templates/python/env.hbs` | Injects `POE_API_KEY`, base URL, and default model. |
-| `init` | `<project>/main.py` | `src/templates/python/main.py.hbs` | Demonstrates a chat completion request. |
-| `init` | `<project>/requirements.txt` | `src/templates/python/requirements.txt.hbs` | Pins `openai` and `python-dotenv`. |
-| `configure claude-code` | `~/.claude/settings.json` | _n/a_ | Persists Poe keys (POE/Anthropic) for tooling. |
-| `configure codex` | `~/.codex/config.toml` | `src/templates/codex/config.toml.hbs` | Sets model provider configuration. |
-
-Template rendering is handled by `src/utils/templates.ts` using Handlebars. Add additional templates under `src/templates/` and reuse the helper to keep everything consistent.
 
 ## Dry Run Mode
 
