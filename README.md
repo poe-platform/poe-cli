@@ -3,18 +3,7 @@
 
 # Poe Setup Scripts
 
-Poe CLI connects your local developer tools to the Poe API in minutes—bootstrap projects, wire up editors, and validate credentials with one tool.
-
-## Try It in 30 Seconds
-
-```bash
-npx poe-cli init
-```
-
-- Scaffolds a ready-to-run Python project preconfigured for the Poe API.
-- Prompts for your Poe API key when needed and stores it for later.
-
-Prefer to wire up an editor?
+Poe CLI connects your local developer tools to the Poe API in minutes.
 
 ```bash
 npx poe-cli configure claude-code
@@ -27,8 +16,6 @@ npx poe-cli configure claude-code
 - Ready-to-run Python starter that already talks to Poe.
 - One-command configuration for Claude Code and Codex.
 - Automatic backups so you can undo integrations without fear.
-- A `publish-placeholder` command to claim an npm package name instantly.
-- Built-in dry-run recorder and credential tester.
 
 ## Install Options
 
