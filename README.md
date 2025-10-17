@@ -25,20 +25,9 @@ npx poe-cli --help
 
 # Install globally
 npm install -g poe-cli
-
-# Local development setup
-git clone <your-fork-url>
-cd poe-setup-scripts
-npm install
-npm run build
-npm link  # optional: exposes `poe-cli` from the local dist build
 ```
 
-Local
-
-`npm run build`
-`npm install -g .`
-
+Looking to contribute? See `DEVELOPMENT.md` for the full contributor setup.
 
 ## Quick Start
 
@@ -188,99 +177,7 @@ Template rendering is handled by `src/utils/templates.ts` using Handlebars. Add 
 
 When `--dry-run` is supplied, the CLI swaps the filesystem dependency with `createDryRunFileSystem` (`src/utils/dry-run.ts`). The command executes fully, but instead of touching disk it records a list of intended operations (mkdir, writeFile, unlink, etc.) and prints them after the summary so you can review the plan safely.
 
-## Development Workflow
+## Further Reading
 
-```bash
-npm install         # install dependencies
-npm run dev         # run the CLI via tsx
-npm run build       # compile TypeScript and copy templates into dist
-npm test            # execute the Vitest suite (required before committing)
-```
-
-- During development, run commands without rebuilding via `npm run dev -- <command>`. For example:
-
-  ```bash
-  npm run dev -- configure claude-code --api-key YOUR_KEY
-  npm run dev -- test
-  ```
-
-- Follow the guidelines in `AGENTS.md` (`TDD`, `SOLID`, `YAGNI`, and `KISS`).
-- Keep documentation in sync with feature changes—update this README, command help text, and templates together.
-- Builds output to `dist/`; the published package exposes `dist/index.js` as the `poe-cli` binary.
-
-## Testing
-
-- `npm test` runs `vitest run`. Use `npm test -- --watch` during TDD.
-- Filesystem interactions are exercised against `memfs` volumes through the `FileSystem` abstraction in `src/utils/file-system.ts`. Tests must not write to the real disk.
-- Prefer adding focused unit tests alongside each command/service before implementing new behaviour.
-
-Example test snippet:
-
-```typescript
-import { Volume, createFsFromVolume } from "memfs";
-import type { FileSystem } from "../src/utils/file-system.js";
-
-const volume = Volume.fromJSON({});
-const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
-```
-
-## Project Structure
-
-- `src/index.ts` – CLI entrypoint that wires `commander`, prompts, and dependencies.
-- `src/cli/program.ts` – command registration and shared wiring (dry-run orchestration lives here).
-- `src/commands/` – feature-specific command implementations (`init`, `publish-placeholder`, etc.).
-- `src/services/` – service adapters (Claude Code, Codex) including backup logic.
-- `src/utils/` – shared helpers for backups, dry runs, templates, and filesystem abstractions.
-- `tests/` – Vitest suites mirroring the command/service structure.
-
-## Roadmap
-
-- [x] Replace backup-based removal with pure pattern matching for Claude Code and Codex.
-- [x] Introduce login/logout commands to securely store the Poe API key.
-- [x] Add a `test` command that pings the Poe EchoBot to validate credentials end-to-end.
-- [x] claude code should create/edit config json see docs/claude-code.md
-- [x] Add command `query` <model> <text> that will query openai compat api with api key and return the response
-- [x] query - model should be optional, default to Claude-Sonnet-4.5, maybe use --model argument
-
-
-## Architecture revamp
-
-We are reshaping the `services/` layer so every integration can be described declaratively. The CLI should be able to “read” a service definition, prime prerequisites, execute file mutations, or render a dry-run without bespoke glue code.
-
-### Goals
-- Treat each provider as a manifest that lists what must exist (files, directories, JSON keys) instead of embedding imperative logic in command handlers.
-- Keep the happy-path simple (`configure` applies the manifest; `remove` walks the inverse) while leaving room for provider-specific checks.
-- Make dry-run output deterministic by driving it from the same manifest objects we use during real execution.
-- Ensure prerequisites are explicit, reusable, and testable in isolation.
-
-### Building blocks
-- **Service manifest module** – each service keeps a single TypeScript file under `src/services/<service>.ts`. Export a declarative manifest (plain data, no side effects) plus any tiny helper types the engine needs. The module still exports the imperative helpers for CLI wiring, but they delegate to the shared runner using the manifest definition.
-- **Mutations** – normalised operations executed by the shared runner:
-  - `ensureDirectory({ path })`
-  - `writeTemplate({ target, templateId, context })`
-  - `jsonDeepMerge({ target, templateId, strategy })`
-  - `removeJsonKeys({ target, keys })`
-  - `removeFile({ target, whenEmpty })`
-- **Execution engine** – a thin utility that accepts a manifest, a `FileSystem`, and the `DryRunRecorder`. It loops over the mutations, dispatching to the correct helper (real or dry-run). Failures are surfaced with manifest/step context to aid debugging.
-- **Removal manifest** – optional mirror that lists cleanup operations. When omitted, we derive the inverse automatically (`jsonDeepMerge` ⇢ `removeJsonKeys`, `writeTemplate` ⇢ `removeFile` when untouched).
-
-### Prerequisites
-- `PrerequisiteManager` continues to orchestrate **before** (environment validation) and **after** (health checks) steps.
-- Each manifest references prerequisite IDs. Registration happens in `register<Service>Prerequisites`, keeping the implementations collocated with the manifest.
-- Prerequisites should be idempotent, surface actionable errors, and rely on the injected `commandRunner`.
-
-### Testing strategy
-- Every manifest ships with unit tests that run against `memfs`, asserting:
-  1. The positive path applies all declared mutations.
-  2. `Dry-run` produces the expected operation list.
-  3. Cleanup removes only manifest-owned keys/files (leave user content intact).
-- Health checks and failure branches are covered by targeted tests around the prerequisite functions.
-
-### Common patterns
-
-`json_file_deep_merge(json_filename, json_handlebars_template)`
-- Read the existing file (treat missing as `{}`) and deserialize to a plain object.
-- Render the Handlebars template with the manifest context and parse it back into JSON.
-- Perform a deep merge that keeps user customisations unless they overlap with manifest-managed keys.
-- During cleanup walk the merged tree from the deepest level upwards, removing keys that match the manifest payload and pruning empty parents.
-- Tests should execute the merge in memory, assert the intermediate diff, and confirm the prune logic restores the original content.
+- `DEVELOPMENT.md` – contributor setup, workflows, and testing guidance.
+- `ARCHITECTURE.md` – overview of the declarative service model that powers the CLI.
