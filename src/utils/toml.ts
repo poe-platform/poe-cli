@@ -1,6 +1,16 @@
 import { parse, stringify } from "@iarna/toml";
 
-export type TomlTable = Record<string, unknown>;
+export type TomlValue =
+  | boolean
+  | number
+  | string
+  | Date
+  | TomlValue[]
+  | TomlTable;
+
+export interface TomlTable {
+  [key: string]: TomlValue;
+}
 
 export function parseTomlDocument(content: string): TomlTable {
   const result = parse(content);
@@ -11,11 +21,11 @@ export function parseTomlDocument(content: string): TomlTable {
 }
 
 export function serializeTomlDocument(table: TomlTable): string {
-  const serialized = stringify(table);
+  const serialized = stringify(table as any);
   return serialized.endsWith("\n") ? serialized : `${serialized}\n`;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is TomlTable {
   return (
     typeof value === "object" &&
     value !== null &&

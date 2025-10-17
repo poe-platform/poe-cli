@@ -36,17 +36,6 @@ import {
 type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
 type LoggerFn = (message: string) => void;
 
-interface CommandRunnerResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-export type CommandRunner = (
-  command: string,
-  args: string[]
-) => Promise<CommandRunnerResult>;
-
 interface HttpResponse {
   ok: boolean;
   status: number;

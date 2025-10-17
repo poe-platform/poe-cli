@@ -210,11 +210,15 @@ export function removePatternMutation<Options>(config: {
       if (content == null) {
         return { content: null, changed: false };
       }
-      const replacement =
-        typeof config.replacement === "function"
-          ? (match: string) => config.replacement!(match, context)
-          : config.replacement ?? "";
-      const next = content.replace(config.pattern, replacement);
+      let next: string;
+      if (typeof config.replacement === "function") {
+        const replacementFn = config.replacement;
+        const replacer = (match: string, ..._args: any[]) =>
+          replacementFn(match, context);
+        next = content.replace(config.pattern, replacer);
+      } else {
+        next = content.replace(config.pattern, config.replacement ?? "");
+      }
       return {
         content: next,
         changed: next !== content
@@ -238,8 +242,11 @@ export function removeFileMutation<Options>(config: {
   };
 }
 
-export async function runServiceConfigure<ConfigureOptions>(
-  manifest: ServiceManifest<ConfigureOptions, unknown>,
+export async function runServiceConfigure<
+  ConfigureOptions,
+  RemoveOptions = ConfigureOptions
+>(
+  manifest: ServiceManifest<ConfigureOptions, RemoveOptions>,
   context: ServiceExecutionContext<ConfigureOptions>,
   runOptions?: ServiceRunOptions
 ): Promise<void> {
@@ -250,8 +257,11 @@ export async function runServiceConfigure<ConfigureOptions>(
   });
 }
 
-export async function runServiceRemove<RemoveOptions>(
-  manifest: ServiceManifest<unknown, RemoveOptions>,
+export async function runServiceRemove<
+  ConfigureOptions,
+  RemoveOptions = ConfigureOptions
+>(
+  manifest: ServiceManifest<ConfigureOptions, RemoveOptions>,
   context: ServiceExecutionContext<RemoveOptions>,
   runOptions?: ServiceRunOptions
 ): Promise<boolean> {
@@ -411,8 +421,8 @@ function mutationContext<Options>(
   };
 }
 
-function createMutationDetails(
-  mutation: ServiceMutation<unknown>,
+function createMutationDetails<Options>(
+  mutation: ServiceMutation<Options>,
   manifestId: string,
   targetPath?: string
 ): MutationLogDetails {
