@@ -6,6 +6,7 @@ import {
   configureCodex,
   removeCodex
 } from "../src/services/codex.js";
+import { parseTomlDocument } from "../src/utils/toml.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -140,5 +141,47 @@ describe("codex service", () => {
       "utf8"
     );
     expect(backupContent).toBe("legacy-config");
+  });
+
+  it("merges codex configuration with existing content", async () => {
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(
+      configPath,
+      ['model_provider = "legacy"', "", "[features]", "foo = true", ""].join(
+        "\n"
+      ),
+      { encoding: "utf8" }
+    );
+
+    await configureCodex({
+      fs,
+      configPath,
+      model: "gpt-5",
+      reasoningEffort: "medium",
+      timestamp: () => "20240303T030303"
+    });
+
+    const doc = parseTomlDocument(await fs.readFile(configPath, "utf8"));
+    expect(doc["model_provider"]).toBe("poe");
+    expect(doc["model"]).toBe("gpt-5");
+    expect(doc["model_reasoning_effort"]).toBe("medium");
+    expect(doc["features"]).toEqual({ foo: true });
+
+    const providers = doc["model_providers"] as Record<string, unknown>;
+    expect(providers).toBeDefined();
+    const poe = (providers ?? {})["poe"] as Record<string, unknown>;
+    expect(poe).toMatchObject({
+      name: "poe",
+      base_url: "https://api.poe.com/v1",
+      wire_api: "chat",
+      env_key: "POE_API_KEY"
+    });
+
+    const backupContent = await fs.readFile(
+      `${configPath}.backup.20240303T030303`,
+      "utf8"
+    );
+    expect(backupContent.trim()).toContain('model_provider = "legacy"');
+    expect(backupContent.trim()).toContain("[features]");
   });
 });

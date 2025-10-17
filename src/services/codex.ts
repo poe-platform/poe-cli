@@ -6,8 +6,7 @@ import {
   runServiceConfigure,
   runServiceRemove,
   type ServiceManifest,
-  type ServiceRunOptions,
-  writeTemplateMutation
+  type ServiceRunOptions
 } from "./service-manifest.js";
 import {
   parseTomlDocument,
@@ -28,7 +27,6 @@ export interface RemoveCodexOptions {
   configPath: string;
 }
 
-const CODEX_TEMPLATE = "codex/config.toml.hbs";
 const CODEX_PROVIDER_ID = "poe";
 const CODEX_BASE_URL = "https://api.poe.com/v1";
 const CODEX_TOP_LEVEL_FIELDS = [
@@ -58,15 +56,32 @@ const CODEX_MANIFEST: ServiceManifest<
       timestamp: ({ options }) => options.timestamp,
       label: "Create Codex config backup"
     }),
-    writeTemplateMutation({
+    {
+      kind: "transformFile",
       target: ({ options }) => options.configPath,
-      templateId: CODEX_TEMPLATE,
-      label: "Write Codex config template",
-      context: ({ options }) => ({
-        model: options.model,
-        reasoningEffort: options.reasoningEffort
-      })
-    })
+      label: "Merge Codex configuration",
+      transform({ content, context }) {
+        let document: TomlTable;
+        if (content == null) {
+          document = {};
+        } else {
+          try {
+            document = parseTomlDocument(content);
+          } catch {
+            document = {};
+          }
+        }
+        applyCodexConfiguration(document, {
+          model: context.options.model,
+          reasoningEffort: context.options.reasoningEffort
+        });
+        const nextContent = serializeTomlDocument(document);
+        return {
+          content: nextContent,
+          changed: nextContent !== (content ?? "")
+        };
+      }
+    }
   ],
   remove: [
     {
@@ -103,6 +118,34 @@ const CODEX_MANIFEST: ServiceManifest<
     }
   ]
 };
+
+function applyCodexConfiguration(
+  document: TomlTable,
+  config: {
+    model: string;
+    reasoningEffort: string;
+  }
+): void {
+  document["model_provider"] = CODEX_PROVIDER_ID;
+  document["model"] = config.model;
+  document["model_reasoning_effort"] = config.reasoningEffort;
+
+  const providersValue = document["model_providers"];
+  const providers: TomlTable = isPlainObject(providersValue)
+    ? providersValue
+    : {};
+  if (!isPlainObject(providersValue)) {
+    document["model_providers"] = providers;
+  }
+
+  const poeValue = providers[CODEX_PROVIDER_ID];
+  const poeProvider: TomlTable = isPlainObject(poeValue) ? poeValue : {};
+  if (!isPlainObject(poeValue)) {
+    providers[CODEX_PROVIDER_ID] = poeProvider;
+  }
+
+  Object.assign(poeProvider, CODEX_PROVIDER_EXPECTED_FIELDS);
+}
 
 function stripCodexConfiguration(
   document: TomlTable
