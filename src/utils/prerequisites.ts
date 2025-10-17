@@ -25,7 +25,16 @@ export interface PrerequisiteDefinition {
 export interface PrerequisiteManager {
   registerBefore(prerequisite: PrerequisiteDefinition): void;
   registerAfter(prerequisite: PrerequisiteDefinition): void;
-  run(phase: PrerequisitePhase): Promise<void>;
+  run(
+    phase: PrerequisitePhase,
+    hooks?: PrerequisiteRunHooks
+  ): Promise<void>;
+}
+
+export interface PrerequisiteRunHooks {
+  onStart?(prerequisite: PrerequisiteDefinition): void;
+  onSuccess?(prerequisite: PrerequisiteDefinition): void;
+  onFailure?(prerequisite: PrerequisiteDefinition, error: unknown): void;
 }
 
 export function createPrerequisiteManager(init: {
@@ -51,18 +60,24 @@ export function createPrerequisiteManager(init: {
     registerAfter(prerequisite: PrerequisiteDefinition) {
       register("after", prerequisite);
     },
-    async run(phase: PrerequisitePhase): Promise<void> {
+    async run(
+      phase: PrerequisitePhase,
+      hooks?: PrerequisiteRunHooks
+    ): Promise<void> {
       const failures: string[] = [];
       for (const prerequisite of store[phase]) {
+        hooks?.onStart?.(prerequisite);
         try {
           await prerequisite.run({
             isDryRun: init.isDryRun,
             runCommand: init.runCommand
           });
+          hooks?.onSuccess?.(prerequisite);
         } catch (error) {
           const detail =
             error instanceof Error ? error.message : String(error);
           failures.push(`${prerequisite.description}: ${detail}`);
+          hooks?.onFailure?.(prerequisite, error);
         }
       }
 

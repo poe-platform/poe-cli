@@ -9,6 +9,7 @@ import {
   removeClaudeCode
 } from "../services/claude-code.js";
 import { configureCodex, removeCodex } from "../services/codex.js";
+import { configureOpenCode, removeOpenCode } from "../services/opencode.js";
 import { preparePlaceholderPackage } from "../commands/publish-placeholder.js";
 import {
   deleteCredentials,
@@ -24,8 +25,14 @@ import {
   createPrerequisiteManager,
   type CommandRunner,
   type CommandRunnerResult,
-  type PrerequisiteManager
+  type PrerequisiteManager,
+  type PrerequisitePhase,
+  type PrerequisiteRunHooks
 } from "../utils/prerequisites.js";
+import {
+  type MutationLogDetails,
+  type ServiceMutationHooks
+} from "../services/service-manifest.js";
 
 type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
 type LoggerFn = (message: string) => void;
@@ -96,6 +103,11 @@ interface QueryCommandOptions {
 const DEFAULT_MODEL = "gpt-5";
 const DEFAULT_REASONING = "medium";
 const DEFAULT_QUERY_MODEL = "Claude-Sonnet-4.5";
+const SERVICE_LABELS = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  opencode: "OpenCode CLI"
+} as const;
 
 export function createProgram(dependencies: CliDependencies): Command {
   const {
@@ -127,6 +139,7 @@ export function createProgram(dependencies: CliDependencies): Command {
     .name("poe-cli")
     .description("CLI tool to configure Poe API for various development tools.");
   program.option("--dry-run", "Simulate commands without writing changes.");
+  program.option("--verbose", "Enable verbose logging.");
 
   const credentialsPath = path.join(
     env.homeDir,
@@ -191,6 +204,158 @@ export function createProgram(dependencies: CliDependencies): Command {
     program.exitOverride();
   }
 
+  async function configureService(
+    service: string,
+    options: ConfigureCommandOptions
+  ): Promise<void> {
+    const opts = program.optsWithGlobals();
+    const isDryRun = Boolean(opts.dryRun);
+    const isVerbose = Boolean(opts.verbose);
+    const commandRunnerForContext = isVerbose
+      ? createLoggingCommandRunner(commandRunner, logger)
+      : commandRunner;
+    const context = createCommandContext({
+      baseFs,
+      isDryRun,
+      logger,
+      runCommand: commandRunnerForContext
+    });
+    const mutationHooks = createMutationLogger(logger, isVerbose);
+    const { prerequisites } = context;
+
+    if (service === "claude-code") {
+      registerClaudeCodePrerequisites(prerequisites);
+      const beforeHooks = createPrerequisiteHooks("before", logger, isVerbose);
+      if (beforeHooks) {
+        await prerequisites.run("before", beforeHooks);
+      } else {
+        await prerequisites.run("before");
+      }
+      const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
+      const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
+      await configureClaudeCode(
+        {
+          fs: context.fs,
+          apiKey,
+          settingsPath
+        },
+        mutationHooks ? { hooks: mutationHooks } : undefined
+      );
+      const afterHooks = createPrerequisiteHooks("after", logger, isVerbose);
+      if (afterHooks) {
+        await prerequisites.run("after", afterHooks);
+      } else {
+        await prerequisites.run("after");
+      }
+      context.complete({
+        success: "Configured Claude Code.",
+        dry: "Dry run: would configure Claude Code."
+      });
+      return;
+    }
+
+    if (service === "codex") {
+      const model =
+        options.model ??
+        (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
+      const reasoningEffort =
+        options.reasoningEffort ??
+        (await ensureOption(
+          undefined,
+          prompts,
+          "reasoningEffort",
+          "Reasoning effort",
+          DEFAULT_REASONING
+        ));
+      const configPath = path.join(env.homeDir, ".codex", "config.toml");
+      await configureCodex(
+        {
+          fs: context.fs,
+          configPath,
+          model,
+          reasoningEffort
+        },
+        mutationHooks ? { hooks: mutationHooks } : undefined
+      );
+      context.complete({
+        success: "Configured Codex.",
+        dry: "Dry run: would configure Codex."
+      });
+      return;
+    }
+
+    if (service === "opencode") {
+      const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
+      const configPath = path.join(
+        env.homeDir,
+        ".config",
+        "opencode",
+        "config.json"
+      );
+      const authPath = path.join(
+        env.homeDir,
+        ".local",
+        "share",
+        "opencode",
+        "auth.json"
+      );
+      await configureOpenCode(
+        {
+          fs: context.fs,
+          apiKey,
+          configPath,
+          authPath
+        },
+        mutationHooks ? { hooks: mutationHooks } : undefined
+      );
+      context.complete({
+        success: "Configured OpenCode CLI.",
+        dry: "Dry run: would configure OpenCode CLI."
+      });
+      return;
+    }
+
+    throw new Error(`Unknown service "${service}".`);
+  }
+
+  program.action(async () => {
+    const serviceIds = Object.keys(SERVICE_LABELS);
+    if (serviceIds.length === 0) {
+      logger("No services available to configure.");
+      return;
+    }
+
+    serviceIds.forEach((serviceId, index) => {
+      logger(`${index + 1}) ${serviceId}`);
+    });
+    logger("Enter number that you want to configure:");
+
+    const response = await prompts({
+      type: "number",
+      name: "serviceSelection",
+      message: "Enter number that you want to configure"
+    });
+
+    const rawSelection = response.serviceSelection;
+    const normalizedSelection =
+      typeof rawSelection === "number"
+        ? rawSelection
+        : typeof rawSelection === "string"
+        ? Number.parseInt(rawSelection, 10)
+        : NaN;
+
+    if (!Number.isInteger(normalizedSelection)) {
+      throw new Error("Invalid service selection.");
+    }
+
+    const selectedIndex = normalizedSelection - 1;
+    if (selectedIndex < 0 || selectedIndex >= serviceIds.length) {
+      throw new Error("Invalid service selection.");
+    }
+
+    await configureService(serviceIds[selectedIndex], {});
+  });
+
   program
     .command("init")
     .description("Initialize a Python project preconfigured for Poe API.")
@@ -232,67 +397,15 @@ export function createProgram(dependencies: CliDependencies): Command {
   program
     .command("configure")
     .description("Configure developer tooling for Poe API.")
-    .argument("<service>", "Service to configure (claude-code | codex)")
+    .argument(
+      "<service>",
+      "Service to configure (claude-code | codex | opencode)"
+    )
     .option("--api-key <key>", "Poe API key")
     .option("--model <model>", "Model identifier")
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .action(async (service: string, options: ConfigureCommandOptions) => {
-      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
-      const context = createCommandContext({
-        baseFs,
-        isDryRun,
-        logger,
-        runCommand: commandRunner
-      });
-      const { prerequisites } = context;
-      if (service === "claude-code") {
-        registerClaudeCodePrerequisites(prerequisites);
-        await prerequisites.run("before");
-        const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
-        const bashrcPath = path.join(env.homeDir, ".bashrc");
-        const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
-        await configureClaudeCode({
-          fs: context.fs,
-          bashrcPath,
-          apiKey,
-          settingsPath
-        });
-        await prerequisites.run("after");
-        context.complete({
-          success: "Configured Claude Code.",
-          dry: "Dry run: would configure Claude Code."
-        });
-        return;
-      }
-
-      if (service === "codex") {
-        const model =
-          options.model ??
-          (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
-        const reasoningEffort =
-          options.reasoningEffort ??
-          (await ensureOption(
-            undefined,
-            prompts,
-            "reasoningEffort",
-            "Reasoning effort",
-            DEFAULT_REASONING
-          ));
-        const configPath = path.join(env.homeDir, ".codex", "config.toml");
-        await configureCodex({
-          fs: context.fs,
-          configPath,
-          model,
-          reasoningEffort
-        });
-        context.complete({
-          success: "Configured Codex.",
-          dry: "Dry run: would configure Codex."
-        });
-        return;
-      }
-
-      throw new Error(`Unknown service "${service}".`);
+      await configureService(service, options);
     });
 
   program
@@ -391,20 +504,83 @@ export function createProgram(dependencies: CliDependencies): Command {
     });
 
   program
-    .command("remove")
-    .description("Remove existing Poe API tooling configuration.")
-    .argument("<service>", "Service to remove (claude-code | codex)")
-    .action(async (service: string) => {
-      const isDryRun = Boolean(program.optsWithGlobals().dryRun);
+    .command("prerequisites")
+    .description("Run prerequisite checks for a service.")
+    .argument(
+      "<service>",
+      "Service to check (claude-code | codex | opencode)"
+    )
+    .argument("<phase>", "Phase to execute (before | after)")
+    .action(async (service: string, phase: string) => {
+      const normalizedPhase = normalizePhase(phase);
+      const descriptor = SERVICE_LABELS[service as keyof typeof SERVICE_LABELS];
+      if (!descriptor) {
+        throw new Error(`Unknown service "${service}".`);
+      }
+
+      const opts = program.optsWithGlobals();
+      const isDryRun = Boolean(opts.dryRun);
+      const isVerbose = Boolean(opts.verbose);
+      const runnerForContext = isVerbose
+        ? createLoggingCommandRunner(commandRunner, logger)
+        : commandRunner;
       const context = createCommandContext({
         baseFs,
         isDryRun,
         logger,
-        runCommand: commandRunner
+        runCommand: runnerForContext
+      });
+
+      if (service === "claude-code") {
+        registerClaudeCodePrerequisites(context.prerequisites);
+      }
+
+      const hooks = createPrerequisiteHooks(
+        normalizedPhase,
+        logger,
+        isVerbose
+      );
+      if (hooks) {
+        await context.prerequisites.run(normalizedPhase, hooks);
+      } else {
+        await context.prerequisites.run(normalizedPhase);
+      }
+      context.complete({
+        success: `${descriptor} ${normalizedPhase} prerequisites succeeded.`,
+        dry: `Dry run: would run ${descriptor} ${normalizedPhase} prerequisites.`
+      });
+    });
+
+  program
+    .command("remove")
+    .description("Remove existing Poe API tooling configuration.")
+    .argument(
+      "<service>",
+      "Service to remove (claude-code | codex | opencode)"
+    )
+    .action(async (service: string) => {
+      const opts = program.optsWithGlobals();
+      const isDryRun = Boolean(opts.dryRun);
+      const isVerbose = Boolean(opts.verbose);
+      const commandRunnerForContext = isVerbose
+        ? createLoggingCommandRunner(commandRunner, logger)
+        : commandRunner;
+      const mutationHooks = createMutationLogger(logger, isVerbose);
+      const context = createCommandContext({
+        baseFs,
+        isDryRun,
+        logger,
+        runCommand: commandRunnerForContext
       });
       if (service === "claude-code") {
-        const bashrcPath = path.join(env.homeDir, ".bashrc");
-        const removed = await removeClaudeCode({ fs: context.fs, bashrcPath });
+        const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
+        const removed = await removeClaudeCode(
+          {
+            fs: context.fs,
+            settingsPath
+          },
+          mutationHooks ? { hooks: mutationHooks } : undefined
+        );
         context.complete({
           success: removed
             ? "Removed Claude Code configuration."
@@ -416,12 +592,46 @@ export function createProgram(dependencies: CliDependencies): Command {
 
       if (service === "codex") {
         const configPath = path.join(env.homeDir, ".codex", "config.toml");
-        const removed = await removeCodex({ fs: context.fs, configPath });
+        const removed = await removeCodex(
+          { fs: context.fs, configPath },
+          mutationHooks ? { hooks: mutationHooks } : undefined
+        );
         context.complete({
           success: removed
             ? "Removed Codex configuration."
             : "No Codex configuration found.",
           dry: "Dry run: would remove Codex configuration."
+        });
+        return;
+      }
+
+      if (service === "opencode") {
+        const configPath = path.join(
+          env.homeDir,
+          ".config",
+          "opencode",
+          "config.json"
+        );
+        const authPath = path.join(
+          env.homeDir,
+          ".local",
+          "share",
+          "opencode",
+          "auth.json"
+        );
+        const removed = await removeOpenCode(
+          {
+            fs: context.fs,
+            configPath,
+            authPath
+          },
+          mutationHooks ? { hooks: mutationHooks } : undefined
+        );
+        context.complete({
+          success: removed
+            ? "Removed OpenCode CLI configuration."
+            : "No OpenCode CLI configuration found.",
+          dry: "Dry run: would remove OpenCode CLI configuration."
         });
         return;
       }
@@ -432,14 +642,15 @@ export function createProgram(dependencies: CliDependencies): Command {
   program
     .command("publish-placeholder")
     .description(
-      "Prepare a placeholder package folder to reserve the poe-cli name on npm."
+      "Prepare a placeholder package folder to reserve a package name on npm."
     )
     .option(
       "--output <dir>",
       "Directory (relative to cwd) for the placeholder package.",
       "placeholder-package"
     )
-    .action(async (options: { output?: string }) => {
+    .option("--name <name>", "Package name to reserve")
+    .action(async (options: { output?: string; name?: string }) => {
       const isDryRun = Boolean(program.optsWithGlobals().dryRun);
       const context = createCommandContext({
         baseFs,
@@ -447,6 +658,12 @@ export function createProgram(dependencies: CliDependencies): Command {
         logger,
         runCommand: commandRunner
       });
+      const packageName = await ensureOption(
+        options.name,
+        prompts,
+        "name",
+        "Package name"
+      );
       const output = options.output ?? "placeholder-package";
       const targetDir = path.isAbsolute(output)
         ? output
@@ -455,7 +672,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       await preparePlaceholderPackage({
         fs: context.fs,
         targetDir,
-        packageName: "poe-cli"
+        packageName
       });
 
       context.complete({
@@ -509,6 +726,85 @@ function createCommandContext(init: CommandContextInit): CommandContext {
       }
     }
   };
+}
+
+function normalizePhase(value: string): PrerequisitePhase {
+  const normalized = value.toLowerCase();
+  if (normalized === "before" || normalized === "after") {
+    return normalized;
+  }
+  throw new Error(`Unknown phase "${value}". Use "before" or "after".`);
+}
+
+function createLoggingCommandRunner(
+  baseRunner: CommandRunner,
+  logger: LoggerFn
+): CommandRunner {
+  return async (command, args) => {
+    const rendered = [command, ...args].join(" ").trim();
+    logger(`> ${rendered}`);
+    return baseRunner(command, args);
+  };
+}
+
+function createPrerequisiteHooks(
+  phase: PrerequisitePhase,
+  logger: LoggerFn,
+  verbose: boolean
+): PrerequisiteRunHooks | undefined {
+  if (!verbose) {
+    return undefined;
+  }
+  return {
+    onStart(prerequisite) {
+      logger(`Running ${phase} prerequisite: ${prerequisite.description}`);
+    },
+    onSuccess(prerequisite) {
+      logger(`✓ ${prerequisite.description}`);
+    },
+    onFailure(prerequisite, error) {
+      logger(
+        `✖ ${prerequisite.description}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
+}
+
+function createMutationLogger(
+  logger: LoggerFn,
+  verbose: boolean
+): ServiceMutationHooks | undefined {
+  if (!verbose) {
+    return undefined;
+  }
+  return {
+    onStart(details) {
+      logger(`Applying ${formatMutationSubject(details)}`);
+    },
+    onComplete(details, outcome) {
+      if (outcome.changed) {
+        logger(`✓ ${formatMutationSubject(details)}`);
+      } else {
+        logger(`• ${formatMutationSubject(details)} (no changes)`);
+      }
+    },
+    onError(details, error) {
+      logger(
+        `✖ ${formatMutationSubject(details)}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
+}
+
+function formatMutationSubject(details: MutationLogDetails): string {
+  if (details.targetPath) {
+    return `${details.label} -> ${details.targetPath}`;
+  }
+  return details.label;
 }
 
 function createDefaultCommandRunner(): CommandRunner {

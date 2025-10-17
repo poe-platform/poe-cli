@@ -39,4 +39,30 @@ describe("publish placeholder task", () => {
     expect(readme).toContain("# poe-cli");
     expect(readme).toContain("placeholder release");
   });
+
+  it("accepts custom package name", async () => {
+    const { fs } = createMemFs();
+    const targetDir = "/workspace/custom-placeholder";
+
+    await preparePlaceholderPackage({
+      fs,
+      targetDir,
+      packageName: "my-custom-package"
+    });
+
+    const manifestPath = path.join(targetDir, "package.json");
+    const manifestRaw = await fs.readFile(manifestPath, "utf8");
+    const manifest = JSON.parse(manifestRaw);
+
+    expect(manifest.name).toBe("my-custom-package");
+    expect(manifest.description).toContain("Placeholder release for my-custom-package");
+    expect(manifest.bin).toEqual({ "my-custom-package": "index.js" });
+
+    const entry = await fs.readFile(path.join(targetDir, "index.js"), "utf8");
+    expect(entry).toContain("Placeholder release for my-custom-package");
+
+    const readme = await fs.readFile(path.join(targetDir, "README.md"), "utf8");
+    expect(readme).toContain("# my-custom-package");
+    expect(readme).toContain("my-custom-package");
+  });
 });

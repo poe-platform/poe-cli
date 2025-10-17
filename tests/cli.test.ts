@@ -92,12 +92,51 @@ describe("CLI program", () => {
     expect(program.name()).toBe("poe-cli");
   });
 
-  it("prepares placeholder package using publish-placeholder command", async () => {
-    const { prompt } = createPromptStub({});
+  it("prompts to select a service when no command is provided", async () => {
+    const promptStub = createPromptStub({
+      serviceSelection: 1,
+      apiKey: "prompted-key"
+    });
+    const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
       fs,
-      prompts: prompt,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await program.parseAsync(["node", "cli"]);
+
+    expect(logs).toContain("1) claude-code");
+    expect(logs).toContain("2) codex");
+    expect(logs).toContain("3) opencode");
+    expect(
+      logs.find((line) => line.startsWith("Enter number that you want to configure"))
+    ).toBeTruthy();
+
+    const settings = await fs.readFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      "utf8"
+    );
+    expect(JSON.parse(settings)).toEqual({
+      env: {
+        POE_API_KEY: "prompted-key",
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_API_KEY: "prompted-key"
+      }
+    });
+  });
+
+  it("prepares placeholder package using publish-placeholder command", async () => {
+    const promptStub = createPromptStub({ name: "my-package" });
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
       env: { cwd, homeDir },
       logger: (message) => {
         logs.push(message);
@@ -116,7 +155,106 @@ describe("CLI program", () => {
       path.join(cwd, "placeholder", "package.json"),
       "utf8"
     );
-    expect(JSON.parse(manifest).name).toBe("poe-cli");
+    expect(JSON.parse(manifest).name).toBe("my-package");
+    expect(
+      logs.find((line) => line.includes("Placeholder package ready"))
+    ).toBeTruthy();
+    expect(promptStub.calls.map((c) => c.name)).toContain("name");
+  });
+
+  it("configures opencode CLI integration", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "configure",
+      "opencode",
+      "--api-key",
+      "sk-test"
+    ]);
+
+    const config = JSON.parse(
+      await fs.readFile(
+        path.join(homeDir, ".config", "opencode", "config.json"),
+        "utf8"
+      )
+    );
+    expect(config).toEqual({
+      $schema: "https://opencode.ai/config.json",
+      provider: {
+        poe: {
+          npm: "@ai-sdk/openai-compatible",
+          name: "poe.com",
+          options: {
+            baseURL: "https://api.poe.com/v1"
+          },
+          models: {
+            "Claude-Sonnet-4.5": {
+              name: "Claude Sonnet 4.5"
+            },
+            "GPT-5-Codex": {
+              name: "GPT-5-Codex"
+            }
+          }
+        }
+      }
+    });
+
+    const auth = JSON.parse(
+      await fs.readFile(
+        path.join(homeDir, ".local", "share", "opencode", "auth.json"),
+        "utf8"
+      )
+    );
+    expect(auth).toEqual({
+      poe: {
+        type: "api",
+        key: "sk-test"
+      }
+    });
+
+    expect(
+      logs.find((line) => line.includes("Configured OpenCode CLI."))
+    ).toBeTruthy();
+  });
+
+  it("prepares placeholder package with provided name option", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "publish-placeholder",
+      "--name",
+      "custom-cli",
+      "--output",
+      "placeholder"
+    ]);
+
+    const manifest = await fs.readFile(
+      path.join(cwd, "placeholder", "package.json"),
+      "utf8"
+    );
+    expect(JSON.parse(manifest).name).toBe("custom-cli");
     expect(
       logs.find((line) => line.includes("Placeholder package ready"))
     ).toBeTruthy();
@@ -215,10 +353,6 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
 
-    await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
-      encoding: "utf8"
-    });
-
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
     const settings = await fs.readFile(
@@ -233,8 +367,6 @@ describe("CLI program", () => {
       }
     });
 
-    const bashrc = await fs.readFile(path.join(homeDir, ".bashrc"), "utf8");
-    expect(bashrc).toBe("# env");
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
     expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
       "which",
@@ -283,10 +415,6 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
 
-    await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
-      encoding: "utf8"
-    });
-
     await expect(
       program.parseAsync(["node", "cli", "configure", "claude-code"])
     ).rejects.toThrow(/Claude CLI health check failed/);
@@ -310,10 +438,6 @@ describe("CLI program", () => {
       env: { cwd, homeDir },
       logger: () => {},
       commandRunner: commandRunnerStub.runner
-    });
-
-    await fs.writeFile(path.join(homeDir, ".bashrc"), "# env", {
-      encoding: "utf8"
     });
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
@@ -376,10 +500,7 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const bashrcPath = path.join(homeDir, ".bashrc");
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
-
-    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
@@ -397,10 +518,7 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const bashrcPath = path.join(homeDir, ".bashrc");
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
-
-    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
 
     await program.parseAsync([
       "node",
@@ -430,9 +548,6 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
-    const bashrcPath = path.join(homeDir, ".bashrc");
-
-    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
 
     await program.parseAsync(["node", "cli", "login"]);
 
@@ -457,9 +572,6 @@ describe("CLI program", () => {
         ANTHROPIC_API_KEY: "stored-key"
       }
     });
-
-    const bashrc = await fs.readFile(bashrcPath, "utf8");
-    expect(bashrc).toBe("# env");
   });
 
   it("shows credentials path when login runs in dry-run mode", async () => {
@@ -506,9 +618,6 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const credentialsPath = path.join(homeDir, ".poe-cli", "credentials.json");
-    const bashrcPath = path.join(homeDir, ".bashrc");
-
-    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
 
     await program.parseAsync(["node", "cli", "login"]);
     await expect(fs.readFile(credentialsPath, "utf8")).resolves.toBeTruthy();
@@ -532,9 +641,6 @@ describe("CLI program", () => {
       }
     });
 
-    const bashrc = await fs.readFile(bashrcPath, "utf8");
-    expect(bashrc).toBe("# env");
-
     const apiKeyPrompts = promptStub.calls.filter(
       (call) => call.name === "apiKey"
     );
@@ -552,9 +658,6 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const bashrcPath = path.join(homeDir, ".bashrc");
-
-    await fs.writeFile(bashrcPath, "# env", { encoding: "utf8" });
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
     const settings = await fs.readFile(
@@ -625,6 +728,277 @@ describe("CLI program", () => {
     expect(
       logs.find((line) => line.includes("Poe API key verified"))
     ).toBeTruthy();
+  });
+
+  it("runs claude-code before prerequisites standalone", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--verbose",
+      "prerequisites",
+      "claude-code",
+      "before"
+    ]);
+
+    expect(logs).toContain("Running before prerequisite: Claude CLI binary must exist");
+    expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
+      "which"
+    ]);
+    expect(
+      logs.find((line) => line.startsWith("> which claude"))
+    ).toBeTruthy();
+    expect(logs).toContain("✓ Claude CLI binary must exist");
+    expect(logs).toContain("Claude Code before prerequisites succeeded.");
+  });
+
+  it("runs claude-code after prerequisites standalone", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--verbose",
+      "prerequisites",
+      "claude-code",
+      "after"
+    ]);
+
+    expect(logs).toContain("Running after prerequisite: Claude CLI health check must succeed");
+    expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
+      "claude"
+    ]);
+    expect(
+      logs.find((line) =>
+        line.startsWith("> claude -p Output exactly: CLAUDE_CODE_OK --output-format text")
+      )
+    ).toBeTruthy();
+    expect(logs).toContain("✓ Claude CLI health check must succeed");
+    expect(logs).toContain("Claude Code after prerequisites succeeded.");
+  });
+
+  it("logs actions while configuring claude-code when verbose", async () => {
+    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--verbose",
+      "configure",
+      "claude-code"
+    ]);
+
+    expect(logs).toContain(
+      "Running before prerequisite: Claude CLI binary must exist"
+    );
+    expect(
+      logs.find((line) => line.startsWith("> which claude"))
+    ).toBeTruthy();
+    expect(logs).toContain("✓ Claude CLI binary must exist");
+    expect(
+      logs.find((line) =>
+        line.includes("Ensure Claude settings directory -> /home/user/.claude")
+      )
+    ).toBeTruthy();
+    expect(
+      logs.find((line) =>
+        line.includes(
+          "Merge Claude settings -> /home/user/.claude/settings.json"
+        )
+      )
+    ).toBeTruthy();
+    expect(
+      logs.find((line) => line.startsWith("> claude -p Output exactly"))
+    ).toBeTruthy();
+    expect(logs).toContain(
+      "Running after prerequisite: Claude CLI health check must succeed"
+    );
+    expect(logs).toContain("✓ Claude CLI health check must succeed");
+    expect(logs).toContain("Configured Claude Code.");
+  });
+
+  it("does not log detailed actions when configuring claude-code without verbose", async () => {
+    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await program.parseAsync(["node", "cli", "configure", "claude-code"]);
+
+    expect(
+      logs.some((line) => line.includes("Ensure Claude settings directory"))
+    ).toBe(false);
+    expect(
+      logs.some((line) => line.startsWith("Running before prerequisite"))
+    ).toBe(false);
+    expect(logs).toContain("Configured Claude Code.");
+  });
+
+  it("fails for unknown prerequisite phase", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "cli",
+      "prerequisites",
+        "claude-code",
+        "invalid"
+      ])
+    ).rejects.toThrow('Unknown phase "invalid". Use "before" or "after".');
+  });
+
+  it("fails for unknown prerequisite service", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {},
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "cli",
+        "prerequisites",
+        "unknown-service",
+        "before"
+      ])
+    ).rejects.toThrow('Unknown service "unknown-service".');
+  });
+
+  it("logs actions while removing claude-code when verbose", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => logs.push(message),
+      commandRunner: commandRunnerStub.runner
+    });
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            POE_API_KEY: "sk-test",
+            ANTHROPIC_API_KEY: "sk-test",
+            ANTHROPIC_BASE_URL: "https://api.poe.com"
+          }
+        },
+        null,
+        2
+      ),
+      { encoding: "utf8" }
+    );
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--verbose",
+      "remove",
+      "claude-code"
+    ]);
+
+    expect(
+      logs.find((line) =>
+        line.includes("Prune Claude settings -> /home/user/.claude/settings.json")
+      )
+    ).toBeTruthy();
+    expect(logs).toContain("Removed Claude Code configuration.");
+  });
+
+  it("does not log detailed actions while removing claude-code without verbose", async () => {
+    const promptStub = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => logs.push(message),
+      commandRunner: commandRunnerStub.runner
+    });
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            POE_API_KEY: "sk-test",
+            ANTHROPIC_API_KEY: "sk-test",
+            ANTHROPIC_BASE_URL: "https://api.poe.com"
+          }
+        },
+        null,
+        2
+      ),
+      { encoding: "utf8" }
+    );
+
+    await program.parseAsync(["node", "cli", "remove", "claude-code"]);
+
+    expect(
+      logs.some((line) => line.includes("Prune Claude settings"))
+    ).toBe(false);
+    expect(logs).toContain("Removed Claude Code configuration.");
   });
 
   it("queries poe api with provided text and logs the response", async () => {

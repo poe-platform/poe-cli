@@ -63,8 +63,11 @@ npx poe-cli test
 # Query a model (defaults to Claude-Sonnet-4.5)
 npx poe-cli query "Hello there"
 
-# Reserve the npm package name
+# Reserve the npm package name (prompts for package name)
 npx poe-cli publish-placeholder --output ./placeholder-package
+
+# Or specify the package name directly
+npx poe-cli publish-placeholder --name my-package-name --output ./placeholder-package
 
 # Inspect changes without writing to disk
 npx poe-cli --dry-run configure claude-code --api-key YOUR_KEY
@@ -74,6 +77,7 @@ npx poe-cli --dry-run configure claude-code --api-key YOUR_KEY
 
 ### Global Flags
 - `--dry-run` – wraps the filesystem with an in-memory recorder so you can audit the planned writes. The command prints a summary plus the individual operations that would run.
+- `--verbose` – prints each prerequisite check and mutation step as it executes (silenced by default).
 
 ### `init`
 Scaffolds a Python project configured to call the Poe API.
@@ -94,9 +98,21 @@ Sets up editor integrations.
 poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
 
-- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`, while removing any legacy exports previously managed in `~/.bashrc`. Before and after writing configuration it verifies that the `claude` CLI is available (`which claude`) and that `claude -p 'Output exactly: CLAUDE_CODE_OK' --output-format text` responds with `CLAUDE_CODE_OK`.
+- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`. Before and after writing configuration it verifies that the `claude` CLI is available (`which claude`) and that `claude -p 'Output exactly: CLAUDE_CODE_OK' --output-format text` responds with `CLAUDE_CODE_OK`.
 - `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
 - Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
+- Add `--verbose` to stream each prerequisite and mutation step; otherwise only the final summary is printed (dry-run still reports planned filesystem writes).
+
+### `prerequisites`
+Executes only the prerequisite checks for a service.
+
+```bash
+poe-cli prerequisites <service> <phase>
+```
+
+- `phase` must be `before` or `after`. Use it to test environment readiness (`before`) or post-run health checks (`after`) without touching the filesystem.
+- Currently supports `claude-code` (runs the `which claude` probe and the `claude` health check). Other services succeed immediately when no prerequisites are defined.
+- Combine with `--verbose` to see the exact commands run. Works with `--dry-run`; it reports the planned execution while skipping any filesystem writes.
 
 ### `remove`
 Restores or removes configuration for a given service.
@@ -105,9 +121,10 @@ Restores or removes configuration for a given service.
 poe-cli remove <service>
 ```
 
-- Removes only the CLI-managed snippets/config files using pattern matching; leaves custom content intact.
+- Removes manifest-managed configuration only (settings JSON keys/files); leaves unrelated content intact.
 - Backups created during `configure` remain available for manual restoration.
 - Returns exit code `0` when nothing has to be removed.
+- Add `--verbose` to watch each cleanup mutation as it executes.
 
 ### `login`
 Persists a Poe API key for future commands.
@@ -143,14 +160,17 @@ poe-cli test [--api-key <key>]
 - Respects `--dry-run` by skipping the network request and logging the planned verification.
 
 ### `publish-placeholder`
-Creates a minimal package you can publish to reserve the `poe-cli` name on npm.
+Creates a minimal package you can publish to reserve a package name on npm.
 
 ```bash
-poe-cli publish-placeholder [--output <dir>]
+poe-cli publish-placeholder [--name <name>] [--output <dir>]
 ```
 
+- `--name` – the package name to reserve (prompts if not provided)
+- `--output` – target directory for the placeholder package (defaults to `placeholder-package`)
 - Produces `package.json`, `index.js`, and `README.md` at the target directory.
 - Defaults to version `0.0.0-placeholder` with an executable that prints a friendly placeholder message.
+- After generating the package, run `npm publish <output-dir>` to reserve the name on npm.
 
 ## Generated Files & Templates
 
