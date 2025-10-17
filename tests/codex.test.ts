@@ -93,4 +93,52 @@ describe("codex service", () => {
     const content = await fs.readFile(configPath, "utf8");
     expect(content).toBe('model = "custom"');
   });
+
+  it("removes codex block with different formatting", async () => {
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(
+      configPath,
+      [
+        'model_provider="poe"',
+        'model="gpt-5"',
+        'model_reasoning_effort="medium"',
+        "",
+        "[model_providers.poe]",
+        'name="poe"',
+        'base_url="https://api.poe.com/v1"',
+        'wire_api="chat"',
+        'env_key="POE_API_KEY"',
+        "",
+        "[features]",
+        "foo = true",
+        ""
+      ].join("\n"),
+      { encoding: "utf8" }
+    );
+
+    const removed = await removeCodex({ fs, configPath });
+    expect(removed).toBe(true);
+
+    const content = await fs.readFile(configPath, "utf8");
+    expect(content.trim()).toBe("[features]\nfoo = true");
+  });
+
+  it("creates timestamped backup when overwriting existing config", async () => {
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(configPath, "legacy-config", { encoding: "utf8" });
+
+    await configureCodex({
+      fs,
+      configPath,
+      model: "gpt-5",
+      reasoningEffort: "medium",
+      timestamp: () => "20240202T101010"
+    });
+
+    const backupContent = await fs.readFile(
+      `${configPath}.backup.20240202T101010`,
+      "utf8"
+    );
+    expect(backupContent).toBe("legacy-config");
+  });
 });

@@ -20,6 +20,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@iarna/toml": "^3.0.0",
     "commander": "^11.1.0",
     "handlebars": "^4.7.8",
     "prompts": "^2.4.2"
