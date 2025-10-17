@@ -18,25 +18,25 @@ describe("publish placeholder task", () => {
     await preparePlaceholderPackage({
       fs,
       targetDir,
-      packageName: "poe-cli"
+      packageName: "poe-setup"
     });
 
     const manifestPath = path.join(targetDir, "package.json");
     const manifestRaw = await fs.readFile(manifestPath, "utf8");
     const manifest = JSON.parse(manifestRaw);
 
-    expect(manifest.name).toBe("poe-cli");
+    expect(manifest.name).toBe("poe-setup");
     expect(manifest.version).toBe("0.0.0-placeholder");
     expect(manifest.description).toContain("Placeholder");
-    expect(manifest.bin).toEqual({ "poe-cli": "index.js" });
+    expect(manifest.bin).toEqual({ "poe-setup": "index.js" });
     expect(manifest.files).toEqual(["index.js", "README.md"]);
 
     const entry = await fs.readFile(path.join(targetDir, "index.js"), "utf8");
     expect(entry.startsWith("#!/usr/bin/env node")).toBe(true);
-    expect(entry).toContain("Placeholder release for poe-cli");
+    expect(entry).toContain("Placeholder release for poe-setup");
 
     const readme = await fs.readFile(path.join(targetDir, "README.md"), "utf8");
-    expect(readme).toContain("# poe-cli");
+    expect(readme).toContain("# poe-setup");
     expect(readme).toContain("placeholder release");
   });
 

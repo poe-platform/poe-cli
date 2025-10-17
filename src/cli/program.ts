@@ -136,14 +136,14 @@ export function createProgram(dependencies: CliDependencies): Command {
 
   const program = new Command();
   program
-    .name("poe-cli")
+    .name("poe-setup")
     .description("CLI tool to configure Poe API for various development tools.");
   program.option("--dry-run", "Simulate commands without writing changes.");
   program.option("--verbose", "Enable verbose logging.");
 
   const credentialsPath = path.join(
     env.homeDir,
-    ".poe-cli",
+    ".poe-setup",
     "credentials.json"
   );
 

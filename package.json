@@ -1,5 +1,5 @@
 {
-  "name": "poe-cli",
+  "name": "poe-setup",
   "version": "0.1.0",
   "description": "CLI tool to configure Poe API for various development tools.",
   "type": "module",
@@ -11,7 +11,7 @@
     "publish:placeholder": "tsx src/index.ts publish-placeholder --output placeholder-package"
   },
   "bin": {
-    "poe-cli": "dist/index.js"
+    "poe-setup": "dist/index.js"
   },
   "files": [
     "dist"

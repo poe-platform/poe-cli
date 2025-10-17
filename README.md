@@ -1,12 +1,10 @@
 <!-- Important: This document must be kept up to date! -->
-# The name poe-cli is taken, we need a new name 
-
-# Poe Setup Scripts
+# poe-setup
 
 Poe CLI connects your local developer tools to the Poe API in minutes.
 
 ```bash
-npx poe-cli configure claude-code
+npx poe-setup configure claude-code
 ```
 
 - Injects your Poe credentials into Claude Code via a guided flow.
@@ -21,43 +19,43 @@ npx poe-cli configure claude-code
 
 ```bash
 # Run without installing (recommended)
-npx poe-cli --help
+npx poe-setup --help
 
 # Install globally
-npm install -g poe-cli
+npm install -g poe-setup
 ```
 
 ## Quick Start
 
 ```bash
 # Interactive usage (prompts for missing values)
-npx poe-cli init
+npx poe-setup init
 
 # Store your Poe API key once
-npx poe-cli login --api-key YOUR_KEY
+npx poe-setup login --api-key YOUR_KEY
 
 # Configure tools
-npx poe-cli configure claude-code
-npx poe-cli configure codex --model gpt-5 --reasoning-effort medium
+npx poe-setup configure claude-code
+npx poe-setup configure codex --model gpt-5 --reasoning-effort medium
 
 # Remove configurations
-npx poe-cli remove claude-code
-npx poe-cli remove codex
+npx poe-setup remove claude-code
+npx poe-setup remove codex
 
 # Verify credentials
-npx poe-cli test
+npx poe-setup test
 
 # Query a model (defaults to Claude-Sonnet-4.5)
-npx poe-cli query "Hello there"
+npx poe-setup query "Hello there"
 
 # Reserve the npm package name (prompts for package name)
-npx poe-cli publish-placeholder --output ./placeholder-package
+npx poe-setup publish-placeholder --output ./placeholder-package
 
 # Or specify the package name directly
-npx poe-cli publish-placeholder --name my-package-name --output ./placeholder-package
+npx poe-setup publish-placeholder --name my-package-name --output ./placeholder-package
 
 # Inspect changes without writing to disk
-npx poe-cli --dry-run configure claude-code --api-key YOUR_KEY
+npx poe-setup --dry-run configure claude-code --api-key YOUR_KEY
 ```
 
 ## CLI Reference
@@ -70,7 +68,7 @@ npx poe-cli --dry-run configure claude-code --api-key YOUR_KEY
 Scaffolds a Python project configured to call the Poe API.
 
 ```bash
-poe-cli init [--project-name <name>] [--api-key <key>] [--model <model>]
+poe-setup init [--project-name <name>] [--api-key <key>] [--model <model>]
 ```
 
 - Prompts for missing arguments (project name, API key, model) using `prompts`.
@@ -82,7 +80,7 @@ poe-cli init [--project-name <name>] [--api-key <key>] [--model <model>]
 Sets up editor integrations.
 
 ```bash
-poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
+poe-setup configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
 
 - `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`. Before and after writing configuration it verifies that the `claude` CLI is available (`which claude`) and that `claude -p 'Output exactly: CLAUDE_CODE_OK' --output-format text` responds with `CLAUDE_CODE_OK`.
@@ -94,7 +92,7 @@ poe-cli configure <service> [--api-key <key>] [--model <model>] [--reasoning-eff
 Executes only the prerequisite checks for a service.
 
 ```bash
-poe-cli prerequisites <service> <phase>
+poe-setup prerequisites <service> <phase>
 ```
 
 - `phase` must be `before` or `after`. Use it to test environment readiness (`before`) or post-run health checks (`after`) without touching the filesystem.
@@ -105,7 +103,7 @@ poe-cli prerequisites <service> <phase>
 Restores or removes configuration for a given service.
 
 ```bash
-poe-cli remove <service>
+poe-setup remove <service>
 ```
 
 - Removes manifest-managed configuration only (settings JSON keys/files); leaves unrelated content intact.
@@ -117,11 +115,11 @@ poe-cli remove <service>
 Persists a Poe API key for future commands.
 
 ```bash
-poe-cli login [--api-key <key>]
+poe-setup login [--api-key <key>]
 ```
 
 - Prompts for the key when `--api-key` is omitted.
-- Stores credentials at `~/.poe-cli/credentials.json` (JSON file with `{ apiKey }`).
+- Stores credentials at `~/.poe-setup/credentials.json` (JSON file with `{ apiKey }`).
 - Prints the credential path after storing (and in dry-run mode).
 - Supports `--dry-run` via the standard recorder.
 
@@ -129,7 +127,7 @@ poe-cli login [--api-key <key>]
 Deletes the stored Poe API key.
 
 ```bash
-poe-cli logout
+poe-setup logout
 ```
 
 - No-ops (and exits successfully) when no credentials are on disk.
@@ -139,7 +137,7 @@ poe-cli logout
 Confirms that the current Poe API key works by querying EchoBot.
 
 ```bash
-poe-cli test [--api-key <key>]
+poe-setup test [--api-key <key>]
 ```
 
 - Uses the stored key by default, falling back to CLI option or an interactive prompt.
@@ -150,7 +148,7 @@ poe-cli test [--api-key <key>]
 Creates a minimal package you can publish to reserve a package name on npm.
 
 ```bash
-poe-cli publish-placeholder [--name <name>] [--output <dir>]
+poe-setup publish-placeholder [--name <name>] [--output <dir>]
 ```
 
 - `--name` – the package name to reserve (prompts if not provided)
