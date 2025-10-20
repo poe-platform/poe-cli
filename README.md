@@ -15,6 +15,12 @@ npx poe-setup configure claude-code
 - One-command configuration for Claude Code and Codex.
 - Automatic backups so you can undo integrations without fear.
 
+## Vision for the library
+
+- This library becomes OpenSource so anyone can contribute and add any minor providers out there
+- We will integrate this library into our MacOS electron app, so users can setup with 1 click. 
+- Besides configurations - it will generate projects for server bots
+
 ## Install Options
 
 ```bash
