@@ -627,6 +627,16 @@ export function createProgram(dependencies: CliDependencies): Command {
       throw new Error(`Unknown service "${service}".`);
     });
 
+  program
+    .command("interactive")
+    .alias("i")
+    .description("Launch interactive mode with a visual CLI interface.")
+    .action(async () => {
+      logger("Launching interactive mode...");
+      const { launchInteractiveMode } = await import("./interactive-launcher.js");
+      await launchInteractiveMode(dependencies);
+    });
+
   return program;
 }
 

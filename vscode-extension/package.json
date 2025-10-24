@@ -1,0 +1,56 @@
+{
+  "name": "poe-code-vscode",
+  "displayName": "Poe Code",
+  "description": "Interactive AI chat powered by Poe API",
+  "version": "0.1.0",
+  "publisher": "poe",
+  "icon": "poe-logo.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "poe-code.openTerminal",
+        "title": "Open Poe Code Terminal",
+        "icon": {
+          "light": "poe-logo.png",
+          "dark": "poe-logo.png"
+        }
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "poe-code.openTerminal",
+          "group": "navigation",
+          "when": "true"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}
