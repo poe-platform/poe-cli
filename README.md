@@ -1,154 +1,149 @@
-<!-- Important: This document must be kept up to date! -->
 # poe-setup
 
-Poe CLI connects your local developer tools to the Poe API in minutes.
+Fast CLI to wire your local dev tools to the Poe API.
+
+Quick install
 
 ```bash
-npx poe-setup configure claude-code
-```
-
-- Injects your Poe credentials into Claude Code via a guided flow.
-- Supports dry-run mode so you can preview filesystem changes safely.
-
-## What You Get
-- Ready-to-run Python starter that already talks to Poe.
-- One-command configuration for Claude Code and Codex.
-- Automatic backups so you can undo integrations without fear.
-
-## Vision for the library
-
-- This library becomes OpenSource so anyone can contribute and add any minor providers out there
-- We will integrate this library into our MacOS electron app, so users can setup with 1 click. 
-- Besides configurations - it will generate projects for server bots
-
-## Install Options
-
-```bash
-# Run without installing (recommended)
+# Zero-install (recommended)
 npx poe-setup --help
 
-# Install globally
-npm install -g poe-setup
+# Or install globally
+npm i -g poe-setup
 ```
 
-## Quick Start
+90‑second setup
 
 ```bash
-# Interactive usage (prompts for missing values)
-npx poe-setup init
+# Interactive, Claude Code–style UI
+npx poe-setup interactive
+# alias also available
+npx poe-cli interactive
 
-# Store your Poe API key once
-npx poe-setup login --api-key YOUR_KEY
-
-# Configure tools
+# Configure editors/tools in one command
 npx poe-setup configure claude-code
 npx poe-setup configure codex --model gpt-5 --reasoning-effort medium
 
-# Remove configurations
-npx poe-setup remove claude-code
-npx poe-setup remove codex
+# Save your Poe API key once
+npx poe-setup login --api-key YOUR_KEY
 
-# Verify credentials
+# Sanity checks
 npx poe-setup test
-
-# Query a model (defaults to Claude-Sonnet-4.5)
-npx poe-setup query "Hello there"
-
-# Inspect changes without writing to disk
 npx poe-setup --dry-run configure claude-code --api-key YOUR_KEY
 ```
 
-## CLI Reference
+Why poe-setup
+- Guided flow that injects Poe credentials into Claude Code and other tools
+- Dry‑run mode shows planned filesystem changes (safe preview)
+- Interactive mode powered by Ink
+- Automatic backups for easy rollback
 
-### Global Flags
-- `--dry-run` – wraps the filesystem with an in-memory recorder so you can audit the planned writes. The command prints a summary plus the individual operations that would run.
-- `--verbose` – prints each prerequisite check and mutation step as it executes (silenced by default).
+What you get
+- Ready‑to‑run Python starter wired to Poe
+- One‑command config for Claude Code and Codex
 
-### `init`
-Scaffolds a Python project configured to call the Poe API.
+Interactive mode
+```bash
+npx poe-setup interactive
+```
+Features
+- Chat with AI models via the Poe API
+- **Visual tool calling**: See tools being used in real-time with `⏺ ToolName(args) ⎿ result`
+- Tool calling: read/write files, list dirs, run commands, web search (placeholder)
+- **MCP (Model Context Protocol)**: Add external tools from MCP servers
+- Switch models on the fly with /model
+- Setup commands available from chat
 
+Key commands
+- help – list commands
+- configure <service> – claude-code, codex, opencode
+- init <project-name> – new project scaffold
+- login <api-key>, logout – manage credentials
+- /model [name], /clear, /history, /tools – chat shortcuts
+- **/mcp add/remove/connect** – manage MCP servers
+
+MCP Quick Start
+```bash
+# In interactive mode
+> /mcp add filesystem npx -y @modelcontextprotocol/server-filesystem /path/to/dir
+> /tools  # See the new MCP tools
+> What files are in my directory?  # AI uses MCP tools
+```
+
+See [MCP.md](./MCP.md) for full MCP documentation.
+
+CLI reference
+
+Global flags
+- --dry-run – in‑memory FS recorder, prints planned writes
+- --verbose – stream each step
+
+init
+Scaffold a Python project for Poe.
 ```bash
 poe-setup init [--project-name <name>] [--api-key <key>] [--model <model>]
 ```
+- Prompts for missing args
+- Generates .env, main.py, requirements.txt from templates
+- Persists API key (skipped in --dry-run)
 
-- Prompts for missing arguments (project name, API key, model) using `prompts`.
-- Fails fast if the target directory already exists.
-- Generates `.env`, `main.py`, and `requirements.txt` from Handlebars templates stored under `src/templates/python/`.
-- Automatically persists the provided API key (skipped in `--dry-run` mode).
-
-### `configure`
-Sets up editor integrations.
-
+configure
+Set up editor integrations.
 ```bash
 poe-setup configure <service> [--api-key <key>] [--model <model>] [--reasoning-effort <level>]
 ```
+- claude-code – writes ~/.claude/settings.json and verifies the `claude` CLI health check
+- codex – writes ~/.codex/config.toml from template (creates dir)
+- Stores provided/prompted API key unless --dry-run
 
-- `claude-code` – writes `~/.claude/settings.json` with `POE_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL`. Before and after writing configuration it verifies that the `claude` CLI is available (`which claude`) and that `claude -p 'Output exactly: CLAUDE_CODE_OK' --output-format text` responds with `CLAUDE_CODE_OK`.
-- `codex` – writes `~/.codex/config.toml` (creating the directory as needed) from the `codex/config.toml.hbs` template; includes model and reasoning effort settings.
-- Stores any supplied or prompted API key for future commands (unless run with `--dry-run`).
-- Add `--verbose` to stream each prerequisite and mutation step; otherwise only the final summary is printed (dry-run still reports planned filesystem writes).
-
-### `prerequisites`
-Executes only the prerequisite checks for a service.
-
+prerequisites
 ```bash
 poe-setup prerequisites <service> <phase>
 ```
+- phase: before | after. Runs checks without touching FS
 
-- `phase` must be `before` or `after`. Use it to test environment readiness (`before`) or post-run health checks (`after`) without touching the filesystem.
-- Currently supports `claude-code` (runs the `which claude` probe and the `claude` health check). Other services succeed immediately when no prerequisites are defined.
-- Combine with `--verbose` to see the exact commands run. Works with `--dry-run`; it reports the planned execution while skipping any filesystem writes.
-
-### `remove`
-Restores or removes configuration for a given service.
-
+remove
 ```bash
 poe-setup remove <service>
 ```
+- Removes only manifest‑managed settings; leaves other content
+- Idempotent; returns 0 when nothing to do
 
-- Removes manifest-managed configuration only (settings JSON keys/files); leaves unrelated content intact.
-- Backups created during `configure` remain available for manual restoration.
-- Returns exit code `0` when nothing has to be removed.
-- Add `--verbose` to watch each cleanup mutation as it executes.
-
-### `login`
-Persists a Poe API key for future commands.
-
+login/logout
 ```bash
 poe-setup login [--api-key <key>]
-```
-
-- Prompts for the key when `--api-key` is omitted.
-- Stores credentials at `~/.poe-setup/credentials.json` (JSON file with `{ apiKey }`).
-- Prints the credential path after storing (and in dry-run mode).
-- Supports `--dry-run` via the standard recorder.
-
-### `logout`
-Deletes the stored Poe API key.
-
-```bash
 poe-setup logout
 ```
+- Stores at ~/.poe-setup/credentials.json
 
-- No-ops (and exits successfully) when no credentials are on disk.
-- Works with `--dry-run`, showing the planned deletion.
-
-### `test`
-Confirms that the current Poe API key works by querying EchoBot.
-
+test
 ```bash
 poe-setup test [--api-key <key>]
 ```
+- Pings EchoBot and expects echo (skips network in --dry-run)
 
-- Uses the stored key by default, falling back to CLI option or an interactive prompt.
-- Sends `"Ping"` to the `EchoBot` model and expects the same text back.
-- Respects `--dry-run` by skipping the network request and logging the planned verification.
+Dry‑run architecture
+When --dry-run is on, the CLI swaps the FS with createDryRunFileSystem (src/utils/dry-run.ts) and prints intended operations (mkdir, writeFile, unlink, …).
 
-## Dry Run Mode
+VS Code Extension
 
-When `--dry-run` is supplied, the CLI swaps the filesystem dependency with `createDryRunFileSystem` (`src/utils/dry-run.ts`). The command executes fully, but instead of touching disk it records a list of intended operations (mkdir, writeFile, unlink, etc.) and prints them after the summary so you can review the plan safely.
+Use Poe Code directly in VS Code with a single click!
 
-## Further Reading
+```bash
+cd vscode-extension
+npm install
+npm run compile
+npm run package
+```
 
-- `DEVELOPMENT.md` – contributor setup, workflows, and testing guidance.
-- `ARCHITECTURE.md` – overview of the declarative service model that powers the CLI.
+Then install the generated `.vsix` file in VS Code:
+1. Open Extensions view (Ctrl+Shift+X / Cmd+Shift+X)
+2. Click `...` menu → "Install from VSIX..."
+3. Select the `.vsix` file
+4. Click the terminal icon in the editor toolbar to launch Poe Code
+
+See [vscode-extension/README.md](./vscode-extension/README.md) for details.
+
+Contributing and docs
+- DEVELOPMENT.md – contributor setup and testing
+- ARCHITECTURE.md – declarative service model overview

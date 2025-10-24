@@ -1,2 +1,7 @@
 node_modules/
 dist/
+
+# Test projects created by poe-setup init
+g/
+test-*/
+*.test-project/

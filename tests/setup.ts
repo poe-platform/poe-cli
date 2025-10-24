@@ -20,7 +20,7 @@ const templateFixtures = new Map<string, string>([
       "load_dotenv()",
       "",
       "client = OpenAI(",
-      '    api_key=os.getenv("POE_API_KEY"),',
+      '    _key=os.getenv("POE_API_KEY"),',
       '    base_url=os.getenv("POE_BASE_URL")',
       ")",
       "",

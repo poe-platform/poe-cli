@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "bin": {
-    "poe-setup": "dist/index.js"
+    "poe-setup": "dist/index.js",
+    "poe-cli": "dist/index.js"
   },
   "files": [
     "dist"
@@ -22,11 +23,16 @@
     "@iarna/toml": "^3.0.0",
     "commander": "^11.1.0",
     "handlebars": "^4.7.8",
-    "prompts": "^2.4.2"
+    "ink": "^6.3.1",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "prompts": "^2.4.2",
+    "react": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
     "@types/prompts": "^2.4.9",
+    "@types/react": "^19.2.2",
     "memfs": "^4.7.3",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5",
