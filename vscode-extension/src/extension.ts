@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
 let currentTerminal: vscode.Terminal | undefined = undefined;
 
@@ -14,11 +16,27 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Get workspace folder
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        const cwd = workspaceFolder?.uri.fsPath || process.cwd();
+
+        // Try to find local poe-setup dist/index.js
+        let command = 'npx poe-setup interactive';
+
+        // Check if we're in the poe-setup directory
+        const localDist = path.join(cwd, 'dist', 'index.js');
+        if (fs.existsSync(localDist)) {
+            command = 'node dist/index.js interactive';
+        } else {
+            // Check if we're in a subdirectory (like vscode-extension)
+            const parentDist = path.join(cwd, '..', 'dist', 'index.js');
+            if (fs.existsSync(parentDist)) {
+                command = 'node ../dist/index.js interactive';
+            }
+        }
 
         // Create a new terminal
         currentTerminal = vscode.window.createTerminal({
             name: 'Poe Code',
-            cwd: workspaceFolder?.uri.fsPath,
+            cwd: cwd,
             iconPath: new vscode.ThemeIcon('comment-discussion'),
             env: {
                 ...process.env,
@@ -31,7 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Send the command to start poe-code interactive mode
         setTimeout(() => {
-            currentTerminal?.sendText('npm run dev interactive 2>&1');
+            currentTerminal?.sendText(command);
         }, 200);
 
         // Handle terminal close
