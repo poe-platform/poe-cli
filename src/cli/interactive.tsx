@@ -14,6 +14,7 @@ interface InteractiveCliProps {
 interface Message {
   role: "user" | "assistant" | "system";
   content: string;
+  model?: string;
 }
 
 interface ToolCallDisplay {
@@ -36,7 +37,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "system",
-      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType 'help' for available commands.\nType '/model' to view or switch models.\nOr just start chatting - the model can use tools to help you!"
+      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType 'help' for available commands.\nType '/model' to view or switch models.\nType '/strategy' to configure model selection strategies.\nOr just start chatting - the model can use tools to help you!"
     }
   ]);
   const [input, setInput] = useState("");
@@ -208,6 +209,9 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
     const trimmedInput = value.trim();
 
+    // Clear previous tool calls when starting a new message
+    setToolCalls([]);
+
     // Add user message
     setMessages((prev) => [...prev, { role: "user", content: trimmedInput }]);
     setInput("");
@@ -220,11 +224,21 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     }
 
     setIsProcessing(true);
-    setToolCalls([]);
 
     try {
       const response = await onCommand(trimmedInput);
-      setMessages((prev) => [...prev, { role: "assistant", content: response }]);
+
+      // Parse model name from response if present
+      let content = response;
+      let model: string | undefined;
+
+      const modelMatch = response.match(/^\[Model: ([^\]]+)\]\n\n/);
+      if (modelMatch) {
+        model = modelMatch[1];
+        content = response.substring(modelMatch[0].length);
+      }
+
+      setMessages((prev) => [...prev, { role: "assistant", content, model }]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -235,8 +249,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       ]);
     } finally {
       setIsProcessing(false);
-      // Clear tool calls after a moment so user can see them
-      setTimeout(() => setToolCalls([]), 1000);
+      // Don't clear tool calls - keep them visible so user can see what happened
     }
   };
 
@@ -261,7 +274,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
             )}
             {msg.role === "assistant" && (
               <Box flexDirection="column">
-                <Text color="blue">Poe Code:</Text>
+                <Text color="blue">{msg.model || "Assistant"}:</Text>
                 <Text>{msg.content}</Text>
               </Box>
             )}
@@ -275,21 +288,22 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
           {toolCalls.map((toolCall) => (
             <Box key={toolCall.id} flexDirection="column" marginY={0}>
               <Box>
-                <Text color="cyan">⏺ </Text>
+                <Text color="cyan">⏺ Tool Call: </Text>
                 <Text color="cyan" bold>
-                  {formatToolName(toolCall.toolName)}
+                  {toolCall.toolName}
                 </Text>
-                <Text color="gray">(</Text>
-                <Text color="yellow">{formatToolArgs(toolCall.args)}</Text>
-                <Text color="gray">)</Text>
+              </Box>
+              <Box marginLeft={2} flexDirection="column">
+                <Text color="gray">Arguments:</Text>
+                <Text color="yellow">{JSON.stringify(toolCall.args, null, 2)}</Text>
               </Box>
               {toolCall.completed && (
-                <Box marginLeft={2}>
-                  <Text color="cyan">⎿ </Text>
+                <Box marginLeft={2} flexDirection="column" marginTop={1}>
+                  <Text color="gray">{toolCall.error ? "Error:" : "Result:"}</Text>
                   {toolCall.error ? (
-                    <Text color="red">Error: {toolCall.error}</Text>
+                    <Text color="red">{toolCall.error}</Text>
                   ) : (
-                    <Text color="green">{formatToolResult(toolCall.result || "")}</Text>
+                    <Text color="green">{toolCall.result || "Done"}</Text>
                   )}
                 </Box>
               )}
@@ -357,12 +371,13 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
 // Helper functions for formatting tool calls
 function formatToolName(toolName: string): string {
-  // Remove mcp_ prefix for display
-  if (toolName.startsWith("mcp_")) {
-    const parts = toolName.substring(4).split("_");
-    const serverName = parts[0];
-    const actualToolName = parts.slice(1).join("_");
-    return `${actualToolName} [${serverName}]`;
+  // Remove mcp__ prefix for display
+  if (toolName.startsWith("mcp__")) {
+    const parts = toolName.substring(5).split("__");
+    if (parts.length === 2) {
+      const [serverName, actualToolName] = parts;
+      return `${actualToolName} [${serverName}]`;
+    }
   }
 
   // Convert snake_case to PascalCase

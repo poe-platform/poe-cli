@@ -150,7 +150,7 @@ export class McpManager {
         tools.push({
           type: "function",
           function: {
-            name: `mcp_${serverName}_${mcpTool.name}`,
+            name: `mcp__${serverName}__${mcpTool.name}`,
             description: `[MCP: ${serverName}] ${mcpTool.description}`,
             parameters: {
               type: "object",
@@ -169,18 +169,17 @@ export class McpManager {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<string> {
-    // Tool name format: mcp_<servername>_<toolname>
-    if (!toolName.startsWith("mcp_")) {
+    // Tool name format: mcp__<servername>__<toolname>
+    if (!toolName.startsWith("mcp__")) {
       throw new Error(`Not an MCP tool: ${toolName}`);
     }
 
-    const parts = toolName.substring(4).split("_");
-    if (parts.length < 2) {
+    const parts = toolName.substring(5).split("__");
+    if (parts.length !== 2) {
       throw new Error(`Invalid MCP tool name format: ${toolName}`);
     }
 
-    const serverName = parts[0];
-    const actualToolName = parts.slice(1).join("_");
+    const [serverName, actualToolName] = parts;
 
     const client = this.clients.get(serverName);
     if (!client || !client.isConnected()) {

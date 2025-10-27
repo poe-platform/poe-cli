@@ -45,6 +45,10 @@ export async function launchInteractiveMode(
     // System prompt file doesn't exist, use default behavior
   }
 
+  // Add working directory context
+  const cwdContext = `\n\nIMPORTANT: You are working in the directory: ${env.cwd}\nWhen accessing files, use relative paths from this directory (e.g., 'package.json', 'src/index.ts').\nPrefer using the built-in tools (read_file, write_file, list_files) over MCP tools for local file operations.`;
+  systemPrompt = systemPrompt ? systemPrompt + cwdContext : cwdContext;
+
   if (apiKey) {
     const toolExecutor = new DefaultToolExecutor({
       fs,
@@ -90,6 +94,59 @@ export async function launchInteractiveMode(
         return `Switched to model: ${newModel}`;
       }
 
+      if (slashCommand === "strategy") {
+        if (!chatService) {
+          return "Please login first with: login <api-key>";
+        }
+
+        if (slashArgs.length === 0) {
+          const strategyInfo = chatService.getStrategyInfo();
+          const isEnabled = chatService.isStrategyEnabled();
+          return `Current strategy: ${strategyInfo}\nStatus: ${isEnabled ? "Enabled" : "Disabled"}\n\nAvailable strategies:\n- mixed - Alternate between GPT-5 and Claude-Sonnet-4.5\n- smart - Intelligently select based on task type\n- fixed - Always use the same model\n- round-robin - Cycle through all available models\n\nUsage:\n  /strategy mixed\n  /strategy smart\n  /strategy fixed <model-name>\n  /strategy round-robin [model1,model2,...]\n  /strategy enable\n  /strategy disable`;
+        }
+
+        const strategyType = slashArgs[0].toLowerCase();
+
+        if (strategyType === "enable") {
+          chatService.enableStrategy();
+          return "Strategy enabled";
+        }
+
+        if (strategyType === "disable") {
+          chatService.disableStrategy();
+          return "Strategy disabled (using fixed model)";
+        }
+
+        if (strategyType === "mixed") {
+          chatService.setStrategy({ type: "mixed" });
+          return "Strategy set to: mixed (alternating between GPT-5 and Claude-Sonnet-4.5)";
+        }
+
+        if (strategyType === "smart") {
+          chatService.setStrategy({ type: "smart" });
+          return "Strategy set to: smart (intelligently selecting based on task type)";
+        }
+
+        if (strategyType === "fixed") {
+          if (slashArgs.length < 2) {
+            return "Usage: /strategy fixed <model-name>\n\nExample: /strategy fixed Claude-Sonnet-4.5";
+          }
+          const fixedModel = slashArgs.slice(1).join(" ");
+          chatService.setStrategy({ type: "fixed", fixedModel: fixedModel as any });
+          return `Strategy set to: fixed (always using ${fixedModel})`;
+        }
+
+        if (strategyType === "round-robin") {
+          const customOrder = slashArgs.length > 1
+            ? slashArgs.slice(1).join(" ").split(",").map(m => m.trim() as any)
+            : undefined;
+          chatService.setStrategy({ type: "round-robin", customOrder });
+          return `Strategy set to: round-robin${customOrder ? ` (custom order: ${customOrder.join(", ")})` : " (using all available models)"}`;
+        }
+
+        return `Unknown strategy type: ${strategyType}\nType '/strategy' for help`;
+      }
+
       if (slashCommand === "clear") {
         if (!chatService) {
           return "Please login first with: login <api-key>";
@@ -108,8 +165,8 @@ export async function launchInteractiveMode(
 
       if (slashCommand === "tools") {
         const tools = getAvailableTools(mcpManager);
-        const builtInTools = tools.filter((t) => !t.function.name.startsWith("mcp_"));
-        const mcpTools = tools.filter((t) => t.function.name.startsWith("mcp_"));
+        const builtInTools = tools.filter((t) => !t.function.name.startsWith("mcp__"));
+        const mcpTools = tools.filter((t) => t.function.name.startsWith("mcp__"));
 
         let result = "Built-in tools:\n";
         result += builtInTools.map((t) => `- ${t.function.name}: ${t.function.description}`).join("\n");
@@ -237,10 +294,18 @@ Example:
 
 Slash commands:
   /model [model-name] - View or switch the current model
+  /strategy [type] - View or configure model selection strategy
   /clear - Clear conversation history
   /history - View conversation history
   /tools - List all available tools (built-in + MCP)
   /mcp - Manage MCP servers (add, remove, connect, etc.)
+
+Model Strategies:
+  /strategy - View current strategy
+  /strategy mixed - Alternate between GPT-5 and Claude-Sonnet-4.5
+  /strategy smart - Intelligently select based on task type
+  /strategy fixed <model> - Always use the same model
+  /strategy round-robin [models] - Cycle through models
 
 MCP (Model Context Protocol):
   /mcp - List all MCP servers
@@ -349,7 +414,10 @@ Chat mode:
             }
           };
 
-          chatService = new PoeChatService(newApiKey, "Claude-Sonnet-4.5", toolExecutor, onToolCall, systemPrompt);
+          // Add working directory context to system prompt
+          const loginSystemPrompt = `You are working in the directory: ${env.cwd}\nWhen accessing files, use relative paths from this directory.\nPrefer using the built-in tools (read_file, write_file, list_files) over MCP tools for local file operations.`;
+
+          chatService = new PoeChatService(newApiKey, "Claude-Sonnet-4.5", toolExecutor, onToolCall, loginSystemPrompt);
 
           return `API key saved successfully to ${credentialsPath}\nChat service initialized with Claude-Sonnet-4.5`;
         } catch (error) {
@@ -389,7 +457,7 @@ Chat mode:
             let processedInput = trimmedInput;
             const filePattern = /@([^\s]+)/g;
             const matches = [...trimmedInput.matchAll(filePattern)];
-            
+
             if (matches.length > 0) {
               // Read all mentioned files
               const fileContents: string[] = [];
@@ -405,14 +473,16 @@ Chat mode:
                   fileContents.push(`\n\n[Error reading ${filePath}: ${error instanceof Error ? error.message : String(error)}]`);
                 }
               }
-              
+
               // Append file contents to the message
               processedInput = trimmedInput.replace(filePattern, "").trim() + fileContents.join("");
             }
 
             const tools = getAvailableTools(mcpManager);
             const response = await chatService.sendMessage(processedInput, tools);
-            return response.content || "No response from model";
+            // Add model info to response
+            const modelName = chatService.getModel();
+            return `[Model: ${modelName}]\n\n${response.content || "No response from model"}`;
           } catch (error) {
             throw new Error(
               `Chat error: ${error instanceof Error ? error.message : String(error)}`
