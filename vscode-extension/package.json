@@ -1,56 +1,171 @@
 {
   "name": "poe-code-vscode",
   "displayName": "Poe Code",
-  "description": "Interactive AI chat powered by Poe API",
+  "description": "Interactive AI chat powered by Poe API - chat with AI models, use tools, and get instant help",
   "version": "0.1.0",
   "publisher": "poe",
   "icon": "poe-logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/poe-setup"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
+    "AI",
+    "Chat",
     "Other"
   ],
+  "keywords": [
+    "ai",
+    "chat",
+    "assistant",
+    "poe",
+    "claude",
+    "gpt",
+    "terminal",
+    "tools"
+  ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onWebviewPanel:poeCodePanel"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "poe-code.openTerminal",
-        "title": "Open Poe Code Terminal",
+        "command": "poe-code.editor.open",
+        "title": "Poe Code: Open in New Tab",
         "icon": {
           "light": "poe-logo.png",
           "dark": "poe-logo.png"
         }
+      },
+      {
+        "command": "poe-code.sidebar.open",
+        "title": "Poe Code: Open in Side Bar",
+        "icon": {
+          "light": "poe-logo.png",
+          "dark": "poe-logo.png"
+        }
+      },
+      {
+        "command": "poe-code.terminal.open",
+        "title": "Poe Code: Open in Terminal",
+        "icon": {
+          "light": "poe-logo.png",
+          "dark": "poe-logo.png"
+        }
+      },
+      {
+        "command": "poe-code.checkSetup",
+        "title": "Poe Code: Check Setup"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "poe-code.openTerminal",
+          "command": "poe-code.editor.open",
           "group": "navigation",
-          "when": "true"
+          "when": "!config.poeCode.useTerminal"
+        },
+        {
+          "command": "poe-code.terminal.open",
+          "group": "navigation",
+          "when": "config.poeCode.useTerminal"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "poe-code.editor.open"
+        },
+        {
+          "command": "poe-code.sidebar.open"
+        },
+        {
+          "command": "poe-code.terminal.open"
+        },
+        {
+          "command": "poe-code.checkSetup"
         }
       ]
+    },
+    "keybindings": [
+      {
+        "command": "poe-code.editor.open",
+        "key": "cmd+shift+p",
+        "mac": "cmd+shift+p",
+        "win": "ctrl+shift+p",
+        "linux": "ctrl+shift+p",
+        "when": "!config.poeCode.useTerminal"
+      },
+      {
+        "command": "poe-code.terminal.open",
+        "key": "cmd+shift+p",
+        "mac": "cmd+shift+p",
+        "win": "ctrl+shift+p",
+        "linux": "ctrl+shift+p",
+        "when": "config.poeCode.useTerminal"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "poe-sidebar",
+          "title": "Poe Code",
+          "icon": "poe-logo.png",
+          "when": "poe-code:sidebarVisible"
+        }
+      ]
+    },
+    "views": {
+      "poe-sidebar": [
+        {
+          "type": "webview",
+          "id": "poeCodeSidebar",
+          "name": "Poe Code",
+          "when": "poe-code:sidebarVisible"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Poe Code",
+      "properties": {
+        "poeCode.defaultModel": {
+          "type": "string",
+          "default": "Claude-Sonnet-4.5",
+          "description": "Default AI model to use in Poe Code"
+        },
+        "poeCode.useTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Launch Poe Code in the terminal instead of the native UI."
+        },
+        "poeCode.autoOpenTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open Poe Code terminal on startup"
+        },
+        "poeCode.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Poe Code status bar item"
+        }
+      }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package",
+    "lint": "eslint src --ext ts"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.24.0",
     "typescript": "^5.4.5"
-  },
-  "dependencies": {
-    "node-pty": "^1.0.0",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0"
   }
 }

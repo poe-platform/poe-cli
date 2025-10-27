@@ -29,7 +29,7 @@ export class DefaultToolExecutor implements ToolExecutor {
     args: Record<string, unknown>
   ): Promise<string> {
     // Check if it's an MCP tool
-    if (name.startsWith("mcp_") && this.mcpManager) {
+    if (name.startsWith("mcp__") && this.mcpManager) {
       return await this.mcpManager.executeTool(name, args);
     }
 
@@ -197,13 +197,13 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
       type: "function",
       function: {
         name: "read_file",
-        description: "Read the contents of a file",
+        description: "Read the contents of a file in the current working directory. Use this for reading project files. Supports relative paths (e.g., 'package.json', 'src/index.ts') and absolute paths.",
         parameters: {
           type: "object",
           properties: {
             path: {
               type: "string",
-              description: "The path to the file to read"
+              description: "The file path to read. Can be relative to the current working directory or absolute."
             }
           },
           required: ["path"]
@@ -214,13 +214,13 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
       type: "function",
       function: {
         name: "write_file",
-        description: "Write content to a file",
+        description: "Write or create a file in the current working directory. Use this for creating or updating project files. Supports relative and absolute paths.",
         parameters: {
           type: "object",
           properties: {
             path: {
               type: "string",
-              description: "The path to the file to write"
+              description: "The file path to write. Can be relative to the current working directory or absolute."
             },
             content: {
               type: "string",
@@ -235,13 +235,13 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
       type: "function",
       function: {
         name: "list_files",
-        description: "List files in a directory",
+        description: "List files and directories in the current working directory or a specified directory. Use this to explore the project structure.",
         parameters: {
           type: "object",
           properties: {
             path: {
               type: "string",
-              description: "The directory path to list (defaults to current directory)"
+              description: "The directory path to list. Defaults to current working directory if not specified. Can be relative or absolute."
             }
           }
         }

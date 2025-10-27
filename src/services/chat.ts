@@ -1,3 +1,11 @@
+import {
+  ModelStrategy,
+  StrategyConfig,
+  ModelStrategyFactory,
+  StrategyConfigManager,
+  ModelContext,
+} from "./model-strategy.js";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -74,6 +82,8 @@ export class PoeChatService {
   private currentModel: string;
   private toolExecutor?: ToolExecutor;
   private onToolCall?: ToolCallCallback;
+  private modelStrategy?: ModelStrategy;
+  private strategyEnabled: boolean = false;
 
   constructor(
     apiKey: string,
@@ -87,6 +97,16 @@ export class PoeChatService {
     this.currentModel = model;
     this.toolExecutor = toolExecutor;
     this.onToolCall = onToolCall;
+
+    // Load saved strategy configuration
+    const savedConfig = StrategyConfigManager.loadConfig();
+    if (savedConfig) {
+      this.modelStrategy = ModelStrategyFactory.createStrategy(savedConfig);
+      // Enable strategy if it's not a fixed strategy with the same model
+      this.strategyEnabled = !(
+        savedConfig.type === "fixed" && savedConfig.fixedModel === model
+      );
+    }
 
     // Add system prompt if provided
     if (systemPrompt) {
@@ -107,6 +127,37 @@ export class PoeChatService {
 
   getModel(): string {
     return this.currentModel;
+  }
+
+  setStrategy(config: StrategyConfig): void {
+    this.modelStrategy = ModelStrategyFactory.createStrategy(config);
+    this.strategyEnabled = true;
+    StrategyConfigManager.saveConfig(config);
+  }
+
+  getStrategy(): ModelStrategy | undefined {
+    return this.modelStrategy;
+  }
+
+  getStrategyInfo(): string {
+    if (!this.modelStrategy) {
+      return "No strategy enabled (using fixed model)";
+    }
+    return `${this.modelStrategy.getName()}: ${this.modelStrategy.getDescription()}`;
+  }
+
+  disableStrategy(): void {
+    this.strategyEnabled = false;
+  }
+
+  enableStrategy(): void {
+    if (this.modelStrategy) {
+      this.strategyEnabled = true;
+    }
+  }
+
+  isStrategyEnabled(): boolean {
+    return this.strategyEnabled;
   }
 
   getHistory(): ChatMessage[] {
@@ -133,6 +184,13 @@ export class PoeChatService {
       role: "user",
       content: userMessage
     });
+
+    // Use strategy to select model if enabled
+    if (this.strategyEnabled && this.modelStrategy) {
+      const context = this.detectMessageContext(userMessage);
+      const selectedModel = this.modelStrategy.getNextModel(context);
+      this.currentModel = selectedModel;
+    }
 
     let attempts = 0;
     const maxAttempts = 100;
@@ -220,6 +278,54 @@ export class PoeChatService {
     throw new Error("Maximum tool call iterations reached");
   }
 
+  private detectMessageContext(message: string): ModelContext {
+    const lowerMessage = message.toLowerCase();
+
+    // Detect code-related keywords
+    const codeKeywords = [
+      "code", "function", "class", "implement", "debug", "error",
+      "refactor", "optimize", "algorithm", "bug", "fix", "compile",
+      "typescript", "javascript", "python", "java", "react", "component"
+    ];
+
+    // Detect reasoning keywords
+    const reasoningKeywords = [
+      "why", "how", "explain", "analyze", "compare", "evaluate",
+      "reasoning", "logic", "understand", "clarify"
+    ];
+
+    const hasCodeKeywords = codeKeywords.some(keyword =>
+      lowerMessage.includes(keyword)
+    );
+    const hasReasoningKeywords = reasoningKeywords.some(keyword =>
+      lowerMessage.includes(keyword)
+    );
+
+    // Determine message type
+    let messageType: ModelContext["messageType"] = "general";
+    if (hasCodeKeywords) {
+      messageType = "code";
+    } else if (hasReasoningKeywords) {
+      messageType = "reasoning";
+    } else if (message.length < 100) {
+      messageType = "chat";
+    }
+
+    // Determine complexity based on message length and structure
+    let complexity: ModelContext["complexity"] = "medium";
+    if (message.length > 500 || message.split("\n").length > 10) {
+      complexity = "complex";
+    } else if (message.length < 100) {
+      complexity = "simple";
+    }
+
+    return {
+      messageType,
+      complexity,
+      previousModel: this.currentModel
+    };
+  }
+
   private async makeApiRequest(
     tools?: Tool[]
   ): Promise<ChatCompletionResponse> {
@@ -231,7 +337,11 @@ export class PoeChatService {
 
     if (tools && tools.length > 0) {
       request.tools = tools;
+      console.log(`[DEBUG] Sending ${tools.length} tools to ${this.currentModel}`);
+      console.log(`[DEBUG] Tool names: ${tools.map(t => t.function.name).join(", ")}`);
     }
+
+    console.log(`[DEBUG] Request to Poe API:`, JSON.stringify(request, null, 2));
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
@@ -249,6 +359,9 @@ export class PoeChatService {
       );
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log(`[DEBUG] Response from Poe API:`, JSON.stringify(result, null, 2));
+
+    return result;
   }
 }
