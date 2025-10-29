@@ -40,6 +40,16 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const toolNotifications = doc.getElementById("tool-notifications") as
     | HTMLElement
     | null;
+  const settingsPanel = doc.getElementById("settings-panel") as HTMLElement | null;
+  const providerSettingsContainer = doc.getElementById(
+    "provider-settings"
+  ) as HTMLElement | null;
+  const settingsCloseButton = settingsPanel?.querySelector(
+    "[data-action='settings-close']"
+  ) as HTMLButtonElement | null;
+  const settingsOpenMcpButton = settingsPanel?.querySelector(
+    "[data-action='settings-open-mcp']"
+  ) as HTMLButtonElement | null;
 
   if (appShellHost) {
     appShellHost.innerHTML = options.appShellHtml;
@@ -60,11 +70,14 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     '<div class="welcome-message"><h2>Welcome to Poe Code</h2><p>Start chatting with Poe models or explore tooling via the sidebar.</p></div>';
 
   const notifications: ToolNotification[] = [];
+  let activeModel = options.defaultModel;
+  let settingsVisible = false;
 
   function setActiveModel(model: string): void {
     if (!model.length) {
       return;
     }
+    activeModel = model;
 
     if (modelBadge) {
       modelBadge.textContent = model;
@@ -93,6 +106,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         wireModelItem(newItem);
       }
     }
+    highlightActiveProvider(model);
   }
 
   function wireModelItem(item: Element): void {
@@ -203,14 +217,27 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       });
     } else if (action === "open-settings") {
       button.addEventListener("click", () => {
-        options.postMessage({ type: "openSettings" });
+        toggleSettingsPanel();
       });
     } else if (action === "view-diffs") {
       button.addEventListener("click", () => {
-        options.postMessage({ type: "info", text: "Diff panel handled inline." });
+        focusLatestDiff();
       });
     }
   });
+
+  if (settingsCloseButton) {
+    settingsCloseButton.addEventListener("click", () => {
+      hideSettingsPanel();
+    });
+  }
+
+  if (settingsOpenMcpButton) {
+    settingsOpenMcpButton.addEventListener("click", () => {
+      options.postMessage({ type: "openSettings" });
+      hideSettingsPanel();
+    });
+  }
 
   function toggleThinking(active: boolean): void {
     if (!thinkingIndicator) {
@@ -362,6 +389,88 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     if (messageInput) {
       messageInput.value = "";
     }
+  }
+
+  function focusLatestDiff(): void {
+    if (!messagesDiv) {
+      return;
+    }
+    const diffs = messagesDiv.querySelectorAll(".message-wrapper.diff");
+    if (diffs.length === 0) {
+      return;
+    }
+    const lastDiff = diffs[diffs.length - 1] as HTMLElement;
+    lastDiff.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function toggleSettingsPanel(): void {
+    if (settingsVisible) {
+      hideSettingsPanel();
+    } else {
+      showSettingsPanel();
+    }
+  }
+
+  function showSettingsPanel(): void {
+    settingsVisible = true;
+    if (settingsPanel) {
+      settingsPanel.classList.remove("hidden");
+    }
+    populateProviderSettings();
+  }
+
+  function hideSettingsPanel(): void {
+    settingsVisible = false;
+    if (settingsPanel) {
+      settingsPanel.classList.add("hidden");
+    }
+  }
+
+  function populateProviderSettings(): void {
+    if (!providerSettingsContainer) {
+      return;
+    }
+    providerSettingsContainer.innerHTML = "";
+
+    if (options.providerSettings.length === 0) {
+      const empty = doc.createElement("p");
+      empty.className = "provider-empty";
+      empty.textContent = "No provider configurations found.";
+      providerSettingsContainer.appendChild(empty);
+      return;
+    }
+
+    for (const provider of options.providerSettings) {
+      const item = doc.createElement("div");
+      item.className = "provider-item";
+      item.dataset.providerLabel = provider.label;
+
+      const label = doc.createElement("strong");
+      label.textContent = provider.label;
+
+      const detail = doc.createElement("span");
+      detail.textContent = provider.id;
+
+      item.appendChild(label);
+      item.appendChild(detail);
+      providerSettingsContainer.appendChild(item);
+    }
+
+    highlightActiveProvider(activeModel);
+  }
+
+  function highlightActiveProvider(model: string): void {
+    if (!providerSettingsContainer) {
+      return;
+    }
+    const items = providerSettingsContainer.querySelectorAll(".provider-item");
+    const hostWindow = doc.defaultView;
+    items.forEach((element) => {
+      if (hostWindow && element instanceof hostWindow.HTMLElement) {
+        const match = element.dataset.providerLabel === model;
+        element.classList.toggle("active", match);
+      }
+    });
   }
 
   setActiveModel(options.defaultModel);

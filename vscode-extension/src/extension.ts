@@ -299,7 +299,7 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
 
     // Set the webview's HTML content
     const logoUri = currentPanel.webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'poe-logo.png')
+        vscode.Uri.joinPath(context.extensionUri, 'poe-bw.svg')
     ).toString();
 
     const providerSettings = await loadProviderSettings(context.extensionUri.fsPath);
@@ -798,6 +798,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            position: relative;
         }
 
         .status-bar {
@@ -1008,6 +1009,89 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             background-color: var(--vscode-button-hoverBackground);
         }
 
+        .settings-panel {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            justify-content: flex-end;
+            background-color: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(2px);
+            padding: 24px;
+            z-index: 200;
+        }
+
+        .settings-content {
+            width: 320px;
+            max-width: 100%;
+            background-color: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .settings-section h4 {
+            margin: 0 0 12px 0;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .provider-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .provider-item {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editor-background);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .provider-item.active {
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+        }
+
+        .provider-item strong {
+            font-size: 13px;
+        }
+
+        .provider-item span {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .provider-empty {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .settings-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
         .message-wrapper.diff {
             background-color: var(--vscode-editorWidget-background);
             border: 1px solid var(--vscode-panel-border);
@@ -1159,6 +1243,23 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
                     <button id="send-button" type="button" class="composer-button primary">Send</button>
                 </div>
             </footer>
+            <section id="settings-panel" class="settings-panel hidden">
+                <div class="settings-content">
+                    <header class="settings-header">
+                        <h3>Settings</h3>
+                        <button type="button" class="composer-button" data-action="settings-close">Close</button>
+                    </header>
+                    <div class="settings-section">
+                        <h4>Providers</h4>
+                        <div id="provider-settings" class="provider-list"></div>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="button" class="composer-button" data-action="settings-open-mcp">
+                            Open MCP Configuration
+                        </button>
+                    </div>
+                </div>
+            </section>
             <div id="tool-notifications" class="tool-notifications"></div>
         </main>
     </div>

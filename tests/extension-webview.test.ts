@@ -31,6 +31,13 @@ function createDocument(): Document {
               <button id="send-button" type="button">Send</button>
             </div>
           </footer>
+          <section id="settings-panel" class="hidden">
+            <div class="settings-content">
+              <button type="button" data-action="settings-close">Close</button>
+              <div id="provider-settings"></div>
+              <button type="button" data-action="settings-open-mcp">Open MCP</button>
+            </div>
+          </section>
           <div id="tool-notifications"></div>
         </main>
       </div>
@@ -121,5 +128,32 @@ describe("initializeWebviewApp", () => {
 
     const assistantBubble = document.querySelector(".message-wrapper.assistant .message-content");
     expect(assistantBubble?.innerHTML).toContain("<strong>Bold</strong>");
+  });
+
+  it("shows provider settings when opening the settings panel", () => {
+    const settingsButton = document.querySelector("[data-action='open-settings']") as HTMLElement;
+    settingsButton.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
+
+    const panel = document.getElementById("settings-panel")!;
+    expect(panel.classList.contains("hidden")).toBe(false);
+
+    const providerItems = Array.from(
+      document.querySelectorAll("#provider-settings .provider-item strong")
+    ).map((item) => item.textContent?.trim());
+    expect(providerItems).toEqual(["Claude-Sonnet-4.5", "GPT-4.1"]);
+  });
+
+  it("opens MCP configuration from the settings panel", () => {
+    const settingsButton = document.querySelector("[data-action='open-settings']") as HTMLElement;
+    settingsButton.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
+
+    const openMcpButton = document.querySelector(
+      "[data-action='settings-open-mcp']"
+    ) as HTMLButtonElement;
+    openMcpButton.dispatchEvent(
+      new document.defaultView!.MouseEvent("click", { bubbles: true })
+    );
+
+    expect(postMessage).toHaveBeenCalledWith({ type: "openSettings" });
   });
 });
