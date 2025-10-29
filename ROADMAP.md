@@ -64,3 +64,7 @@
     - The different coding agents need to cross check pull requests.
     - Any Open PR should be reviewed by random other coding agent, other than the author.
     - Any comments should be picked up by original coding agent
+
+## WIP (do not implement) Poe Agent
+- [ ] Ability to spawn any supported sub-agents (add specialized tool for this)
+- [ ] configure utility should store in the own json config file also which agents are config and offer those dynamically in the tool description
