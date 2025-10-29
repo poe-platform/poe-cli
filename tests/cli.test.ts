@@ -320,6 +320,65 @@ describe("CLI program", () => {
     );
   });
 
+  it("renders unified diff output for dry-run updates", async () => {
+    const { prompt } = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    vol.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    vol.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            POE_API_KEY: "old-key",
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_API_KEY: "old-key"
+          }
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "configure",
+      "claude-code",
+      "--api-key",
+      "new-key"
+    ]);
+
+    expect(logs).toContain("Claude Code (dry run)");
+    expect(logs.some((line) => line.includes("@@"))).toBe(true);
+    expect(
+      logs.some(
+        (line) =>
+          line.startsWith(chalk.red("-")) &&
+          line.includes('"POE_API_KEY": "old-key"')
+      )
+    ).toBe(true);
+    expect(
+      logs.some(
+        (line) =>
+          line.startsWith(chalk.green("+")) &&
+          line.includes('"POE_API_KEY": "new-key"')
+      )
+    ).toBe(true);
+  });
+
   it("reports mutation outcomes during claude-code dry runs", async () => {
     const { prompt } = createPromptStub({});
     const commandRunnerStub = createCommandRunnerStub();

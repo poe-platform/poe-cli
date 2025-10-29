@@ -259,7 +259,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
       context.complete({
         success: "Configured Claude Code.",
-        dry: "Dry run: would configure Claude Code."
+        dry: "Claude Code (dry run)"
       });
       return;
     }
@@ -784,10 +784,15 @@ interface CommandContextInit {
   runCommand: CommandRunner;
 }
 
+interface MutationLogEntry {
+  command: string;
+  message: string;
+}
+
 interface CommandContext {
   fs: FileSystem;
   prerequisites: PrerequisiteManager;
-  recordMutation?: (message: string) => void;
+  recordMutation?: (entry: MutationLogEntry) => void;
   complete(messages: { success: string; dry: string }): void;
 }
 
@@ -809,10 +814,12 @@ function createCommandContext(init: CommandContextInit): CommandContext {
 
   const recorder = new DryRunRecorder();
   const dryFs = createDryRunFileSystem(init.baseFs, recorder);
-  const mutationLogs: string[] = [];
+  const mutationEntries: MutationLogEntry[] = [];
+  const recordedCommands = new Set<string>();
 
-  const recordMutation = (message: string) => {
-    mutationLogs.push(message);
+  const recordMutation = (entry: MutationLogEntry) => {
+    mutationEntries.push(entry);
+    recordedCommands.add(entry.command);
   };
 
   return {
@@ -821,13 +828,14 @@ function createCommandContext(init: CommandContextInit): CommandContext {
     recordMutation,
     complete(messages) {
       init.logger(messages.dry);
-      for (const note of mutationLogs) {
-        init.logger(note);
+      for (const entry of mutationEntries) {
+        init.logger(entry.message);
       }
-      const recorded = new Set(mutationLogs);
       for (const line of formatDryRunOperations(recorder.drain())) {
-        if (!recorded.has(line)) {
+        const base = extractBaseCommand(line);
+        if (!recordedCommands.has(base)) {
           init.logger(line);
+          recordedCommands.add(base);
         }
       }
     }
@@ -880,19 +888,17 @@ function createPrerequisiteHooks(
 
 function createMutationLogger(
   logger: LoggerFn,
-  options: { verbose: boolean; collector?: (message: string) => void }
+  options: { verbose: boolean; collector?: (entry: MutationLogEntry) => void }
 ): ServiceMutationHooks | undefined {
   const { verbose, collector } = options;
   if (!verbose && !collector) {
     return undefined;
   }
 
-  const emit = (message: string) => {
-    if (collector) {
-      collector(message);
-    }
+  const emit = (entry: MutationLogEntry) => {
+    collector?.(entry);
     if (verbose) {
-      logger(message);
+      logger(entry.message);
     }
   };
 
@@ -901,29 +907,22 @@ function createMutationLogger(
       // only log on completion/error
     },
     onComplete(details, outcome) {
-      const message = renderMutationMessage(details, outcome);
-      emit(message);
+      const command = formatMutationCommand(details, outcome);
+      const message = decorateMutationCommand(command, outcome);
+      emit({ command, message });
     },
     onError(details, error) {
-      const errorMessage = renderMutationError(details, error);
+      const command = formatMutationCommand(details);
+      const errorMessage = renderMutationError(command, error);
       logger(errorMessage);
-      collector?.(errorMessage);
+      collector?.({ command, message: errorMessage });
     }
   };
 }
 
-function renderMutationMessage(
-  details: MutationLogDetails,
-  outcome: ServiceMutationOutcome
-): string {
-  const base = formatMutationCommand(details, outcome);
-  return decorateMutationCommand(base, outcome);
-}
-
-function renderMutationError(details: MutationLogDetails, error: unknown): string {
-  const base = formatMutationCommand(details);
+function renderMutationError(command: string, error: unknown): string {
   const info = error instanceof Error ? error.message : String(error);
-  return chalk.red(`${base} ! ${info}`);
+  return chalk.red(`${command} ! ${info}`);
 }
 
 function formatMutationCommand(
@@ -1047,6 +1046,17 @@ function formatAutoImportPath(homeDir: string, targetPath: string): string {
     return `~/${trimmed.split(path.sep).join("/")}`;
   }
   return normalizedTarget.split(path.sep).join("/");
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
+function extractBaseCommand(line: string): string {
+  const raw = stripAnsi(line);
+  const hashIndex = raw.indexOf(" #");
+  const base = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
+  return base.trim();
 }
 
 function createDefaultCommandRunner(): CommandRunner {

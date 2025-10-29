@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createTwoFilesPatch } from "diff";
 import chalk from "chalk";
 import type { FileSystem } from "./file-system.js";
 
@@ -110,10 +111,19 @@ export function formatDryRunOperations(
     return [chalk.dim("# no filesystem changes")];
   }
 
-  return operations.map((op) => formatOperation(op));
+  const lines: string[] = [];
+  for (const operation of operations) {
+    const formatted = formatOperation(operation);
+    if (Array.isArray(formatted)) {
+      lines.push(...formatted);
+    } else {
+      lines.push(formatted);
+    }
+  }
+  return lines;
 }
 
-function formatOperation(operation: DryRunOperation): string {
+function formatOperation(operation: DryRunOperation): string | string[] {
   switch (operation.type) {
     case "mkdir": {
       const recursiveFlag = operation.options?.recursive ? " -p" : "";
@@ -140,11 +150,7 @@ function formatOperation(operation: DryRunOperation): string {
         "# copy"
       );
     case "writeFile": {
-      const status = describeWriteChange(
-        operation.previousContent,
-        operation.nextContent
-      );
-      return renderWriteCommand(operation.path, status);
+      return renderWriteOperation(operation);
     }
     default: {
       const neverOp: never = operation;
@@ -186,6 +192,70 @@ function renderWriteCommand(
     return renderOperationCommand(command, chalk.yellow, "# update");
   }
   return renderOperationCommand(command, chalk.dim, "# no change");
+}
+
+function renderWriteOperation(
+  operation: Extract<DryRunOperation, { type: "writeFile" }>
+): string[] {
+  const change = describeWriteChange(
+    operation.previousContent,
+    operation.nextContent
+  );
+  const lines: string[] = [renderWriteCommand(operation.path, change)];
+  if (change === "noop") {
+    return lines;
+  }
+  lines.push(
+    ...renderUnifiedDiff(
+      operation.path,
+      operation.previousContent,
+      operation.nextContent
+    )
+  );
+  return lines;
+}
+
+function renderUnifiedDiff(
+  targetPath: string,
+  previousContent: string | null,
+  nextContent: string
+): string[] {
+  const oldLabel = previousContent == null ? "/dev/null" : targetPath;
+  const patch = createTwoFilesPatch(
+    oldLabel,
+    targetPath,
+    previousContent ?? "",
+    nextContent,
+    "",
+    "",
+    { context: 3 }
+  );
+  const diffLines = patch.split("\n").filter((line) => line.length > 0);
+  const lines: string[] = [];
+  for (const line of diffLines) {
+    if (line.startsWith("---") || line.startsWith("+++")) {
+      lines.push(chalk.dim(line));
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      lines.push(chalk.cyan(line));
+      continue;
+    }
+    if (line.startsWith("+")) {
+      lines.push(chalk.green(line));
+      continue;
+    }
+    if (line.startsWith("-")) {
+      lines.push(chalk.red(line));
+      continue;
+    }
+    if (line.startsWith("\\ No newline")) {
+      lines.push(chalk.dim(line));
+      continue;
+    }
+    lines.push(chalk.dim(line));
+  }
+  return lines;
 }
 
 async function tryReadText(
