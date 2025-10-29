@@ -19,11 +19,7 @@ import {
   installOpenCode,
   removeOpenCode
 } from "../services/opencode.js";
-import {
-  configureRooCode,
-  installRooCode,
-  removeRooCode
-} from "../services/roo-code.js";
+import { configureRooCode, removeRooCode } from "../services/roo-code.js";
 import {
   deleteCredentials,
   loadCredentials,
@@ -411,11 +407,7 @@ export function createProgram(dependencies: CliDependencies): Command {
 
     if (service === "roo-code") {
       if (options.install) {
-        await installRooCode({
-          isDryRun,
-          runCommand: context.runCommand,
-          logger
-        });
+        throw new Error("Roo Code does not support installation.");
       }
       const configName =
         options.configName ??

@@ -1483,4 +1483,24 @@ describe("CLI program", () => {
     );
     expect(settings.env.ANTHROPIC_API_KEY).toBe("sk-install");
   });
+
+  it("rejects install option for roo-code", async () => {
+    const { prompt } = createPromptStub({});
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "cli",
+        "configure",
+        "roo-code",
+        "--install"
+      ])
+    ).rejects.toThrow("Roo Code does not support installation.");
+  });
 });

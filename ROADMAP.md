@@ -23,8 +23,11 @@
 - [x] --dry-run preview changes in the files as colorful unified diff - use `chalk`
 - [x] Interactive mode should support all commands without duplication. New command added to cli mode will automatically be pulled into interactive.
     - ✅ Interactive mode reuses the CLI parser and runs `poe-setup test` for API verification.
-- [ ] non-interactive mode, add argument like claude code or codex have where I could run agent with specific prompt
-- [ ] configure should have ability to install the app. Each service can have install section, similar to prerequisites. The install should perform check (prerequisite) and run the installation.
+- [x] non-interactive mode, add argument like claude code or codex have where I could run agent with specific prompt
+    - ✅ Added `poe-setup agent "<prompt>"` to run a single chat turn with tool call logging and credential reuse.
+- [x] configure should have ability to install the app. Each service can have install section, similar to prerequisites. The install should perform check (prerequisite) and run the installation.
+    - ✅ Services now expose installers triggered via `--install`, with dry-run summaries and post-install health checks.
+- [ ] `login` should mention where to get teh api key https://poe.com/api_key. WHen pasting the key, it should not be shown (treat as password)
 
 ## VSCode extension
 
@@ -51,8 +54,19 @@
     - ✅ Added Vitest suites for commands, config, state, and each webview helper.
 - [x] Remove the keyboard shortcut - it's too aggressive
     - ✅ Dropped default keybinding from `package.json`; commands stay accessible via palette.
-- [ ] Can you implement some e2e tests? THere's a way to download the vscode and run tests for real. Could you try that out? I want to initially just open the extension and see if there are no errors
+- [x] Can you implement some e2e tests? THere's a way to download the vscode and run tests for real. Could you try that out? I want to initially just open the extension and see if there are no errors
+    - ✅ Vitest e2e harness compiles the extension, launches VSCode via `@vscode/test-electron`, activates the extension, and skips gracefully if downloads are unreachable.
 
+
+## Extension redesign
+
+- [ ] Single pane layout, only the chat interface
+- [ ] Dedicated chat history page
+- [ ] Top right menu items (from right)
+    - New message
+    - Settings
+    - Chat history
+- [ ] Smaller font
 
 ## WIP (do not implement) Github Worflows
 - [ ] Issue resolution agent
@@ -68,3 +82,7 @@
 ## WIP (do not implement) Poe Agent
 - [ ] Ability to spawn any supported sub-agents (add specialized tool for this)
 - [ ] configure utility should store in the own json config file also which agents are config and offer those dynamically in the tool description
+
+## Code quality
+
+- [ ] make sure that `credentialsPath` `.poe-setup/credentials.json` is defined in 1 single place, so it can be changed easily
