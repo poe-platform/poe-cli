@@ -18,9 +18,23 @@ function renderInlineMarkdown(text: string): string {
   let result = "";
   let bold = false;
   let italic = false;
+  let code = false;
   for (let index = 0; index < text.length; ) {
     const char = text[index];
     const next = text[index + 1];
+
+    if (char === "`") {
+      result += code ? "</code>" : "<code>";
+      code = !code;
+      index += 1;
+      continue;
+    }
+
+    if (code) {
+      result += escapeHtml(char);
+      index += 1;
+      continue;
+    }
 
     if (char === "*" && next === "*") {
       result += bold ? "</strong>" : "<strong>";
@@ -45,6 +59,9 @@ function renderInlineMarkdown(text: string): string {
   }
   if (bold) {
     result += "</strong>";
+  }
+  if (code) {
+    result += "</code>";
   }
   return result;
 }
@@ -114,4 +131,3 @@ export function renderMarkdown(markdown: string): string {
 
   return output.join("");
 }
-

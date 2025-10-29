@@ -13,5 +13,9 @@ describe("renderMarkdown", () => {
     expect(html).toContain('<pre><code class="language-ts">');
     expect(html).toContain("const value = 1;");
   });
-});
 
+  it("renders inline code blocks", () => {
+    const html = renderMarkdown("Use `poe-setup` to configure.");
+    expect(html).toContain("<code>poe-setup</code>");
+  });
+});
