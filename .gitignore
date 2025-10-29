@@ -1,5 +1,11 @@
 node_modules/
 dist/
+vscode-extension/tests/*.js
+vscode-extension/tests/*.js.map
+vscode-extension/vitest.config.*.js
+vscode-extension/vitest.config.*.js.map
+vscode-extension/vitest.config.mjs
+vscode-extension/vitest.config.mjs.map
 
 # Test projects created by poe-setup init
 g/
