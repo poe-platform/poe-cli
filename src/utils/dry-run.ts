@@ -134,10 +134,11 @@ function formatOperation(operation: DryRunOperation): string[] {
     case "copyFile":
       return [`- copy ${operation.from} -> ${operation.to}`];
     case "writeFile": {
-      const lines = [`- write ${operation.path}`];
-      lines.push(...formatBlock("previous", operation.previousContent));
-      lines.push(...formatBlock("next", operation.nextContent));
-      return lines;
+      const status = describeWriteChange(
+        operation.previousContent,
+        operation.nextContent
+      );
+      return [`- write ${operation.path}${status}`];
     }
     default: {
       const neverOp: never = operation;
@@ -146,19 +147,17 @@ function formatOperation(operation: DryRunOperation): string[] {
   }
 }
 
-function formatBlock(label: string, content: string | null): string[] {
-  if (content == null) {
-    return [`  ${label}: (missing)`];
+function describeWriteChange(
+  previous: string | null,
+  next: string
+): string {
+  if (previous == null) {
+    return " (create)";
   }
-
-  const rows = content.split(/\r?\n/);
-  if (rows.length === 0) {
-    return [`  ${label}: (empty)`];
+  if (previous === next) {
+    return " (no changes)";
   }
-
-  const header = `  ${label}:`;
-  const indented = rows.map((row) => `    ${row}`);
-  return [header, ...indented];
+  return " (update)";
 }
 
 async function tryReadText(

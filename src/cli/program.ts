@@ -208,7 +208,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       logger,
       runCommand: commandRunnerForContext
     });
-    const mutationHooks = createMutationLogger(logger, isVerbose || isDryRun);
+    const mutationHooks = createMutationLogger(logger, isVerbose);
     const { prerequisites } = context;
 
     if (service === "claude-code") {
@@ -553,7 +553,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       const commandRunnerForContext = isVerbose
         ? createLoggingCommandRunner(commandRunner, logger)
         : commandRunner;
-      const mutationHooks = createMutationLogger(logger, isVerbose || isDryRun);
+      const mutationHooks = createMutationLogger(logger, isVerbose);
       const context = createCommandContext({
         baseFs,
         isDryRun,

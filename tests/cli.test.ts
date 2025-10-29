@@ -307,13 +307,9 @@ describe("CLI program", () => {
     ]);
 
     expect(logs).toContain("Dry run: would configure Claude Code.");
-    expect(
-      logs.find(
-        (line) =>
-          line.includes("Merge Claude settings ->") &&
-          line.includes("(no changes)")
-      )
-    ).toBeTruthy();
+    expect(logs.some((line) => line.includes("- mkdir /home/user/.claude (recursive)"))).toBe(true);
+    expect(logs.some((line) => line.includes("Applying"))).toBe(false);
+    expect(logs.some((line) => line.includes("previous:"))).toBe(false);
   });
 
   it("runs init command with provided options", async () => {
