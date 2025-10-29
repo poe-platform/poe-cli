@@ -4,6 +4,7 @@
 - SOLID
 - YAGNI, KISS
 - Never copy/paste more than 5 lines of code
+- Never revert code that you didn't create
 
 # Testing file changes
 
@@ -16,6 +17,7 @@
 - Follow Conventional Commits (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`).
 - Keep subjects imperative and under 72 characters.
 - If the workspace is dirty, commit the old changes first so you can start clean
+- Commit specific files that you edited, never blanket git add -A
 
 # Configure commands
 
