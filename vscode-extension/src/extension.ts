@@ -1,12 +1,22 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { renderAppShell } from './webview/layout.js';
+import { renderModelSelector } from './webview/model-selector.js';
+import { renderMarkdown } from './webview/markdown.js';
+import { renderDiffPreview } from './webview/diff-preview.js';
+import { initializeWebviewApp } from './webview/runtime.js';
+import { ChatState } from './state/chat-state.js';
+import { loadProviderSettings } from './config/provider-settings.js';
+import type { ProviderSetting } from './config/provider-settings.js';
+import { openMcpSettings } from './commands/open-mcp-settings.js';
 
 let currentTerminal: vscode.Terminal | undefined = undefined;
 let currentPanel: vscode.WebviewPanel | undefined = undefined;
 let chatService: any | undefined = undefined;
 let availableTools: any[] = [];
 let toolExecutor: any | undefined = undefined;
+const chatState = new ChatState();
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Poe Code extension is now active');
@@ -24,6 +34,14 @@ export function activate(context: vscode.ExtensionContext) {
     // Register the open terminal command
     const openTerminalCommand = vscode.commands.registerCommand('poe-code.terminal.open', () => {
         openPoeTerminal();
+    });
+
+    const openMcpSettingsCommand = vscode.commands.registerCommand('poe-code.settings.openMcp', async () => {
+        const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+        await openMcpSettings({
+            homeDir,
+            filename: 'mcp.json'
+        });
     });
 
     // Register a command to check if poe-setup is configured
@@ -62,6 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
         openSidebarCommand,
         openTerminalCommand,
         checkSetupCommand,
+        openMcpSettingsCommand,
         statusBarItem
     );
 
@@ -140,11 +159,33 @@ async function loadChatService(apiKey: string, model: string): Promise<any> {
             readdir: (dirPath: string) => fs.promises.readdir(dirPath),
         };
 
+        const emitDiffPreview = async (details: {
+            absolutePath: string;
+            relativePath: string;
+            previousContent: string | null;
+            nextContent: string;
+        }) => {
+            if (!currentPanel) {
+                return;
+            }
+            const diffHtml = renderDiffPreview({
+                previous: details.previousContent ?? "",
+                next: details.nextContent,
+                filename: details.relativePath || path.basename(details.absolutePath),
+                language: detectLanguage(details.absolutePath)
+            });
+            currentPanel.webview.postMessage({
+                type: 'diffPreview',
+                html: diffHtml
+            });
+        };
+
         // Create tool executor
         toolExecutor = new toolsModule.DefaultToolExecutor({
             fs: fileSystem,
             cwd: cwd,
-            allowedPaths: [cwd]
+            allowedPaths: [cwd],
+            onWriteFile: emitDiffPreview
         });
 
         // Get available tools
@@ -201,8 +242,11 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
         return;
     }
 
+    const configuration = vscode.workspace.getConfiguration('poeCode');
+    const defaultModel = configuration.get<string>('defaultModel') || 'Claude-Sonnet-4.5';
+
     // Check if poe-setup is configured
-    const credentials = await getPoeCredentials();
+    let credentials = await getPoeCredentials();
     if (!credentials) {
         const action = await vscode.window.showWarningMessage(
             'Poe API key not configured. Configure now?',
@@ -217,31 +261,24 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
             });
             if (apiKey) {
                 await configurePoeSetup(apiKey);
-                // Initialize chat service
-                const config = vscode.workspace.getConfiguration('poeCode');
-                const defaultModel = config.get<string>('defaultModel') || 'Claude-Sonnet-4.5';
-                try {
-                    chatService = await loadChatService(apiKey, defaultModel);
-                } catch (error) {
-                    vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
-                    return;
-                }
+                credentials = { apiKey };
             } else {
                 return; // User cancelled
             }
         } else if (!action) {
             return; // User dismissed
         }
-    } else {
-        // Initialize chat service with existing credentials
-        const config = vscode.workspace.getConfiguration('poeCode');
-        const defaultModel = config.get<string>('defaultModel') || 'Claude-Sonnet-4.5';
-        try {
-            chatService = await loadChatService(credentials.apiKey, defaultModel);
-        } catch (error) {
-            vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
-            return;
-        }
+    }
+
+    if (!credentials) {
+        return;
+    }
+
+    try {
+        chatService = await loadChatService(credentials.apiKey, defaultModel);
+    } catch (error) {
+        vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+        return;
     }
 
     // Create and show a new webview panel
@@ -263,55 +300,117 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
     // Set the webview's HTML content
     const logoUri = currentPanel.webview.asWebviewUri(
         vscode.Uri.joinPath(context.extensionUri, 'poe-logo.png')
-    );
-    currentPanel.webview.html = getWebviewContent(currentPanel.webview, context, logoUri.toString());
+    ).toString();
+
+    const providerSettings = await loadProviderSettings(context.extensionUri.fsPath);
+    const modelOptions = Array.from(
+        new Set(
+            [
+                chatService?.getModel?.() ?? defaultModel,
+                ...providerSettings.map((provider) => provider.label)
+            ].filter(Boolean)
+        )
+    ) as string[];
+
+    const appShellHtml = renderAppShell({
+        logoUrl: logoUri,
+        models: modelOptions,
+        activeModel: chatService?.getModel?.() ?? defaultModel
+    });
+    const modelSelectorHtml = renderModelSelector({
+        models: modelOptions,
+        selected: chatService?.getModel?.() ?? defaultModel
+    });
+
+    currentPanel.webview.html = getWebviewContent(currentPanel.webview, {
+        logoUri,
+        appShellHtml,
+        modelSelectorHtml,
+        providerSettings,
+        defaultModel: chatService?.getModel?.() ?? defaultModel
+    });
 
     // Handle messages from the webview
     currentPanel.webview.onDidReceiveMessage(
         async (message) => {
             switch (message.type) {
-                case 'sendMessage':
-                    if (chatService && currentPanel) {
-                        try {
-                            // Send thinking state
-                            currentPanel.webview.postMessage({ type: 'thinking', value: true });
-
-                            // Send message to Poe with tools
-                            const response = await chatService.sendMessage(message.text, availableTools);
-
-                            // Send response back to webview with strategy info
-                            currentPanel.webview.postMessage({
-                                type: 'response',
-                                text: response.content,
-                                model: chatService.getModel(),
-                                strategyInfo: chatService.isStrategyEnabled() ? chatService.getStrategyInfo() : null
-                            });
-                        } catch (error) {
-                            currentPanel.webview.postMessage({
-                                type: 'error',
-                                text: error instanceof Error ? error.message : String(error)
-                            });
-                        } finally {
-                            currentPanel.webview.postMessage({ type: 'thinking', value: false });
-                        }
+                case 'sendMessage': {
+                    if (!chatService || !currentPanel) {
+                        currentPanel?.webview.postMessage({
+                            type: 'error',
+                            text: 'Chat service is not available. Please try reopening Poe Code.'
+                        });
+                        return;
+                    }
+                    const text = typeof message.text === 'string' ? message.text : '';
+                    const messageId =
+                        typeof message.id === 'string' && message.id.length > 0
+                            ? message.id
+                            : `m-${Date.now()}`;
+                    chatState.append({
+                        id: messageId,
+                        role: 'user',
+                        content: text
+                    });
+                    currentPanel.webview.postMessage({ type: 'thinking', value: true });
+                    currentPanel.webview.postMessage({
+                        type: 'message',
+                        role: 'user',
+                        id: messageId,
+                        html: renderMarkdown(text),
+                        model: chatService.getModel()
+                    });
+                    try {
+                        const response = await chatService.sendMessage(text, availableTools);
+                        const responseText =
+                            response?.content ??
+                            response?.choices?.[0]?.message?.content ??
+                            'No response from model';
+                        chatState.append({
+                            id: response?.id ?? `assistant-${Date.now()}`,
+                            role: 'assistant',
+                            content: responseText
+                        });
+                        currentPanel.webview.postMessage({
+                            type: 'message',
+                            role: 'assistant',
+                            id: response?.id ?? `assistant-${Date.now()}`,
+                            html: renderMarkdown(responseText),
+                            model: chatService.getModel(),
+                            strategyInfo: chatService.isStrategyEnabled()
+                                ? chatService.getStrategyInfo()
+                                : null
+                        });
+                    } catch (error) {
+                        currentPanel.webview.postMessage({
+                            type: 'error',
+                            text: error instanceof Error ? error.message : String(error)
+                        });
+                    } finally {
+                        currentPanel.webview.postMessage({ type: 'thinking', value: false });
                     }
                     break;
-                case 'clearHistory':
-                    if (chatService) {
-                        chatService.clearHistory();
-                    }
+                }
+                case 'clearHistory': {
+                    chatService?.clearHistory();
+                    chatState.clear();
+                    currentPanel.webview.postMessage({ type: 'historyCleared' });
                     break;
-                case 'getStrategyStatus':
+                }
+                case 'getStrategyStatus': {
                     if (chatService && currentPanel) {
                         currentPanel.webview.postMessage({
                             type: 'strategyStatus',
                             enabled: chatService.isStrategyEnabled(),
-                            info: chatService.isStrategyEnabled() ? chatService.getStrategyInfo() : 'Strategy disabled',
+                            info: chatService.isStrategyEnabled()
+                                ? chatService.getStrategyInfo()
+                                : 'Strategy disabled',
                             currentModel: chatService.getModel()
                         });
                     }
                     break;
-                case 'setStrategy':
+                }
+                case 'setStrategy': {
                     if (chatService && currentPanel) {
                         try {
                             chatService.setStrategy(message.config);
@@ -329,7 +428,8 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
                         }
                     }
                     break;
-                case 'toggleStrategy':
+                }
+                case 'toggleStrategy': {
                     if (chatService && currentPanel) {
                         if (message.enabled) {
                             chatService.enableStrategy();
@@ -339,11 +439,31 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
                         currentPanel.webview.postMessage({
                             type: 'strategyStatus',
                             enabled: chatService.isStrategyEnabled(),
-                            info: chatService.isStrategyEnabled() ? chatService.getStrategyInfo() : 'Strategy disabled',
+                            info: chatService.isStrategyEnabled()
+                                ? chatService.getStrategyInfo()
+                                : 'Strategy disabled',
                             currentModel: chatService.getModel()
                         });
                     }
                     break;
+                }
+                case 'openSettings': {
+                    await vscode.commands.executeCommand('poe-code.settings.openMcp');
+                    break;
+                }
+                case 'setModel': {
+                    if (chatService && typeof message.model === 'string') {
+                        const trimmed = message.model.trim();
+                        if (trimmed.length > 0) {
+                            chatService.setModel(trimmed);
+                            currentPanel.webview.postMessage({
+                                type: 'modelChanged',
+                                model: chatService.getModel()
+                            });
+                        }
+                    }
+                    break;
+                }
                 case 'info':
                     vscode.window.showInformationMessage(message.text);
                     break;
@@ -490,242 +610,229 @@ async function configurePoeSetup(apiKey: string): Promise<void> {
 }
 
 async function showWelcomeMessage(context: vscode.ExtensionContext) {
-    const action = await vscode.window.showInformationMessage(
-        'Welcome to Poe Code! Click the status bar or terminal icon to start chatting with AI.',
-        'Open Now',
-        'Check Setup',
-        'Don\'t Show Again'
-    );
+    await context.globalState.update('poe-code.hasShownWelcome', true);
+}
+interface WebviewContentOptions {
+    logoUri: string;
+    appShellHtml: string;
+    modelSelectorHtml: string;
+    providerSettings: ProviderSetting[];
+    defaultModel: string;
+}
 
-    if (action === 'Open Now') {
-        vscode.commands.executeCommand('poe-code.editor.open');
-    } else if (action === 'Check Setup') {
-        vscode.commands.executeCommand('poe-code.checkSetup');
+function escapeTemplateLiteral(value: string): string {
+    let result = "";
+    for (let index = 0; index < value.length; index += 1) {
+        const char = value[index];
+        const next = value[index + 1];
+        if (char === "\\") {
+            result += "\\\\";
+            continue;
+        }
+        if (char === "`") {
+            result += "\\`";
+            continue;
+        }
+        if (char === "$" && next === "{") {
+            result += "\\${";
+            index += 1;
+            continue;
+        }
+        result += char;
     }
+    return result;
+}
 
-    if (action === 'Don\'t Show Again') {
-        await context.globalState.update('poe-code.hasShownWelcome', true);
+function createNonce(): string {
+    return Math.random().toString(36).slice(2, 15);
+}
+
+function detectLanguage(targetPath: string): string {
+    const ext = path.extname(targetPath).toLowerCase();
+    switch (ext) {
+        case ".ts":
+        case ".tsx":
+            return "ts";
+        case ".js":
+        case ".jsx":
+            return "javascript";
+        case ".json":
+            return "json";
+        case ".py":
+            return "python";
+        case ".md":
+            return "markdown";
+        case ".sh":
+            return "bash";
+        case ".go":
+            return "go";
+        case ".rs":
+            return "rust";
+        case ".java":
+            return "java";
+        case ".rb":
+            return "ruby";
+        default:
+            return "";
     }
 }
 
-function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionContext, logoUri: string): string {
+export function getWebviewContent(webview: vscode.Webview, options: WebviewContentOptions): string {
+    const providerJson = JSON.stringify(options.providerSettings);
+    const escapedAppShell = escapeTemplateLiteral(options.appShellHtml);
+    const escapedModelSelector = escapeTemplateLiteral(options.modelSelectorHtml);
+    const nonce = createNonce();
+    const cspSource = webview.cspSource;
+    const bootstrapSource = escapeTemplateLiteral(initializeWebviewApp.toString());
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poe Code</title>
     <style>
+        :root {
+            --sidebar-width: 240px;
+        }
+
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
 
         body {
+            margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
+        }
+
+        .poe-layout {
+            display: grid;
+            grid-template-columns: minmax(200px, 260px) 1fr;
             height: 100vh;
-            display: flex;
-            flex-direction: column;
             overflow: hidden;
         }
 
-        #header {
-            padding: 16px 24px;
-            border-bottom: 1px solid var(--vscode-panel-border);
+        .sidebar-wrapper {
             background-color: var(--vscode-sideBar-background);
+            border-right: 1px solid var(--vscode-panel-border);
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            overflow-y: auto;
         }
 
-        #header h1 {
+        .sidebar-wrapper .app-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .sidebar-wrapper .app-header h1 {
             font-size: 16px;
             font-weight: 600;
             display: flex;
             align-items: center;
             gap: 8px;
+            color: var(--vscode-foreground);
         }
 
-        .model-badge {
-            font-size: 11px;
-            padding: 3px 8px;
-            background-color: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            border-radius: 12px;
-            font-weight: 500;
+        .sidebar-wrapper .app-header img {
+            width: 24px;
+            height: 24px;
         }
 
-        .strategy-badge {
-            font-size: 10px;
-            padding: 2px 6px;
-            background-color: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border-radius: 10px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        .strategy-badge:hover {
-            opacity: 0.8;
-        }
-
-        .header-buttons {
+        .app-nav {
             display: flex;
+            flex-direction: column;
             gap: 8px;
         }
 
-        .header-button {
-            padding: 6px 12px;
-            background-color: transparent;
-            color: var(--vscode-foreground);
+        .app-nav button {
+            padding: 8px 12px;
+            border-radius: 6px;
             border: 1px solid var(--vscode-button-border);
-            border-radius: 4px;
+            background: transparent;
+            color: var(--vscode-foreground);
             cursor: pointer;
-            font-size: 12px;
-            transition: background-color 0.2s;
+            font-size: 13px;
+            transition: background-color 0.2s ease;
+            text-align: left;
         }
 
-        .header-button:hover {
+        .app-nav button:hover {
             background-color: var(--vscode-button-hoverBackground);
         }
 
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.show {
+        .model-list {
+            list-style: none;
+            margin: 16px 0;
+            padding: 0 16px 16px;
             display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
-        .modal-content {
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 8px;
-            padding: 24px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .modal-header h2 {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .close-button {
-            background: none;
-            border: none;
+        .model-item {
+            padding: 8px 10px;
+            border-radius: 6px;
             color: var(--vscode-foreground);
             cursor: pointer;
-            font-size: 20px;
-            padding: 0;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            transition: background-color 0.2s ease;
         }
 
-        .close-button:hover {
-            opacity: 0.7;
-        }
-
-        .strategy-option {
-            padding: 12px;
-            margin-bottom: 8px;
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .strategy-option:hover {
+        .model-item:hover {
             background-color: var(--vscode-list-hoverBackground);
         }
 
-        .strategy-option.active {
+        .model-item.active {
             background-color: var(--vscode-list-activeSelectionBackground);
-            border-color: var(--vscode-focusBorder);
+            color: var(--vscode-list-activeSelectionForeground);
         }
 
-        .strategy-option h3 {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 4px;
+        .main-pane {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .strategy-option p {
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            margin: 0;
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editor-background);
         }
 
-        .toggle-container {
+        .status-left {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 12px;
-            background-color: var(--vscode-input-background);
-            border-radius: 6px;
-            margin-bottom: 16px;
+            gap: 12px;
         }
 
-        .toggle-label {
-            font-size: 14px;
-            font-weight: 500;
+        .model-badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
         }
 
-        .toggle-switch {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            background-color: var(--vscode-input-border);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background-color 0.2s;
+        .strategy-badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            opacity: 0.8;
         }
 
-        .toggle-switch.active {
-            background-color: var(--vscode-button-background);
-        }
-
-        .toggle-slider {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background-color: white;
-            border-radius: 50%;
-            transition: transform 0.2s;
-        }
-
-        .toggle-switch.active .toggle-slider {
-            transform: translateX(20px);
-        }
-
-        #chat-container {
+        .chat-scroll {
             flex: 1;
             overflow-y: auto;
             padding: 24px;
@@ -739,13 +846,13 @@ function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionCon
 
         .message-wrapper {
             margin-bottom: 24px;
-            animation: slideIn 0.3s ease-out;
+            animation: fadeIn 0.2s ease;
         }
 
-        @keyframes slideIn {
+        @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(6px);
             }
             to {
                 opacity: 1;
@@ -760,19 +867,25 @@ function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionCon
             color: var(--vscode-descriptionForeground);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }
 
         .avatar {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
+            background-color: var(--vscode-button-background);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            color: var(--vscode-button-foreground);
+            font-size: 12px;
             font-weight: 600;
             overflow: hidden;
+        }
+
+        .avatar.assistant {
+            background: transparent;
         }
 
         .avatar img {
@@ -781,27 +894,13 @@ function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionCon
             object-fit: cover;
         }
 
-        .avatar.user {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .avatar.assistant {
-            background-color: transparent;
-            color: var(--vscode-button-secondaryForeground);
-        }
-
         .message-content {
-            padding: 14px 16px;
-            border-radius: 8px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        .message-wrapper.user .message-content {
+            padding: 16px;
+            border-radius: 10px;
+            line-height: 1.65;
             background-color: var(--vscode-input-background);
             border: 1px solid var(--vscode-input-border);
+            overflow-x: auto;
         }
 
         .message-wrapper.assistant .message-content {
@@ -809,19 +908,38 @@ function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionCon
             border-left: 3px solid var(--vscode-textBlockQuote-border);
         }
 
+        .message-content pre {
+            padding: 12px;
+            background-color: var(--vscode-editor-background);
+            border-radius: 8px;
+            overflow: auto;
+        }
+
+        .message-content code {
+            background-color: var(--vscode-editor-background);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family, monospace);
+        }
+
         .thinking {
-            display: inline-flex;
-            gap: 4px;
+            display: flex;
             align-items: center;
+            gap: 6px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 16px;
+        }
+
+        .thinking.hidden {
+            display: none;
         }
 
         .thinking-dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            background-color: var(--vscode-foreground);
-            opacity: 0.6;
-            animation: pulse 1.4s infinite;
+            background-color: var(--vscode-descriptionForeground);
+            animation: thinking 1s ease-in-out infinite;
         }
 
         .thinking-dot:nth-child(2) {
@@ -832,549 +950,236 @@ function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionCon
             animation-delay: 0.4s;
         }
 
-        @keyframes pulse {
-            0%, 60%, 100% {
-                opacity: 0.6;
+        @keyframes thinking {
+            0%, 80%, 100% {
+                opacity: 0.2;
             }
-            30% {
+            40% {
                 opacity: 1;
             }
         }
 
-        #input-container {
-            padding: 16px 24px;
-            background-color: var(--vscode-sideBar-background);
+        .composer {
+            padding: 16px 20px;
             border-top: 1px solid var(--vscode-panel-border);
-        }
-
-        #input-wrapper {
-            max-width: 900px;
-            margin: 0 auto;
+            background-color: var(--vscode-editor-background);
             display: flex;
-            gap: 12px;
             align-items: flex-end;
+            gap: 12px;
         }
 
         #message-input {
             flex: 1;
-            padding: 12px 16px;
+            min-height: 80px;
+            max-height: 220px;
+            border: 1px solid var(--vscode-input-border);
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
             border-radius: 8px;
-            font-family: inherit;
+            padding: 14px;
             font-size: 14px;
+            line-height: 1.6;
             resize: none;
-            min-height: 44px;
-            max-height: 200px;
-            overflow-y: auto;
-            line-height: 1.5;
-        }
-
-        #message-input:focus {
             outline: none;
-            border-color: var(--vscode-focusBorder);
         }
 
-        #message-input::placeholder {
-            color: var(--vscode-input-placeholderForeground);
+        .composer-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
-        #send-button {
-            padding: 12px 24px;
+        .composer-button {
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-button-border);
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .composer-button.primary {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s;
-            white-space: nowrap;
         }
 
-        #send-button:hover:not(:disabled) {
+        .composer-button.primary:hover {
             background-color: var(--vscode-button-hoverBackground);
         }
 
-        #send-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .message-wrapper.diff {
+            background-color: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .message-wrapper.diff .message-content {
+            background-color: transparent;
+            border: none;
+            padding: 0;
+        }
+
+        .diff-preview {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .diff-preview .diff-header {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--vscode-foreground);
+        }
+
+        .diff-preview .diff-body {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+        }
+
+        .diff-row {
+            display: block;
+        }
+
+        .diff-row code {
+            display: block;
+            padding: 4px 6px;
+            border-radius: 4px;
+            background-color: transparent;
+            white-space: pre-wrap;
+        }
+
+        .diff-added {
+            background-color: rgba(46, 204, 113, 0.16);
+            color: var(--vscode-foreground);
+        }
+
+        .diff-removed {
+            background-color: rgba(231, 76, 60, 0.16);
+            color: var(--vscode-foreground);
+        }
+
+        .diff-context {
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .tool-notifications {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .tool-notification {
+            padding: 10px 14px;
+            border-radius: 6px;
+            background-color: var(--vscode-editorHoverWidget-background);
+            color: var(--vscode-editorHoverWidget-foreground);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+            border-left: 3px solid transparent;
+            opacity: 0.95;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .tool-notification.running {
+            border-left-color: #0984e3;
+        }
+
+        .tool-notification.success {
+            border-left-color: #2ecc71;
+        }
+
+        .tool-notification.error {
+            border-left-color: #d63031;
+        }
+
+        .tool-notification.fade {
+            opacity: 0;
+            transform: translateY(10px);
         }
 
         .welcome-message {
             text-align: center;
-            padding: 40px 20px;
-            color: var(--vscode-descriptionForeground);
+            padding: 32px;
+            background-color: var(--vscode-editor-background);
+            border: 1px dashed var(--vscode-panel-border);
+            border-radius: 10px;
+            margin-top: 32px;
         }
 
         .welcome-message h2 {
-            font-size: 24px;
-            margin-bottom: 12px;
-            color: var(--vscode-foreground);
+            margin-bottom: 8px;
+            font-size: 20px;
         }
 
         .welcome-message p {
-            font-size: 14px;
-            line-height: 1.6;
-            max-width: 500px;
-            margin: 0 auto;
+            margin: 0;
+            color: var(--vscode-descriptionForeground);
         }
 
-        .error-message {
-            background-color: var(--vscode-inputValidation-errorBackground);
-            border: 1px solid var(--vscode-inputValidation-errorBorder);
-            color: var(--vscode-errorForeground);
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-        }
-
-        .tool-notification {
-            position: fixed;
-            bottom: 80px;
-            right: 24px;
-            background-color: var(--vscode-notifications-background);
-            border: 1px solid var(--vscode-notifications-border);
-            color: var(--vscode-notifications-foreground);
-            padding: 12px 16px;
-            border-radius: 6px;
-            font-size: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-            max-width: 300px;
-            animation: slideInRight 0.3s ease-out;
-            z-index: 100;
-        }
-
-        @keyframes slideInRight {
-            from {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .tool-notification.success {
-            border-left: 3px solid var(--vscode-testing-iconPassed);
-        }
-
-        .tool-notification.error {
-            border-left: 3px solid var(--vscode-testing-iconFailed);
-        }
-
-        .tool-notification.running {
-            border-left: 3px solid var(--vscode-testing-runAction);
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
 <body>
-    <div id="header">
-        <h1>
-            <img src="${logoUri}" alt="Poe" style="width: 20px; height: 20px; border-radius: 50%; margin-right: 4px;" />
-            Poe Code
-            <span class="model-badge" id="model-badge">Claude-Sonnet-4.5</span>
-            <span class="strategy-badge" id="strategy-badge" title="Click to configure strategy">No Strategy</span>
-        </h1>
-        <div class="header-buttons">
-            <button class="header-button" id="strategy-button">⚙️ Strategy</button>
-            <button class="header-button" id="clear-button">Clear History</button>
-        </div>
+    <div class="poe-layout">
+        <aside class="sidebar-wrapper" data-slot="app-shell"></aside>
+        <main class="main-pane">
+            <header class="status-bar">
+                <div class="status-left">
+                    <span id="model-badge" class="model-badge">${options.defaultModel}</span>
+                    <span id="strategy-badge" class="strategy-badge">No Strategy</span>
+                </div>
+                <div id="model-selector" data-slot="model-selector"></div>
+            </header>
+            <section id="chat-container" class="chat-scroll">
+                <div id="messages">
+                    <div class="welcome-message">
+                        <h2>Welcome to Poe Code</h2>
+                        <p>Start chatting with Poe models or explore tooling via the sidebar.</p>
+                    </div>
+                </div>
+                <div id="thinking-indicator" class="thinking hidden">
+                    <span class="thinking-dot"></span>
+                    <span class="thinking-dot"></span>
+                    <span class="thinking-dot"></span>
+                    <span>Thinking...</span>
+                </div>
+            </section>
+            <footer class="composer">
+                <textarea id="message-input" placeholder="Ask Poe…" rows="1"></textarea>
+                <div class="composer-actions">
+                    <button id="clear-button" type="button" class="composer-button">Clear</button>
+                    <button id="send-button" type="button" class="composer-button primary">Send</button>
+                </div>
+            </footer>
+            <div id="tool-notifications" class="tool-notifications"></div>
+        </main>
     </div>
-
-    <!-- Strategy Settings Modal -->
-    <div id="strategy-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Model Selection Strategy</h2>
-                <button class="close-button" id="close-modal">×</button>
-            </div>
-
-            <div class="toggle-container">
-                <span class="toggle-label">Enable Strategy</span>
-                <div class="toggle-switch" id="strategy-toggle">
-                    <div class="toggle-slider"></div>
-                </div>
-            </div>
-
-            <div id="strategy-options">
-                <div class="strategy-option" data-strategy="smart">
-                    <h3>🧠 Smart Strategy</h3>
-                    <p>Intelligently selects model based on task type (code, chat, reasoning) and complexity</p>
-                </div>
-
-                <div class="strategy-option" data-strategy="mixed">
-                    <h3>🔄 Mixed Strategy</h3>
-                    <p>Alternates between GPT-5 and Claude-Sonnet-4.5 on each message</p>
-                </div>
-
-                <div class="strategy-option" data-strategy="round-robin">
-                    <h3>🔁 Round Robin</h3>
-                    <p>Cycles through all available models in sequence</p>
-                </div>
-
-                <div class="strategy-option" data-strategy="fixed">
-                    <h3>📌 Fixed Model</h3>
-                    <p>Always uses Claude-Sonnet-4.5 (current default)</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="chat-container">
-        <div id="messages">
-            <div class="welcome-message">
-                <img src="${logoUri}" alt="Poe" style="width: 48px; height: 48px; border-radius: 50%; margin-bottom: 16px;" />
-                <h2>👋 Welcome to Poe Code</h2>
-                <p>
-                    I'm your AI assistant powered by Poe. I can help you with coding questions,
-                    debugging, code reviews, and general programming tasks. Start a conversation below!
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <div id="input-container">
-        <div id="input-wrapper">
-            <textarea
-                id="message-input"
-                placeholder="Ask me anything..."
-                rows="1"
-                autofocus
-            ></textarea>
-            <button id="send-button">Send</button>
-        </div>
-    </div>
-
-    <script>
+    <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
-        const messagesDiv = document.getElementById('messages');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const clearButton = document.getElementById('clear-button');
-        const modelBadge = document.getElementById('model-badge');
-        const strategyBadge = document.getElementById('strategy-badge');
-        const strategyButton = document.getElementById('strategy-button');
-        const strategyModal = document.getElementById('strategy-modal');
-        const closeModal = document.getElementById('close-modal');
-        const strategyToggle = document.getElementById('strategy-toggle');
-        const strategyOptions = document.querySelectorAll('.strategy-option');
-
-        const POE_LOGO = '${logoUri}';
-
-        let isThinking = false;
-        let strategyEnabled = false;
-        let currentStrategy = 'fixed';
-
-        // Auto-resize textarea
-        messageInput.addEventListener('input', () => {
-            messageInput.style.height = 'auto';
-            messageInput.style.height = messageInput.scrollHeight + 'px';
+        const bootstrap = ${bootstrapSource};
+        const app = bootstrap({
+            document,
+            appShellHtml: \`${escapedAppShell}\`,
+            modelSelectorHtml: \`${escapedModelSelector}\`,
+            providerSettings: ${providerJson},
+            defaultModel: ${JSON.stringify(options.defaultModel)},
+            logoUrl: ${JSON.stringify(options.logoUri)},
+            postMessage: (message) => vscode.postMessage(message)
         });
 
-        sendButton.addEventListener('click', sendMessage);
-
-        messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        clearButton.addEventListener('click', () => {
-            if (confirm('Clear all conversation history?')) {
-                messagesDiv.innerHTML = \`<div class="welcome-message">
-                    <img src="\${POE_LOGO}" alt="Poe" style="width: 48px; height: 48px; border-radius: 50%; margin-bottom: 16px;" />
-                    <h2>👋 Welcome to Poe Code</h2>
-                    <p>I'm your AI assistant powered by Poe. I can help you with coding questions, debugging, code reviews, and general programming tasks. Start a conversation below!</p>
-                </div>\`;
-                vscode.postMessage({ type: 'clearHistory' });
-            }
-        });
-
-        // Strategy modal controls
-        strategyButton.addEventListener('click', () => {
-            strategyModal.classList.add('show');
-            vscode.postMessage({ type: 'getStrategyStatus' });
-        });
-
-        strategyBadge.addEventListener('click', () => {
-            strategyModal.classList.add('show');
-            vscode.postMessage({ type: 'getStrategyStatus' });
-        });
-
-        closeModal.addEventListener('click', () => {
-            strategyModal.classList.remove('show');
-        });
-
-        strategyModal.addEventListener('click', (e) => {
-            if (e.target === strategyModal) {
-                strategyModal.classList.remove('show');
-            }
-        });
-
-        // Strategy toggle
-        strategyToggle.addEventListener('click', () => {
-            strategyEnabled = !strategyEnabled;
-            strategyToggle.classList.toggle('active', strategyEnabled);
-            vscode.postMessage({
-                type: 'toggleStrategy',
-                enabled: strategyEnabled
-            });
-            updateStrategyUI();
-        });
-
-        // Strategy options
-        strategyOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                const strategyType = option.dataset.strategy;
-                currentStrategy = strategyType;
-
-                // Update UI
-                strategyOptions.forEach(opt => opt.classList.remove('active'));
-                option.classList.add('active');
-
-                // Send to extension
-                const config = { type: strategyType };
-                if (strategyType === 'fixed') {
-                    config.fixedModel = 'Claude-Sonnet-4.5';
-                }
-                vscode.postMessage({
-                    type: 'setStrategy',
-                    config: config
-                });
-            });
-        });
-
-        // Initialize - request strategy status
-        setTimeout(() => {
-            vscode.postMessage({ type: 'getStrategyStatus' });
-        }, 500);
-
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (message && !isThinking) {
-                addMessage(message, 'user');
-                vscode.postMessage({ type: 'sendMessage', text: message });
-                messageInput.value = '';
-                messageInput.style.height = 'auto';
-            }
-        }
-
-        // Handle messages from the extension
         window.addEventListener('message', (event) => {
-            const message = event.data;
-
-            switch (message.type) {
-                case 'thinking':
-                    if (message.value) {
-                        showThinking();
-                    } else {
-                        hideThinking();
-                    }
-                    break;
-                case 'response':
-                    hideThinking();
-                    addMessage(message.text, 'assistant');
-                    if (message.model) {
-                        modelBadge.textContent = message.model;
-                    }
-                    if (message.strategyInfo) {
-                        updateStrategyBadge(message.strategyInfo);
-                    }
-                    break;
-                case 'error':
-                    hideThinking();
-                    addError(message.text);
-                    break;
-                case 'strategyStatus':
-                    strategyEnabled = message.enabled;
-                    strategyToggle.classList.toggle('active', strategyEnabled);
-                    updateStrategyBadge(message.info);
-                    if (message.currentModel) {
-                        modelBadge.textContent = message.currentModel;
-                    }
-                    // Update active strategy option
-                    const strategyType = extractStrategyType(message.info);
-                    if (strategyType) {
-                        currentStrategy = strategyType;
-                        strategyOptions.forEach(opt => {
-                            opt.classList.toggle('active', opt.dataset.strategy === strategyType);
-                        });
-                    }
-                    break;
-                case 'toolStarting':
-                    showToolNotification(\`🔧 \${message.toolName}\`, 'running');
-                    break;
-                case 'toolExecuted':
-                    if (message.success) {
-                        showToolNotification(\`✓ \${message.toolName} completed\`, 'success');
-                    } else {
-                        showToolNotification(\`✗ \${message.toolName} failed\`, 'error');
-                    }
-                    break;
-            }
+            app.handleMessage(event.data);
         });
 
-        function extractStrategyType(info) {
-            if (!info || info === 'Strategy disabled') return 'fixed';
-            if (info.includes('smart')) return 'smart';
-            if (info.includes('mixed')) return 'mixed';
-            if (info.includes('round-robin')) return 'round-robin';
-            return 'fixed';
-        }
-
-        function updateStrategyBadge(info) {
-            if (!strategyEnabled || !info || info === 'Strategy disabled') {
-                strategyBadge.textContent = 'No Strategy';
-                strategyBadge.style.opacity = '0.6';
-            } else {
-                const badges = {
-                    'smart': '🧠 Smart',
-                    'mixed': '🔄 Mixed',
-                    'round-robin': '🔁 Round Robin',
-                    'fixed': '📌 Fixed'
-                };
-                const type = extractStrategyType(info);
-                strategyBadge.textContent = badges[type] || info.split(':')[0];
-                strategyBadge.style.opacity = '1';
-            }
-        }
-
-        function updateStrategyUI() {
-            if (strategyEnabled) {
-                strategyBadge.style.opacity = '1';
-            } else {
-                strategyBadge.textContent = 'No Strategy';
-                strategyBadge.style.opacity = '0.6';
-            }
-        }
-
-        function addMessage(text, sender) {
-            // Remove welcome message if present
-            const welcome = messagesDiv.querySelector('.welcome-message');
-            if (welcome) {
-                welcome.remove();
-            }
-
-            const wrapper = document.createElement('div');
-            wrapper.className = \`message-wrapper \${sender}\`;
-
-            const header = document.createElement('div');
-            header.className = 'message-header';
-
-            const avatar = document.createElement('div');
-            avatar.className = \`avatar \${sender}\`;
-
-            if (sender === 'assistant') {
-                const img = document.createElement('img');
-                img.src = POE_LOGO;
-                img.alt = 'Poe';
-                avatar.appendChild(img);
-            } else {
-                avatar.textContent = 'U';
-            }
-
-            const senderName = document.createElement('span');
-            senderName.textContent = sender === 'user' ? 'You' : 'Poe Assistant';
-
-            header.appendChild(avatar);
-            header.appendChild(senderName);
-
-            const content = document.createElement('div');
-            content.className = 'message-content';
-            content.textContent = text;
-
-            wrapper.appendChild(header);
-            wrapper.appendChild(content);
-            messagesDiv.appendChild(wrapper);
-
-            scrollToBottom();
-        }
-
-        function addError(text) {
-            const error = document.createElement('div');
-            error.className = 'error-message';
-            error.textContent = '❌ Error: ' + text;
-            messagesDiv.appendChild(error);
-            scrollToBottom();
-        }
-
-        function showThinking() {
-            isThinking = true;
-            sendButton.disabled = true;
-            messageInput.disabled = true;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'message-wrapper assistant';
-            wrapper.id = 'thinking-message';
-
-            const header = document.createElement('div');
-            header.className = 'message-header';
-
-            const avatar = document.createElement('div');
-            avatar.className = 'avatar assistant';
-
-            const img = document.createElement('img');
-            img.src = POE_LOGO;
-            img.alt = 'Poe';
-            avatar.appendChild(img);
-
-            const senderName = document.createElement('span');
-            senderName.textContent = 'Poe Assistant';
-
-            header.appendChild(avatar);
-            header.appendChild(senderName);
-
-            const content = document.createElement('div');
-            content.className = 'message-content';
-
-            const thinking = document.createElement('div');
-            thinking.className = 'thinking';
-            thinking.innerHTML = '<div class="thinking-dot"></div><div class="thinking-dot"></div><div class="thinking-dot"></div>';
-
-            content.appendChild(thinking);
-            wrapper.appendChild(header);
-            wrapper.appendChild(content);
-            messagesDiv.appendChild(wrapper);
-
-            scrollToBottom();
-        }
-
-        function hideThinking() {
-            isThinking = false;
-            sendButton.disabled = false;
-            messageInput.disabled = false;
-
-            const thinkingMessage = document.getElementById('thinking-message');
-            if (thinkingMessage) {
-                thinkingMessage.remove();
-            }
-        }
-
-        function scrollToBottom() {
-            const container = document.getElementById('chat-container');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function showToolNotification(text, type = 'running') {
-            const notification = document.createElement('div');
-            notification.className = \`tool-notification \${type}\`;
-            notification.textContent = text;
-            document.body.appendChild(notification);
-
-            // Auto-remove after 3 seconds
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transform = 'translateX(400px)';
-                setTimeout(() => {
-                    notification.remove();
-                }, 300);
-            }, 3000);
-        }
+        vscode.postMessage({ type: 'getStrategyStatus' });
     </script>
 </body>
 </html>`;

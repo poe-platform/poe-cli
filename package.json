@@ -35,6 +35,7 @@
     "@types/node": "^20.12.7",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.2",
+    "jsdom": "^27.0.1",
     "memfs": "^4.7.3",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5",
