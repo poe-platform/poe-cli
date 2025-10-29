@@ -8,7 +8,11 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "npm run test:root && npm run test --prefix vscode-extension",
-    "test:root": "vitest run"
+    "test:root": "vitest run",
+    "build:extension": "npm run compile --prefix vscode-extension",
+    "lint": "eslint . --ext ts",
+    "format": "prettier --check .",
+    "format:write": "prettier --write ."
   },
   "bin": {
     "poe-setup": "dist/index.js",
@@ -40,6 +44,11 @@
     "memfs": "^4.7.3",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.1"
+    "vitest": "^1.5.1",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3"
   }
 }
