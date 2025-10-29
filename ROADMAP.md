@@ -1,6 +1,13 @@
 <!-- Must keep this document up to date -->
 # Roadmap
 
+## Dev Experience
+
+- [ ] Implement linter, prettier or something
+- [ ] Warning - The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+- [ ] command to build the extension from top level dir
+- [ ] improve commit guidelines in AGENTS.md - brief simple - the usual style feat...
+
 ## CLI
 
 - [x] Support for Roo Code docs/roo-code.md

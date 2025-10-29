@@ -9,6 +9,12 @@ export interface ToolExecutorDependencies {
   cwd: string;
   allowedPaths?: string[];
   mcpManager?: McpManager;
+  onWriteFile?: (details: {
+    absolutePath: string;
+    relativePath: string;
+    previousContent: string | null;
+    nextContent: string;
+  }) => void | Promise<void>;
 }
 
 export class DefaultToolExecutor implements ToolExecutor {
@@ -16,12 +22,14 @@ export class DefaultToolExecutor implements ToolExecutor {
   private cwd: string;
   private allowedPaths: string[];
   private mcpManager?: McpManager;
+  private onWriteFile?: ToolExecutorDependencies["onWriteFile"];
 
   constructor(dependencies: ToolExecutorDependencies) {
     this.fs = dependencies.fs;
     this.cwd = dependencies.cwd;
     this.allowedPaths = dependencies.allowedPaths || [dependencies.cwd];
     this.mcpManager = dependencies.mcpManager;
+    this.onWriteFile = dependencies.onWriteFile;
   }
 
   async executeTool(
@@ -98,9 +106,18 @@ export class DefaultToolExecutor implements ToolExecutor {
     const absolutePath = path.isAbsolute(filePath)
       ? filePath
       : path.join(this.cwd, filePath);
+    const previousContent = await this.tryReadFile(absolutePath);
 
     try {
       await this.fs.writeFile(absolutePath, content, { encoding: "utf8" });
+      if (this.onWriteFile) {
+        await this.onWriteFile({
+          absolutePath,
+          relativePath: path.relative(this.cwd, absolutePath),
+          previousContent,
+          nextContent: content
+        });
+      }
       return `Successfully wrote to ${filePath}`;
     } catch (error) {
       throw new Error(
@@ -188,6 +205,22 @@ export class DefaultToolExecutor implements ToolExecutor {
 
     // Placeholder for web search - in a real implementation, you'd integrate with a search API
     return `Web search functionality not yet implemented. Query: ${query}`;
+  }
+
+  private async tryReadFile(targetPath: string): Promise<string | null> {
+    try {
+      return await this.fs.readFile(targetPath, "utf8");
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error as { code?: string }).code === "ENOENT"
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 }
 

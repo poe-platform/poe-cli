@@ -242,11 +242,11 @@ function renderUnifiedDiff(
       continue;
     }
     if (line.startsWith("+")) {
-      lines.push(chalk.green(line));
+      lines.push(chalk.green(line[0] ?? "+") + line.slice(1));
       continue;
     }
     if (line.startsWith("-")) {
-      lines.push(chalk.red(line));
+      lines.push(chalk.red(line[0] ?? "-") + line.slice(1));
       continue;
     }
     if (line.startsWith("\\ No newline")) {

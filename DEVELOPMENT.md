@@ -56,21 +56,3 @@ import type { FileSystem } from "../src/utils/file-system.js";
 const volume = Volume.fromJSON({});
 const fs = createFsFromVolume(volume).promises as unknown as FileSystem;
 ```
-
-## Project Structure
-
-- `src/index.ts` – CLI entrypoint wiring `commander`, prompts, and dependencies.
-- `src/cli/program.ts` – command registration and shared wiring (dry-run orchestration).
-- `src/commands/` – feature-specific implementations (init, configure, query, etc.).
-- `src/services/` – service adapters (Claude Code, Codex) including backup logic.
-- `src/utils/` – shared helpers for backups, dry runs, templates, and filesystem abstractions.
-- `tests/` – Vitest suites mirroring the command/service structure.
-
-## Roadmap
-
-- [x] Replace backup-based removal with pure pattern matching for Claude Code and Codex.
-- [x] Introduce login/logout commands to securely store the Poe API key.
-- [x] Add a `test` command that pings the Poe EchoBot to validate credentials end-to-end.
-- [x] claude code should create/edit config json; see `docs/claude-code.md`.
-- [x] Add command `query <model> <text>` that queries the OpenAI-compatible API and echoes the response.
-- [x] Default `query` to Claude-Sonnet-4.5 with `--model` overrides.

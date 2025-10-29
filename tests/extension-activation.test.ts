@@ -72,6 +72,8 @@ describe("extension activation", () => {
     await activate(context as any);
 
     expect(showInformationMessage).not.toHaveBeenCalled();
+    expect(
+      registerCommand.mock.calls.some(([command]) => command === "poe-code.settings.openMcp")
+    ).toBe(true);
   });
 });
-
