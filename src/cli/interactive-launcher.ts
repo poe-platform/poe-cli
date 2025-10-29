@@ -3,20 +3,16 @@ import { render } from "ink";
 import { InteractiveCli } from "./interactive.js";
 import type { CliDependencies } from "./program.js";
 import path from "node:path";
-import { configureClaudeCode, registerClaudeCodePrerequisites } from "../services/claude-code.js";
-import { configureCodex } from "../services/codex.js";
-import { configureOpenCode } from "../services/opencode.js";
-import { initProject } from "../commands/init.js";
-import { loadCredentials, saveCredentials } from "../services/credentials.js";
-import { createPrerequisiteManager } from "../utils/prerequisites.js";
+import { loadCredentials } from "../services/credentials.js";
 import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
 import { McpManager } from "../services/mcp-manager.js";
+import { createInteractiveCommandExecutor } from "./interactive-command-runner.js";
 
 export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
-  const { fs, prompts, env } = dependencies;
+  const { fs, env } = dependencies;
   const credentialsPath = path.join(env.homeDir, ".poe-setup", "credentials.json");
 
   // Initialize MCP manager
@@ -49,22 +45,42 @@ export async function launchInteractiveMode(
   const cwdContext = `\n\nIMPORTANT: You are working in the directory: ${env.cwd}\nWhen accessing files, use relative paths from this directory (e.g., 'package.json', 'src/index.ts').\nPrefer using the built-in tools (read_file, write_file, list_files) over MCP tools for local file operations.`;
   systemPrompt = systemPrompt ? systemPrompt + cwdContext : cwdContext;
 
-  if (apiKey) {
+  const forwardToolCall = (event: {
+    toolName: string;
+    args: Record<string, unknown>;
+    result?: string;
+    error?: string;
+  }) => {
+    if (toolCallHandler) {
+      toolCallHandler(event.toolName, event.args, event.result, event.error);
+    }
+  };
+
+  async function initializeChatService(apiKeyValue: string): Promise<string> {
     const toolExecutor = new DefaultToolExecutor({
       fs,
       cwd: env.cwd,
       allowedPaths: [env.cwd, env.homeDir],
       mcpManager
     });
-
-    const onToolCall = (event: { toolName: string; args: Record<string, unknown>; result?: string; error?: string }) => {
-      if (toolCallHandler) {
-        toolCallHandler(event.toolName, event.args, event.result, event.error);
-      }
-    };
-
-    chatService = new PoeChatService(apiKey, "Claude-Sonnet-4.5", toolExecutor, onToolCall, systemPrompt);
+    chatService = new PoeChatService(
+      apiKeyValue,
+      "Claude-Sonnet-4.5",
+      toolExecutor,
+      forwardToolCall,
+      systemPrompt
+    );
+    return "Chat service initialized with Claude-Sonnet-4.5";
   }
+
+  if (apiKey) {
+    await initializeChatService(apiKey);
+  }
+
+  const commandExecutor = await createInteractiveCommandExecutor({
+    ...dependencies,
+    logger: () => {}
+  });
 
   const setToolCallHandler = (handler: typeof toolCallHandler) => {
     toolCallHandler = handler;
@@ -276,182 +292,25 @@ Example:
       }
     }
 
-    // Check for regular commands (non-chat)
-    const parts = trimmedInput.split(/\s+/);
-    const command = parts[0].toLowerCase();
-    const args = parts.slice(1);
-
-    switch (command) {
-      case "help":
-        return `Available commands:
-  configure <service> - Configure a service (claude-code, codex, opencode)
-  init <project-name> - Initialize a new project
-  login <api-key> - Store your Poe API key
-  logout - Remove stored API key
-  test - Test your API key
-  help - Show this help message
-  exit - Exit interactive mode
-
-Slash commands:
-  /model [model-name] - View or switch the current model
-  /strategy [type] - View or configure model selection strategy
-  /clear - Clear conversation history
-  /history - View conversation history
-  /tools - List all available tools (built-in + MCP)
-  /mcp - Manage MCP servers (add, remove, connect, etc.)
-
-Model Strategies:
-  /strategy - View current strategy
-  /strategy mixed - Alternate between GPT-5 and Claude-Sonnet-4.5
-  /strategy smart - Intelligently select based on task type
-  /strategy fixed <model> - Always use the same model
-  /strategy round-robin [models] - Cycle through models
-
-MCP (Model Context Protocol):
-  /mcp - List all MCP servers
-  /mcp add <name> <command> [args...] - Add MCP server
-  /mcp remove <name> - Remove MCP server
-  /mcp connect <name> - Connect to server
-  /mcp disconnect <name> - Disconnect from server
-
-Chat mode:
-  Type any message to chat with the current model
-  The model can use tools (built-in + MCP) to help you with tasks`;
-
-      case "configure": {
-        if (args.length === 0) {
-          return "Usage: configure <service>\nAvailable services: claude-code, codex, opencode";
+    // Attempt to run a CLI command through the shared executor
+    const parsedCommand = commandExecutor.identify(trimmedInput);
+    if (parsedCommand) {
+      let message = await commandExecutor.execute(parsedCommand);
+      if (parsedCommand.command === "login") {
+        const stored = await loadCredentials({ fs, filePath: credentialsPath });
+        if (stored) {
+          const chatMessage = await initializeChatService(stored);
+          message = message ? `${message}\n${chatMessage}` : chatMessage;
         }
-        const service = args[0];
-
-        try {
-          const apiKey = await loadCredentials({ fs, filePath: credentialsPath });
-          if (!apiKey && service !== "codex") {
-            return "No API key found. Please run 'login' first or provide an API key.";
-          }
-
-          const prerequisites = createPrerequisiteManager({
-            isDryRun: false,
-            runCommand: async (cmd, cmdArgs) => {
-              return { stdout: "", stderr: "", exitCode: 0 };
-            }
-          });
-
-          if (service === "claude-code") {
-            registerClaudeCodePrerequisites(prerequisites);
-            await prerequisites.run("before");
-            const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
-            await configureClaudeCode({ fs, apiKey: apiKey || "", settingsPath });
-            await prerequisites.run("after");
-            return `Successfully configured ${service}`;
-          } else if (service === "codex") {
-            const configPath = path.join(env.homeDir, ".codex", "config.toml");
-            await configureCodex({
-              fs,
-              configPath,
-              model: "gpt-5",
-              reasoningEffort: "medium"
-            });
-            return `Successfully configured ${service}`;
-          } else if (service === "opencode") {
-            const configPath = path.join(env.homeDir, ".config", "opencode", "config.json");
-            const authPath = path.join(env.homeDir, ".local", "share", "opencode", "auth.json");
-            await configureOpenCode({ fs, apiKey: apiKey || "", configPath, authPath });
-            return `Successfully configured ${service}`;
-          } else {
-            return `Unknown service: ${service}`;
-          }
-        } catch (error) {
-          throw new Error(`Failed to configure ${service}: ${error instanceof Error ? error.message : String(error)}`);
-        }
+      } else if (parsedCommand.command === "logout") {
+        chatService = null;
       }
+      const rendered = message ?? "";
+      return rendered.length > 0 ? rendered : "Command completed.";
+    }
 
-      case "init": {
-        if (args.length === 0) {
-          return "Usage: init <project-name>";
-        }
-        const projectName = args[0];
-
-        try {
-          const apiKey = await loadCredentials({ fs, filePath: credentialsPath });
-          if (!apiKey) {
-            return "No API key found. Please run 'login' first.";
-          }
-
-          await initProject({
-            fs,
-            cwd: env.cwd,
-            projectName,
-            apiKey,
-            model: "gpt-5"
-          });
-          return `Successfully initialized project "${projectName}"`;
-        } catch (error) {
-          throw new Error(`Failed to initialize project: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-
-      case "login": {
-        if (args.length === 0) {
-          return "Usage: login <api-key>";
-        }
-        const newApiKey = args.join(" ");
-
-        try {
-          await saveCredentials({ fs, filePath: credentialsPath, apiKey: newApiKey });
-
-          // Initialize chat service with the new API key and MCP manager
-          const toolExecutor = new DefaultToolExecutor({
-            fs,
-            cwd: env.cwd,
-            allowedPaths: [env.cwd, env.homeDir],
-            mcpManager
-          });
-
-          const onToolCall = (event: { toolName: string; args: Record<string, unknown>; result?: string; error?: string }) => {
-            if (toolCallHandler) {
-              toolCallHandler(event.toolName, event.args, event.result, event.error);
-            }
-          };
-
-          // Add working directory context to system prompt
-          const loginSystemPrompt = `You are working in the directory: ${env.cwd}\nWhen accessing files, use relative paths from this directory.\nPrefer using the built-in tools (read_file, write_file, list_files) over MCP tools for local file operations.`;
-
-          chatService = new PoeChatService(newApiKey, "Claude-Sonnet-4.5", toolExecutor, onToolCall, loginSystemPrompt);
-
-          return `API key saved successfully to ${credentialsPath}\nChat service initialized with Claude-Sonnet-4.5`;
-        } catch (error) {
-          throw new Error(`Failed to save API key: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-
-      case "logout": {
-        try {
-          const exists = await loadCredentials({ fs, filePath: credentialsPath });
-          if (!exists) {
-            return "No API key found.";
-          }
-          await fs.unlink(credentialsPath);
-          return "API key removed successfully";
-        } catch (error) {
-          throw new Error(`Failed to remove API key: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-
-      case "test": {
-        const apiKey = await loadCredentials({ fs, filePath: credentialsPath });
-        if (!apiKey) {
-          return "No API key found. Please run 'login' first.";
-        }
-        return "API key verification not yet implemented in interactive mode. Use 'poe-setup test' instead.";
-      }
-
-      case "query":
-        // Fall through to default case for chat
-
-      default:
-        // If chat service is initialized, treat this as a chat message
-        if (chatService) {
+    // If chat service is initialized, treat this as a chat message
+    if (chatService) {
           try {
             // Process @file mentions
             let processedInput = trimmedInput;
@@ -488,9 +347,8 @@ Chat mode:
               `Chat error: ${error instanceof Error ? error.message : String(error)}`
             );
           }
-        } else {
-          return `Please login first with: login <api-key>\n\nOr use one of these commands:\n- help\n- configure <service>\n- init <project-name>`;
-        }
+    } else {
+      return `Please login first with: login <api-key>\n\nOr use one of these commands:\n- help\n- configure <service>\n- init <project-name>`;
     }
   };
 
