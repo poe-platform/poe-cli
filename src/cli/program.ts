@@ -7,17 +7,20 @@ import {
   configureClaudeCode,
   installClaudeCode,
   registerClaudeCodePrerequisites,
-  removeClaudeCode
+  removeClaudeCode,
+  spawnClaudeCode
 } from "../services/claude-code.js";
 import {
   configureCodex,
   installCodex,
-  removeCodex
+  removeCodex,
+  spawnCodex
 } from "../services/codex.js";
 import {
   configureOpenCode,
   installOpenCode,
-  removeOpenCode
+  removeOpenCode,
+  spawnOpenCode
 } from "../services/opencode.js";
 import { configureRooCode, removeRooCode } from "../services/roo-code.js";
 import {
@@ -469,6 +472,86 @@ export function createProgram(dependencies: CliDependencies): Command {
     throw new Error(`Unknown service "${service}".`);
   }
 
+  async function spawnService(
+    service: string,
+    promptText: string,
+    agentArgs: string[]
+  ): Promise<void> {
+    const opts = program.optsWithGlobals();
+    const isDryRun = Boolean(opts.dryRun);
+    const isVerbose = Boolean(opts.verbose);
+    const commandRunnerForContext = isVerbose
+      ? createLoggingCommandRunner(commandRunner, logger)
+      : commandRunner;
+    const context = createCommandContext({
+      baseFs,
+      isDryRun,
+      logger,
+      runCommand: commandRunnerForContext
+    });
+
+    const descriptor = SERVICE_LABELS[service as keyof typeof SERVICE_LABELS];
+    if (!descriptor) {
+      throw new Error(`Unknown service "${service}".`);
+    }
+    if (service !== "claude-code" && service !== "codex" && service !== "opencode") {
+      throw new Error(`${descriptor} does not support spawn.`);
+    }
+
+    const forwardedArgs = agentArgs ?? [];
+    if (isDryRun) {
+      const extra =
+        forwardedArgs.length > 0 ? ` with args ${JSON.stringify(forwardedArgs)}` : "";
+      logger(
+        `Dry run: would spawn ${descriptor} with prompt "${promptText}"${extra}.`
+      );
+      return;
+    }
+
+    let result: CommandRunnerResult;
+    if (service === "claude-code") {
+      result = await spawnClaudeCode({
+        prompt: promptText,
+        args: forwardedArgs,
+        runCommand: context.runCommand
+      });
+    } else if (service === "codex") {
+      result = await spawnCodex({
+        prompt: promptText,
+        args: forwardedArgs,
+        runCommand: context.runCommand
+      });
+    } else {
+      result = await spawnOpenCode({
+        prompt: promptText,
+        args: forwardedArgs,
+        runCommand: context.runCommand
+      });
+    }
+
+    if (result.exitCode !== 0) {
+      const detail = result.stderr.trim() || result.stdout.trim();
+      const suffix = detail ? `: ${detail}` : "";
+      throw new Error(
+        `${descriptor} spawn failed with exit code ${result.exitCode}${suffix}`
+      );
+    }
+
+    const trimmedStdout = result.stdout.trim();
+    if (trimmedStdout) {
+      logger(trimmedStdout);
+      return;
+    }
+
+    const trimmedStderr = result.stderr.trim();
+    if (trimmedStderr) {
+      logger(trimmedStderr);
+      return;
+    }
+
+    logger(`${descriptor} spawn completed.`);
+  }
+
   program.action(async () => {
     const serviceIds = Object.keys(SERVICE_LABELS);
     if (serviceIds.length === 0) {
@@ -887,6 +970,25 @@ export function createProgram(dependencies: CliDependencies): Command {
 
       throw new Error(`Unknown service "${service}".`);
     });
+
+  program
+    .command("spawn")
+    .description("Run a single prompt through a configured service CLI.")
+    .argument(
+      "<service>",
+      "Service to spawn (claude-code | codex | opencode)"
+    )
+    .argument("<prompt>", "Prompt text to send")
+    .argument("[agentArgs...]", "Additional arguments forwarded to the service CLI")
+    .action(
+      async (
+        service: string,
+        promptText: string,
+        agentArgs: string[] = []
+      ) => {
+        await spawnService(service, promptText, agentArgs ?? []);
+      }
+    );
 
   program
     .command("interactive")

@@ -1,6 +1,10 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult,
+  PrerequisiteDefinition
+} from "../utils/prerequisites.js";
 import {
   createBackupMutation,
   ensureDirectory,
@@ -31,6 +35,12 @@ export interface ConfigureCodexOptions {
 export interface RemoveCodexOptions {
   fs: FileSystem;
   configPath: string;
+}
+
+export interface SpawnCodexOptions {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
 }
 
 const CODEX_PROVIDER_ID = "poe";
@@ -244,6 +254,13 @@ export async function configureCodex(
     },
     runOptions
   );
+}
+
+export async function spawnCodex(
+  options: SpawnCodexOptions
+): Promise<CommandRunnerResult> {
+  const args = ["--prompt", options.prompt, ...(options.args ?? [])];
+  return options.runCommand("codex", args);
 }
 
 export async function removeCodex(

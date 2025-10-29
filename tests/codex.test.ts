@@ -1,11 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
-import {
-  configureCodex,
-  removeCodex
-} from "../src/services/codex.js";
+import * as codexService from "../src/services/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
@@ -27,7 +24,7 @@ describe("codex service", () => {
   });
 
   it("writes codex config from template", async () => {
-    await configureCodex({
+    await codexService.configureCodex({
       fs,
       configPath,
       model: "gpt-5",
@@ -48,7 +45,7 @@ describe("codex service", () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(configPath, "original", { encoding: "utf8" });
 
-    await configureCodex({
+    await codexService.configureCodex({
       fs,
       configPath,
       model: "gpt-5",
@@ -61,14 +58,14 @@ describe("codex service", () => {
       "legacy",
       { encoding: "utf8" }
     );
-    const removed = await removeCodex({ fs, configPath });
+    const removed = await codexService.removeCodex({ fs, configPath });
     expect(removed).toBe(true);
 
     await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
   });
 
   it("deletes config when content matches template", async () => {
-    await configureCodex({
+    await codexService.configureCodex({
       fs,
       configPath,
       model: "gpt-5",
@@ -76,7 +73,7 @@ describe("codex service", () => {
       timestamp: () => "20240101T000000"
     });
 
-    const removed = await removeCodex({ fs, configPath });
+    const removed = await codexService.removeCodex({ fs, configPath });
     expect(removed).toBe(true);
 
     await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
@@ -88,7 +85,7 @@ describe("codex service", () => {
       encoding: "utf8"
     });
 
-    const removed = await removeCodex({ fs, configPath });
+    const removed = await codexService.removeCodex({ fs, configPath });
     expect(removed).toBe(false);
 
     const content = await fs.readFile(configPath, "utf8");
@@ -117,7 +114,7 @@ describe("codex service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await removeCodex({ fs, configPath });
+    const removed = await codexService.removeCodex({ fs, configPath });
     expect(removed).toBe(true);
 
     const content = await fs.readFile(configPath, "utf8");
@@ -128,7 +125,7 @@ describe("codex service", () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(configPath, "legacy-config", { encoding: "utf8" });
 
-    await configureCodex({
+    await codexService.configureCodex({
       fs,
       configPath,
       model: "gpt-5",
@@ -153,7 +150,7 @@ describe("codex service", () => {
       { encoding: "utf8" }
     );
 
-    await configureCodex({
+    await codexService.configureCodex({
       fs,
       configPath,
       model: "gpt-5",
@@ -183,5 +180,31 @@ describe("codex service", () => {
     );
     expect(backupContent.trim()).toContain('model_provider = "legacy"');
     expect(backupContent.trim()).toContain("[features]");
+  });
+
+  it("spawns the codex CLI with the provided prompt and args", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "codex-output\n",
+      stderr: "",
+      exitCode: 0
+    }));
+
+    const result = await codexService.spawnCodex({
+      prompt: "Describe the codebase",
+      args: ["--output", "json"],
+      runCommand
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("codex", [
+      "--prompt",
+      "Describe the codebase",
+      "--output",
+      "json"
+    ]);
+    expect(result).toEqual({
+      stdout: "codex-output\n",
+      stderr: "",
+      exitCode: 0
+    });
   });
 });

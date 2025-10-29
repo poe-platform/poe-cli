@@ -1,6 +1,8 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
+  CommandRunner,
+  CommandRunnerResult,
   PrerequisiteDefinition,
   PrerequisiteManager
 } from "../utils/prerequisites.js";
@@ -106,6 +108,12 @@ export interface RemoveClaudeCodeOptions {
   keyHelperPath: string;
 }
 
+export interface SpawnClaudeCodeOptions {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+}
+
 function createChmodMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
   return {
     kind: "transformFile",
@@ -148,6 +156,13 @@ export async function configureClaudeCode(
     },
     runOptions
   );
+}
+
+export async function spawnClaudeCode(
+  options: SpawnClaudeCodeOptions
+): Promise<CommandRunnerResult> {
+  const args = ["-p", options.prompt, ...(options.args ?? [])];
+  return options.runCommand("claude", args);
 }
 
 export async function removeClaudeCode(
@@ -195,12 +210,11 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
     id: "claude-cli-health",
     description: "Claude CLI health check must succeed",
     async run({ runCommand }) {
-      const result = await runCommand("claude", [
-        "-p",
-        "Output exactly: CLAUDE_CODE_OK",
-        "--output-format",
-        "text"
-      ]);
+      const result = await spawnClaudeCode({
+        prompt: "Output exactly: CLAUDE_CODE_OK",
+        args: ["--output-format", "text"],
+        runCommand
+      });
       if (result.exitCode !== 0) {
         throw new Error(
           `Claude CLI health check failed with exit code ${result.exitCode}.`

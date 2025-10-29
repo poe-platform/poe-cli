@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
-import { configureOpenCode } from "../src/services/opencode.js";
+import * as opencodeService from "../src/services/opencode.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -29,7 +29,7 @@ describe("opencode service", () => {
   });
 
   it("creates the opencode config and auth files", async () => {
-    await configureOpenCode({
+    await opencodeService.configureOpenCode({
       fs,
       configPath,
       authPath,
@@ -85,7 +85,7 @@ describe("opencode service", () => {
       )
     );
 
-    await configureOpenCode({
+    await opencodeService.configureOpenCode({
       fs,
       configPath,
       authPath,
@@ -128,7 +128,7 @@ describe("opencode service", () => {
       )
     );
 
-    await configureOpenCode({
+    await opencodeService.configureOpenCode({
       fs,
       configPath,
       authPath,
@@ -145,6 +145,32 @@ describe("opencode service", () => {
         type: "api",
         key: "openai-key"
       }
+    });
+  });
+
+  it("spawns the opencode CLI with the provided prompt and args", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "opencode-output\n",
+      stderr: "",
+      exitCode: 0
+    }));
+
+    const result = await opencodeService.spawnOpenCode({
+      prompt: "List all files",
+      args: ["--format", "markdown"],
+      runCommand
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("opencode", [
+      "prompt",
+      "List all files",
+      "--format",
+      "markdown"
+    ]);
+    expect(result).toEqual({
+      stdout: "opencode-output\n",
+      stderr: "",
+      exitCode: 0
     });
   });
 });

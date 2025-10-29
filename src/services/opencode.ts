@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult,
+  PrerequisiteDefinition
+} from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -60,6 +64,12 @@ export interface RemoveOpenCodeOptions {
   fs: FileSystem;
   configPath: string;
   authPath: string;
+}
+
+export interface SpawnOpenCodeOptions {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
 }
 
 const OPEN_CODE_MANIFEST: ServiceManifest<
@@ -141,6 +151,13 @@ export async function configureOpenCode(
     },
     runOptions
   );
+}
+
+export async function spawnOpenCode(
+  options: SpawnOpenCodeOptions
+): Promise<CommandRunnerResult> {
+  const args = ["prompt", options.prompt, ...(options.args ?? [])];
+  return options.runCommand("opencode", args);
 }
 
 export async function removeOpenCode(

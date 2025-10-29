@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
-import {
-  configureClaudeCode,
-  removeClaudeCode,
-  registerClaudeCodePrerequisites
-} from "../src/services/claude-code.js";
+import * as claudeService from "../src/services/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
@@ -53,7 +49,11 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
+    const removed = await claudeService.removeClaudeCode({
+      fs,
+      settingsPath,
+      keyHelperPath
+    });
     expect(removed).toBe(true);
 
     const content = await fs.readFile(settingsPath, "utf8");
@@ -89,7 +89,11 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
+    const removed = await claudeService.removeClaudeCode({
+      fs,
+      settingsPath,
+      keyHelperPath
+    });
     expect(removed).toBe(true);
 
     await expect(fs.readFile(settingsPath, "utf8")).rejects.toThrow();
@@ -97,12 +101,16 @@ describe("claude-code service", () => {
   });
 
   it("removeClaudeCode returns false when settings file absent", async () => {
-    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
+    const removed = await claudeService.removeClaudeCode({
+      fs,
+      settingsPath,
+      keyHelperPath
+    });
     expect(removed).toBe(false);
   });
 
   it("creates settings json with claude env configuration", async () => {
-    await configureClaudeCode({
+    await claudeService.configureClaudeCode({
       fs,
       apiKey,
       settingsPath,
@@ -146,7 +154,7 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    await configureClaudeCode({
+    await claudeService.configureClaudeCode({
       fs,
       apiKey,
       settingsPath,
@@ -173,6 +181,32 @@ describe("claude-code service", () => {
     );
   });
 
+  it("spawns the claude CLI with the provided prompt and args", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "hello\n",
+      stderr: "",
+      exitCode: 0
+    }));
+
+    const result = await claudeService.spawnClaudeCode({
+      prompt: "Test prompt",
+      args: ["--output-format", "text"],
+      runCommand
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("claude", [
+      "-p",
+      "Test prompt",
+      "--output-format",
+      "text"
+    ]);
+    expect(result).toEqual({
+      stdout: "hello\n",
+      stderr: "",
+      exitCode: 0
+    });
+  });
+
   it("registers prerequisite checks for the Claude CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
@@ -190,7 +224,7 @@ describe("claude-code service", () => {
       runCommand
     });
 
-    registerClaudeCodePrerequisites(manager);
+    claudeService.registerClaudeCodePrerequisites(manager);
     await manager.run("before");
     await manager.run("after");
 
