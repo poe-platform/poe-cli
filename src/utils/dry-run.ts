@@ -230,7 +230,9 @@ function renderUnifiedDiff(
     "",
     { context: 3 }
   );
-  const diffLines = patch.split("\n").filter((line) => line.length > 0);
+  const diffLines = patch
+    .split("\n")
+    .filter((line: string) => line.length > 0);
   const lines: string[] = [];
   for (const line of diffLines) {
     if (line.startsWith("---") || line.startsWith("+++")) {

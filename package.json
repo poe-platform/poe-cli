@@ -10,11 +10,13 @@
     "test": "npm run test:root && npm run test --prefix vscode-extension",
     "test:root": "vitest run",
     "build:extension": "npm run compile --prefix vscode-extension",
-    "lint": "eslint . --ext ts",
+    "lint": "npm run lint:eslint && npm run lint:types",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "watch": "tsx watch src/index.ts",
-    "watch:extension": "npm run watch --prefix vscode-extension"
+    "watch:extension": "npm run watch --prefix vscode-extension",
+    "lint:eslint": "eslint . --ext ts",
+    "lint:types": "tsc -p tsconfig.build.json --noEmit && npm run typecheck --prefix vscode-extension"
   },
   "bin": {
     "poe-setup": "dist/index.js",
@@ -39,18 +41,19 @@
     "react": "^19.2.0"
   },
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/node": "^20.12.7",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.2",
-    "jsdom": "^27.0.1",
-    "memfs": "^4.7.3",
-    "tsx": "^4.7.1",
-    "typescript": "^5.4.5",
-    "vitest": "^1.5.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.3.3"
+    "jsdom": "^27.0.1",
+    "memfs": "^4.7.3",
+    "prettier": "^3.3.3",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.1"
   }
 }

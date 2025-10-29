@@ -142,7 +142,8 @@
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
     "lint": "eslint src --ext ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc -p ./ --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
