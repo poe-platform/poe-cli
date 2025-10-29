@@ -1,0 +1,236 @@
+export interface ChatService {
+  getModel(): string;
+  sendMessage(text: string, tools: unknown[]): Promise<any>;
+  clearHistory(): void;
+  isStrategyEnabled(): boolean;
+  getStrategyInfo(): string;
+  setStrategy?(config: unknown): void;
+  enableStrategy?(): void;
+  disableStrategy?(): void;
+  setModel?(model: string): void;
+}
+
+export interface WebviewLike {
+  postMessage(message: unknown): Thenable<boolean> | boolean;
+}
+
+interface UiAdapter {
+  info(message: string): void;
+  error(message: string): void;
+}
+
+interface CreateWebviewControllerOptions {
+  chatService: ChatService;
+  webview: WebviewLike;
+  renderMarkdown: (markdown: string) => string;
+  availableTools: unknown[];
+  openSettings?: () => Promise<void> | void;
+  ui?: UiAdapter;
+  onUserMessage?: (details: { id: string; text: string }) => void;
+  onAssistantMessage?: (details: { id: string; text: string }) => void;
+  onClearHistory?: () => void;
+}
+
+export interface WebviewController {
+  handleWebviewMessage(message: unknown): Promise<void>;
+  post(message: unknown): void;
+  setAvailableTools(tools: unknown[]): void;
+}
+
+export function createWebviewController(
+  options: CreateWebviewControllerOptions
+): WebviewController {
+  let tools = [...options.availableTools];
+
+  function post(message: unknown): void {
+    options.webview.postMessage(message);
+  }
+
+  function strategySnapshot() {
+    return {
+      type: "strategyStatus",
+      enabled: options.chatService.isStrategyEnabled(),
+      info: options.chatService.isStrategyEnabled()
+        ? options.chatService.getStrategyInfo()
+        : "Strategy disabled",
+      currentModel: options.chatService.getModel(),
+    };
+  }
+
+  async function handleSendMessage(payload: any): Promise<void> {
+    if (!payload || typeof payload.text !== "string") {
+      return;
+    }
+    const trimmed = payload.text.trim();
+    if (!trimmed.length) {
+      return;
+    }
+
+    const messageId =
+      typeof payload.id === "string" && payload.id.length > 0
+        ? payload.id
+        : `m-${Date.now()}`;
+
+    post({ type: "thinking", value: true });
+    post({
+      type: "message",
+      role: "user",
+      id: messageId,
+      html: options.renderMarkdown(trimmed),
+      model: options.chatService.getModel(),
+    });
+    options.onUserMessage?.({ id: messageId, text: trimmed });
+
+    try {
+      const rawResponse = await options.chatService.sendMessage(trimmed, tools);
+      const responseId =
+        (rawResponse && typeof rawResponse.id === "string" && rawResponse.id) ||
+        `assistant-${Date.now()}`;
+      const content =
+        (rawResponse &&
+          typeof rawResponse.content === "string" &&
+          rawResponse.content) ||
+        rawResponse?.choices?.[0]?.message?.content ||
+        "No response from model";
+
+      post({
+        type: "message",
+        role: "assistant",
+        id: responseId,
+        html: options.renderMarkdown(content),
+        model: options.chatService.getModel(),
+        strategyInfo: options.chatService.isStrategyEnabled()
+          ? options.chatService.getStrategyInfo()
+          : null,
+      });
+      options.onAssistantMessage?.({ id: responseId, text: content });
+    } catch (error) {
+      const text =
+        error instanceof Error ? error.message : String(error ?? "Unknown");
+      post({
+        type: "error",
+        text,
+      });
+      options.ui?.error(text);
+    } finally {
+      post({ type: "thinking", value: false });
+    }
+  }
+
+  async function handleClearHistory(): Promise<void> {
+    options.chatService.clearHistory();
+    post({ type: "historyCleared" });
+    options.onClearHistory?.();
+  }
+
+  async function handleGetStrategy(): Promise<void> {
+    post(strategySnapshot());
+  }
+
+  async function handleSetStrategy(payload: any): Promise<void> {
+    if (!options.chatService.setStrategy) {
+      return;
+    }
+    try {
+      options.chatService.setStrategy(payload?.config);
+      post(strategySnapshot());
+      options.ui?.info("Strategy updated successfully!");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "Unknown");
+      options.ui?.error(`Failed to set strategy: ${message}`);
+    }
+  }
+
+  async function handleToggleStrategy(payload: any): Promise<void> {
+    const enabled = Boolean(payload?.enabled);
+    if (enabled) {
+      options.chatService.enableStrategy?.();
+    } else {
+      options.chatService.disableStrategy?.();
+    }
+    post(strategySnapshot());
+  }
+
+  async function handleSetModel(payload: any): Promise<void> {
+    if (!options.chatService.setModel) {
+      return;
+    }
+    const model =
+      typeof payload?.model === "string" ? payload.model.trim() : "";
+    if (!model.length) {
+      return;
+    }
+    options.chatService.setModel(model);
+    post({
+      type: "modelChanged",
+      model: options.chatService.getModel(),
+    });
+  }
+
+  async function handleOpenSettings(): Promise<void> {
+    await options.openSettings?.();
+  }
+
+  async function handleInfo(payload: any): Promise<void> {
+    const text = typeof payload?.text === "string" ? payload.text : "";
+    if (text.length === 0) {
+      return;
+    }
+    options.ui?.info(text);
+  }
+
+  async function handleError(payload: any): Promise<void> {
+    const text = typeof payload?.text === "string" ? payload.text : "";
+    if (text.length === 0) {
+      return;
+    }
+    options.ui?.error(text);
+  }
+
+  async function handleWebviewMessage(message: unknown): Promise<void> {
+    const payload = message ?? {};
+    const type = typeof (payload as any).type === "string" ? (payload as any).type : "";
+    switch (type) {
+      case "sendMessage":
+        await handleSendMessage(payload);
+        break;
+      case "clearHistory":
+        await handleClearHistory();
+        break;
+      case "getStrategyStatus":
+        await handleGetStrategy();
+        break;
+      case "setStrategy":
+        await handleSetStrategy(payload);
+        break;
+      case "toggleStrategy":
+        await handleToggleStrategy(payload);
+        break;
+      case "setModel":
+        await handleSetModel(payload);
+        break;
+      case "openSettings":
+        await handleOpenSettings();
+        break;
+      case "info":
+        await handleInfo(payload);
+        break;
+      case "error":
+        await handleError(payload);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return {
+    async handleWebviewMessage(message: unknown) {
+      await handleWebviewMessage(message);
+    },
+    post,
+    setAvailableTools(nextTools: unknown[]) {
+      tools = [...nextTools];
+    },
+  };
+}

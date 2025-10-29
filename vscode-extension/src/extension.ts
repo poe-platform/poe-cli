@@ -6,20 +6,64 @@ import { renderModelSelector } from './webview/model-selector.js';
 import { renderMarkdown } from './webview/markdown.js';
 import { renderDiffPreview } from './webview/diff-preview.js';
 import { initializeWebviewApp } from './webview/runtime.js';
+import { createWebviewController, type WebviewController } from './webview/controller.js';
 import { ChatState } from './state/chat-state.js';
 import { loadProviderSettings } from './config/provider-settings.js';
 import type { ProviderSetting } from './config/provider-settings.js';
 import { openMcpSettings } from './commands/open-mcp-settings.js';
 
+interface ActiveWebview {
+    kind: 'panel' | 'sidebar';
+    webview: vscode.Webview;
+    controller: WebviewController;
+}
+
+const activeWebviews = new Set<ActiveWebview>();
+
 let currentTerminal: vscode.Terminal | undefined = undefined;
 let currentPanel: vscode.WebviewPanel | undefined = undefined;
-let chatService: any | undefined = undefined;
-let availableTools: any[] = [];
-let toolExecutor: any | undefined = undefined;
+let chatRuntime:
+    | {
+        service: any;
+        availableTools: any[];
+        toolExecutor: any;
+    }
+    | null = null;
+let cachedCredentials: { apiKey: string } | null = null;
 const chatState = new ChatState();
+
+function broadcastToWebviews(message: unknown): void {
+    for (const target of activeWebviews) {
+        target.controller.post(message);
+    }
+}
+
+function updateControllersTools(tools: any[]): void {
+    for (const target of activeWebviews) {
+        target.controller.setAvailableTools(tools);
+    }
+}
+
+function registerActiveWebview(entry: ActiveWebview): void {
+    activeWebviews.add(entry);
+}
+
+function removeActiveWebview(webview: vscode.Webview): void {
+    for (const entry of Array.from(activeWebviews)) {
+        if (entry.webview === webview) {
+            activeWebviews.delete(entry);
+        }
+    }
+}
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Poe Code extension is now active');
+
+    const sidebarProvider = new PoeSidebarProvider(context);
+
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider('poeCodeSidebar', sidebarProvider)
+    );
 
     // Register the open in editor (new tab) command
     const openEditorCommand = vscode.commands.registerCommand('poe-code.editor.open', () => {
@@ -28,7 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register the open in sidebar command
     const openSidebarCommand = vscode.commands.registerCommand('poe-code.sidebar.open', () => {
-        vscode.window.showInformationMessage('Sidebar view coming soon! Use "Open in New Tab" for now.');
+        sidebarProvider.reveal();
     });
 
     // Register the open terminal command
@@ -145,7 +189,11 @@ async function loadModules(): Promise<{ chatModule: any; toolsModule: any; baseD
     return { chatModule, toolsModule, baseDir: foundBasePath || '' };
 }
 
-async function loadChatService(apiKey: string, model: string): Promise<any> {
+async function createChatRuntime(apiKey: string, model: string): Promise<{
+    service: any;
+    availableTools: any[];
+    toolExecutor: any;
+}> {
     try {
         const { chatModule, toolsModule } = await loadModules();
 
@@ -159,29 +207,26 @@ async function loadChatService(apiKey: string, model: string): Promise<any> {
             readdir: (dirPath: string) => fs.promises.readdir(dirPath),
         };
 
-        const emitDiffPreview = async (details: {
+        const emitDiffPreview = (details: {
             absolutePath: string;
             relativePath: string;
             previousContent: string | null;
             nextContent: string;
         }) => {
-            if (!currentPanel) {
-                return;
-            }
             const diffHtml = renderDiffPreview({
                 previous: details.previousContent ?? "",
                 next: details.nextContent,
                 filename: details.relativePath || path.basename(details.absolutePath),
                 language: detectLanguage(details.absolutePath)
             });
-            currentPanel.webview.postMessage({
+            broadcastToWebviews({
                 type: 'diffPreview',
                 html: diffHtml
             });
         };
 
         // Create tool executor
-        toolExecutor = new toolsModule.DefaultToolExecutor({
+        const toolExecutor = new toolsModule.DefaultToolExecutor({
             fs: fileSystem,
             cwd: cwd,
             allowedPaths: [cwd],
@@ -189,101 +234,154 @@ async function loadChatService(apiKey: string, model: string): Promise<any> {
         });
 
         // Get available tools
-        availableTools = toolsModule.getAvailableTools();
+        const availableTools = toolsModule.getAvailableTools();
         console.log(`[Poe Code] Loaded ${availableTools.length} tools`);
 
         // Create tool callback to notify about tool usage
         const toolCallback = (event: any) => {
-            if (currentPanel) {
-                if (event.result) {
-                    console.log(`[Poe Code] Tool executed: ${event.toolName}`);
-                    // Tool execution completed successfully
-                    currentPanel.webview.postMessage({
-                        type: 'toolExecuted',
-                        toolName: event.toolName,
-                        args: event.args,
-                        success: true
-                    });
-                } else if (event.error) {
-                    console.error(`[Poe Code] Tool error: ${event.toolName} - ${event.error}`);
-                    // Tool execution failed
-                    currentPanel.webview.postMessage({
-                        type: 'toolExecuted',
-                        toolName: event.toolName,
-                        args: event.args,
-                        success: false,
-                        error: event.error
-                    });
-                } else {
-                    console.log(`[Poe Code] Tool starting: ${event.toolName}`);
-                    // Tool execution starting
-                    currentPanel.webview.postMessage({
-                        type: 'toolStarting',
-                        toolName: event.toolName,
-                        args: event.args
-                    });
-                }
+            if (event.result) {
+                console.log(`[Poe Code] Tool executed: ${event.toolName}`);
+                broadcastToWebviews({
+                    type: 'toolExecuted',
+                    toolName: event.toolName,
+                    args: event.args,
+                    success: true
+                });
+            } else if (event.error) {
+                console.error(`[Poe Code] Tool error: ${event.toolName} - ${event.error}`);
+                broadcastToWebviews({
+                    type: 'toolExecuted',
+                    toolName: event.toolName,
+                    args: event.args,
+                    success: false,
+                    error: event.error
+                });
+            } else {
+                console.log(`[Poe Code] Tool starting: ${event.toolName}`);
+                broadcastToWebviews({
+                    type: 'toolStarting',
+                    toolName: event.toolName,
+                    args: event.args
+                });
             }
         };
 
         // Create chat service with tool executor and callback
         const service = new chatModule.PoeChatService(apiKey, model, toolExecutor, toolCallback);
 
-        return service;
+        return { service, availableTools, toolExecutor };
     } catch (error) {
         throw new Error(`Failed to initialize chat service: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
+async function ensureChatRuntime(apiKey: string, model: string) {
+    if (!chatRuntime) {
+        chatRuntime = await createChatRuntime(apiKey, model);
+        updateControllersTools(chatRuntime.availableTools);
+    }
+    return chatRuntime;
+}
+
+async function attachPoeWebview(
+    kind: 'panel' | 'sidebar',
+    context: vscode.ExtensionContext,
+    webview: vscode.Webview
+): Promise<vscode.Disposable | null> {
+    const configuration = vscode.workspace.getConfiguration('poeCode');
+    const defaultModel = configuration.get<string>('defaultModel') || 'Claude-Sonnet-4.5';
+    const credentials = await ensurePoeCredentials();
+
+    if (!credentials) {
+        webview.html = getMissingCredentialsContent();
+        return null;
+    }
+
+    const runtime = await ensureChatRuntime(credentials.apiKey, defaultModel);
+
+    const providerSettings = await loadProviderSettings(context.extensionUri.fsPath);
+    const currentModel = runtime.service?.getModel?.() ?? defaultModel;
+    const modelOptions = Array.from(
+        new Set(
+            [
+                currentModel,
+                ...providerSettings.map((provider) => provider.label)
+            ].filter(Boolean)
+        )
+    ) as string[];
+
+    const logoUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'poe-bw.svg')
+    ).toString();
+
+    const appShellHtml = renderAppShell({
+        logoUrl: logoUri,
+        models: modelOptions,
+        activeModel: currentModel
+    });
+    const modelSelectorHtml = renderModelSelector({
+        models: modelOptions,
+        selected: currentModel
+    });
+
+    webview.html = getWebviewContent(webview, {
+        logoUri,
+        appShellHtml,
+        modelSelectorHtml,
+        providerSettings,
+        defaultModel: currentModel
+    });
+
+    const controller = createWebviewController({
+        chatService: runtime.service,
+        webview,
+        renderMarkdown,
+        availableTools: runtime.availableTools,
+        openSettings: () => vscode.commands.executeCommand('poe-code.settings.openMcp'),
+        ui: {
+            info: (message) => vscode.window.showInformationMessage(message),
+            error: (message) => vscode.window.showErrorMessage(message)
+        },
+        onUserMessage: ({ id, text }) => {
+            chatState.append({
+                id,
+                role: 'user',
+                content: text
+            });
+        },
+        onAssistantMessage: ({ id, text }) => {
+            chatState.append({
+                id,
+                role: 'assistant',
+                content: text
+            });
+        },
+        onClearHistory: () => {
+            chatState.clear();
+        }
+    });
+
+    const subscription = webview.onDidReceiveMessage(async (message) => {
+        await controller.handleWebviewMessage(message);
+    });
+
+    registerActiveWebview({
+        kind,
+        webview,
+        controller
+    });
+
+    return subscription;
+}
+
 async function openPoeInEditor(context: vscode.ExtensionContext) {
-    // If panel already exists and is still open, show it
     if (currentPanel) {
         currentPanel.reveal(vscode.ViewColumn.One);
         return;
     }
 
-    const configuration = vscode.workspace.getConfiguration('poeCode');
-    const defaultModel = configuration.get<string>('defaultModel') || 'Claude-Sonnet-4.5';
-
-    // Check if poe-setup is configured
-    let credentials = await getPoeCredentials();
-    if (!credentials) {
-        const action = await vscode.window.showWarningMessage(
-            'Poe API key not configured. Configure now?',
-            'Configure',
-            'Continue Anyway'
-        );
-        if (action === 'Configure') {
-            const apiKey = await vscode.window.showInputBox({
-                prompt: 'Enter your Poe API key',
-                password: true,
-                placeHolder: 'Get your API key from poe.com'
-            });
-            if (apiKey) {
-                await configurePoeSetup(apiKey);
-                credentials = { apiKey };
-            } else {
-                return; // User cancelled
-            }
-        } else if (!action) {
-            return; // User dismissed
-        }
-    }
-
-    if (!credentials) {
-        return;
-    }
-
-    try {
-        chatService = await loadChatService(credentials.apiKey, defaultModel);
-    } catch (error) {
-        vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
-        return;
-    }
-
-    // Create and show a new webview panel
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'poe-logo.png');
-    currentPanel = vscode.window.createWebviewPanel(
+    const panel = vscode.window.createWebviewPanel(
         'poeCodePanel',
         'Poe Code',
         vscode.ViewColumn.One,
@@ -293,197 +391,18 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
             localResourceRoots: [context.extensionUri]
         }
     );
+    panel.iconPath = iconPath;
 
-    // Set the icon for the tab
-    currentPanel.iconPath = iconPath;
+    const subscription = await attachPoeWebview('panel', context, panel.webview);
+    currentPanel = panel;
 
-    // Set the webview's HTML content
-    const logoUri = currentPanel.webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'poe-bw.svg')
-    ).toString();
-
-    const providerSettings = await loadProviderSettings(context.extensionUri.fsPath);
-    const modelOptions = Array.from(
-        new Set(
-            [
-                chatService?.getModel?.() ?? defaultModel,
-                ...providerSettings.map((provider) => provider.label)
-            ].filter(Boolean)
-        )
-    ) as string[];
-
-    const appShellHtml = renderAppShell({
-        logoUrl: logoUri,
-        models: modelOptions,
-        activeModel: chatService?.getModel?.() ?? defaultModel
-    });
-    const modelSelectorHtml = renderModelSelector({
-        models: modelOptions,
-        selected: chatService?.getModel?.() ?? defaultModel
-    });
-
-    currentPanel.webview.html = getWebviewContent(currentPanel.webview, {
-        logoUri,
-        appShellHtml,
-        modelSelectorHtml,
-        providerSettings,
-        defaultModel: chatService?.getModel?.() ?? defaultModel
-    });
-
-    // Handle messages from the webview
-    currentPanel.webview.onDidReceiveMessage(
-        async (message) => {
-            switch (message.type) {
-                case 'sendMessage': {
-                    if (!chatService || !currentPanel) {
-                        currentPanel?.webview.postMessage({
-                            type: 'error',
-                            text: 'Chat service is not available. Please try reopening Poe Code.'
-                        });
-                        return;
-                    }
-                    const text = typeof message.text === 'string' ? message.text : '';
-                    const messageId =
-                        typeof message.id === 'string' && message.id.length > 0
-                            ? message.id
-                            : `m-${Date.now()}`;
-                    chatState.append({
-                        id: messageId,
-                        role: 'user',
-                        content: text
-                    });
-                    currentPanel.webview.postMessage({ type: 'thinking', value: true });
-                    currentPanel.webview.postMessage({
-                        type: 'message',
-                        role: 'user',
-                        id: messageId,
-                        html: renderMarkdown(text),
-                        model: chatService.getModel()
-                    });
-                    try {
-                        const response = await chatService.sendMessage(text, availableTools);
-                        const responseText =
-                            response?.content ??
-                            response?.choices?.[0]?.message?.content ??
-                            'No response from model';
-                        chatState.append({
-                            id: response?.id ?? `assistant-${Date.now()}`,
-                            role: 'assistant',
-                            content: responseText
-                        });
-                        currentPanel.webview.postMessage({
-                            type: 'message',
-                            role: 'assistant',
-                            id: response?.id ?? `assistant-${Date.now()}`,
-                            html: renderMarkdown(responseText),
-                            model: chatService.getModel(),
-                            strategyInfo: chatService.isStrategyEnabled()
-                                ? chatService.getStrategyInfo()
-                                : null
-                        });
-                    } catch (error) {
-                        currentPanel.webview.postMessage({
-                            type: 'error',
-                            text: error instanceof Error ? error.message : String(error)
-                        });
-                    } finally {
-                        currentPanel.webview.postMessage({ type: 'thinking', value: false });
-                    }
-                    break;
-                }
-                case 'clearHistory': {
-                    chatService?.clearHistory();
-                    chatState.clear();
-                    if (currentPanel) {
-                        currentPanel.webview.postMessage({ type: 'historyCleared' });
-                    }
-                    break;
-                }
-                case 'getStrategyStatus': {
-                    if (chatService && currentPanel) {
-                        currentPanel.webview.postMessage({
-                            type: 'strategyStatus',
-                            enabled: chatService.isStrategyEnabled(),
-                            info: chatService.isStrategyEnabled()
-                                ? chatService.getStrategyInfo()
-                                : 'Strategy disabled',
-                            currentModel: chatService.getModel()
-                        });
-                    }
-                    break;
-                }
-                case 'setStrategy': {
-                    if (chatService && currentPanel) {
-                        try {
-                            chatService.setStrategy(message.config);
-                            currentPanel.webview.postMessage({
-                                type: 'strategyStatus',
-                                enabled: chatService.isStrategyEnabled(),
-                                info: chatService.getStrategyInfo(),
-                                currentModel: chatService.getModel()
-                            });
-                            vscode.window.showInformationMessage('Strategy updated successfully!');
-                        } catch (error) {
-                            vscode.window.showErrorMessage(
-                                `Failed to set strategy: ${error instanceof Error ? error.message : String(error)}`
-                            );
-                        }
-                    }
-                    break;
-                }
-                case 'toggleStrategy': {
-                    if (chatService && currentPanel) {
-                        if (message.enabled) {
-                            chatService.enableStrategy();
-                        } else {
-                            chatService.disableStrategy();
-                        }
-                        currentPanel.webview.postMessage({
-                            type: 'strategyStatus',
-                            enabled: chatService.isStrategyEnabled(),
-                            info: chatService.isStrategyEnabled()
-                                ? chatService.getStrategyInfo()
-                                : 'Strategy disabled',
-                            currentModel: chatService.getModel()
-                        });
-                    }
-                    break;
-                }
-                case 'openSettings': {
-                    await vscode.commands.executeCommand('poe-code.settings.openMcp');
-                    break;
-                }
-                case 'setModel': {
-                    if (chatService && typeof message.model === 'string') {
-                        const trimmed = message.model.trim();
-                        if (trimmed.length > 0) {
-                            chatService.setModel(trimmed);
-                            if (currentPanel) {
-                                currentPanel.webview.postMessage({
-                                    type: 'modelChanged',
-                                    model: chatService.getModel()
-                                });
-                            }
-                        }
-                    }
-                    break;
-                }
-                case 'info':
-                    vscode.window.showInformationMessage(message.text);
-                    break;
-                case 'error':
-                    vscode.window.showErrorMessage(message.text);
-                    break;
-            }
-        },
-        undefined,
-        context.subscriptions
-    );
-
-    // Handle panel disposal
-    currentPanel.onDidDispose(
+    panel.onDidDispose(
         () => {
-            currentPanel = undefined;
+            subscription?.dispose();
+            if (currentPanel === panel) {
+                currentPanel = undefined;
+            }
+            removeActiveWebview(panel.webview);
         },
         undefined,
         context.subscriptions
@@ -613,8 +532,57 @@ async function configurePoeSetup(apiKey: string): Promise<void> {
     }
 }
 
+async function ensurePoeCredentials(): Promise<{ apiKey: string } | null> {
+    if (cachedCredentials) {
+        return cachedCredentials;
+    }
+    const existing = await getPoeCredentials();
+    if (existing) {
+        cachedCredentials = existing;
+        return existing;
+    }
+    const action = await vscode.window.showWarningMessage(
+        'Poe API key not configured. Configure now?',
+        'Configure',
+        'Cancel'
+    );
+    if (action !== 'Configure') {
+        return null;
+    }
+    const apiKey = await vscode.window.showInputBox({
+        prompt: 'Enter your Poe API key',
+        password: true,
+        placeHolder: 'Get your API key from poe.com'
+    });
+    if (!apiKey) {
+        return null;
+    }
+    await configurePoeSetup(apiKey);
+    cachedCredentials = { apiKey };
+    return cachedCredentials;
+}
+
 async function showWelcomeMessage(context: vscode.ExtensionContext) {
     await context.globalState.update('poe-code.hasShownWelcome', true);
+}
+
+function getMissingCredentialsContent(): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: transparent; padding: 16px; }
+        h2 { margin-bottom: 8px; }
+        p { line-height: 1.5; }
+        code { background: var(--vscode-editor-inactiveSelectionBackground); padding: 2px 4px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h2>Poe API key required</h2>
+    <p>Configure Poe Code by running the command <code>Poe Code: Check Setup</code> or setting your API key through the command palette.</p>
+</body>
+</html>`;
 }
 interface WebviewContentOptions {
     logoUri: string;
@@ -1296,5 +1264,39 @@ export function deactivate() {
     }
     if (currentPanel) {
         currentPanel.dispose();
+    }
+}
+class PoeSidebarProvider implements vscode.WebviewViewProvider {
+    private view: vscode.WebviewView | undefined;
+    private messageSubscription: vscode.Disposable | undefined;
+
+    constructor(private readonly context: vscode.ExtensionContext) { }
+
+    async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
+        this.view = webviewView;
+        webviewView.webview.options = {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [this.context.extensionUri]
+        };
+        removeActiveWebview(webviewView.webview);
+        this.messageSubscription?.dispose();
+        this.messageSubscription = await attachPoeWebview('sidebar', this.context, webviewView.webview) ?? undefined;
+        webviewView.onDidDispose(() => {
+            if (this.view === webviewView) {
+                this.view = undefined;
+            }
+            this.messageSubscription?.dispose();
+            this.messageSubscription = undefined;
+            removeActiveWebview(webviewView.webview);
+        });
+    }
+
+    async reveal(): Promise<void> {
+        if (this.view) {
+            this.view.show?.(true);
+            return;
+        }
+        await vscode.commands.executeCommand('workbench.view.extension.poe-sidebar');
     }
 }

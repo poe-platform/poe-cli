@@ -29,7 +29,8 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onWebviewPanel:poeCodePanel"
+    "onWebviewPanel:poeCodePanel",
+    "onView:poeCodeSidebar"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -91,31 +92,12 @@
         }
       ]
     },
-    "keybindings": [
-      {
-        "command": "poe-code.editor.open",
-        "key": "cmd+shift+p",
-        "mac": "cmd+shift+p",
-        "win": "ctrl+shift+p",
-        "linux": "ctrl+shift+p",
-        "when": "!config.poeCode.useTerminal"
-      },
-      {
-        "command": "poe-code.terminal.open",
-        "key": "cmd+shift+p",
-        "mac": "cmd+shift+p",
-        "win": "ctrl+shift+p",
-        "linux": "ctrl+shift+p",
-        "when": "config.poeCode.useTerminal"
-      }
-    ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "poe-sidebar",
           "title": "Poe Code",
-          "icon": "poe-logo.png",
-          "when": "poe-code:sidebarVisible"
+          "icon": "poe-bw.svg"
         }
       ]
     },
@@ -124,8 +106,7 @@
         {
           "type": "webview",
           "id": "poeCodeSidebar",
-          "name": "Poe Code",
-          "when": "poe-code:sidebarVisible"
+          "name": "Poe Code"
         }
       ]
     },
@@ -167,6 +148,7 @@
     "@types/node": "^20.12.7",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.24.0",
+    "happy-dom": "^20.0.10",
     "typescript": "^5.4.5",
     "vitest": "^1.6.1"
   }
