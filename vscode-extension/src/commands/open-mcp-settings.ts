@@ -10,7 +10,7 @@ export async function openMcpSettings(
   options: OpenMcpSettingsOptions
 ): Promise<void> {
   const targetPath = path.join(options.homeDir, ".poe-setup", options.filename);
-  const document = await vscode.workspace.openTextDocument(targetPath);
+  const documentUri = vscode.Uri.file(targetPath);
+  const document = await vscode.workspace.openTextDocument(documentUri);
   await vscode.window.showTextDocument(document);
 }
-
