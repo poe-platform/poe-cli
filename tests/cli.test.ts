@@ -16,6 +16,16 @@ interface CommandCall {
   args: string[];
 }
 
+interface ChatFactoryCall {
+  prompt: string;
+  options: {
+    apiKey: string;
+    model: string;
+    cwd: string;
+    homeDir: string;
+  };
+}
+
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
   const fs = createFsFromVolume(vol);
@@ -67,6 +77,35 @@ function createCommandRunnerStub(options?: {
   const runner = vi.fn(runnerImpl) as unknown as CommandRunner;
 
   return { runner, calls };
+}
+
+function createChatServiceStub(response: {
+  content: string;
+  model?: string;
+}) {
+  const calls: ChatFactoryCall[] = [];
+  const factory = vi.fn((options: any) => {
+    const model = response.model ?? "Claude-Sonnet-4.5";
+    return {
+      setToolCallCallback: vi.fn(),
+      getModel: () => model,
+      async sendMessage(prompt: string) {
+        calls.push({
+          prompt,
+          options: {
+            apiKey: options.apiKey,
+            model: options.model,
+            cwd: options.cwd,
+            homeDir: options.homeDir
+          }
+        });
+        return { role: "assistant", content: response.content };
+      },
+      dispose: vi.fn()
+    };
+  });
+
+  return { factory, calls };
 }
 
 describe("CLI program", () => {
@@ -1325,5 +1364,123 @@ describe("CLI program", () => {
         )
       )
     ).toBeTruthy();
+  });
+
+  it("runs a single agent prompt through the CLI", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const chatStub = createChatServiceStub({
+      content: "Completed the task.",
+      model: "gpt-5"
+    });
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      chatServiceFactory: chatStub.factory
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "agent",
+      "Review the latest logs",
+      "--api-key",
+      "sk-agent"
+    ]);
+
+    expect(chatStub.factory).toHaveBeenCalledTimes(1);
+    expect(chatStub.calls).toEqual([
+      {
+        prompt: "Review the latest logs",
+        options: {
+          apiKey: "sk-agent",
+          model: "Claude-Sonnet-4.5",
+          cwd,
+          homeDir
+        }
+      }
+    ]);
+    expect(logs).toContain(
+      "Agent response (gpt-5): Completed the task."
+    );
+
+    const credentialsPath = path.join(
+      homeDir,
+      ".poe-setup",
+      "credentials.json"
+    );
+    const stored = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
+    expect(stored.apiKey).toBe("sk-agent");
+  });
+
+  it("installs missing dependencies before configuring claude-code", async () => {
+    const { prompt } = createPromptStub({ apiKey: "sk-install" });
+    const logs: string[] = [];
+    let hasClaudeCli = false;
+    const commandCalls: CommandCall[] = [];
+    const commandRunner = vi.fn(
+      async (command: string, args: string[]) => {
+        commandCalls.push({ command, args });
+        if (command === "which" && args[0] === "claude") {
+          if (hasClaudeCli) {
+            return {
+              stdout: "/usr/local/bin/claude\n",
+              stderr: "",
+              exitCode: 0
+            };
+          }
+          return { stdout: "", stderr: "not found", exitCode: 1 };
+        }
+        if (command === "npm" && args[0] === "install") {
+          hasClaudeCli = true;
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        if (command === "claude") {
+          return {
+            stdout: "CLAUDE_CODE_OK\n",
+            stderr: "",
+            exitCode: 0
+          };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    ) as unknown as CommandRunner;
+
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (line) => {
+        logs.push(line);
+      },
+      commandRunner
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "configure",
+      "claude-code",
+      "--install"
+    ]);
+
+    expect(
+      commandCalls.some(
+        (call) => call.command === "npm" && call.args.includes("claude-code")
+      )
+    ).toBe(true);
+    expect(logs).toContain("Installed Claude CLI via npm.");
+
+    const settings = JSON.parse(
+      await fs.readFile(
+        path.join(homeDir, ".claude", "settings.json"),
+        "utf8"
+      )
+    );
+    expect(settings.env.ANTHROPIC_API_KEY).toBe("sk-install");
   });
 });

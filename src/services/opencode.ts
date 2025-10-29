@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -11,6 +12,11 @@ import {
   type ServiceManifest,
   type ServiceRunOptions
 } from "./service-manifest.js";
+import {
+  runServiceInstall,
+  type InstallContext,
+  type ServiceInstallDefinition
+} from "./service-install.js";
 
 const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
   $schema: "https://opencode.ai/config.json",
@@ -107,6 +113,22 @@ const OPEN_CODE_MANIFEST: ServiceManifest<
   ]
 };
 
+const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
+  id: "opencode",
+  summary: "OpenCode CLI",
+  check: createOpenCodeBinaryCheck(),
+  steps: [
+    {
+      id: "install-opencode-cli-npm",
+      description: "Install OpenCode CLI via npm",
+      command: "npm",
+      args: ["install", "-g", "opencode-cli"]
+    }
+  ],
+  postChecks: [createOpenCodeVersionCheck()],
+  successMessage: "Installed OpenCode CLI via npm."
+};
+
 export async function configureOpenCode(
   options: ConfigureOpenCodeOptions,
   runOptions?: ServiceRunOptions
@@ -133,4 +155,38 @@ export async function removeOpenCode(
     },
     runOptions
   );
+}
+
+export async function installOpenCode(
+  context: InstallContext
+): Promise<boolean> {
+  return runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, context);
+}
+
+function createOpenCodeBinaryCheck(): PrerequisiteDefinition {
+  return {
+    id: "opencode-cli-binary",
+    description: "OpenCode CLI binary must exist",
+    async run({ runCommand }) {
+      const result = await runCommand("which", ["opencode"]);
+      if (result.exitCode !== 0) {
+        throw new Error("OpenCode CLI binary not found on PATH.");
+      }
+    }
+  };
+}
+
+function createOpenCodeVersionCheck(): PrerequisiteDefinition {
+  return {
+    id: "opencode-cli-version",
+    description: "OpenCode CLI responds to --version",
+    async run({ runCommand }) {
+      const result = await runCommand("opencode", ["--version"]);
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `OpenCode CLI --version failed with exit code ${result.exitCode}.`
+        );
+      }
+    }
+  };
 }

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import { isJsonObject, type JsonObject } from "../utils/json.js";
 import {
   ensureDirectory,
@@ -11,6 +12,11 @@ import {
   type ServiceMutation,
   type ServiceRunOptions
 } from "./service-manifest.js";
+import {
+  runServiceInstall,
+  type InstallContext,
+  type ServiceInstallDefinition
+} from "./service-install.js";
 
 const DEFAULT_RATE_LIMIT_SECONDS = 0;
 
@@ -62,6 +68,22 @@ const ROO_CODE_MANIFEST: ServiceManifest<
   remove: [createRemoveConfigMutation()]
 };
 
+const ROO_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
+  id: "roo-code",
+  summary: "Roo Code CLI",
+  check: createRooCodeBinaryCheck(),
+  steps: [
+    {
+      id: "install-roo-code-cli-npm",
+      description: "Install Roo Code CLI via npm",
+      command: "npm",
+      args: ["install", "-g", "roo-code-cli"]
+    }
+  ],
+  postChecks: [createRooCodeVersionCheck()],
+  successMessage: "Installed Roo Code CLI via npm."
+};
+
 export async function configureRooCode(
   options: ConfigureRooCodeOptions,
   runOptions?: ServiceRunOptions
@@ -88,6 +110,40 @@ export async function removeRooCode(
     },
     runOptions
   );
+}
+
+export async function installRooCode(
+  context: InstallContext
+): Promise<boolean> {
+  return runServiceInstall(ROO_CODE_INSTALL_DEFINITION, context);
+}
+
+function createRooCodeBinaryCheck(): PrerequisiteDefinition {
+  return {
+    id: "roo-code-cli-binary",
+    description: "Roo Code CLI binary must exist",
+    async run({ runCommand }) {
+      const result = await runCommand("which", ["roo"]);
+      if (result.exitCode !== 0) {
+        throw new Error("Roo Code CLI binary not found on PATH.");
+      }
+    }
+  };
+}
+
+function createRooCodeVersionCheck(): PrerequisiteDefinition {
+  return {
+    id: "roo-code-cli-version",
+    description: "Roo Code CLI responds to --version",
+    async run({ runCommand }) {
+      const result = await runCommand("roo", ["--version"]);
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `Roo Code CLI --version failed with exit code ${result.exitCode}.`
+        );
+      }
+    }
+  };
 }
 
 function createConfigMutation(): ServiceMutation<ConfigureRooCodeOptions> {
@@ -205,4 +261,3 @@ function readString(value: unknown): string | null {
 function generateProfileId(): string {
   return crypto.randomBytes(5).toString("hex");
 }
-

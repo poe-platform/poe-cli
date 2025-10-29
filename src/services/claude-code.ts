@@ -1,6 +1,9 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
-import type { PrerequisiteManager } from "../utils/prerequisites.js";
+import type {
+  PrerequisiteDefinition,
+  PrerequisiteManager
+} from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -10,6 +13,11 @@ import {
   type ServiceManifest,
   type ServiceRunOptions
 } from "./service-manifest.js";
+import {
+  runServiceInstall,
+  type InstallContext,
+  type ServiceInstallDefinition
+} from "./service-install.js";
 
 const CLAUDE_ENV_SHAPE = {
   env: {
@@ -55,6 +63,22 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
   ]
 };
 
+const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
+  id: "claude-code",
+  summary: "Claude CLI",
+  check: createClaudeCliBinaryCheck(),
+  steps: [
+    {
+      id: "install-claude-cli-npm",
+      description: "Install Claude CLI via npm",
+      command: "npm",
+      args: ["install", "-g", "claude-code"]
+    }
+  ],
+  postChecks: [createClaudeCliHealthCheck()],
+  successMessage: "Installed Claude CLI via npm."
+};
+
 export interface ConfigureClaudeCodeOptions {
   fs: FileSystem;
   apiKey: string;
@@ -97,7 +121,18 @@ export async function removeClaudeCode(
 export function registerClaudeCodePrerequisites(
   prerequisites: PrerequisiteManager
 ): void {
-  prerequisites.registerBefore({
+  prerequisites.registerBefore(createClaudeCliBinaryCheck());
+  prerequisites.registerAfter(createClaudeCliHealthCheck());
+}
+
+export async function installClaudeCode(
+  context: InstallContext
+): Promise<boolean> {
+  return runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, context);
+}
+
+function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
+  return {
     id: "claude-cli-binary",
     description: "Claude CLI binary must exist",
     async run({ runCommand }) {
@@ -106,9 +141,11 @@ export function registerClaudeCodePrerequisites(
         throw new Error("Claude CLI binary not found on PATH.");
       }
     }
-  });
+  };
+}
 
-  prerequisites.registerAfter({
+function createClaudeCliHealthCheck(): PrerequisiteDefinition {
+  return {
     id: "claude-cli-health",
     description: "Claude CLI health check must succeed",
     async run({ runCommand }) {
@@ -130,5 +167,5 @@ export function registerClaudeCodePrerequisites(
         );
       }
     }
-  });
+  };
 }

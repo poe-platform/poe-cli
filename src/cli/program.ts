@@ -5,12 +5,25 @@ import type { FileSystem } from "../utils/file-system.js";
 import { initProject } from "../commands/init.js";
 import {
   configureClaudeCode,
+  installClaudeCode,
   registerClaudeCodePrerequisites,
   removeClaudeCode
 } from "../services/claude-code.js";
-import { configureCodex, removeCodex } from "../services/codex.js";
-import { configureOpenCode, removeOpenCode } from "../services/opencode.js";
-import { configureRooCode, removeRooCode } from "../services/roo-code.js";
+import {
+  configureCodex,
+  installCodex,
+  removeCodex
+} from "../services/codex.js";
+import {
+  configureOpenCode,
+  installOpenCode,
+  removeOpenCode
+} from "../services/opencode.js";
+import {
+  configureRooCode,
+  installRooCode,
+  removeRooCode
+} from "../services/roo-code.js";
 import {
   deleteCredentials,
   loadCredentials,
@@ -54,6 +67,35 @@ interface HttpClientRequest {
 
 type HttpClient = (url: string, init?: HttpClientRequest) => Promise<HttpResponse>;
 
+interface AgentToolCallEvent {
+  toolName: string;
+  args: Record<string, unknown>;
+  result?: string;
+  error?: string;
+}
+
+interface AgentSession {
+  getModel?(): string;
+  setToolCallCallback?(
+    callback: (event: AgentToolCallEvent) => void
+  ): void;
+  sendMessage(prompt: string): Promise<{ content: string }>;
+  dispose?(): Promise<void> | void;
+}
+
+interface ChatServiceFactoryOptions {
+  apiKey: string;
+  model: string;
+  cwd: string;
+  homeDir: string;
+  fs: FileSystem;
+  logger: LoggerFn;
+}
+
+type ChatServiceFactory = (
+  options: ChatServiceFactoryOptions
+) => Promise<AgentSession> | AgentSession;
+
 export interface CliDependencies {
   fs: FileSystem;
   prompts: PromptFn;
@@ -67,6 +109,7 @@ export interface CliDependencies {
   exitOverride?: boolean;
   httpClient?: HttpClient;
   commandRunner?: CommandRunner;
+  chatServiceFactory?: ChatServiceFactory;
 }
 
 interface InitCommandOptions {
@@ -81,6 +124,7 @@ interface ConfigureCommandOptions {
   reasoningEffort?: string;
   configName?: string;
   baseUrl?: string;
+  install?: boolean;
 }
 
 interface LoginCommandOptions {
@@ -92,6 +136,11 @@ interface TestCommandOptions {
 }
 
 interface QueryCommandOptions {
+  apiKey?: string;
+  model?: string;
+}
+
+interface AgentCommandOptions {
   apiKey?: string;
   model?: string;
 }
@@ -121,7 +170,8 @@ export function createProgram(dependencies: CliDependencies): Command {
     logger = console.log,
     exitOverride = true,
     httpClient: providedHttpClient,
-    commandRunner: providedCommandRunner
+    commandRunner: providedCommandRunner,
+    chatServiceFactory: providedChatServiceFactory
   } = dependencies;
 
   const platform = env.platform ?? process.platform;
@@ -140,6 +190,19 @@ export function createProgram(dependencies: CliDependencies): Command {
 
   const commandRunner: CommandRunner =
     providedCommandRunner ?? createDefaultCommandRunner();
+
+  const chatServiceFactory: ChatServiceFactory =
+    providedChatServiceFactory ??
+    (async (options) => {
+      const { createAgentSession } = (await import(
+        "../services/agent-session.js"
+      )) as {
+        createAgentSession: (
+          input: ChatServiceFactoryOptions
+        ) => Promise<AgentSession>;
+      };
+      return createAgentSession(options);
+    });
 
   const program = new Command();
   program
@@ -234,6 +297,13 @@ export function createProgram(dependencies: CliDependencies): Command {
     const { prerequisites } = context;
 
     if (service === "claude-code") {
+      if (options.install) {
+        await installClaudeCode({
+          isDryRun,
+          runCommand: context.runCommand,
+          logger
+        });
+      }
       registerClaudeCodePrerequisites(prerequisites);
       const beforeHooks = createPrerequisiteHooks("before", logger, isVerbose);
       if (beforeHooks) {
@@ -265,6 +335,13 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "codex") {
+      if (options.install) {
+        await installCodex({
+          isDryRun,
+          runCommand: context.runCommand,
+          logger
+        });
+      }
       const model =
         options.model ??
         (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
@@ -295,6 +372,13 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "opencode") {
+      if (options.install) {
+        await installOpenCode({
+          isDryRun,
+          runCommand: context.runCommand,
+          logger
+        });
+      }
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
       const configPath = path.join(
         env.homeDir,
@@ -326,6 +410,13 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "roo-code") {
+      if (options.install) {
+        await installRooCode({
+          isDryRun,
+          runCommand: context.runCommand,
+          logger
+        });
+      }
       const configName =
         options.configName ??
         (await ensureOption(
@@ -481,6 +572,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .option("--config-name <name>", "Configuration profile name")
     .option("--base-url <url>", "API base URL")
+    .option(
+      "--install",
+      "Install service tooling before running configuration."
+    )
     .action(async (service: string, options: ConfigureCommandOptions) => {
       await configureService(service, options);
     });
@@ -578,6 +673,45 @@ export function createProgram(dependencies: CliDependencies): Command {
         prompt: text
       });
       logger(`${model}: ${content}`);
+    });
+
+  program
+    .command("agent")
+    .description("Run a single Poe agent prompt with local tooling support.")
+    .argument("<text>", "Prompt text to send to the agent")
+    .option("--model <model>", "Model identifier", DEFAULT_QUERY_MODEL)
+    .option("--api-key <key>", "Poe API key")
+    .action(async (text: string, options: AgentCommandOptions) => {
+      const opts = program.optsWithGlobals();
+      const isDryRun = Boolean(opts.dryRun);
+      const model = options.model ?? DEFAULT_QUERY_MODEL;
+      if (isDryRun) {
+        logger(
+          `Dry run: would run agent with model "${model}" and prompt "${text}".`
+        );
+        return;
+      }
+
+      const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
+      const session = await chatServiceFactory({
+        apiKey,
+        model,
+        cwd: env.cwd,
+        homeDir: env.homeDir,
+        fs: baseFs,
+        logger
+      });
+
+      try {
+        session.setToolCallCallback?.((event) => {
+          logToolCallEvent(event, logger);
+        });
+        const response = await session.sendMessage(text);
+        const activeModel = session.getModel ? session.getModel() : model;
+        logger(`Agent response (${activeModel}): ${response.content}`);
+      } finally {
+        await session.dispose?.();
+      }
     });
 
   program
@@ -777,6 +911,19 @@ export function createProgram(dependencies: CliDependencies): Command {
   return program;
 }
 
+function logToolCallEvent(event: AgentToolCallEvent, logger: LoggerFn): void {
+  const serializedArgs = JSON.stringify(event.args);
+  if (event.error) {
+    logger(`Tool ${event.toolName} failed: ${event.error}`);
+    return;
+  }
+  if (event.result) {
+    logger(`Tool ${event.toolName} result: ${event.result}`);
+    return;
+  }
+  logger(`Tool ${event.toolName} invoked with args ${serializedArgs}`);
+}
+
 interface CommandContextInit {
   baseFs: FileSystem;
   isDryRun: boolean;
@@ -793,6 +940,7 @@ interface CommandContext {
   fs: FileSystem;
   prerequisites: PrerequisiteManager;
   recordMutation?: (entry: MutationLogEntry) => void;
+  runCommand: CommandRunner;
   complete(messages: { success: string; dry: string }): void;
 }
 
@@ -806,6 +954,7 @@ function createCommandContext(init: CommandContextInit): CommandContext {
     return {
       fs: init.baseFs,
       prerequisites,
+      runCommand: init.runCommand,
       complete(messages) {
         init.logger(messages.success);
       }
@@ -826,6 +975,7 @@ function createCommandContext(init: CommandContextInit): CommandContext {
     fs: dryFs,
     prerequisites,
     recordMutation,
+    runCommand: init.runCommand,
     complete(messages) {
       init.logger(messages.dry);
       for (const entry of mutationEntries) {

@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBackupMutation,
   ensureDirectory,
@@ -13,6 +14,11 @@ import {
   serializeTomlDocument,
   type TomlTable
 } from "../utils/toml.js";
+import {
+  runServiceInstall,
+  type InstallContext,
+  type ServiceInstallDefinition
+} from "./service-install.js";
 
 export interface ConfigureCodexOptions {
   fs: FileSystem;
@@ -117,6 +123,22 @@ const CODEX_MANIFEST: ServiceManifest<
       }
     }
   ]
+};
+
+const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
+  id: "codex",
+  summary: "Codex CLI",
+  check: createCodexBinaryCheck(),
+  steps: [
+    {
+      id: "install-codex-cli-npm",
+      description: "Install Codex CLI via npm",
+      command: "npm",
+      args: ["install", "-g", "@poe/codex-cli"]
+    }
+  ],
+  postChecks: [createCodexVersionCheck()],
+  successMessage: "Installed Codex CLI via npm."
 };
 
 function applyCodexConfiguration(
@@ -236,4 +258,38 @@ export async function removeCodex(
     },
     runOptions
   );
+}
+
+export async function installCodex(
+  context: InstallContext
+): Promise<boolean> {
+  return runServiceInstall(CODEX_INSTALL_DEFINITION, context);
+}
+
+function createCodexBinaryCheck(): PrerequisiteDefinition {
+  return {
+    id: "codex-cli-binary",
+    description: "Codex CLI binary must exist",
+    async run({ runCommand }) {
+      const result = await runCommand("which", ["codex"]);
+      if (result.exitCode !== 0) {
+        throw new Error("Codex CLI binary not found on PATH.");
+      }
+    }
+  };
+}
+
+function createCodexVersionCheck(): PrerequisiteDefinition {
+  return {
+    id: "codex-cli-version",
+    description: "Codex CLI responds to --version",
+    async run({ runCommand }) {
+      const result = await runCommand("codex", ["--version"]);
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `Codex CLI --version failed with exit code ${result.exitCode}.`
+        );
+      }
+    }
+  };
 }
