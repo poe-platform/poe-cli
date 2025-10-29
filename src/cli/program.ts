@@ -589,7 +589,14 @@ export function createProgram(dependencies: CliDependencies): Command {
       });
       const input =
         options.apiKey ??
-        (await ensureOption(undefined, prompts, "apiKey", "POE API key"));
+        (await ensureOption(
+          undefined,
+          prompts,
+          "apiKey",
+          "Enter your Poe API key (get one at https://poe.com/api_key)",
+          undefined,
+          { type: "password" }
+        ));
       const apiKey = normalizeApiKey(input);
       await saveCredentials({
         fs: context.fs,
@@ -1261,7 +1268,10 @@ async function ensureOption(
   prompts: PromptFn,
   name: string,
   message: string,
-  defaultValue?: string
+  defaultValue?: string,
+  options?: {
+    type?: string;
+  }
 ): Promise<string> {
   if (value != null) {
     return value;
@@ -1271,7 +1281,7 @@ async function ensureOption(
   }
 
   const response = await prompts({
-    type: "text",
+    type: options?.type ?? "text",
     name,
     message
   });

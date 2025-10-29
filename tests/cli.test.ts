@@ -9,6 +9,7 @@ import type { CommandRunner } from "../src/utils/prerequisites.js";
 interface PromptCall {
   name: string;
   message?: string;
+  type?: string;
 }
 
 interface CommandCall {
@@ -38,7 +39,7 @@ function createPromptStub(responses: Record<string, unknown>) {
     const list = Array.isArray(questions) ? questions : [questions];
     const result: Record<string, unknown> = {};
     for (const q of list) {
-      calls.push({ name: q.name, message: q.message });
+      calls.push({ name: q.name, message: q.message, type: q.type });
       if (!(q.name in responses)) {
         throw new Error(`Missing response for prompt "${q.name}"`);
       }
@@ -819,6 +820,23 @@ describe("CLI program", () => {
         ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
+  });
+
+  it("prompts for poe api key with guidance and hidden input", async () => {
+    const responses: Record<string, unknown> = { apiKey: "hidden-key" };
+    const promptStub = createPromptStub(responses);
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+
+    await program.parseAsync(["node", "cli", "login"]);
+
+    const apiKeyPrompt = promptStub.calls.find((call) => call.name === "apiKey");
+    expect(apiKeyPrompt?.message).toContain("https://poe.com/api_key");
+    expect(apiKeyPrompt?.type).toBe("password");
   });
 
   it("shows credentials path when login runs in dry-run mode", async () => {
