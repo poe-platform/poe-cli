@@ -85,7 +85,7 @@ const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
       id: "install-claude-cli-npm",
       description: "Install Claude CLI via npm",
       command: "npm",
-      args: ["install", "-g", "claude-code"]
+      args: ["install", "-g", "@anthropic-ai/claude-code"]
     }
   ],
   postChecks: [createClaudeCliHealthCheck()],
