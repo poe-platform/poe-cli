@@ -120,7 +120,6 @@ interface ConfigureCommandOptions {
   reasoningEffort?: string;
   configName?: string;
   baseUrl?: string;
-  install?: boolean;
 }
 
 interface LoginCommandOptions {
@@ -293,13 +292,11 @@ export function createProgram(dependencies: CliDependencies): Command {
     const { prerequisites } = context;
 
     if (service === "claude-code") {
-      if (options.install) {
-        await installClaudeCode({
-          isDryRun,
-          runCommand: context.runCommand,
-          logger
-        });
-      }
+      await installClaudeCode({
+        isDryRun,
+        runCommand: context.runCommand,
+        logger
+      });
       registerClaudeCodePrerequisites(prerequisites);
       const beforeHooks = createPrerequisiteHooks("before", logger, isVerbose);
       if (beforeHooks) {
@@ -334,13 +331,11 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "codex") {
-      if (options.install) {
-        await installCodex({
-          isDryRun,
-          runCommand: context.runCommand,
-          logger
-        });
-      }
+      await installCodex({
+        isDryRun,
+        runCommand: context.runCommand,
+        logger
+      });
       const model =
         options.model ??
         (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
@@ -371,13 +366,11 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "opencode") {
-      if (options.install) {
-        await installOpenCode({
-          isDryRun,
-          runCommand: context.runCommand,
-          logger
-        });
-      }
+      await installOpenCode({
+        isDryRun,
+        runCommand: context.runCommand,
+        logger
+      });
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
       const configPath = path.join(
         env.homeDir,
@@ -409,9 +402,6 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     if (service === "roo-code") {
-      if (options.install) {
-        throw new Error("Roo Code does not support installation.");
-      }
       const configName =
         options.configName ??
         (await ensureOption(
@@ -567,10 +557,6 @@ export function createProgram(dependencies: CliDependencies): Command {
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .option("--config-name <name>", "Configuration profile name")
     .option("--base-url <url>", "API base URL")
-    .option(
-      "--install",
-      "Install service tooling before running configuration."
-    )
     .action(async (service: string, options: ConfigureCommandOptions) => {
       await configureService(service, options);
     });

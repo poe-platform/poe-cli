@@ -618,6 +618,7 @@ describe("CLI program", () => {
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
     expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
       "which",
+      "which",
       "claude"
     ]);
     expect(commandRunnerStub.calls[0]).toEqual({
@@ -625,6 +626,10 @@ describe("CLI program", () => {
       args: ["claude"]
     });
     expect(commandRunnerStub.calls[1]).toEqual({
+      command: "which",
+      args: ["claude"]
+    });
+    expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
       args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
     });
@@ -645,6 +650,11 @@ describe("CLI program", () => {
       program.parseAsync(["node", "cli", "configure", "claude-code"])
     ).rejects.toThrow(/Claude CLI binary not found/);
     expect(commandRunnerStub.calls).toEqual([
+      { command: "which", args: ["claude"] },
+      {
+        command: "npm",
+        args: ["install", "-g", "@anthropic-ai/claude-code"]
+      },
       { command: "which", args: ["claude"] }
     ]);
     await expect(
@@ -666,12 +676,16 @@ describe("CLI program", () => {
     await expect(
       program.parseAsync(["node", "cli", "configure", "claude-code"])
     ).rejects.toThrow(/Claude CLI health check failed/);
-    expect(commandRunnerStub.calls).toHaveLength(2);
+    expect(commandRunnerStub.calls).toHaveLength(3);
     expect(commandRunnerStub.calls[0]).toEqual({
       command: "which",
       args: ["claude"]
     });
     expect(commandRunnerStub.calls[1]).toEqual({
+      command: "which",
+      args: ["claude"]
+    });
+    expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
       args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
     });
@@ -699,12 +713,14 @@ describe("CLI program", () => {
       "utf8"
     );
     expect(firstSettings).toEqual(secondSettings);
-    expect(commandRunnerStub.calls).toHaveLength(4);
+    expect(commandRunnerStub.calls).toHaveLength(6);
     expect(
       commandRunnerStub.calls.map((call) => `${call.command}:${call.args.join(" ")}`)
     ).toEqual([
       "which:claude",
+      "which:claude",
       "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text",
+      "which:claude",
       "which:claude",
       "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text"
     ]);
@@ -1515,13 +1531,14 @@ describe("CLI program", () => {
       "node",
       "cli",
       "configure",
-      "claude-code",
-      "--install"
+      "claude-code"
     ]);
 
     expect(
       commandCalls.some(
-        (call) => call.command === "npm" && call.args.includes("claude-code")
+        (call) =>
+          call.command === "npm" &&
+          call.args.some((arg) => arg.includes("claude-code"))
       )
     ).toBe(true);
     expect(logs).toContain("Installed Claude CLI via npm.");
@@ -1540,13 +1557,21 @@ describe("CLI program", () => {
     });
   });
 
-  it("rejects install option for roo-code", async () => {
-    const { prompt } = createPromptStub({});
+  it("rejects unknown install option", async () => {
+    const { prompt } = createPromptStub({ apiKey: "ignored-key" });
+    const commandRunner = vi.fn(
+      async (): Promise<{ stdout: string; stderr: string; exitCode: number }> => ({
+        stdout: "",
+        stderr: "",
+        exitCode: 0
+      })
+    ) as unknown as CommandRunner;
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner
     });
 
     await expect(
@@ -1554,9 +1579,9 @@ describe("CLI program", () => {
         "node",
         "cli",
         "configure",
-        "roo-code",
+        "claude-code",
         "--install"
       ])
-    ).rejects.toThrow("Roo Code does not support installation.");
+    ).rejects.toThrow(/unknown option '--install'/i);
   });
 });
