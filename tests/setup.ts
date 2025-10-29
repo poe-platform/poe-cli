@@ -57,6 +57,13 @@ const templateFixtures = new Map<string, string>([
       "export ANTHROPIC_API_KEY=$POE_API_KEY",
       'export ANTHROPIC_BASE_URL="https://api.poe.com"'
     ].join("\n")
+  ],
+  [
+    "claude-code/anthropic_key.sh.hbs",
+    [
+      "#!/bin/bash",
+      'node -e "console.log(require({{{credentialsPathLiteral}}}).apiKey)"'
+    ].join("\n")
   ]
 ]);
 

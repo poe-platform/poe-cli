@@ -20,6 +20,8 @@ describe("claude-code service", () => {
   let vol: Volume;
   const home = "/home/user";
   const settingsPath = path.join(home, ".claude", "settings.json");
+  const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
+  const credentialsPath = path.join(home, ".poe-setup", "credentials.json");
   const apiKey = "sk-test";
 
   beforeEach(async () => {
@@ -30,14 +32,18 @@ describe("claude-code service", () => {
   it("removeClaudeCode prunes manifest-managed env keys from settings json", async () => {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
     await fs.writeFile(
+      keyHelperPath,
+      "#!/bin/bash\necho existing\n",
+      { encoding: "utf8" }
+    );
+    await fs.writeFile(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: keyHelperPath,
           theme: "dark",
           env: {
-            POE_API_KEY: apiKey,
             ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_API_KEY: apiKey,
             CUSTOM: "value"
           }
         },
@@ -47,7 +53,7 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await removeClaudeCode({ fs, settingsPath });
+    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
     expect(removed).toBe(true);
 
     const content = await fs.readFile(settingsPath, "utf8");
@@ -58,18 +64,23 @@ describe("claude-code service", () => {
         CUSTOM: "value"
       }
     });
+    await expect(fs.readFile(keyHelperPath, "utf8")).rejects.toThrow();
   });
 
   it("removeClaudeCode deletes settings file when only manifest keys remain", async () => {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
     await fs.writeFile(
+      keyHelperPath,
+      "#!/bin/bash\necho existing\n",
+      { encoding: "utf8" }
+    );
+    await fs.writeFile(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: keyHelperPath,
           env: {
-            POE_API_KEY: apiKey,
-            ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_API_KEY: apiKey
+            ANTHROPIC_BASE_URL: "https://api.poe.com"
           }
         },
         null,
@@ -78,14 +89,15 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await removeClaudeCode({ fs, settingsPath });
+    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
     expect(removed).toBe(true);
 
     await expect(fs.readFile(settingsPath, "utf8")).rejects.toThrow();
+    await expect(fs.readFile(keyHelperPath, "utf8")).rejects.toThrow();
   });
 
   it("removeClaudeCode returns false when settings file absent", async () => {
-    const removed = await removeClaudeCode({ fs, settingsPath });
+    const removed = await removeClaudeCode({ fs, settingsPath, keyHelperPath });
     expect(removed).toBe(false);
   });
 
@@ -93,18 +105,26 @@ describe("claude-code service", () => {
     await configureClaudeCode({
       fs,
       apiKey,
-      settingsPath
+      settingsPath,
+      keyHelperPath,
+      credentialsPath
     });
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
     expect(parsed).toEqual({
+      apiKeyHelper: keyHelperPath,
       env: {
-        POE_API_KEY: apiKey,
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: apiKey
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
+    const script = await fs.readFile(keyHelperPath, "utf8");
+    expect(script).toBe(
+      [
+        "#!/bin/bash",
+        'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+      ].join("\n")
+    );
   });
 
   it("merges existing settings json while preserving other keys", async () => {
@@ -113,6 +133,7 @@ describe("claude-code service", () => {
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: "/existing/helper.sh",
           theme: "dark",
           env: {
             ANTHROPIC_BASE_URL: "https://custom.example.com",
@@ -128,20 +149,28 @@ describe("claude-code service", () => {
     await configureClaudeCode({
       fs,
       apiKey,
-      settingsPath
+      settingsPath,
+      keyHelperPath,
+      credentialsPath
     });
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
     expect(parsed).toEqual({
+      apiKeyHelper: keyHelperPath,
       theme: "dark",
       env: {
-        POE_API_KEY: apiKey,
         ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: apiKey,
         CUSTOM: "value"
       }
     });
+    const script = await fs.readFile(keyHelperPath, "utf8");
+    expect(script).toBe(
+      [
+        "#!/bin/bash",
+        'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+      ].join("\n")
+    );
   });
 
   it("registers prerequisite checks for the Claude CLI", async () => {

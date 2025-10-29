@@ -309,11 +309,14 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
       const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
+      const keyHelperPath = path.join(env.homeDir, ".claude", "anthropic_key.sh");
       await configureClaudeCode(
         {
           fs: context.fs,
           apiKey,
-          settingsPath
+          settingsPath,
+          keyHelperPath,
+          credentialsPath
         },
         mutationHooks ? { hooks: mutationHooks } : undefined
       );
@@ -781,10 +784,12 @@ export function createProgram(dependencies: CliDependencies): Command {
       });
       if (service === "claude-code") {
         const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
+        const keyHelperPath = path.join(env.homeDir, ".claude", "anthropic_key.sh");
         const removed = await removeClaudeCode(
           {
             fs: context.fs,
-            settingsPath
+            settingsPath,
+            keyHelperPath
           },
           mutationHooks ? { hooks: mutationHooks } : undefined
         );

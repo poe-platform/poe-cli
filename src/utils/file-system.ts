@@ -17,6 +17,7 @@ export interface FileSystem {
   unlink(path: string): Promise<void>;
   readdir(path: string): Promise<string[]>;
   copyFile?(src: string, dest: string): Promise<void>;
+  chmod?(path: string, mode: number): Promise<void>;
 }
 
 export type PathExistsFn = (path: string) => Promise<boolean>;

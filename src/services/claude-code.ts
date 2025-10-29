@@ -1,6 +1,4 @@
 import path from "node:path";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   PrerequisiteDefinition,
@@ -23,7 +21,8 @@ import {
   type ServiceInstallDefinition
 } from "./service-install.js";
 
-const execAsync = promisify(exec);
+const KEY_HELPER_TEMPLATE_ID = "claude-code/anthropic_key.sh.hbs";
+const KEY_HELPER_MODE = 0o700;
 
 const CLAUDE_ENV_SHAPE = {
   apiKeyHelper: true,
@@ -49,9 +48,9 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
     }),
     writeTemplateMutation({
       target: ({ options }) => options.keyHelperPath,
-      templateId: "claude-code/anthropic_key.sh",
+      templateId: KEY_HELPER_TEMPLATE_ID,
       context: ({ options }) => ({
-        credentialsPath: options.credentialsPath
+        credentialsPathLiteral: toSingleQuotedLiteral(options.credentialsPath)
       }),
       label: "Write API key helper script"
     }),
@@ -113,8 +112,11 @@ function createChmodMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
     target: ({ options }) => options.keyHelperPath,
     label: "Make API key helper executable",
     async transform({ content, context }) {
-      if (content) {
-        await execAsync(`chmod +x "${context.options.keyHelperPath}"`);
+      if (
+        typeof context.fs.chmod === "function" &&
+        content != null
+      ) {
+        await context.fs.chmod(context.options.keyHelperPath, KEY_HELPER_MODE);
       }
       return { content, changed: false };
     }
@@ -127,6 +129,11 @@ function removeKeyHelperMutation(): ServiceMutation<RemoveClaudeCodeOptions> {
     target: ({ options }) => options.keyHelperPath,
     label: "Remove API key helper script"
   };
+}
+
+function toSingleQuotedLiteral(targetPath: string): string {
+  const escaped = targetPath.replace(/'/g, `'\\''`);
+  return `'${escaped}'`;
 }
 
 export async function configureClaudeCode(

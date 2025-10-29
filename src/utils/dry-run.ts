@@ -28,6 +28,11 @@ export type DryRunOperation =
       type: "copyFile";
       from: string;
       to: string;
+    }
+  | {
+      type: "chmod";
+      path: string;
+      mode: number;
     };
 
 export class DryRunRecorder {
@@ -101,6 +106,12 @@ export function createDryRunFileSystem(
     };
   }
 
+  if (typeof base.chmod === "function") {
+    proxy.chmod = async (target: string, mode: number) => {
+      recorder.record({ type: "chmod", path: target, mode });
+    };
+  }
+
   return proxy as FileSystem;
 }
 
@@ -149,6 +160,14 @@ function formatOperation(operation: DryRunOperation): string | string[] {
         chalk.cyan,
         "# copy"
       );
+    case "chmod": {
+      const mode = operation.mode.toString(8);
+      return renderOperationCommand(
+        `chmod ${mode} ${operation.path}`,
+        chalk.cyan,
+        "# permissions"
+      );
+    }
     case "writeFile": {
       return renderWriteOperation(operation);
     }

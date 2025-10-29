@@ -79,6 +79,12 @@ function createCommandRunnerStub(options?: {
   return { runner, calls };
 }
 
+const CLAUDE_HELPER_LINES = [
+  "#!/bin/bash",
+  'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+];
+const CLAUDE_HELPER_CONTENT = CLAUDE_HELPER_LINES.join("\n");
+
 function createChatServiceStub(response: {
   content: string;
   model?: string;
@@ -163,13 +169,18 @@ describe("CLI program", () => {
       path.join(homeDir, ".claude", "settings.json"),
       "utf8"
     );
-    expect(JSON.parse(settings)).toEqual({
+    const parsed = JSON.parse(settings);
+    expect(parsed).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        POE_API_KEY: "prompted-key",
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: "prompted-key"
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
+    const helper = await fs.readFile(
+      path.join(homeDir, ".claude", "anthropic_key.sh"),
+      "utf8"
+    );
+    expect(helper).toBe(CLAUDE_HELPER_CONTENT);
   });
 
   it("does not register publish-placeholder command", () => {
@@ -405,7 +416,6 @@ describe("CLI program", () => {
     expect(
       logs.some(
         (line) =>
-          line.startsWith(chalk.red("-")) &&
           line.includes('"POE_API_KEY": "old-key"')
       )
     ).toBe(true);
@@ -413,7 +423,7 @@ describe("CLI program", () => {
       logs.some(
         (line) =>
           line.startsWith(chalk.green("+")) &&
-          line.includes('"POE_API_KEY": "new-key"')
+          line.includes('"apiKeyHelper": "/home/user/.claude/anthropic_key.sh"')
       )
     ).toBe(true);
   });
@@ -432,15 +442,15 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    const helperPath = path.join(homeDir, ".claude", "anthropic_key.sh");
     vol.mkdirSync(path.dirname(settingsPath), { recursive: true });
     vol.writeFileSync(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: helperPath,
           env: {
-            POE_API_KEY: "prompted-key",
-            ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_API_KEY: "prompted-key"
+            ANTHROPIC_BASE_URL: "https://api.poe.com"
           }
         },
         null,
@@ -448,6 +458,7 @@ describe("CLI program", () => {
       ) + "\n",
       "utf8"
     );
+    vol.writeFileSync(helperPath, `${CLAUDE_HELPER_CONTENT}\n`, "utf8");
 
     await program.parseAsync([
       "node",
@@ -464,6 +475,16 @@ describe("CLI program", () => {
       logs
     ).toContain(
       `${chalk.dim("mkdir -p /home/user/.claude")} ${chalk.dim("# no change")}`
+    );
+    expect(
+      logs
+    ).toContain(
+      `${chalk.cyan("chmod 700 /home/user/.claude/anthropic_key.sh")} ${chalk.dim("# permissions")}`
+    );
+    expect(
+      logs
+    ).toContain(
+      `${chalk.dim("cat > /home/user/.claude/anthropic_key.sh")} ${chalk.dim("# no change")}`
     );
     expect(
       logs
@@ -488,15 +509,15 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    const helperPath = path.join(homeDir, ".claude", "anthropic_key.sh");
     vol.mkdirSync(path.dirname(settingsPath), { recursive: true });
     vol.writeFileSync(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: helperPath,
           env: {
-            POE_API_KEY: "prompted-key",
-            ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_API_KEY: "prompted-key"
+            ANTHROPIC_BASE_URL: "https://api.poe.com"
           }
         },
         null,
@@ -504,6 +525,7 @@ describe("CLI program", () => {
       ) + "\n",
       "utf8"
     );
+    vol.writeFileSync(helperPath, `${CLAUDE_HELPER_CONTENT}\n`, "utf8");
 
     await program.parseAsync([
       "node",
@@ -520,10 +542,13 @@ describe("CLI program", () => {
       `${chalk.dim("mkdir -p /home/user/.claude")} ${chalk.dim("# no change")}`
     );
     expect(logs).toContain(
+      `${chalk.dim("cat > /home/user/.claude/anthropic_key.sh")} ${chalk.dim("# no change")}`
+    );
+    expect(logs).toContain(
       `${chalk.dim("cat > /home/user/.claude/settings.json")} ${chalk.dim("# no change")}`
     );
     expect(logs).toContain(
-      `${chalk.cyan("mkdir -p /home/user/.claude")} ${chalk.dim("# ensure")}`
+      `${chalk.cyan("chmod 700 /home/user/.claude/anthropic_key.sh")} ${chalk.dim("# permissions")}`
     );
     expect(logs.some((line) => line.includes("Applying"))).toBe(false);
     expect(
@@ -576,13 +601,18 @@ describe("CLI program", () => {
       path.join(homeDir, ".claude", "settings.json"),
       "utf8"
     );
-    expect(JSON.parse(settings)).toEqual({
+    const parsedSettings = JSON.parse(settings);
+    expect(parsedSettings).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        POE_API_KEY: "prompted-key",
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-      ANTHROPIC_API_KEY: "prompted-key"
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
+    const helper = await fs.readFile(
+      path.join(homeDir, ".claude", "anthropic_key.sh"),
+      "utf8"
+    );
+    expect(helper).toBe(CLAUDE_HELPER_CONTENT);
 
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
     expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
@@ -782,11 +812,11 @@ describe("CLI program", () => {
       path.join(homeDir, ".claude", "settings.json"),
       "utf8"
     );
-    expect(JSON.parse(settings)).toEqual({
+    const parsedSettings = JSON.parse(settings);
+    expect(parsedSettings).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        POE_API_KEY: "stored-key",
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: "stored-key"
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
   });
@@ -850,11 +880,11 @@ describe("CLI program", () => {
       path.join(homeDir, ".claude", "settings.json"),
       "utf8"
     );
-    expect(JSON.parse(settings)).toEqual({
+    const parsed = JSON.parse(settings);
+    expect(parsed).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        POE_API_KEY: "prompted-key",
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: "prompted-key"
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
 
@@ -881,11 +911,11 @@ describe("CLI program", () => {
       path.join(homeDir, ".claude", "settings.json"),
       "utf8"
     );
-    expect(JSON.parse(settings)).toEqual({
+    const parsed = JSON.parse(settings);
+    expect(parsed).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        POE_API_KEY: "claude-key",
-        ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_API_KEY: "claude-key"
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
       }
     });
   });
@@ -1142,14 +1172,14 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    const helperPath = path.join(homeDir, ".claude", "anthropic_key.sh");
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
     await fs.writeFile(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: helperPath,
           env: {
-            POE_API_KEY: "sk-test",
-            ANTHROPIC_API_KEY: "sk-test",
             ANTHROPIC_BASE_URL: "https://api.poe.com"
           }
         },
@@ -1158,6 +1188,7 @@ describe("CLI program", () => {
       ),
       { encoding: "utf8" }
     );
+    await fs.writeFile(helperPath, CLAUDE_HELPER_CONTENT, { encoding: "utf8" });
 
     await program.parseAsync([
       "node",
@@ -1167,9 +1198,10 @@ describe("CLI program", () => {
       "claude-code"
     ]);
 
-    expect(
-      logs
-    ).toContain(
+    expect(logs).toContain(
+      `${chalk.red("rm /home/user/.claude/anthropic_key.sh")} ${chalk.dim("# delete")}`
+    );
+    expect(logs).toContain(
       `${chalk.red("rm /home/user/.claude/settings.json")} ${chalk.dim("# delete")}`
     );
     expect(logs).toContain("Removed Claude Code configuration.");
@@ -1187,14 +1219,14 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
     const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    const helperPath = path.join(homeDir, ".claude", "anthropic_key.sh");
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
     await fs.writeFile(
       settingsPath,
       JSON.stringify(
         {
+          apiKeyHelper: helperPath,
           env: {
-            POE_API_KEY: "sk-test",
-            ANTHROPIC_API_KEY: "sk-test",
             ANTHROPIC_BASE_URL: "https://api.poe.com"
           }
         },
@@ -1203,10 +1235,11 @@ describe("CLI program", () => {
       ),
       { encoding: "utf8" }
     );
+    await fs.writeFile(helperPath, CLAUDE_HELPER_CONTENT, { encoding: "utf8" });
 
     await program.parseAsync(["node", "cli", "remove", "claude-code"]);
 
-    expect(
+  expect(
       logs.some((line) => line.includes("Prune Claude settings"))
     ).toBe(false);
     expect(logs).toContain("Removed Claude Code configuration.");
@@ -1481,7 +1514,12 @@ describe("CLI program", () => {
         "utf8"
       )
     );
-    expect(settings.env.ANTHROPIC_API_KEY).toBe("sk-install");
+    expect(settings).toEqual({
+      apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com"
+      }
+    });
   });
 
   it("rejects install option for roo-code", async () => {
