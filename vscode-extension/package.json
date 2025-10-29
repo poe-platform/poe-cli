@@ -160,12 +160,14 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.24.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.1"
   }
 }
