@@ -1,4 +1,6 @@
 import path from "node:path";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   PrerequisiteDefinition,
@@ -10,8 +12,10 @@ import {
   jsonPruneMutation,
   runServiceConfigure,
   runServiceRemove,
+  writeTemplateMutation,
   type ServiceManifest,
-  type ServiceRunOptions
+  type ServiceRunOptions,
+  type ServiceMutation
 } from "./service-manifest.js";
 import {
   runServiceInstall,
@@ -19,11 +23,12 @@ import {
   type ServiceInstallDefinition
 } from "./service-install.js";
 
+const execAsync = promisify(exec);
+
 const CLAUDE_ENV_SHAPE = {
+  apiKeyHelper: true,
   env: {
-    POE_API_KEY: true,
-    ANTHROPIC_BASE_URL: true,
-    ANTHROPIC_API_KEY: true
+    ANTHROPIC_BASE_URL: true
   }
 } as const;
 
@@ -42,14 +47,22 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
       path: ({ options }) => path.dirname(options.settingsPath),
       label: "Ensure Claude settings directory"
     }),
+    writeTemplateMutation({
+      target: ({ options }) => options.keyHelperPath,
+      templateId: "claude-code/anthropic_key.sh",
+      context: ({ options }) => ({
+        credentialsPath: options.credentialsPath
+      }),
+      label: "Write API key helper script"
+    }),
+    createChmodMutation(),
     jsonMergeMutation({
       target: ({ options }) => options.settingsPath,
       label: "Merge Claude settings",
       value: ({ options }) => ({
+        apiKeyHelper: options.keyHelperPath,
         env: {
-          POE_API_KEY: options.apiKey,
-          ANTHROPIC_BASE_URL: "https://api.poe.com",
-          ANTHROPIC_API_KEY: options.apiKey
+          ANTHROPIC_BASE_URL: "https://api.poe.com"
         }
       })
     })
@@ -59,7 +72,8 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
       target: ({ options }) => options.settingsPath,
       label: "Prune Claude settings",
       shape: () => CLAUDE_ENV_SHAPE
-    })
+    }),
+    removeKeyHelperMutation()
   ]
 };
 
@@ -83,11 +97,36 @@ export interface ConfigureClaudeCodeOptions {
   fs: FileSystem;
   apiKey: string;
   settingsPath: string;
+  keyHelperPath: string;
+  credentialsPath: string;
 }
 
 export interface RemoveClaudeCodeOptions {
   fs: FileSystem;
   settingsPath: string;
+  keyHelperPath: string;
+}
+
+function createChmodMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
+  return {
+    kind: "transformFile",
+    target: ({ options }) => options.keyHelperPath,
+    label: "Make API key helper executable",
+    async transform({ content, context }) {
+      if (content) {
+        await execAsync(`chmod +x "${context.options.keyHelperPath}"`);
+      }
+      return { content, changed: false };
+    }
+  };
+}
+
+function removeKeyHelperMutation(): ServiceMutation<RemoveClaudeCodeOptions> {
+  return {
+    kind: "removeFile",
+    target: ({ options }) => options.keyHelperPath,
+    label: "Remove API key helper script"
+  };
 }
 
 export async function configureClaudeCode(
