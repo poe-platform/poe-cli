@@ -420,7 +420,7 @@ describe("CLI program", () => {
       "prompted-key"
     ]);
 
-    expect(logs).toContain("Dry run: would configure Claude Code.");
+    expect(logs).toContain("Claude Code (dry run)");
     expect(
       logs
     ).toContain(

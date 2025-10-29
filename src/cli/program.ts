@@ -1028,6 +1028,7 @@ function resolveVsCodeSettingsPath(
     const base = variables.APPDATA ?? path.join(homeDir, "AppData", "Roaming");
     return path.join(base, "Code", "User", "settings.json");
   }
+  // Default to Linux-style config directory.
   return path.join(homeDir, ".config", "Code", "User", "settings.json");
 }
 
@@ -1043,7 +1044,8 @@ function formatAutoImportPath(homeDir: string, targetPath: string): string {
     if (trimmed.length === 0) {
       return "~";
     }
-    return `~/${trimmed.split(path.sep).join("/")}`;
+    const segments = trimmed.split(path.sep);
+    return `~/${segments.join("/")}`;
   }
   return normalizedTarget.split(path.sep).join("/");
 }
