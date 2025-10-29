@@ -11,7 +11,9 @@
 
 # Commits
 
-Commit every atomic change, once the tests are green
+- Commit every atomic change, once the tests are green.
+- Follow Conventional Commits (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`).
+- Keep subjects imperative and under 72 characters.
 
 # Configure commands
 

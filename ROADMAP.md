@@ -3,10 +3,14 @@
 
 ## Dev Experience
 
-- [ ] Implement linter, prettier or something
-- [ ] Warning - The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
-- [ ] command to build the extension from top level dir
-- [ ] improve commit guidelines in AGENTS.md - brief simple - the usual style feat...
+- [x] Implement linter, prettier or something
+    - ✅ Added ESLint + Prettier configs and npm scripts (`lint`, `format`, `format:write`).
+- [x] Warning - The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+    - ✅ Migrated Vitest config in the VSCode extension to ESM (`vitest.config.mts`) eliminating the warning.
+- [x] command to build the extension from top level dir
+    - ✅ Added npm script `build:extension`.
+- [x] improve commit guidelines in AGENTS.md - brief simple - the usual style feat...
+    - ✅ Documented Conventional Commit requirements.
 
 ## CLI
 
@@ -20,8 +24,9 @@
 - [x] Markdown support
     - ✅ Both assistant and user messages render through the shared markdown helper (inline code, fenced blocks).
     - ✅ Lightweight renderer, no additional build tooling required.
-- [x] Create extension menu insteado of the new file like view
-    - ✅ App shell renders via helpers with `poe-bw.svg` branding.
+- [ ] Create extension menu insteado of the new file like view
+    - App shell renders via helpers with `poe-bw.svg` branding.
+    - This should be the left side toolbar - svg icon and it should show the Poe 
 - [x] Clear is not working fix - make sure to have decent test coverage
 - [x] Remove the notification after installation
 - [x] It should have Settings with all configure options
@@ -31,3 +36,8 @@
     - ✅ Sidebar items update the model and searchable input accepts custom models.
 - [x] Settings->MCPs should open MCP configuration json file
 - [x] Add inline diff preview for file edits
+- [ ] The app is somehow broken at the moment, doesn't send messages.
+    - Devise a plan to add integration tests with mock LLM
+    - Refactor to use React 
+    - Make sure that all features work flawlessly
+- [ ] Remove the keyboard shortcut - it's too aggressive
