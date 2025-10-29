@@ -6,12 +6,14 @@ on:
       - labeled
   workflow_dispatch:
 
+
 jobs:
   resolve:
     name: Resolve Issue With Agent
     if: >-
       github.event.action == 'labeled' &&
-      contains(fromJson('["claude-code","codex","opencode"]'), github.event.label.name)
+      contains(fromJson('["claude-code","codex","opencode"]'),
+      github.event.label.name)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,7 +102,8 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-        run: |
+          SERVICE: ${{ steps.provider.outputs.service }}
+        run: |-
           PROMPT=$(node <<'NODE'
             const title = process.env.ISSUE_TITLE ?? "";
             const body = process.env.ISSUE_BODY ?? "";
@@ -116,8 +119,8 @@ jobs:
             }
             process.stdout.write(lines.join("\n\n"));
           NODE
-          )
-          npx poe-setup agent "$PROMPT"
+            )
+          npx poe-setup spawn "$SERVICE" "$PROMPT"
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
