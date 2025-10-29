@@ -1,6 +1,6 @@
 # Principles
 
-- TDD is a MUST
+- TDD is a MUST (only for code changes)
 - SOLID
 - YAGNI, KISS
 - Never copy/paste more than 5 lines of code
