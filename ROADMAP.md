@@ -4,6 +4,12 @@
 ## CLI
 
 - [ ] `login` should mention where to get teh api key https://poe.com/api_key. WHen pasting the key, it should not be shown (treat as password)
+- [ ] Add option `spawn` analogous to configure/remove
+    - it should take prompt and any arbitrary arguments that are passed through to the agent call
+    - this must live in the service definition
+    - we should utilize it for the checks like this thing `Output exactly: CLAUDE_CODE_OK`
+    - not all agents support it, only claude-code, codex, opencode
+
 
 ## WIP (do not implement)  Extension redesign
 
