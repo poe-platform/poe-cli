@@ -23,7 +23,7 @@
     "@iarna/toml": "^3.0.0",
     "commander": "^11.1.0",
     "handlebars": "^4.7.8",
-    "ink": "^6.3.1",
+    "ink": "^6.4.0",
     "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",
     "prompts": "^2.4.2",
