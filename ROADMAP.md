@@ -51,6 +51,7 @@
     - ✅ Added Vitest suites for commands, config, state, and each webview helper.
 - [x] Remove the keyboard shortcut - it's too aggressive
     - ✅ Dropped default keybinding from `package.json`; commands stay accessible via palette.
+- [ ] Can you implement some e2e tests? THere's a way to download the vscode and run tests for real. Could you try that out? I want to initially just open the extension and see if there are no errors
 
 
 ## WIP (do not implement) Github Worflows
