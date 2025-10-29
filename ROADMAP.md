@@ -58,7 +58,7 @@
     - ✅ Vitest e2e harness compiles the extension, launches VSCode via `@vscode/test-electron`, activates the extension, and skips gracefully if downloads are unreachable.
 
 
-## Extension redesign
+## WIP (do not implement)  Extension redesign
 
 - [ ] Single pane layout, only the chat interface
 - [ ] Dedicated chat history page
@@ -68,16 +68,11 @@
     - Chat history
 - [ ] Smaller font
 
-## WIP (do not implement) Github Worflows
-- [ ] Issue resolution agent
-    - When new issue is created and owner/maintainer tags it with tag - claude-code, open-code, ... (all providers in the app)
-    - It should spawn coding agent
-    - It must setup the provider using this library first
-    - Then it should run it to attempt to resolve the issue and create a pull request
-- [ ] Pull request reviewer
-    - The different coding agents need to cross check pull requests.
-    - Any Open PR should be reviewed by random other coding agent, other than the author.
-    - Any comments should be picked up by original coding agent
+## Github Worflows
+- [x] Issue resolution agent
+    - ✅ Added `.github/workflows/issue-resolution-agent.yml` to configure agent tooling from labels, execute fixes, and raise pull requests automatically.
+- [x] Pull request reviewer
+    - ✅ Added `.github/workflows/pull-request-reviewer.yml` to schedule cross-provider reviews and publish automated review feedback on pull requests.
 
 ## WIP (do not implement) Poe Agent
 - [ ] Ability to spawn any supported sub-agents (add specialized tool for this)

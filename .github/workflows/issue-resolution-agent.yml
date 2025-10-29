@@ -1,0 +1,133 @@
+name: Issue Resolution Agent
+
+on:
+  issues:
+    types:
+      - labeled
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    name: Resolve Issue With Agent
+    if: >-
+      github.event.action == 'labeled' &&
+      contains(fromJson('["claude-code","codex","opencode","roo-code"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      NODE_VERSION: "20"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Determine provider
+        id: provider
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LABEL_NAME: ${{ github.event.label.name }}
+        run: |
+          node <<'NODE'
+            const fs = require("node:fs");
+            const label = process.env.LABEL_NAME;
+            const issue = process.env.ISSUE_NUMBER;
+            const providers = {
+              "claude-code": { service: "claude-code", model: "Claude-Sonnet-4.5" },
+              codex: { service: "codex", model: "Claude-Sonnet-4.5" },
+              "open-code": { service: "opencode", model: "Claude-Sonnet-4.5" },
+              opencode: { service: "opencode", model: "Claude-Sonnet-4.5" },
+              "roo-code": { service: "roo-code", model: "Claude-Sonnet-4.5" }
+            };
+            const selected = providers[label];
+            if (!selected) {
+              process.stderr.write(`Unsupported provider label: ${label}\n`);
+              process.exit(1);
+            }
+            const branch = `agent/${selected.service}/issue-${issue}`;
+            const outputs = [
+              `service=${selected.service}`,
+              `model=${selected.model}`,
+              `branch=${branch}`,
+              `pr_label=agent:${selected.service}`,
+              `exclude_reviewer=${selected.service}`
+            ].join("\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs}\n`);
+          NODE
+
+      - name: Cache Poe API key
+        env:
+          POE_API_KEY: ${{ secrets.POE_API_KEY }}
+        run: npx poe-setup login --api-key "${POE_API_KEY}"
+
+      - name: Configure provider
+        env:
+          POE_API_KEY: ${{ secrets.POE_API_KEY }}
+        run: |
+          SERVICE="${{ steps.provider.outputs.service }}"
+          case "$SERVICE" in
+            claude-code|opencode)
+              npx poe-setup configure "$SERVICE" --api-key "${POE_API_KEY}" --install
+              ;;
+            roo-code)
+              npx poe-setup configure "$SERVICE" --api-key "${POE_API_KEY}"
+              ;;
+            codex)
+              npx poe-setup configure "$SERVICE"
+              ;;
+            *)
+              echo "::error::Unsupported provider $SERVICE"
+              exit 1
+              ;;
+          esac
+
+      - name: Configure git author
+        run: |
+          git config user.name "poe-setup-bot"
+          git config user.email "bot@poe-setup.invalid"
+
+      - name: Run issue resolver agent
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          PROMPT=$(node <<'NODE'
+            const title = process.env.ISSUE_TITLE ?? "";
+            const body = process.env.ISSUE_BODY ?? "";
+            const number = process.env.ISSUE_NUMBER;
+            const lines = [
+              `You are resolving GitHub issue #${number}: ${title}.`,
+              "Adhere to TDD and repository contribution guidelines.",
+              "Implement the fix locally and prepare commits but do not push.",
+              "Summarize your plan before making changes."
+            ];
+            if (body.trim()) {
+              lines.push("Issue details:\n" + body);
+            }
+            process.stdout.write(lines.join("\n\n"));
+          NODE
+          )
+          npx poe-setup agent "$PROMPT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ${{ steps.provider.outputs.branch }}
+          title: "Agent fix for issue #${{ github.event.issue.number }}"
+          commit-message: "chore: resolve issue #${{ github.event.issue.number }}"
+          labels: ${{ steps.provider.outputs.pr_label }}
+          delete-branch: true
