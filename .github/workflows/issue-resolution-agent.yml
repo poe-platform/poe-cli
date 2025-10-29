@@ -11,7 +11,7 @@ jobs:
     name: Resolve Issue With Agent
     if: >-
       github.event.action == 'labeled' &&
-      contains(fromJson('["claude-code","codex","opencode","roo-code"]'), github.event.label.name)
+      contains(fromJson('["claude-code","codex","opencode"]'), github.event.label.name)
     runs-on: ubuntu-latest
     permissions:
       contents: write
