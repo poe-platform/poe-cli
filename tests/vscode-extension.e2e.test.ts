@@ -5,10 +5,20 @@ import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { runTests } from "@vscode/test-electron";
+import { shouldRunVsCodeE2E } from "../src/utils/e2e-flags.js";
 
 const execFileAsync = promisify(execFile);
 
-describe("VSCode extension e2e", () => {
+const runVsCodeE2E = shouldRunVsCodeE2E();
+const describeSuite = runVsCodeE2E ? describe : describe.skip;
+
+if (!runVsCodeE2E) {
+  console.info(
+    "Skipping VSCode e2e tests. Set RUN_VSCODE_E2E=true to enable."
+  );
+}
+
+describeSuite("VSCode extension e2e", () => {
   it(
     "activates the Poe Code extension without errors",
     async () => {
