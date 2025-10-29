@@ -197,6 +197,10 @@ describe("claude-code service", () => {
     expect(runCommand).toHaveBeenCalledWith("claude", [
       "-p",
       "Test prompt",
+      "--allowedTools",
+      "Bash,Read",
+      "--permission-mode",
+      "acceptEdits",
       "--output-format",
       "text"
     ]);
@@ -232,7 +236,16 @@ describe("claude-code service", () => {
     expect(calls[0]).toEqual({ command: "which", args: ["claude"] });
     expect(calls[1]).toEqual({
       command: "claude",
-      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
+      args: [
+        "-p",
+        "Output exactly: CLAUDE_CODE_OK",
+        "--allowedTools",
+        "Bash,Read",
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text"
+      ]
     });
   });
 });

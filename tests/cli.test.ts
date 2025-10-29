@@ -634,7 +634,16 @@ describe("CLI program", () => {
     });
     expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
-      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
+      args: [
+        "-p",
+        "Output exactly: CLAUDE_CODE_OK",
+        "--allowedTools",
+        "Bash,Read",
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text"
+      ]
     });
   });
 
@@ -690,7 +699,16 @@ describe("CLI program", () => {
     });
     expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
-      args: ["-p", "Output exactly: CLAUDE_CODE_OK", "--output-format", "text"]
+      args: [
+        "-p",
+        "Output exactly: CLAUDE_CODE_OK",
+        "--allowedTools",
+        "Bash,Read",
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text"
+      ]
     });
   });
 
@@ -722,10 +740,10 @@ describe("CLI program", () => {
     ).toEqual([
       "which:claude",
       "which:claude",
-      "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text",
+      "claude:-p Output exactly: CLAUDE_CODE_OK --allowedTools Bash,Read --permission-mode acceptEdits --output-format text",
       "which:claude",
       "which:claude",
-      "claude:-p Output exactly: CLAUDE_CODE_OK --output-format text"
+      "claude:-p Output exactly: CLAUDE_CODE_OK --allowedTools Bash,Read --permission-mode acceptEdits --output-format text"
     ]);
   });
 
@@ -1077,7 +1095,9 @@ describe("CLI program", () => {
     ]);
     expect(
       logs.find((line) =>
-        line.startsWith("> claude -p Output exactly: CLAUDE_CODE_OK --output-format text")
+        line.startsWith(
+          "> claude -p Output exactly: CLAUDE_CODE_OK --allowedTools Bash,Read --permission-mode acceptEdits --output-format text"
+        )
       )
     ).toBeTruthy();
     expect(logs).toContain("✓ Claude CLI health check must succeed");

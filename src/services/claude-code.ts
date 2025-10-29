@@ -161,7 +161,15 @@ export async function configureClaudeCode(
 export async function spawnClaudeCode(
   options: SpawnClaudeCodeOptions
 ): Promise<CommandRunnerResult> {
-  const args = ["-p", options.prompt, ...(options.args ?? [])];
+  const defaults = [
+    "-p",
+    options.prompt,
+    "--allowedTools",
+    "Bash,Read",
+    "--permission-mode",
+    "acceptEdits"
+  ];
+  const args = [...defaults, ...(options.args ?? [])];
   return options.runCommand("claude", args);
 }
 
