@@ -1,5 +1,6 @@
 node_modules/
 dist/
+actionlint
 vscode-extension/tests/*.js
 vscode-extension/tests/*.js.map
 vscode-extension/vitest.config.*.js
