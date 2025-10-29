@@ -337,7 +337,9 @@ async function attachPoeWebview(
         webview,
         renderMarkdown,
         availableTools: runtime.availableTools,
-        openSettings: () => vscode.commands.executeCommand('poe-code.settings.openMcp'),
+        openSettings: async () => {
+            await vscode.commands.executeCommand('poe-code.settings.openMcp');
+        },
         ui: {
             info: (message) => vscode.window.showInformationMessage(message),
             error: (message) => vscode.window.showErrorMessage(message)
@@ -1276,9 +1278,9 @@ class PoeSidebarProvider implements vscode.WebviewViewProvider {
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
-            retainContextWhenHidden: true,
             localResourceRoots: [this.context.extensionUri]
         };
+        webviewView.description = 'Chat with Poe models';
         removeActiveWebview(webviewView.webview);
         this.messageSubscription?.dispose();
         this.messageSubscription = await attachPoeWebview('sidebar', this.context, webviewView.webview) ?? undefined;
