@@ -657,9 +657,8 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     const escapedModelSelector = escapeTemplateLiteral(options.modelSelectorHtml);
     const nonce = createNonce();
     const cspSource = webview.cspSource;
-    const bootstrapSource = escapeTemplateLiteral(initializeWebviewApp.toString());
-
-    return `<!DOCTYPE html>
+    const bootstrapPlaceholder = "__POE_BOOTSTRAP__";
+    const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1239,7 +1238,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     </div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
-        const bootstrap = ${bootstrapSource};
+        const bootstrap = ${bootstrapPlaceholder};
         const app = bootstrap({
             document,
             appShellHtml: \`${escapedAppShell}\`,
@@ -1258,6 +1257,8 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     </script>
 </body>
 </html>`;
+
+    return html.replace(bootstrapPlaceholder, initializeWebviewApp.toString());
 }
 
 export function deactivate() {
