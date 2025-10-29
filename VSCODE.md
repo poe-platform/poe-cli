@@ -53,6 +53,18 @@ The Poe Code extension adds a terminal icon to your editor toolbar. Click it to 
    - Select "Install from VSIX..."
    - Choose the generated `.vsix` file
 
+### Installing Directly from the Repository
+
+You can also run the workspace version without packaging:
+
+```bash
+code --extensionDevelopmentPath=$(pwd)/vscode-extension
+```
+
+Alternatively, open the command palette (`Cmd/Ctrl+Shift+P`) and execute
+`Developer: Install Extension from Location...`, then select the
+`vscode-extension` folder.
+
 ## Usage
 
 ### Launching Poe Code
@@ -148,11 +160,13 @@ See [MCP.md](./MCP.md) for detailed MCP troubleshooting.
 To modify the extension:
 
 1. Make changes to `vscode-extension/src/extension.ts`
-2. Compile: `npm run compile`
-3. Test in VS Code:
+2. Rebuild continuously: `npm run watch` (or from the repo root, `npm run watch:extension`)
+3. Compile once when needed: `npm run compile`
+4. Test in VS Code:
    - Press `F5` to open Extension Development Host
    - Test your changes
-4. Package when ready: `npm run package`
+5. After editing, reload the Extension Development Host with `Developer: Reload Window`
+6. Package when ready: `npm run package`
 
 ## See Also
 

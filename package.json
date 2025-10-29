@@ -12,7 +12,9 @@
     "build:extension": "npm run compile --prefix vscode-extension",
     "lint": "eslint . --ext ts",
     "format": "prettier --check .",
-    "format:write": "prettier --write ."
+    "format:write": "prettier --write .",
+    "watch": "tsx watch src/index.ts",
+    "watch:extension": "npm run watch --prefix vscode-extension"
   },
   "bin": {
     "poe-setup": "dist/index.js",
