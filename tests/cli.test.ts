@@ -265,6 +265,57 @@ describe("CLI program", () => {
     ).toBeTruthy();
   });
 
+  it("reports mutation outcomes during claude-code dry runs", async () => {
+    const { prompt } = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    vol.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    vol.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            POE_API_KEY: "prompted-key",
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_API_KEY: "prompted-key"
+          }
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "configure",
+      "claude-code",
+      "--api-key",
+      "prompted-key"
+    ]);
+
+    expect(logs).toContain("Dry run: would configure Claude Code.");
+    expect(
+      logs.find(
+        (line) =>
+          line.includes("Merge Claude settings ->") &&
+          line.includes("(no changes)")
+      )
+    ).toBeTruthy();
+  });
+
   it("runs init command with provided options", async () => {
     const { prompt } = createPromptStub({});
     const program = createProgram({
