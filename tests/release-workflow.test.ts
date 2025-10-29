@@ -10,20 +10,26 @@ const releaseWorkflowPath = resolve(
 );
 
 describe('release workflow', () => {
-  it('publishes via trusted publisher without tokens', () => {
+  it('publishes on release publication with required permissions and auth', () => {
     const fileContents = readFileSync(releaseWorkflowPath, 'utf8');
     const workflow = parse(fileContents);
 
-    expect(workflow?.permissions?.['id-token']).toBe('write');
+    const releaseTypes = Array.isArray(workflow?.on?.release?.types)
+      ? workflow?.on?.release?.types
+      : workflow?.on?.release?.types
+        ? [workflow?.on?.release?.types]
+        : [];
+    expect(releaseTypes).toContain('published');
 
     const publishJob = workflow?.jobs?.publish;
     expect(publishJob).toBeDefined();
+    expect(publishJob?.permissions?.contents).toBe('read');
+    expect(publishJob?.permissions?.['id-token']).toBe('write');
 
     const publishStep = publishJob.steps.find(
-      (step: { name?: string }) => step?.name === 'Publish to npm',
+      (step: { run?: string }) => step?.run === 'npm publish --provenance --access public',
     );
     expect(publishStep).toBeDefined();
-    expect(publishStep.run).toBe('npm publish --provenance --access public');
-    expect(publishStep.env ?? {}).not.toHaveProperty('NODE_AUTH_TOKEN');
+    expect(publishStep?.env?.NODE_AUTH_TOKEN).toBe('${{ secrets.NPM_TOKEN }}');
   });
 });
