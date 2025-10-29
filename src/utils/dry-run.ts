@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import chalk from "chalk";
 import type { FileSystem } from "./file-system.js";
 
 export type DryRunOperation =
@@ -106,58 +107,85 @@ export function formatDryRunOperations(
   operations: DryRunOperation[]
 ): string[] {
   if (operations.length === 0) {
-    return ["  • no file changes recorded"];
+    return [chalk.dim("# no filesystem changes")];
   }
 
-  return operations.flatMap((op) => formatOperation(op));
+  return operations.map((op) => formatOperation(op));
 }
 
-function formatOperation(operation: DryRunOperation): string[] {
+function formatOperation(operation: DryRunOperation): string {
   switch (operation.type) {
     case "mkdir": {
-      const recursiveFlag = operation.options?.recursive ? " (recursive)" : "";
-      return [`- mkdir ${operation.path}${recursiveFlag}`];
+      const recursiveFlag = operation.options?.recursive ? " -p" : "";
+      const command = `mkdir${recursiveFlag} ${operation.path}`;
+      return renderOperationCommand(command, chalk.cyan, "# ensure");
     }
     case "unlink":
-      return [`- delete ${operation.path}`];
+      return renderOperationCommand(`rm ${operation.path}`, chalk.red, "# delete");
     case "rm": {
       const flags: string[] = [];
       if (operation.options?.recursive) {
-        flags.push("recursive");
+        flags.push("-r");
       }
       if (operation.options?.force) {
-        flags.push("force");
+        flags.push("-f");
       }
-      const flagSuffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";
-      return [`- remove ${operation.path}${flagSuffix}`];
+      const flagSuffix = flags.length > 0 ? ` ${flags.join(" ")}` : "";
+      return renderOperationCommand(`rm${flagSuffix} ${operation.path}`, chalk.red, "# delete");
     }
     case "copyFile":
-      return [`- copy ${operation.from} -> ${operation.to}`];
+      return renderOperationCommand(
+        `cp ${operation.from} ${operation.to}`,
+        chalk.cyan,
+        "# copy"
+      );
     case "writeFile": {
       const status = describeWriteChange(
         operation.previousContent,
         operation.nextContent
       );
-      return [`- write ${operation.path}${status}`];
+      return renderWriteCommand(operation.path, status);
     }
     default: {
       const neverOp: never = operation;
-      return [`- unknown operation ${(neverOp as any).type}`];
+      return chalk.dim(`# unknown ${(neverOp as any).type}`);
     }
   }
+}
+
+function renderOperationCommand(
+  command: string,
+  colorize: (value: string) => string,
+  detail: string
+): string {
+  return `${colorize(command)} ${chalk.dim(detail)}`;
 }
 
 function describeWriteChange(
   previous: string | null,
   next: string
-): string {
+): "create" | "update" | "noop" {
   if (previous == null) {
-    return " (create)";
+    return "create";
   }
   if (previous === next) {
-    return " (no changes)";
+    return "noop";
   }
-  return " (update)";
+  return "update";
+}
+
+function renderWriteCommand(
+  path: string,
+  change: "create" | "update" | "noop"
+): string {
+  const command = `cat > ${path}`;
+  if (change === "create") {
+    return renderOperationCommand(command, chalk.green, "# create");
+  }
+  if (change === "update") {
+    return renderOperationCommand(command, chalk.yellow, "# update");
+  }
+  return renderOperationCommand(command, chalk.dim, "# no change");
 }
 
 async function tryReadText(

@@ -93,9 +93,32 @@ export interface MutationLogDetails {
   targetPath?: string;
 }
 
+export type MutationDetail =
+  | "create"
+  | "update"
+  | "delete"
+  | "noop"
+  | "backup";
+
+export interface ServiceMutationOutcome {
+  changed: boolean;
+  effect: MutationEffect;
+  detail?: MutationDetail;
+}
+
+export type MutationEffect =
+  | "none"
+  | "mkdir"
+  | "copy"
+  | "write"
+  | "delete";
+
 export interface ServiceMutationHooks {
   onStart?(details: MutationLogDetails): void;
-  onComplete?(details: MutationLogDetails, outcome: { changed: boolean }): void;
+  onComplete?(
+    details: MutationLogDetails,
+    outcome: ServiceMutationOutcome
+  ): void;
   onError?(details: MutationLogDetails, error: unknown): void;
 }
 
@@ -308,13 +331,18 @@ async function applyMutation<Options>(
       const details = createMutationDetails(mutation, manifestId, targetPath);
       hooks?.onStart?.(details);
       try {
+        const existed = await pathExists(context.fs, targetPath);
         await context.fs.mkdir(targetPath, { recursive: true });
-        hooks?.onComplete?.(details, { changed: false });
+        hooks?.onComplete?.(details, {
+          changed: !existed,
+          effect: "mkdir",
+          detail: existed ? "noop" : "create"
+        });
+        return !existed;
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
       }
-      return false;
     }
     case "createBackup": {
       const targetPath = resolveValue(mutation.target, mutationContext(context));
@@ -325,7 +353,11 @@ async function applyMutation<Options>(
       hooks?.onStart?.(details);
       try {
         const backupPath = await createBackup(context.fs, targetPath, timestamp);
-        hooks?.onComplete?.(details, { changed: backupPath != null });
+        hooks?.onComplete?.(details, {
+          changed: backupPath != null,
+          effect: backupPath ? "copy" : "none",
+          detail: backupPath ? "backup" : "noop"
+        });
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
@@ -344,8 +376,13 @@ async function applyMutation<Options>(
       const details = createMutationDetails(mutation, manifestId, targetPath);
       hooks?.onStart?.(details);
       try {
+        const existed = await pathExists(context.fs, targetPath);
         await context.fs.writeFile(targetPath, rendered, { encoding: "utf8" });
-        hooks?.onComplete?.(details, { changed: true });
+        hooks?.onComplete?.(details, {
+          changed: true,
+          effect: "write",
+          detail: existed ? "update" : "create"
+        });
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
@@ -363,19 +400,35 @@ async function applyMutation<Options>(
           mutation.whenContentMatches &&
           !mutation.whenContentMatches.test(trimmed)
         ) {
-          hooks?.onComplete?.(details, { changed: false });
+          hooks?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
           return false;
         }
         if (mutation.whenEmpty && trimmed.length > 0) {
-          hooks?.onComplete?.(details, { changed: false });
+          hooks?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
           return false;
         }
         await context.fs.unlink(targetPath);
-        hooks?.onComplete?.(details, { changed: true });
+        hooks?.onComplete?.(details, {
+          changed: true,
+          effect: "delete",
+          detail: "delete"
+        });
         return true;
       } catch (error) {
         if (isNotFound(error)) {
-          hooks?.onComplete?.(details, { changed: false });
+          hooks?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
           return false;
         }
         hooks?.onError?.(details, error);
@@ -392,14 +445,14 @@ async function applyMutation<Options>(
           content: current,
           context: mutationContext(context)
         });
-        const changed = await persistTransformResult({
+        const transformOutcome = await persistTransformResult({
           fs: context.fs,
           targetPath,
           previousContent: current,
           result
         });
-        hooks?.onComplete?.(details, { changed });
-        return changed;
+        hooks?.onComplete?.(details, transformOutcome);
+        return transformOutcome.changed;
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
@@ -484,21 +537,25 @@ async function persistTransformResult(input: {
   targetPath: string;
   previousContent: string | null;
   result: TransformResult;
-}): Promise<boolean> {
+}): Promise<ServiceMutationOutcome> {
   if (!input.result.changed) {
-    return false;
+    return { changed: false, effect: "none", detail: "noop" };
   }
   if (input.result.content == null) {
     if (input.previousContent == null) {
-      return false;
+      return { changed: false, effect: "none", detail: "noop" };
     }
     await input.fs.unlink(input.targetPath);
-    return true;
+    return { changed: true, effect: "delete", detail: "delete" };
   }
   await input.fs.writeFile(input.targetPath, input.result.content, {
     encoding: "utf8"
   });
-  return true;
+  return {
+    changed: true,
+    effect: "write",
+    detail: input.previousContent == null ? "create" : "update"
+  };
 }
 
 async function readFileIfExists(
@@ -510,6 +567,18 @@ async function readFileIfExists(
   } catch (error) {
     if (isNotFound(error)) {
       return null;
+    }
+    throw error;
+  }
+}
+
+async function pathExists(fs: FileSystem, target: string): Promise<boolean> {
+  try {
+    await fs.stat(target);
+    return true;
+  } catch (error) {
+    if (isNotFound(error)) {
+      return false;
     }
     throw error;
   }

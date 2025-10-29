@@ -29,9 +29,12 @@ import {
   type PrerequisiteRunHooks
 } from "../utils/prerequisites.js";
 import {
+  type MutationEffect,
   type MutationLogDetails,
-  type ServiceMutationHooks
+  type ServiceMutationHooks,
+  type ServiceMutationOutcome
 } from "../services/service-manifest.js";
+import chalk from "chalk";
 
 type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
 type LoggerFn = (message: string) => void;
@@ -208,7 +211,10 @@ export function createProgram(dependencies: CliDependencies): Command {
       logger,
       runCommand: commandRunnerForContext
     });
-    const mutationHooks = createMutationLogger(logger, isVerbose);
+    const mutationHooks = createMutationLogger(logger, {
+      verbose: isVerbose,
+      collector: !isVerbose ? context.recordMutation : undefined
+    });
     const { prerequisites } = context;
 
     if (service === "claude-code") {
@@ -553,12 +559,15 @@ export function createProgram(dependencies: CliDependencies): Command {
       const commandRunnerForContext = isVerbose
         ? createLoggingCommandRunner(commandRunner, logger)
         : commandRunner;
-      const mutationHooks = createMutationLogger(logger, isVerbose);
       const context = createCommandContext({
         baseFs,
         isDryRun,
         logger,
         runCommand: commandRunnerForContext
+      });
+      const mutationHooks = createMutationLogger(logger, {
+        verbose: isVerbose,
+        collector: !isVerbose ? context.recordMutation : undefined
       });
       if (service === "claude-code") {
         const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
@@ -650,6 +659,7 @@ interface CommandContextInit {
 interface CommandContext {
   fs: FileSystem;
   prerequisites: PrerequisiteManager;
+  recordMutation?: (message: string) => void;
   complete(messages: { success: string; dry: string }): void;
 }
 
@@ -671,14 +681,26 @@ function createCommandContext(init: CommandContextInit): CommandContext {
 
   const recorder = new DryRunRecorder();
   const dryFs = createDryRunFileSystem(init.baseFs, recorder);
+  const mutationLogs: string[] = [];
+
+  const recordMutation = (message: string) => {
+    mutationLogs.push(message);
+  };
 
   return {
     fs: dryFs,
     prerequisites,
+    recordMutation,
     complete(messages) {
       init.logger(messages.dry);
+      for (const note of mutationLogs) {
+        init.logger(note);
+      }
+      const recorded = new Set(mutationLogs);
       for (const line of formatDryRunOperations(recorder.drain())) {
-        init.logger(line);
+        if (!recorded.has(line)) {
+          init.logger(line);
+        }
       }
     }
   };
@@ -730,37 +752,134 @@ function createPrerequisiteHooks(
 
 function createMutationLogger(
   logger: LoggerFn,
-  verbose: boolean
+  options: { verbose: boolean; collector?: (message: string) => void }
 ): ServiceMutationHooks | undefined {
-  if (!verbose) {
+  const { verbose, collector } = options;
+  if (!verbose && !collector) {
     return undefined;
   }
+
+  const emit = (message: string) => {
+    if (collector) {
+      collector(message);
+    }
+    if (verbose) {
+      logger(message);
+    }
+  };
+
   return {
-    onStart(details) {
-      logger(`Applying ${formatMutationSubject(details)}`);
+    onStart() {
+      // only log on completion/error
     },
     onComplete(details, outcome) {
-      if (outcome.changed) {
-        logger(`✓ ${formatMutationSubject(details)}`);
-      } else {
-        logger(`• ${formatMutationSubject(details)} (no changes)`);
-      }
+      const message = renderMutationMessage(details, outcome);
+      emit(message);
     },
     onError(details, error) {
-      logger(
-        `✖ ${formatMutationSubject(details)}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
+      const errorMessage = renderMutationError(details, error);
+      logger(errorMessage);
+      collector?.(errorMessage);
     }
   };
 }
 
-function formatMutationSubject(details: MutationLogDetails): string {
-  if (details.targetPath) {
-    return `${details.label} -> ${details.targetPath}`;
+function renderMutationMessage(
+  details: MutationLogDetails,
+  outcome: ServiceMutationOutcome
+): string {
+  const base = formatMutationCommand(details, outcome);
+  return decorateMutationCommand(base, outcome);
+}
+
+function renderMutationError(details: MutationLogDetails, error: unknown): string {
+  const base = formatMutationCommand(details);
+  const info = error instanceof Error ? error.message : String(error);
+  return chalk.red(`${base} ! ${info}`);
+}
+
+function formatMutationCommand(
+  details: MutationLogDetails,
+  outcome?: ServiceMutationOutcome
+): string {
+  const target = details.targetPath;
+  const effect = outcome?.effect;
+  switch (effect) {
+    case "mkdir":
+      return target ? `mkdir -p ${target}` : "mkdir -p";
+    case "copy":
+      return target ? `cp ${target} ${target}.bak` : "cp <target> <target>.bak";
+    case "write":
+      return target ? `cat > ${target}` : "cat > <target>";
+    case "delete":
+      return target ? `rm ${target}` : "rm <target>";
+    case "none":
+    default:
+      break;
   }
-  return details.label;
+  switch (details.kind) {
+    case "ensureDirectory":
+      return target ? `mkdir -p ${target}` : "mkdir -p";
+    case "createBackup":
+      return target ? `cp ${target} ${target}.bak` : "cp <target> <target>.bak";
+    case "removeFile":
+      return target ? `rm ${target}` : "rm <target>";
+    case "writeTemplate":
+    case "transformFile":
+      return target ? `cat > ${target}` : "cat > <target>";
+    default:
+      return details.label;
+  }
+}
+
+function decorateMutationCommand(
+  command: string,
+  outcome: ServiceMutationOutcome
+): string {
+  const coloredCommand = colorizeMutation(command, outcome);
+  const suffix = describeOutcomeDetail(outcome);
+  if (suffix) {
+    return `${coloredCommand} ${chalk.dim(suffix)}`;
+  }
+  return coloredCommand;
+}
+
+function colorizeMutation(
+  command: string,
+  outcome: ServiceMutationOutcome
+): string {
+  if (!outcome.changed || outcome.effect === "none" || outcome.detail === "noop") {
+    return chalk.dim(command);
+  }
+  switch (outcome.effect) {
+    case "mkdir":
+      return chalk.cyan(command);
+    case "copy":
+      return chalk.cyan(command);
+    case "write":
+      return outcome.detail === "update" ? chalk.yellow(command) : chalk.green(command);
+    case "delete":
+      return chalk.red(command);
+    default:
+      return chalk.green(command);
+  }
+}
+
+function describeOutcomeDetail(outcome: ServiceMutationOutcome): string | null {
+  switch (outcome.detail) {
+    case "create":
+      return "# create";
+    case "update":
+      return "# update";
+    case "delete":
+      return "# delete";
+    case "backup":
+      return "# backup";
+    case "noop":
+      return "# no change";
+    default:
+      return outcome.changed ? null : "# no change";
+  }
 }
 
 function createDefaultCommandRunner(): CommandRunner {

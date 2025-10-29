@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import chalk from "chalk";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
@@ -239,11 +240,9 @@ describe("CLI program", () => {
       fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8")
     ).rejects.toThrow();
     expect(logs).toContain("Dry run: would configure Codex.");
-    expect(
-      logs.find((line) =>
-        line.includes("write /home/user/.codex/config.toml")
-      )
-    ).toBeTruthy();
+    expect(logs).toContain(
+      `${chalk.green("cat > /home/user/.codex/config.toml")} ${chalk.dim("# create")}`
+    );
 
     await program.parseAsync([
       "node",
@@ -260,9 +259,9 @@ describe("CLI program", () => {
       fs.readFile(path.join(cwd, "demo", ".env"), "utf8")
     ).rejects.toThrow();
     expect(logs).toContain('Dry run: would initialize project "demo".');
-    expect(
-      logs.find((line) => line.includes("write /workspace/demo/.env"))
-    ).toBeTruthy();
+    expect(logs).toContain(
+      `${chalk.green("cat > /workspace/demo/.env")} ${chalk.dim("# create")}`
+    );
   });
 
   it("reports mutation outcomes during claude-code dry runs", async () => {
@@ -307,9 +306,75 @@ describe("CLI program", () => {
     ]);
 
     expect(logs).toContain("Dry run: would configure Claude Code.");
-    expect(logs.some((line) => line.includes("- mkdir /home/user/.claude (recursive)"))).toBe(true);
+    expect(
+      logs
+    ).toContain(
+      `${chalk.dim("mkdir -p /home/user/.claude")} ${chalk.dim("# no change")}`
+    );
+    expect(
+      logs
+    ).toContain(
+      `${chalk.dim("cat > /home/user/.claude/settings.json")} ${chalk.dim("# no change")}`
+    );
     expect(logs.some((line) => line.includes("Applying"))).toBe(false);
     expect(logs.some((line) => line.includes("previous:"))).toBe(false);
+  });
+
+  it("uses command-style verbose logs for claude-code mutations", async () => {
+    const { prompt } = createPromptStub({});
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    vol.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    vol.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            POE_API_KEY: "prompted-key",
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_API_KEY: "prompted-key"
+          }
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "--dry-run",
+      "--verbose",
+      "configure",
+      "claude-code",
+      "--api-key",
+      "prompted-key"
+    ]);
+
+    expect(logs).toContain(
+      `${chalk.dim("mkdir -p /home/user/.claude")} ${chalk.dim("# no change")}`
+    );
+    expect(logs).toContain(
+      `${chalk.dim("cat > /home/user/.claude/settings.json")} ${chalk.dim("# no change")}`
+    );
+    expect(logs).toContain(
+      `${chalk.cyan("mkdir -p /home/user/.claude")} ${chalk.dim("# ensure")}`
+    );
+    expect(logs.some((line) => line.includes("Applying"))).toBe(false);
+    expect(
+      logs.some((line) => line.includes("Ensure Claude settings directory"))
+    ).toBe(false);
   });
 
   it("runs init command with provided options", async () => {
@@ -598,10 +663,10 @@ describe("CLI program", () => {
       logs
     ).toContain(`Dry run: would store Poe API key at ${credentialsPath}.`);
     expect(
-      logs.find((line) =>
-        line.includes(`write ${credentialsPath}`)
-      )
-    ).toBeTruthy();
+      logs
+    ).toContain(
+      `${chalk.green(`cat > ${credentialsPath}`)} ${chalk.dim("# create")}`
+    );
   });
 
   it("prompts again after logout removes stored api key", async () => {
@@ -826,18 +891,12 @@ describe("CLI program", () => {
       logs.find((line) => line.startsWith("> which claude"))
     ).toBeTruthy();
     expect(logs).toContain("✓ Claude CLI binary must exist");
-    expect(
-      logs.find((line) =>
-        line.includes("Ensure Claude settings directory -> /home/user/.claude")
-      )
-    ).toBeTruthy();
-    expect(
-      logs.find((line) =>
-        line.includes(
-          "Merge Claude settings -> /home/user/.claude/settings.json"
-        )
-      )
-    ).toBeTruthy();
+    expect(logs).toContain(
+      `${chalk.cyan("mkdir -p /home/user/.claude")} ${chalk.dim("# create")}`
+    );
+    expect(logs).toContain(
+      `${chalk.green("cat > /home/user/.claude/settings.json")} ${chalk.dim("# create")}`
+    );
     expect(
       logs.find((line) => line.startsWith("> claude -p Output exactly"))
     ).toBeTruthy();
@@ -955,10 +1014,10 @@ describe("CLI program", () => {
     ]);
 
     expect(
-      logs.find((line) =>
-        line.includes("Prune Claude settings -> /home/user/.claude/settings.json")
-      )
-    ).toBeTruthy();
+      logs
+    ).toContain(
+      `${chalk.red("rm /home/user/.claude/settings.json")} ${chalk.dim("# delete")}`
+    );
     expect(logs).toContain("Removed Claude Code configuration.");
   });
 
