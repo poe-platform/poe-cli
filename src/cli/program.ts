@@ -10,6 +10,7 @@ import {
 } from "../services/claude-code.js";
 import { configureCodex, removeCodex } from "../services/codex.js";
 import { configureOpenCode, removeOpenCode } from "../services/opencode.js";
+import { configureRooCode, removeRooCode } from "../services/roo-code.js";
 import {
   deleteCredentials,
   loadCredentials,
@@ -59,6 +60,8 @@ export interface CliDependencies {
   env: {
     cwd: string;
     homeDir: string;
+    platform?: NodeJS.Platform;
+    variables?: Record<string, string | undefined>;
   };
   logger?: LoggerFn;
   exitOverride?: boolean;
@@ -76,6 +79,8 @@ interface ConfigureCommandOptions {
   apiKey?: string;
   model?: string;
   reasoningEffort?: string;
+  configName?: string;
+  baseUrl?: string;
 }
 
 interface LoginCommandOptions {
@@ -91,13 +96,21 @@ interface QueryCommandOptions {
   model?: string;
 }
 
+interface RemoveCommandOptions {
+  configName?: string;
+}
+
 const DEFAULT_MODEL = "gpt-5";
 const DEFAULT_REASONING = "medium";
 const DEFAULT_QUERY_MODEL = "Claude-Sonnet-4.5";
+const DEFAULT_ROO_MODEL = "Claude-Sonnet-4.5";
+const DEFAULT_ROO_BASE_URL = "https://api.poe.com/v1";
+const DEFAULT_ROO_CONFIG_NAME = "poe";
 const SERVICE_LABELS = {
   "claude-code": "Claude Code",
   codex: "Codex",
-  opencode: "OpenCode CLI"
+  opencode: "OpenCode CLI",
+  "roo-code": "Roo Code"
 } as const;
 
 export function createProgram(dependencies: CliDependencies): Command {
@@ -110,6 +123,9 @@ export function createProgram(dependencies: CliDependencies): Command {
     httpClient: providedHttpClient,
     commandRunner: providedCommandRunner
   } = dependencies;
+
+  const platform = env.platform ?? process.platform;
+  const envVariables = env.variables ?? process.env;
 
   const httpClient: HttpClient =
     providedHttpClient ??
@@ -309,6 +325,71 @@ export function createProgram(dependencies: CliDependencies): Command {
       return;
     }
 
+    if (service === "roo-code") {
+      const configName =
+        options.configName ??
+        (await ensureOption(
+          undefined,
+          prompts,
+          "configName",
+          "Roo Code configuration name",
+          DEFAULT_ROO_CONFIG_NAME
+        ));
+      const model =
+        options.model ??
+        (await ensureOption(
+          undefined,
+          prompts,
+          "model",
+          "Model",
+          DEFAULT_ROO_MODEL
+        ));
+      const baseUrl =
+        options.baseUrl ??
+        (await ensureOption(
+          undefined,
+          prompts,
+          "baseUrl",
+          "Base URL",
+          DEFAULT_ROO_BASE_URL
+        ));
+      const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
+      const configPath = path.join(
+        env.homeDir,
+        "Documents",
+        "roo-config.json"
+      );
+      const settingsPath = resolveVsCodeSettingsPath(
+        platform,
+        env.homeDir,
+        envVariables
+      );
+      if (!settingsPath) {
+        throw new Error(
+          "Unable to determine VSCode settings path for the current platform."
+        );
+      }
+      const autoImportPath = formatAutoImportPath(env.homeDir, configPath);
+      await configureRooCode(
+        {
+          fs: context.fs,
+          configPath,
+          settingsPath,
+          configName,
+          apiKey,
+          model,
+          baseUrl,
+          autoImportPath
+        },
+        mutationHooks ? { hooks: mutationHooks } : undefined
+      );
+      context.complete({
+        success: "Configured Roo Code.",
+        dry: "Dry run: would configure Roo Code."
+      });
+      return;
+    }
+
     throw new Error(`Unknown service "${service}".`);
   }
 
@@ -393,11 +474,13 @@ export function createProgram(dependencies: CliDependencies): Command {
     .description("Configure developer tooling for Poe API.")
     .argument(
       "<service>",
-      "Service to configure (claude-code | codex | opencode)"
+      "Service to configure (claude-code | codex | opencode | roo-code)"
     )
     .option("--api-key <key>", "Poe API key")
     .option("--model <model>", "Model identifier")
     .option("--reasoning-effort <level>", "Reasoning effort level")
+    .option("--config-name <name>", "Configuration profile name")
+    .option("--base-url <url>", "API base URL")
     .action(async (service: string, options: ConfigureCommandOptions) => {
       await configureService(service, options);
     });
@@ -550,9 +633,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     .description("Remove existing Poe API tooling configuration.")
     .argument(
       "<service>",
-      "Service to remove (claude-code | codex | opencode)"
+      "Service to remove (claude-code | codex | opencode | roo-code)"
     )
-    .action(async (service: string) => {
+    .option("--config-name <name>", "Configuration profile name")
+    .action(async (service: string, options: RemoveCommandOptions) => {
       const opts = program.optsWithGlobals();
       const isDryRun = Boolean(opts.dryRun);
       const isVerbose = Boolean(opts.verbose);
@@ -629,6 +713,50 @@ export function createProgram(dependencies: CliDependencies): Command {
             ? "Removed OpenCode CLI configuration."
             : "No OpenCode CLI configuration found.",
           dry: "Dry run: would remove OpenCode CLI configuration."
+        });
+        return;
+      }
+
+      if (service === "roo-code") {
+        const configPath = path.join(
+          env.homeDir,
+          "Documents",
+          "roo-config.json"
+        );
+        const settingsPath = resolveVsCodeSettingsPath(
+          platform,
+          env.homeDir,
+          envVariables
+        );
+        if (!settingsPath) {
+          throw new Error(
+            "Unable to determine VSCode settings path for the current platform."
+          );
+        }
+        const configName =
+          options.configName ??
+          (await ensureOption(
+            undefined,
+            prompts,
+            "configName",
+            "Roo Code configuration name",
+            DEFAULT_ROO_CONFIG_NAME
+          ));
+        const removed = await removeRooCode(
+          {
+            fs: context.fs,
+            configPath,
+            settingsPath,
+            configName,
+            autoImportPath: formatAutoImportPath(env.homeDir, configPath)
+          },
+          mutationHooks ? { hooks: mutationHooks } : undefined
+        );
+        context.complete({
+          success: removed
+            ? `Removed Roo Code configuration "${configName}".`
+            : `No Roo Code configuration named "${configName}" found.`,
+          dry: "Dry run: would remove Roo Code configuration."
         });
         return;
       }
@@ -880,6 +1008,45 @@ function describeOutcomeDetail(outcome: ServiceMutationOutcome): string | null {
     default:
       return outcome.changed ? null : "# no change";
   }
+}
+
+function resolveVsCodeSettingsPath(
+  platform: NodeJS.Platform,
+  homeDir: string,
+  variables: Record<string, string | undefined>
+): string | null {
+  if (platform === "darwin") {
+    return path.join(
+      homeDir,
+      "Library",
+      "Application Support",
+      "Code",
+      "User",
+      "settings.json"
+    );
+  }
+  if (platform === "win32") {
+    const base = variables.APPDATA ?? path.join(homeDir, "AppData", "Roaming");
+    return path.join(base, "Code", "User", "settings.json");
+  }
+  return path.join(homeDir, ".config", "Code", "User", "settings.json");
+}
+
+function formatAutoImportPath(homeDir: string, targetPath: string): string {
+  const normalizedHome = path.resolve(homeDir);
+  const normalizedTarget = path.resolve(targetPath);
+  if (normalizedTarget === normalizedHome) {
+    return "~";
+  }
+  if (normalizedTarget.startsWith(normalizedHome)) {
+    const suffix = normalizedTarget.slice(normalizedHome.length);
+    const trimmed = suffix.startsWith(path.sep) ? suffix.slice(1) : suffix;
+    if (trimmed.length === 0) {
+      return "~";
+    }
+    return `~/${trimmed.split(path.sep).join("/")}`;
+  }
+  return normalizedTarget.split(path.sep).join("/");
 }
 
 function createDefaultCommandRunner(): CommandRunner {

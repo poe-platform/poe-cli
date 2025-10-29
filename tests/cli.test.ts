@@ -115,6 +115,7 @@ describe("CLI program", () => {
     expect(logs).toContain("1) claude-code");
     expect(logs).toContain("2) codex");
     expect(logs).toContain("3) opencode");
+    expect(logs).toContain("4) roo-code");
     expect(
       logs.find((line) => line.startsWith("Enter number that you want to configure"))
     ).toBeTruthy();
@@ -210,6 +211,61 @@ describe("CLI program", () => {
     expect(
       logs.find((line) => line.includes("Configured OpenCode CLI."))
     ).toBeTruthy();
+  });
+
+  it("configures roo code integration", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir, platform: "darwin" } as any,
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "configure",
+      "roo-code",
+      "--api-key",
+      "sk-test",
+      "--config-name",
+      "primary"
+    ]);
+
+    const configPath = path.join(homeDir, "Documents", "roo-config.json");
+    const config = JSON.parse(await fs.readFile(configPath, "utf8"));
+    expect(config.providerProfiles.currentApiConfigName).toBe("primary");
+    expect(config.providerProfiles.modeApiConfigs).toEqual({});
+    const profile = config.providerProfiles.apiConfigs.primary;
+    expect(profile).toMatchObject({
+      apiProvider: "openai",
+      openAiApiKey: "sk-test",
+      openAiBaseUrl: "https://api.poe.com/v1",
+      openAiModelId: "Claude-Sonnet-4.5",
+      rateLimitSeconds: 0,
+      diffEnabled: true
+    });
+    expect(typeof profile.id).toBe("string");
+    expect(profile.id.length).toBeGreaterThan(0);
+
+    const settingsPath = path.join(
+      homeDir,
+      "Library",
+      "Application Support",
+      "Code",
+      "User",
+      "settings.json"
+    );
+    const settings = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    expect(settings["roo-cline.autoImportSettingsPath"]).toBe(
+      "~/Documents/roo-config.json"
+    );
+
+    expect(logs).toContain("Configured Roo Code.");
   });
 
   it("simulates commands without writing when using --dry-run", async () => {

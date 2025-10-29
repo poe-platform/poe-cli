@@ -20,7 +20,9 @@ async function main(): Promise<void> {
       }) as Promise<Record<string, unknown>>,
     env: {
       cwd: process.cwd(),
-      homeDir: homedir()
+      homeDir: homedir(),
+      platform: process.platform,
+      variables: process.env
     },
     logger: (message) => {
       console.log(message);
