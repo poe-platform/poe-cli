@@ -5,72 +5,81 @@ import { renderModelSelector } from "../vscode-extension/src/webview/model-selec
 import type { ProviderSetting } from "../vscode-extension/src/config/provider-settings.js";
 import { initializeWebviewApp } from "../vscode-extension/src/webview/runtime.js";
 
-function createDocument(): Document {
-  const dom = new JSDOM(
-    `
-    <body>
-      <div class="poe-layout">
-        <aside class="sidebar-wrapper" data-slot="app-shell"></aside>
-        <main class="main-pane">
-          <header class="status-bar">
-            <div class="status-left">
-              <span id="model-badge" class="model-badge"></span>
-              <span id="strategy-badge" class="strategy-badge"></span>
-            </div>
-            <div id="model-selector" data-slot="model-selector"></div>
-          </header>
-          <section id="chat-container" class="chat-scroll">
-            <div id="messages">
-              <div class="welcome-message">Welcome</div>
-            </div>
-          </section>
-          <footer class="composer">
-            <textarea id="message-input"></textarea>
-            <div class="composer-actions">
-              <button id="clear-button" type="button">Clear</button>
-              <button id="send-button" type="button">Send</button>
-            </div>
-          </footer>
-          <section id="settings-panel" class="hidden">
-            <div class="settings-content">
-              <button type="button" data-action="settings-close">Close</button>
-              <div id="provider-settings"></div>
-              <button type="button" data-action="settings-open-mcp">Open MCP</button>
-            </div>
-          </section>
-          <div id="tool-notifications"></div>
-        </main>
-      </div>
-    </body>
-  `,
-    { url: "https://localhost" }
-  );
+const providers: ProviderSetting[] = [
+  { id: "anthropic", label: "Claude-Sonnet-4.5" },
+  { id: "openai", label: "GPT-4.1" },
+];
+
+const shellHtml = renderAppShell({
+  logoUrl: "vscode-resource:/poe-bw.svg",
+  models: providers.map((provider) => provider.label),
+  activeModel: providers[0]?.label ?? "",
+});
+
+const selectorHtml = renderModelSelector({
+  models: providers.map((provider) => provider.label),
+  selected: providers[0]?.label ?? "",
+});
+
+vi.mock("vscode", () => {
+  const noop = () => undefined;
+  const disposable = () => ({ dispose: noop });
+  return {
+    commands: {
+      registerCommand: vi.fn(disposable),
+      executeCommand: vi.fn(),
+    },
+    window: {
+      registerWebviewViewProvider: vi.fn(disposable),
+      createStatusBarItem: vi.fn(() => ({ show: vi.fn(), command: "", text: "", tooltip: "" })),
+      showInformationMessage: vi.fn(),
+      showWarningMessage: vi.fn(),
+      showInputBox: vi.fn(),
+      createTerminal: vi.fn(() => ({ show: vi.fn(), sendText: vi.fn(), dispose: vi.fn() })),
+      onDidCloseTerminal: vi.fn(),
+      showErrorMessage: vi.fn(),
+      showTextDocument: vi.fn(),
+    },
+    workspace: {
+      getConfiguration: vi.fn(() => ({ get: () => "Claude-Sonnet-4.5" })),
+      workspaceFolders: [],
+      openTextDocument: vi.fn(),
+    },
+    Uri: {
+      joinPath: (_base: any, ...parts: string[]) => ({
+        fsPath: parts.join("/"),
+        toString: () => `vscode-resource:/${parts.join("/")}`,
+      }),
+      file: (target: string) => ({ fsPath: target }),
+    },
+    StatusBarAlignment: { Right: 1 },
+    ThemeIcon: class {},
+  };
+});
+
+async function createDocument(): Promise<Document> {
+  const { getWebviewContent } = await import("../vscode-extension/src/extension.js");
+  const stubWebview = {
+    cspSource: "vscode-resource:",
+  };
+  const html = getWebviewContent(stubWebview as any, {
+    logoUri: "vscode-resource:/poe-bw.svg",
+    appShellHtml: shellHtml,
+    modelSelectorHtml: selectorHtml,
+    providerSettings: providers,
+    defaultModel: providers[0]?.label ?? "",
+  });
+  const dom = new JSDOM(html, { url: "https://localhost" });
   return dom.window.document;
 }
 
 describe("initializeWebviewApp", () => {
-  const providers: ProviderSetting[] = [
-    { id: "anthropic", label: "Claude-Sonnet-4.5" },
-    { id: "openai", label: "GPT-4.1" }
-  ];
-
-  const shellHtml = renderAppShell({
-    logoUrl: "vscode-resource:/poe-bw.svg",
-    models: providers.map((provider) => provider.label),
-    activeModel: providers[0]?.label ?? ""
-  });
-
-  const selectorHtml = renderModelSelector({
-    models: providers.map((provider) => provider.label),
-    selected: providers[0]?.label ?? ""
-  });
-
   let document: Document;
   let postMessage: ReturnType<typeof vi.fn>;
   let app: ReturnType<typeof initializeWebviewApp>;
 
-  beforeEach(() => {
-    document = createDocument();
+  beforeEach(async () => {
+    document = await createDocument();
     postMessage = vi.fn();
     app = initializeWebviewApp({
       document,
