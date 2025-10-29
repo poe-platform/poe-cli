@@ -394,7 +394,9 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
                 case 'clearHistory': {
                     chatService?.clearHistory();
                     chatState.clear();
-                    currentPanel.webview.postMessage({ type: 'historyCleared' });
+                    if (currentPanel) {
+                        currentPanel.webview.postMessage({ type: 'historyCleared' });
+                    }
                     break;
                 }
                 case 'getStrategyStatus': {
@@ -456,10 +458,12 @@ async function openPoeInEditor(context: vscode.ExtensionContext) {
                         const trimmed = message.model.trim();
                         if (trimmed.length > 0) {
                             chatService.setModel(trimmed);
-                            currentPanel.webview.postMessage({
-                                type: 'modelChanged',
-                                model: chatService.getModel()
-                            });
+                            if (currentPanel) {
+                                currentPanel.webview.postMessage({
+                                    type: 'modelChanged',
+                                    model: chatService.getModel()
+                                });
+                            }
                         }
                     }
                     break;
