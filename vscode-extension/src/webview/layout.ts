@@ -6,7 +6,15 @@ interface AppShellOptions {
 
 export function renderAppShell(options: AppShellOptions): string {
   const modelItems = options.models
-    .map((model) => `<li class="model-summary-item">${model}</li>`)
+    .map((model) => {
+      const classes = ["model-summary-item"];
+
+      if (model === options.activeModel) {
+        classes.push("active");
+      }
+
+      return `<li class="${classes.join(" ")}">${model}</li>`;
+    })
     .join("");
 
   return `

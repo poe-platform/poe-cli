@@ -10,7 +10,7 @@ describe("renderAppShell", () => {
     });
 
     expect(html).toContain('<img src="https://cdn/logo.svg" alt="Poe Code" />');
-    expect(html).toContain('<li class="model-item">model-a</li>');
-    expect(html).toContain('<li class="model-item active">model-b</li>');
+    expect(html).toContain('<li class="model-summary-item">model-a</li>');
+    expect(html).toContain('<li class="model-summary-item active">model-b</li>');
   });
 });
