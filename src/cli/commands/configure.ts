@@ -33,7 +33,7 @@ export function registerConfigureCommand(
     .command("configure")
     .description("Configure developer tooling for Poe API.")
     .argument(
-      "<service>",
+      "[service]",
       "Service to configure (claude-code | codex | opencode | roo-code)"
     )
     .option("--api-key <key>", "Poe API key")
@@ -41,8 +41,13 @@ export function registerConfigureCommand(
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .option("--config-name <name>", "Configuration profile name")
     .option("--base-url <url>", "API base URL")
-    .action(async (service: string, options: ConfigureCommandOptions) => {
-      await executeConfigure(program, container, service, options);
+    .action(async (service: string | undefined, options: ConfigureCommandOptions) => {
+      const resolved = await resolveServiceArgument(
+        program,
+        container,
+        service
+      );
+      await executeConfigure(program, container, resolved, options);
     });
 }
 
@@ -183,4 +188,45 @@ async function createConfigurePayload(
     default:
       throw new Error(`Unknown service "${service}".`);
   }
+}
+
+async function resolveServiceArgument(
+  program: Command,
+  container: CliContainer,
+  provided?: string
+): Promise<string> {
+  if (provided) {
+    return provided;
+  }
+  const services = container.registry.list();
+  if (services.length === 0) {
+    throw new Error("No services available to configure.");
+  }
+  const flags = resolveCommandFlags(program);
+  const logger = container.loggerFactory.create({
+    dryRun: flags.dryRun,
+    verbose: flags.verbose,
+    scope: "configure"
+  });
+  services.forEach((entry, index) => {
+    logger.info(`${index + 1}) ${entry.name}`);
+  });
+  logger.info("Enter number that you want to configure:");
+  const descriptor = container.promptLibrary.serviceSelection();
+  const response = await container.prompts(descriptor);
+  const selection = response[descriptor.name];
+  const normalized =
+    typeof selection === "number"
+      ? selection
+      : typeof selection === "string"
+      ? Number.parseInt(selection, 10)
+      : NaN;
+  if (!Number.isInteger(normalized)) {
+    throw new Error("Invalid service selection.");
+  }
+  const index = normalized - 1;
+  if (index < 0 || index >= services.length) {
+    throw new Error("Invalid service selection.");
+  }
+  return services[index].name;
 }

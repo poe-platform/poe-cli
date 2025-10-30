@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+const interactiveLauncherMock = vi.hoisted(() => ({
+  launchInteractiveMode: vi.fn()
+}));
+vi.mock("../src/cli/interactive-launcher.js", () => interactiveLauncherMock);
 import chalk from "chalk";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import { createProgram } from "../src/cli/program.js";
+import { launchInteractiveMode } from "../src/cli/interactive-launcher.js";
 import type { CommandRunner } from "../src/utils/prerequisites.js";
 import * as claudeService from "../src/services/claude-code.js";
 import * as codexService from "../src/services/codex.js";
@@ -184,11 +189,12 @@ describe("CLI program", () => {
   const cwd = "/workspace";
   const homeDir = "/home/user";
 
-  beforeEach(() => {
-    ({ fs, vol } = createMemFs());
-    vol.mkdirSync(cwd, { recursive: true });
-    vol.mkdirSync(homeDir, { recursive: true });
-  });
+beforeEach(() => {
+  ({ fs, vol } = createMemFs());
+  vol.mkdirSync(cwd, { recursive: true });
+  vol.mkdirSync(homeDir, { recursive: true });
+  vi.mocked(launchInteractiveMode).mockReset();
+});
 
   it("exposes poe-setup as the command name", () => {
     const { prompt } = createPromptStub({});
@@ -202,7 +208,27 @@ describe("CLI program", () => {
     expect(program.name()).toBe("poe-setup");
   });
 
-  it("prompts to select a service when no command is provided", async () => {
+  it("launches interactive mode when no command is provided", async () => {
+    const { prompt } = createPromptStub({});
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: () => {}
+    });
+
+    await program.parseAsync(["node", "cli"]);
+
+    expect(vi.mocked(launchInteractiveMode)).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(launchInteractiveMode).mock.calls[0];
+    expect(call?.[0]).toMatchObject({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir }
+    });
+  });
+
+  it("prompts to select a service when configure is invoked without target", async () => {
     const promptStub = createPromptStub({
       serviceSelection: 1,
       apiKey: "prompted-key"
@@ -219,8 +245,9 @@ describe("CLI program", () => {
       commandRunner: commandRunnerStub.runner
     });
 
-    await program.parseAsync(["node", "cli"]);
+    await program.parseAsync(["node", "cli", "configure"]);
 
+    expect(vi.mocked(launchInteractiveMode)).not.toHaveBeenCalled();
     expect(logs).toContain("1) claude-code");
     expect(logs).toContain("2) codex");
     expect(logs).toContain("3) opencode");
