@@ -4,9 +4,13 @@ import type { JsonObject } from "../utils/json.js";
 import type {
   CommandRunner,
   CommandRunnerResult,
-  PrerequisiteDefinition
+  PrerequisiteDefinition,
+  PrerequisiteManager
 } from "../utils/prerequisites.js";
-import { createBinaryExistsCheck } from "../utils/prerequisites.js";
+import {
+  createBinaryExistsCheck,
+  formatCommandRunnerResult
+} from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -79,6 +83,9 @@ const OPEN_CODE_MANIFEST: ServiceManifest<
 > = {
   id: "opencode",
   summary: "Configure OpenCode CLI to use the Poe API.",
+  prerequisites: {
+    after: ["opencode-cli-health"]
+  },
   configure: [
     ensureDirectory({
       path: ({ options }) => path.dirname(options.configPath),
@@ -181,6 +188,12 @@ export async function installOpenCode(
   return runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, context);
 }
 
+export function registerOpenCodePrerequisites(
+  prerequisites: PrerequisiteManager
+): void {
+  prerequisites.registerAfter(createOpenCodeHealthCheck());
+}
+
 function createOpenCodeBinaryCheck(): PrerequisiteDefinition {
   return createBinaryExistsCheck(
     "opencode",
@@ -198,6 +211,38 @@ function createOpenCodeVersionCheck(): PrerequisiteDefinition {
       if (result.exitCode !== 0) {
         throw new Error(
           `OpenCode CLI --version failed with exit code ${result.exitCode}.`
+        );
+      }
+    }
+  };
+}
+
+function createOpenCodeHealthCheck(): PrerequisiteDefinition {
+  return {
+    id: "opencode-cli-health",
+    description: "OpenCode CLI health check must succeed",
+    async run({ runCommand }) {
+      const result = await spawnOpenCode({
+        prompt: "Output exactly: OPEN_CODE_OK",
+        runCommand
+      });
+      if (result.exitCode !== 0) {
+        const detail = formatCommandRunnerResult(result);
+        throw new Error(
+          [
+            `OpenCode CLI health check failed with exit code ${result.exitCode}.`,
+            detail
+          ].join("\n")
+        );
+      }
+      const output = result.stdout.trim();
+      if (output !== "OPEN_CODE_OK") {
+        const detail = formatCommandRunnerResult(result);
+        throw new Error(
+          [
+            `OpenCode CLI health check failed: expected "OPEN_CODE_OK" but received "${output}".`,
+            detail
+          ].join("\n")
         );
       }
     }

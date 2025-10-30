@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as codexService from "../src/services/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
+import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -206,5 +207,80 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     });
+  });
+
+  it("registers prerequisite checks for the Codex CLI", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runCommand = vi.fn(async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (command === "codex") {
+        return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    codexService.registerCodexPrerequisites(manager);
+    await manager.run("after");
+
+    expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
+    expect(calls[0]).toEqual({
+      command: "codex",
+      args: ["exec", "Output exactly: CODEX_OK"]
+    });
+  });
+
+  it("includes stdout and stderr when the health check command fails", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "FAIL_STDOUT\n",
+      stderr: "FAIL_STDERR\n",
+      exitCode: 1
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    codexService.registerCodexPrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain("stdout:\nFAIL_STDOUT\n");
+    expect(caught?.message).toContain("stderr:\nFAIL_STDERR\n");
+  });
+
+  it("includes stdout and stderr when the health check output is unexpected", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "WRONG\n",
+      stderr: "WARN\n",
+      exitCode: 0
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    codexService.registerCodexPrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain('expected "CODEX_OK" but received "WRONG"');
+    expect(caught?.message).toContain("stdout:\nWRONG\n");
+    expect(caught?.message).toContain("stderr:\nWARN\n");
   });
 });

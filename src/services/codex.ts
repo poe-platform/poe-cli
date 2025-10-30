@@ -3,9 +3,13 @@ import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
   CommandRunnerResult,
-  PrerequisiteDefinition
+  PrerequisiteDefinition,
+  PrerequisiteManager
 } from "../utils/prerequisites.js";
-import { createBinaryExistsCheck } from "../utils/prerequisites.js";
+import {
+  createBinaryExistsCheck,
+  formatCommandRunnerResult
+} from "../utils/prerequisites.js";
 import {
   createBackupMutation,
   ensureDirectory,
@@ -63,6 +67,9 @@ const CODEX_MANIFEST: ServiceManifest<
 > = {
   id: "codex",
   summary: "Configure Codex to use Poe as the model provider.",
+  prerequisites: {
+    after: ["codex-cli-health"]
+  },
   configure: [
     ensureDirectory({
       path: ({ options }) => path.dirname(options.configPath),
@@ -284,6 +291,12 @@ export async function installCodex(
   return runServiceInstall(CODEX_INSTALL_DEFINITION, context);
 }
 
+export function registerCodexPrerequisites(
+  prerequisites: PrerequisiteManager
+): void {
+  prerequisites.registerAfter(createCodexCliHealthCheck());
+}
+
 function createCodexBinaryCheck(): PrerequisiteDefinition {
   return createBinaryExistsCheck(
     "codex",
@@ -301,6 +314,38 @@ function createCodexVersionCheck(): PrerequisiteDefinition {
       if (result.exitCode !== 0) {
         throw new Error(
           `Codex CLI --version failed with exit code ${result.exitCode}.`
+        );
+      }
+    }
+  };
+}
+
+function createCodexCliHealthCheck(): PrerequisiteDefinition {
+  return {
+    id: "codex-cli-health",
+    description: "Codex CLI health check must succeed",
+    async run({ runCommand }) {
+      const result = await spawnCodex({
+        prompt: "Output exactly: CODEX_OK",
+        runCommand
+      });
+      if (result.exitCode !== 0) {
+        const detail = formatCommandRunnerResult(result);
+        throw new Error(
+          [
+            `Codex CLI health check failed with exit code ${result.exitCode}.`,
+            detail
+          ].join("\n")
+        );
+      }
+      const output = result.stdout.trim();
+      if (output !== "CODEX_OK") {
+        const detail = formatCommandRunnerResult(result);
+        throw new Error(
+          [
+            `Codex CLI health check failed: expected "CODEX_OK" but received "${output}".`,
+            detail
+          ].join("\n")
         );
       }
     }

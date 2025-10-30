@@ -9,6 +9,16 @@ export type CommandRunner = (
   args: string[]
 ) => Promise<CommandRunnerResult>;
 
+export function formatCommandRunnerResult(
+  result: CommandRunnerResult
+): string {
+  const stdout =
+    result.stdout.length > 0 ? result.stdout : "<empty>";
+  const stderr =
+    result.stderr.length > 0 ? result.stderr : "<empty>";
+  return `stdout:\n${stdout}\nstderr:\n${stderr}`;
+}
+
 export type PrerequisitePhase = "before" | "after";
 
 export interface PrerequisiteContext {

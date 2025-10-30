@@ -13,6 +13,7 @@ import {
 import {
   configureCodex,
   installCodex,
+  registerCodexPrerequisites,
   removeCodex,
   spawnCodex
 } from "../services/codex.js";
@@ -338,6 +339,17 @@ export function createProgram(dependencies: CliDependencies): Command {
         runCommand: context.runCommand,
         logger
       });
+      const prerequisites = createPrerequisiteManager({
+        isDryRun,
+        runCommand: context.runCommand
+      });
+      registerCodexPrerequisites(prerequisites);
+      const beforeHooks = createPrerequisiteHooks("before", logger, isVerbose);
+      if (beforeHooks) {
+        await prerequisites.run("before", beforeHooks);
+      } else {
+        await prerequisites.run("before");
+      }
       const model =
         options.model ??
         (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
@@ -360,6 +372,12 @@ export function createProgram(dependencies: CliDependencies): Command {
         },
         mutationHooks ? { hooks: mutationHooks } : undefined
       );
+      const afterHooks = createPrerequisiteHooks("after", logger, isVerbose);
+      if (afterHooks) {
+        await prerequisites.run("after", afterHooks);
+      } else {
+        await prerequisites.run("after");
+      }
       context.complete({
         success: "Configured Codex.",
         dry: "Dry run: would configure Codex."

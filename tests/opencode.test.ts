@@ -3,6 +3,7 @@ import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as opencodeService from "../src/services/opencode.js";
+import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -172,5 +173,80 @@ describe("opencode service", () => {
       stderr: "",
       exitCode: 0
     });
+  });
+
+  it("registers prerequisite checks for the OpenCode CLI", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runCommand = vi.fn(async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (command === "opencode") {
+        return { stdout: "OPEN_CODE_OK\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    opencodeService.registerOpenCodePrerequisites(manager);
+    await manager.run("after");
+
+    expect(calls.map((entry) => entry.command)).toEqual(["opencode"]);
+    expect(calls[0]).toEqual({
+      command: "opencode",
+      args: ["run", "Output exactly: OPEN_CODE_OK"]
+    });
+  });
+
+  it("includes stdout and stderr when the OpenCode health check command fails", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "OPEN_FAIL_STDOUT\n",
+      stderr: "OPEN_FAIL_STDERR\n",
+      exitCode: 1
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    opencodeService.registerOpenCodePrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain("stdout:\nOPEN_FAIL_STDOUT\n");
+    expect(caught?.message).toContain("stderr:\nOPEN_FAIL_STDERR\n");
+  });
+
+  it("includes stdout and stderr when the OpenCode health check output is unexpected", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "MISCONFIG\n",
+      stderr: "ALERT\n",
+      exitCode: 0
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    opencodeService.registerOpenCodePrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain('expected "OPEN_CODE_OK" but received "MISCONFIG"');
+    expect(caught?.message).toContain("stdout:\nMISCONFIG\n");
+    expect(caught?.message).toContain("stderr:\nALERT\n");
   });
 });
