@@ -47,7 +47,7 @@
     - Chat history
 - [x] Smaller font
 
-## WIP (do not implement) Poe Agent
+## Poe Agent
 - [ ] Ability to spawn any supported sub-agents (including new worktrees) (add specialized tool for this)
 - [ ] configure utility should store in the own json config file also which agents are config and offer those dynamically in the tool description
 
