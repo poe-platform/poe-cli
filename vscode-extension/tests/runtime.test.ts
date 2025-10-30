@@ -6,17 +6,30 @@ function createDocument() {
   const window = new Window();
   const document = window.document;
   document.body.innerHTML = `
-    <div data-slot="app-shell"></div>
+    <div data-slot="app-shell">
+      <nav>
+        <button type="button" data-action="strategy-open">Strategy</button>
+        <button type="button" data-action="new-chat">New</button>
+      </nav>
+    </div>
     <div data-slot="model-selector"></div>
-    <div id="messages"></div>
-    <div id="strategy-modal" class="hidden">
+    <div id="messages">
+      <div class="welcome-message">
+        <button type="button" data-action="strategy-open">Configure</button>
+      </div>
+    </div>
+    <section id="strategy-modal" class="strategy-modal hidden" aria-hidden="true">
       <div class="strategy-surface">
-        <button type="button" data-action="strategy-close"></button>
-        <div id="strategy-toggle" role="switch" aria-checked="false"></div>
-        <button type="button" class="strategy-option" data-strategy="smart"></button>
-        <button type="button" class="strategy-option" data-strategy="mixed"></button>
-        <button type="button" class="strategy-option" data-strategy="round-robin"></button>
-        <button type="button" class="strategy-option" data-strategy="fixed"></button>
+        <button type="button" class="strategy-close" data-action="strategy-close">Close</button>
+        <button type="button" id="strategy-toggle" role="switch" aria-checked="false">
+          <span class="strategy-thumb"></span>
+        </button>
+        <div class="strategy-options">
+          <button type="button" class="strategy-option" data-strategy="smart"></button>
+          <button type="button" class="strategy-option" data-strategy="mixed"></button>
+          <button type="button" class="strategy-option" data-strategy="round-robin"></button>
+          <button type="button" class="strategy-option" data-strategy="fixed"></button>
+        </div>
       </div>
     </div>
     <textarea id="message-input"></textarea>
@@ -111,10 +124,17 @@ describe("initializeWebviewApp", () => {
       "[data-action='strategy-open']"
     ) as HTMLButtonElement;
     openButton.click();
+    const strategyModal = document.getElementById("strategy-modal") as HTMLElement;
+    expect(strategyModal.classList.contains("hidden")).toBe(false);
+    expect(postMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ type: "getStrategyStatus" })
+    );
 
     const toggle = document.getElementById("strategy-toggle") as HTMLElement;
     toggle.click();
-    expect(postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({ type: "toggleStrategy", enabled: true })
     );
 
@@ -122,7 +142,8 @@ describe("initializeWebviewApp", () => {
       ".strategy-option[data-strategy='smart']"
     ) as HTMLElement;
     smartOption.click();
-    expect(postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({
         type: "setStrategy",
         config: expect.objectContaining({ type: "smart" }),

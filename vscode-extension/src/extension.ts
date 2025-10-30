@@ -311,7 +311,7 @@ async function attachPoeWebview(
     ) as string[];
 
     const logoUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'poe-bw.svg')
+        vscode.Uri.joinPath(context.extensionUri, 'poe-logo.png')
     ).toString();
 
     const appShellHtml = renderAppShell({
@@ -709,6 +709,8 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .app-header img {
             width: 20px;
             height: 20px;
+            border-radius: 50%;
+            object-fit: cover;
         }
 
         .app-nav {

@@ -155,6 +155,18 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     options.postMessage({ type: "setModel", model: trimmed });
   }
 
+  function focusStrategyOption(): void {
+    if (!strategyModal) {
+      return;
+    }
+    const preferred =
+      (strategyModal.querySelector(".strategy-option.active") as
+        | HTMLButtonElement
+        | null) ??
+      (strategyModal.querySelector(".strategy-option") as HTMLButtonElement | null);
+    preferred?.focus?.();
+  }
+
   function setStrategyModalVisible(visible: boolean): void {
     if (!strategyModal) {
       return;
@@ -163,9 +175,17 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     strategyModal.setAttribute("aria-hidden", visible ? "false" : "true");
     if (visible) {
       strategyModal.dataset.state = "open";
+      focusStrategyOption();
     } else {
       strategyModal.dataset.state = "closed";
     }
+  }
+
+  function openStrategyConfigurator(event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setStrategyModalVisible(true);
+    options.postMessage({ type: "getStrategyStatus" });
   }
 
   function setStrategyEnabledState(
@@ -261,41 +281,40 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     });
   }
 
-  const navButtons = appShellHost?.querySelectorAll("[data-action]") ?? [];
-  navButtons.forEach((button) => {
-    const action = button.getAttribute("data-action");
-    if (action === "new-chat") {
-      button.addEventListener("click", () => {
+  if (appShellHost) {
+    appShellHost.addEventListener("click", (event) => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-action]"
+      );
+      if (!target) {
+        return;
+      }
+      const action = target.getAttribute("data-action");
+      if (action === "new-chat") {
+        event.preventDefault();
         saveCurrentChatToHistory();
         options.postMessage({ type: "clearHistory" });
         hideChatHistory();
-      });
-    } else if (action === "open-settings") {
-      button.addEventListener("click", () => {
+      } else if (action === "open-settings") {
+        event.preventDefault();
         toggleSettingsPanel();
-      });
-    } else if (action === "chat-history") {
-      button.addEventListener("click", () => {
+      } else if (action === "chat-history") {
+        event.preventDefault();
         toggleChatHistory();
-      });
-    } else if (action === "strategy-open") {
-      button.addEventListener("click", () => {
-        setStrategyModalVisible(true);
-      });
-    }
-  });
-
-  Array.from(
-    doc.querySelectorAll<HTMLButtonElement>("[data-action='strategy-open']")
-  ).forEach((button) => {
-    button.addEventListener("click", () => {
-      setStrategyModalVisible(true);
+      }
     });
+  }
+
+  const strategyTriggers = Array.from(
+    doc.querySelectorAll<HTMLButtonElement>("[data-action='strategy-open']")
+  );
+  strategyTriggers.forEach((button) => {
+    button.addEventListener("click", openStrategyConfigurator);
   });
 
   if (strategyBadge) {
     strategyBadge.addEventListener("click", () => {
-      setStrategyModalVisible(true);
+      openStrategyConfigurator();
     });
   }
 
@@ -333,6 +352,12 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   if (strategyOptions.length > 0) {
     markActiveStrategy(currentStrategy);
   }
+
+  doc.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setStrategyModalVisible(false);
+    }
+  });
 
   if (settingsCloseButton) {
     settingsCloseButton.addEventListener("click", () => {
