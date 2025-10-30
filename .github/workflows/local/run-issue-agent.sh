@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-exec GIT_SSH_COMMAND='ssh -F /root/.ssh/config' act \
+exec env GIT_SSH_COMMAND='ssh -F /root/.ssh/config' act \
   --container-architecture linux/amd64 \
   -W .github/workflows/issue-resolution-agent.yml \
   --secret-file .github/workflows/local/.secrets \
