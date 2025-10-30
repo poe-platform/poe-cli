@@ -26,7 +26,7 @@ Create ~/.claude/anthropic_key.sh:
 node -e "console.log(require(require('os').homedir() + '/.poe-setup/credentials.json').apiKey)"
 ```
 
-This credentials.json path should be dynamically driven. It's already defined somewhere in the project. See `credentialsPath`
+This credentials.json path is defined in one place in code via `resolveCredentialsPath(homeDir)` and exposed as `environment.credentialsPath`.
 
 and make it executable with:
 

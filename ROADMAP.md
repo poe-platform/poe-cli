@@ -50,7 +50,7 @@
 
 ## Code quality
 
-- [ ] make sure that `credentialsPath` `.poe-setup/credentials.json` is defined in 1 single place, so it can be changed easily
+- [x] make sure that `credentialsPath` `.poe-setup/credentials.json` is defined in 1 single place, so it can be changed easily
 
 
 ## Worktrees spawn-git-worktree <agent> 
