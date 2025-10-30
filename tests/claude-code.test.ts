@@ -190,7 +190,7 @@ describe("claude-code service", () => {
 
     const result = await claudeService.spawnClaudeCode({
       prompt: "Test prompt",
-      args: ["--output-format", "text"],
+      args: ["--custom-arg", "value"],
       runCommand
     });
 
@@ -202,7 +202,9 @@ describe("claude-code service", () => {
       "--permission-mode",
       "acceptEdits",
       "--output-format",
-      "text"
+      "text",
+      "--custom-arg",
+      "value"
     ]);
     expect(result).toEqual({
       stdout: "hello\n",
