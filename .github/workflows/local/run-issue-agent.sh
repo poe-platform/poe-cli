@@ -4,11 +4,11 @@ set -euo pipefail
 
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 export GIT_CONFIG_PARAMETERS=$'url.git@github.com:.insteadOf=https://github.com/\nurl.git@github.com:.insteadOf=git://github.com/'
-export GIT_SSH_COMMAND='ssh -F /root/.ssh/config'
+export GIT_SSH_COMMAND='ssh -F /home/runner/.ssh/config'
 
-container_opts="-v ${HOME}/.ssh:/root/.ssh:ro"
+container_opts="-v ${HOME}/.ssh:/home/runner/.ssh:ro"
 if [[ -f "${HOME}/.gitconfig" ]]; then
-  container_opts+=" -v ${HOME}/.gitconfig:/root/.gitconfig:ro"
+  container_opts+=" -v ${HOME}/.gitconfig:/home/runner/.gitconfig:ro"
 fi
 
 exec act \
