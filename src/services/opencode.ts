@@ -6,6 +6,7 @@ import type {
   CommandRunnerResult,
   PrerequisiteDefinition
 } from "../utils/prerequisites.js";
+import { createBinaryExistsCheck } from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -181,16 +182,11 @@ export async function installOpenCode(
 }
 
 function createOpenCodeBinaryCheck(): PrerequisiteDefinition {
-  return {
-    id: "opencode-cli-binary",
-    description: "OpenCode CLI binary must exist",
-    async run({ runCommand }) {
-      const result = await runCommand("which", ["opencode"]);
-      if (result.exitCode !== 0) {
-        throw new Error("OpenCode CLI binary not found on PATH.");
-      }
-    }
-  };
+  return createBinaryExistsCheck(
+    "opencode",
+    "opencode-cli-binary",
+    "OpenCode CLI binary must exist"
+  );
 }
 
 function createOpenCodeVersionCheck(): PrerequisiteDefinition {

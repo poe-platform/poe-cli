@@ -50,7 +50,14 @@ else
   echo "Warning: credentials file not found at ${credentials_path}; skipping credentials bind mount." >&2
 fi
 
-colima "${colima_args[@]}"
+colima_running=false
+if colima status --profile "${profile}" >/dev/null 2>&1; then
+  colima_running=true
+fi
+
+if [ "${colima_running}" != true ]; then
+  colima "${colima_args[@]}"
+fi
 
 docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}" -v "poe-setup-node-modules:${mount_target}/node_modules" -w "${mount_target}")
 
@@ -68,7 +75,7 @@ if [ $# -eq 0 ]; then
 fi
 
 custom_commands=("$@")
-container_commands=("npm ci" "npm install -g .")
+container_commands=("npm ci" "npm run build" "npm install -g .")
 container_commands+=("${custom_commands[@]}")
 
 command_string="set -e"

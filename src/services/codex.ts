@@ -5,6 +5,7 @@ import type {
   CommandRunnerResult,
   PrerequisiteDefinition
 } from "../utils/prerequisites.js";
+import { createBinaryExistsCheck } from "../utils/prerequisites.js";
 import {
   createBackupMutation,
   ensureDirectory,
@@ -284,16 +285,11 @@ export async function installCodex(
 }
 
 function createCodexBinaryCheck(): PrerequisiteDefinition {
-  return {
-    id: "codex-cli-binary",
-    description: "Codex CLI binary must exist",
-    async run({ runCommand }) {
-      const result = await runCommand("which", ["codex"]);
-      if (result.exitCode !== 0) {
-        throw new Error("Codex CLI binary not found on PATH.");
-      }
-    }
-  };
+  return createBinaryExistsCheck(
+    "codex",
+    "codex-cli-binary",
+    "Codex CLI binary must exist"
+  );
 }
 
 function createCodexVersionCheck(): PrerequisiteDefinition {

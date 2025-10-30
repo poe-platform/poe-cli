@@ -89,3 +89,61 @@ export function createPrerequisiteManager(init: {
     }
   };
 }
+
+/**
+ * Creates a prerequisite check that detects if a binary exists using multiple fallback methods.
+ * This is useful in Docker/containerized environments where PATH may not be updated after npm install.
+ *
+ * @param binaryName - The name of the binary to check for (e.g., "claude", "codex")
+ * @param id - Unique identifier for the prerequisite
+ * @param description - Human-readable description of what's being checked
+ * @returns A PrerequisiteDefinition that checks for the binary using multiple detection methods
+ */
+export function createBinaryExistsCheck(
+  binaryName: string,
+  id: string,
+  description: string
+): PrerequisiteDefinition {
+  return {
+    id,
+    description,
+    async run({ runCommand }) {
+      const detectors: Array<{
+        command: string;
+        args: string[];
+        validate: (result: CommandRunnerResult) => boolean;
+      }> = [
+        {
+          command: "which",
+          args: [binaryName],
+          validate: (result) => result.exitCode === 0
+        },
+        {
+          command: "where",
+          args: [binaryName],
+          validate: (result) =>
+            result.exitCode === 0 && result.stdout.trim().length > 0
+        },
+        {
+          command: "test",
+          args: ["-f", `/usr/local/bin/${binaryName}`],
+          validate: (result) => result.exitCode === 0
+        },
+        {
+          command: "ls",
+          args: [`/usr/local/bin/${binaryName}`],
+          validate: (result) => result.exitCode === 0
+        }
+      ];
+
+      for (const detector of detectors) {
+        const result = await runCommand(detector.command, detector.args);
+        if (detector.validate(result)) {
+          return;
+        }
+      }
+
+      throw new Error(`${binaryName} CLI binary not found on PATH.`);
+    }
+  };
+}

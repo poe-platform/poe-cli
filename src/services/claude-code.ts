@@ -6,6 +6,7 @@ import type {
   PrerequisiteDefinition,
   PrerequisiteManager
 } from "../utils/prerequisites.js";
+import { createBinaryExistsCheck } from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -198,48 +199,11 @@ export async function installClaudeCode(
 }
 
 export function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
-  return {
-    id: "claude-cli-binary",
-    description: "Claude CLI binary must exist",
-    async run({ runCommand }) {
-      const detectors: Array<{
-        command: string;
-        args: string[];
-        validate: (result: CommandRunnerResult) => boolean;
-      }> = [
-        {
-          command: "which",
-          args: ["claude"],
-          validate: (result) => result.exitCode === 0
-        },
-        {
-          command: "where",
-          args: ["claude"],
-          validate: (result) =>
-            result.exitCode === 0 && result.stdout.trim().length > 0
-        },
-        {
-          command: "test",
-          args: ["-f", "/usr/local/bin/claude"],
-          validate: (result) => result.exitCode === 0
-        },
-        {
-          command: "ls",
-          args: ["/usr/local/bin/claude"],
-          validate: (result) => result.exitCode === 0
-        }
-      ];
-
-      for (const detector of detectors) {
-        const result = await runCommand(detector.command, detector.args);
-        if (detector.validate(result)) {
-          return;
-        }
-      }
-
-      throw new Error("Claude CLI binary not found on PATH.");
-    }
-  };
+  return createBinaryExistsCheck(
+    "claude",
+    "claude-cli-binary",
+    "Claude CLI binary must exist"
+  );
 }
 
 function createClaudeCliHealthCheck(): PrerequisiteDefinition {
