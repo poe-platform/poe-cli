@@ -135,7 +135,7 @@ export function createPrerequisiteHooks(
       );
     },
     onSuccess(prerequisite) {
-      logger.success(`✓ ${prerequisite.description}`);
+      logger.verbose(`✓ ${prerequisite.description}`);
     },
     onFailure(prerequisite, error) {
       const detail =
