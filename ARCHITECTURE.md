@@ -1,5 +1,40 @@
 # Architecture
 
+## CLI Runtime
+
+The CLI now boots through a lightweight runtime that composes the following
+building blocks:
+
+- **`CliContainer`** centralises shared dependencies (file system, prompts,
+  HTTP client, command runner, chat factory) and exposes typed helpers:
+  - `loggerFactory` and the `ScopedLogger` facade keep verbosity/dry-run logic
+    consistent across commands.
+  - `contextFactory` produces command contexts that wrap mutation recording,
+    dry-run file systems, and prerequisite managers.
+  - `options` encapsulates prompting and persistence for shared flags such as
+    API key, model, and reasoning effort.
+  - `poeApiClient` owns all Poe HTTP interactions.
+- **`ServiceRegistry`** holds `ProviderAdapter` instances, emits telemetry for
+  every operation (`install`, `configure`, `remove`, `spawn`, `prerequisites`),
+  and supports discovery through `registry.discover(...)` so future plugins or
+  config files can register providers without touching core wiring.
+- **Provider adapters** live in `src/providers`. Each adapter resolves its own
+  path configuration, registers prerequisites, and implements the optional
+  lifecycle hooks (`install`, `configure`, `remove`, `spawn`). Command modules
+  never branch on provider names; they request the adapter and pass shaped
+  payloads.
+- **Command modules** under `src/cli/commands` export `register(program,
+  container)` functions. `src/cli/program.ts` simply bootstraps `Commander` and
+  defers to these modules, keeping the entry point declarative.
+- **Shared utilities** (`context.ts`, `logger.ts`, `options.ts`, `prompts.ts`)
+  provide the common behaviours that used to be embedded in `program.ts`.
+
+This runtime keeps CLI actions testable: commands assemble execution resources
+from the container and delegate actual mutations or subprocesses to providers
+and manifests.
+
+## Declarative Service Model
+
 The CLI is moving toward a declarative service model so every integration can be
 described through manifests. Command handlers read the manifest definition,
 prime prerequisites, and execute mutations (or render a dry run) without

@@ -4,31 +4,34 @@
 ## CLI
 
 - [ ] `login` should mention where to get teh api key https://poe.com/api_key. WHen pasting the key, it should not be shown (treat as password)
-- [ ] Add option `spawn` analogous to configure/remove
+- [x] Add option `spawn` analogous to configure/remove
     - it should take prompt and any arbitrary arguments that are passed through to the agent call
     - this must live in the service definition
     - we should utilize it for the checks like this thing `Output exactly: CLAUDE_CODE_OK`
     - not all agents support it, only claude-code, codex, opencode
+- [ ] should be interactive per default
+    `poe-setup` -> interactive
+    `poe-setup connfigure` -> show options
 
 ### CLI Architecture
 
-- [ ] Extract command bootstrap into a thin module that wires Commander and defers route registration to dedicated command files.
+- [x] Extract command bootstrap into a thin module that wires Commander and defers route registration to dedicated command files.
 - [x] Move environment and path resolution into a reusable `CliEnvironment` helper consumed by commands and providers.
 - [x] Introduce a `ServiceRegistry` (or similar) that abstracts provider discovery and dispatch instead of hard-coded `if` chains.
-- [ ] Wrap shared dependencies (prompts, fs, http client, command runner) in a container passed to command/provider factories to improve testability.
-- [ ] Define a `ProviderAdapter` contract (install/configure/remove/spawn/prereqs) and migrate existing providers to implementations.
-- [ ] Consolidate provider-specific path definitions into config objects owned by the providers.
-- [ ] Delegate spawn handling to provider adapters so the CLI core simply forwards requests.
-- [ ] Split each CLI command into its own module exposing `register(program, deps)` to keep `program.ts` declarative.
-- [ ] Extract shared option resolvers (API key, model, reasoning effort) into composable helpers that commands reuse.
-- [ ] Provide dedicated handlers for interactive/default actions that can be swapped without touching every command.
-- [ ] Promote `createCommandContext`, dry-run recording, and mutation logging into a shared utility module.
-- [ ] Introduce a logger facade that standardizes verbose and dry-run output handling.
-- [ ] Replace direct HTTP calls with a Poe API client abstraction responsible for error handling.
-- [ ] Centralize prompt schemas so providers declare required inputs without wiring prompt logic manually.
-- [ ] Document the new provider and command registration architecture in `ARCHITECTURE.md`.
-- [ ] Add telemetry hooks at the registry layer so new commands inherit consistent success/failure reporting.
-- [ ] Prepare for dynamic provider discovery (e.g., config-driven or plugin-based) to scale integrations.
+- [x] Wrap shared dependencies (prompts, fs, http client, command runner) in a container passed to command/provider factories to improve testability.
+- [x] Define a `ProviderAdapter` contract (install/configure/remove/spawn/prereqs) and migrate existing providers to implementations.
+- [x] Consolidate provider-specific path definitions into config objects owned by the providers.
+- [x] Delegate spawn handling to provider adapters so the CLI core simply forwards requests.
+- [x] Split each CLI command into its own module exposing `register(program, deps)` to keep `program.ts` declarative.
+- [x] Extract shared option resolvers (API key, model, reasoning effort) into composable helpers that commands reuse.
+- [x] Provide dedicated handlers for interactive/default actions that can be swapped without touching every command.
+- [x] Promote `createCommandContext`, dry-run recording, and mutation logging into a shared utility module.
+- [x] Introduce a logger facade that standardizes verbose and dry-run output handling.
+- [x] Replace direct HTTP calls with a Poe API client abstraction responsible for error handling.
+- [x] Centralize prompt schemas so providers declare required inputs without wiring prompt logic manually.
+- [x] Document the new provider and command registration architecture in `ARCHITECTURE.md`.
+- [x] Add telemetry hooks at the registry layer so new commands inherit consistent success/failure reporting.
+- [x] Prepare for dynamic provider discovery (e.g., config-driven or plugin-based) to scale integrations.
 - [ ] Once modularized, cover the registry/command boundaries with integration-style tests.
 
 - [x] Update Codex provider to store bearer token configuration without auth.json.
@@ -45,12 +48,16 @@
 - [ ] Smaller font
 
 ## WIP (do not implement) Poe Agent
-- [ ] Ability to spawn any supported sub-agents (add specialized tool for this)
+- [ ] Ability to spawn any supported sub-agents (including new worktrees) (add specialized tool for this)
 - [ ] configure utility should store in the own json config file also which agents are config and offer those dynamically in the tool description
 
 ## Code quality
 
 - [x] make sure that `credentialsPath` `.poe-setup/credentials.json` is defined in 1 single place, so it can be changed easily
+
+## VSCode extension
+
+- [ ] Visualize tool calls interleaved in the messages, make it look nice
 
 
 ## Worktrees spawn-git-worktree <agent> 
