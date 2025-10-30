@@ -215,7 +215,6 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
     async run({ runCommand }) {
       const result = await spawnClaudeCode({
         prompt: "Output exactly: CLAUDE_CODE_OK",
-        args: ["--output-format", "text"],
         runCommand
       });
       if (result.exitCode !== 0) {
