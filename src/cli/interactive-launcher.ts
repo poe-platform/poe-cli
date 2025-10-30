@@ -8,12 +8,13 @@ import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
 import { McpManager } from "../services/mcp-manager.js";
 import { createInteractiveCommandExecutor } from "./interactive-command-runner.js";
+import { resolveCredentialsPath } from "./environment.js";
 
 export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
   const { fs, env } = dependencies;
-  const credentialsPath = path.join(env.homeDir, ".poe-setup", "credentials.json");
+  const credentialsPath = resolveCredentialsPath(env.homeDir);
 
   // Initialize MCP manager
   const mcpManager = new McpManager(fs, env.homeDir);

@@ -20,11 +20,7 @@ export interface CliEnvironment {
 export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
   const platform = init.platform ?? process.platform;
   const variables = init.variables ?? process.env;
-  const credentialsPath = path.join(
-    init.homeDir,
-    ".poe-setup",
-    "credentials.json"
-  );
+  const credentialsPath = resolveCredentialsPath(init.homeDir);
 
   const resolveHomePath = (...segments: string[]): string =>
     path.join(init.homeDir, ...segments);
@@ -40,4 +36,8 @@ export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
     resolveHomePath,
     getVariable
   };
+}
+
+export function resolveCredentialsPath(homeDir: string): string {
+  return path.join(homeDir, ".poe-setup", "credentials.json");
 }
