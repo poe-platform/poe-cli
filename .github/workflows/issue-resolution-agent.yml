@@ -1,17 +1,13 @@
 name: Issue Resolution Agent
-
 on:
   issues:
     types:
       - labeled
-  workflow_dispatch:
-
-
+  workflow_dispatch: null
 jobs:
   resolve:
     name: Resolve Issue With Agent
-    if: >-
-      github.event.action == 'labeled' &&
+    if: github.event.action == 'labeled' &&
       contains(fromJson('["claude-code","codex","opencode"]'),
       github.event.label.name)
     runs-on: ubuntu-latest
@@ -24,27 +20,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build CLI
         run: npm run build
       - name: Install CLI globally
         run: npm install -g .
-
       - name: Determine provider
         id: provider
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABEL_NAME: ${{ github.event.label.name }}
-        run: |
+        run: >
           node <<'NODE'
             const fs = require("node:fs");
             const label = process.env.LABEL_NAME;
@@ -70,12 +62,10 @@ jobs:
             ].join("\n");
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs}\n`);
           NODE
-
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
         run: poe-setup login --api-key "${POE_API_KEY}"
-
       - name: Configure provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
@@ -93,12 +83,10 @@ jobs:
               exit 1
               ;;
           esac
-
       - name: Configure git author
         run: |
           git config user.name "poe-setup-bot"
           git config user.email "bot@poe-setup.invalid"
-
       - name: Run issue resolver agent
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -121,7 +109,6 @@ jobs:
           NODE
             )
           poe-setup spawn "$SERVICE" "$PROMPT"
-
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
