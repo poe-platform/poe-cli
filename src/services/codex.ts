@@ -254,7 +254,7 @@ export async function configureCodex(
 export async function spawnCodex(
   options: SpawnCodexOptions
 ): Promise<CommandRunnerResult> {
-  const args = ["exec", options.prompt, ...(options.args ?? [])];
+  const args = buildCodexExecArgs(options.prompt, options.args);
   return options.runCommand("codex", args);
 }
 
@@ -282,6 +282,15 @@ export function registerCodexPrerequisites(
   prerequisites: PrerequisiteManager
 ): void {
   prerequisites.registerAfter(createCodexCliHealthCheck());
+}
+
+const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
+
+export function buildCodexExecArgs(
+  prompt: string,
+  extraArgs: string[] = []
+): string[] {
+  return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
 function createCodexBinaryCheck(): PrerequisiteDefinition {

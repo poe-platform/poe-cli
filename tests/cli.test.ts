@@ -413,7 +413,7 @@ describe("CLI program", () => {
       postChecks: [
         {
           command: "codex",
-          args: ["exec", "Output exactly: CODEX_OK"],
+          args: codexService.buildCodexExecArgs("Output exactly: CODEX_OK"),
           stdout: "CODEX_OK\n"
         }
       ]
@@ -856,7 +856,7 @@ describe("CLI program", () => {
         { command: "codex", args: ["--version"] },
         {
           command: "codex",
-          args: ["exec", "Output exactly: CODEX_OK"],
+          args: codexService.buildCodexExecArgs("Output exactly: CODEX_OK"),
           stdout: "CODEX_OK\n"
         }
       ]

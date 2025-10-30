@@ -242,12 +242,12 @@ describe("codex service", () => {
       runCommand
     });
 
-    expect(runCommand).toHaveBeenCalledWith("codex", [
-      "exec",
-      "Describe the codebase",
+    const expectedArgs = codexService.buildCodexExecArgs("Describe the codebase", [
       "--output",
       "json"
     ]);
+
+    expect(runCommand).toHaveBeenCalledWith("codex", expectedArgs);
     expect(result).toEqual({
       stdout: "codex-output\n",
       stderr: "",
@@ -275,7 +275,7 @@ describe("codex service", () => {
     expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
     expect(calls[0]).toEqual({
       command: "codex",
-      args: ["exec", "Output exactly: CODEX_OK"]
+      args: codexService.buildCodexExecArgs("Output exactly: CODEX_OK")
     });
   });
 
