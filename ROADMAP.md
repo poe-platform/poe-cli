@@ -11,7 +11,7 @@
     - not all agents support it, only claude-code, codex, opencode
 
 
-## WIP (do not implement)  Extension redesign
+## Extension redesign
 
 - [ ] Single pane layout, only the chat interface
 - [ ] Dedicated chat history page
