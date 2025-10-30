@@ -2,24 +2,15 @@
 
 set -euo pipefail
 
-SSH_DIR="${HOME}/.ssh"
-GITCONFIG="${HOME}/.gitconfig"
-TARGET_HOME="/github/home"
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+export GIT_SSH_COMMAND='ssh -F /root/.ssh/config'
 
-if [[ ! -d "${SSH_DIR}" ]]; then
-  echo "Missing SSH directory at ${SSH_DIR}" >&2
-  exit 1
+container_opts="-v ${HOME}/.ssh:/root/.ssh:ro"
+if [[ -f "${HOME}/.gitconfig" ]]; then
+  container_opts+=" -v ${HOME}/.gitconfig:/root/.gitconfig:ro"
 fi
 
-container_opts="-v ${SSH_DIR}:${TARGET_HOME}/.ssh:ro"
-
-if [[ -f "${GITCONFIG}" ]]; then
-  container_opts+=" -v ${GITCONFIG}:${TARGET_HOME}/.gitconfig:ro"
-else
-  echo "Warning: ${GITCONFIG} not found. https->ssh rewrite may be missing." >&2
-fi
-
-exec env HOME="${TARGET_HOME}" GIT_SSH_COMMAND="ssh -F ${TARGET_HOME}/.ssh/config" act \
+exec act \
   --container-architecture linux/amd64 \
   -W .github/workflows/issue-resolution-agent.yml \
   --secret-file .github/workflows/local/.secrets \
