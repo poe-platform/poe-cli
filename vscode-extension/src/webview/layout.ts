@@ -11,6 +11,7 @@ export function renderAppShell(options: AppShellOptions): string {
       <span>Poe Code</span>
     </div>
     <nav class="app-nav" aria-label="Chat actions">
+      <button data-action="strategy-open">Strategy</button>
       <button data-action="chat-history">Chat History</button>
       <button data-action="open-settings">Settings</button>
       <button data-action="new-chat" class="primary">New Message</button>

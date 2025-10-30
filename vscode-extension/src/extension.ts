@@ -787,7 +787,170 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             border-radius: 999px;
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
-            opacity: 0.8;
+            opacity: 0.6;
+            cursor: pointer;
+            transition: opacity 0.2s ease;
+        }
+
+        .strategy-badge:hover {
+            opacity: 1;
+        }
+
+        .strategy-badge[data-state="enabled"] {
+            opacity: 1;
+        }
+
+        .strategy-modal {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 48px 24px;
+            background-color: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(2px);
+            z-index: 240;
+        }
+
+        .strategy-surface {
+            width: min(520px, 100%);
+            background-color: var(--vscode-editorWidget-background);
+            border-radius: 12px;
+            border: 1px solid var(--vscode-panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .strategy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .strategy-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .strategy-header p {
+            margin: 4px 0 0;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .strategy-close {
+            align-self: center;
+        }
+
+        .strategy-toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .strategy-toggle-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .strategy-toggle-label span:first-child {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .strategy-toggle-label span:last-child {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        #strategy-toggle {
+            width: 46px;
+            height: 24px;
+            border-radius: 12px;
+            border: none;
+            background-color: var(--vscode-input-border);
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        #strategy-toggle .strategy-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: var(--vscode-editor-background);
+            transition: transform 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+        }
+
+        #strategy-toggle.active {
+            background-color: var(--vscode-button-background);
+        }
+
+        #strategy-toggle.active .strategy-thumb {
+            transform: translateX(22px);
+        }
+
+        .strategy-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+        }
+
+        .strategy-option {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            border-radius: 10px;
+            border: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editor-background);
+            padding: 14px;
+            cursor: pointer;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            text-align: left;
+        }
+
+        .strategy-option:hover {
+            border-color: var(--vscode-focusBorder);
+        }
+
+        .strategy-option.active {
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+        }
+
+        .strategy-option strong {
+            font-size: 12px;
+        }
+
+        .strategy-option span {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
         }
 
         .chat-scroll {
@@ -1191,23 +1354,87 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .welcome-message {
-            text-align: center;
-            padding: 24px;
-            background-color: var(--vscode-editor-background);
-            border: 1px dashed var(--vscode-panel-border);
+            display: grid;
+            gap: 24px;
+            padding: 32px;
+            margin-top: 32px;
+            border-radius: 12px;
+            background-color: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .welcome-hero {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            text-align: left;
+        }
+
+        .welcome-hero h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .welcome-hero p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            max-width: 540px;
+        }
+
+        .welcome-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .welcome-action {
+            padding: 10px 18px;
             border-radius: 8px;
-            margin-top: 24px;
+            border: 1px solid var(--vscode-button-border);
+            background-color: transparent;
+            cursor: pointer;
+            color: var(--vscode-foreground);
+            font-size: 11px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
-        .welcome-message h2 {
-            margin-bottom: 6px;
-            font-size: 14px;
+        .welcome-action:hover {
+            background-color: var(--vscode-list-hoverBackground);
         }
 
-        .welcome-message p {
+        .welcome-action.primary {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+
+        .welcome-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 18px;
+        }
+
+        .welcome-card {
+            border-radius: 10px;
+            padding: 16px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .welcome-card h3 {
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .welcome-card p {
             margin: 0;
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
+            line-height: 1.5;
         }
 
         .chat-history {
@@ -1293,8 +1520,35 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             <section id="chat-container" class="chat-scroll">
                 <div id="messages">
                     <div class="welcome-message">
-                        <h2>Welcome to Poe Code</h2>
-                        <p>Start chatting with Poe models or explore tooling via the sidebar.</p>
+                        <div class="welcome-hero">
+                            <h2>Welcome to Poe Code</h2>
+                            <p>
+                                Orchestrate Poe models, strategies, and developer tools without leaving VS Code.
+                                Configure your agent once and reuse it across every session.
+                            </p>
+                            <div class="welcome-actions">
+                                <button type="button" class="welcome-action primary" data-action="strategy-open">
+                                    Configure strategy
+                                </button>
+                                <button type="button" class="welcome-action" data-action="open-settings">
+                                    Manage providers
+                                </button>
+                            </div>
+                        </div>
+                        <div class="welcome-grid">
+                            <article class="welcome-card" data-feature="strategies">
+                                <h3>Adaptive orchestration</h3>
+                                <p>Blend Claude, GPT, or custom bots with smart, mixed, or fixed rotation patterns.</p>
+                            </article>
+                            <article class="welcome-card" data-feature="models">
+                                <h3>Fast model switching</h3>
+                                <p>Pin your favorite IDs, search any Poe model, or follow strategy recommendations.</p>
+                            </article>
+                            <article class="welcome-card" data-feature="tools">
+                                <h3>Tools that ship code</h3>
+                                <p>Trigger worktree, MCP, and repo utilities directly from the conversation.</p>
+                            </article>
+                        </div>
                     </div>
                 </div>
                 <div id="thinking-indicator" class="thinking hidden">
@@ -1311,6 +1565,46 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
                     <button id="send-button" type="button" class="composer-button primary">Send</button>
                 </div>
             </footer>
+            <section id="strategy-modal" class="strategy-modal hidden" aria-hidden="true">
+                <div class="strategy-surface" role="dialog" aria-modal="true" aria-labelledby="strategy-modal-title">
+                    <header class="strategy-header">
+                        <div>
+                            <h3 id="strategy-modal-title">Model strategies</h3>
+                            <p>Choose how Poe routes each request across your configured models.</p>
+                        </div>
+                        <button type="button" class="composer-button strategy-close" data-action="strategy-close">
+                            Close
+                        </button>
+                    </header>
+                    <div class="strategy-toggle-row">
+                        <div class="strategy-toggle-label">
+                            <span>Enable orchestration</span>
+                            <span>Let Poe swap models automatically</span>
+                        </div>
+                        <button type="button" id="strategy-toggle" role="switch" aria-checked="false">
+                            <span class="strategy-thumb"></span>
+                        </button>
+                    </div>
+                    <div class="strategy-options">
+                        <button type="button" class="strategy-option" data-strategy="smart" aria-pressed="false">
+                            <strong>🧠 Smart director</strong>
+                            <span>Evaluates the prompt and picks reasoning or coding heavy models on demand.</span>
+                        </button>
+                        <button type="button" class="strategy-option" data-strategy="mixed" aria-pressed="false">
+                            <strong>🔄 Mixed relay</strong>
+                            <span>Alternates between two top models for balanced creativity and accuracy.</span>
+                        </button>
+                        <button type="button" class="strategy-option" data-strategy="round-robin" aria-pressed="false">
+                            <strong>🔁 Round robin</strong>
+                            <span>Visits every configured model in order, great for multi-perspective runs.</span>
+                        </button>
+                        <button type="button" class="strategy-option" data-strategy="fixed" aria-pressed="false">
+                            <strong>📌 Fixed model</strong>
+                            <span>Stay on the currently selected model for consistent, predictable replies.</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
             <section id="settings-panel" class="settings-panel hidden">
                 <div class="settings-content">
                     <header class="settings-header">

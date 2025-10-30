@@ -70,6 +70,16 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     modelSelectorHost.innerHTML = options.modelSelectorHtml;
   }
 
+  const strategyModal = doc.getElementById("strategy-modal") as HTMLElement | null;
+  const strategyToggle = strategyModal?.querySelector("#strategy-toggle") as HTMLElement | null;
+  const strategyCloseButton = strategyModal?.querySelector(
+    "[data-action='strategy-close']"
+  ) as HTMLButtonElement | null;
+  const strategyOptions = Array.from(
+    strategyModal?.querySelectorAll<HTMLElement>(".strategy-option") ?? []
+  );
+  const strategyOverlay = strategyModal;
+
   const modelInput = modelSelectorHost?.querySelector("input") as
     | HTMLInputElement
     | null;
@@ -79,7 +89,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
-    '<div class="welcome-message"><h2>Welcome to Poe Code</h2><p>Start chatting with Poe models or explore tooling via the sidebar.</p></div>';
+    '<div class="welcome-message"><div class="welcome-hero"><h2>Welcome to Poe Code</h2><p>Configure strategies and models to tailor your chat workflow.</p></div><div class="welcome-grid"><article class="welcome-card" data-feature="strategies"><h3>Adaptive orchestration</h3><p>Enable smart, mixed, or fixed model flows.</p></article></div></div>';
 
   const notifications: ToolNotification[] = [];
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
@@ -87,6 +97,12 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   let activeModel = options.defaultModel;
   let settingsVisible = false;
   let historyVisible = false;
+  let strategyEnabled = false;
+  let currentStrategy = "fixed";
+
+  if (strategyBadge) {
+    strategyBadge.dataset.state = "disabled";
+  }
 
   function setActiveModel(model: string): void {
     if (!model.length) {
@@ -137,6 +153,62 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
     setActiveModel(trimmed);
     options.postMessage({ type: "setModel", model: trimmed });
+  }
+
+  function setStrategyModalVisible(visible: boolean): void {
+    if (!strategyModal) {
+      return;
+    }
+    strategyModal.classList.toggle("hidden", !visible);
+    strategyModal.setAttribute("aria-hidden", visible ? "false" : "true");
+    if (visible) {
+      strategyModal.dataset.state = "open";
+    } else {
+      strategyModal.dataset.state = "closed";
+    }
+  }
+
+  function setStrategyEnabledState(
+    next: boolean,
+    control: { notify?: boolean } = {}
+  ): void {
+    strategyEnabled = next;
+    if (strategyToggle) {
+      strategyToggle.classList.toggle("active", next);
+      strategyToggle.setAttribute("aria-checked", next ? "true" : "false");
+    }
+    if (strategyBadge) {
+      strategyBadge.dataset.state = next ? "enabled" : "disabled";
+    }
+    if (control.notify) {
+      options.postMessage({
+        type: "toggleStrategy",
+        enabled: next
+      });
+    }
+  }
+
+  function markActiveStrategy(type: string): void {
+    currentStrategy = type;
+    strategyOptions.forEach((option) => {
+      const match = option.dataset.strategy === type;
+      option.classList.toggle("active", match);
+      option.setAttribute("aria-pressed", match ? "true" : "false");
+    });
+  }
+
+  function dispatchStrategyConfig(type: string): void {
+    if (!type.length) {
+      return;
+    }
+    const payload: Record<string, unknown> = { type };
+    if (type === "fixed") {
+      payload.fixedModel = activeModel;
+    }
+    options.postMessage({
+      type: "setStrategy",
+      config: payload
+    });
   }
 
   if (sendButton) {
@@ -206,8 +278,61 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       button.addEventListener("click", () => {
         toggleChatHistory();
       });
+    } else if (action === "strategy-open") {
+      button.addEventListener("click", () => {
+        setStrategyModalVisible(true);
+      });
     }
   });
+
+  Array.from(
+    doc.querySelectorAll<HTMLButtonElement>("[data-action='strategy-open']")
+  ).forEach((button) => {
+    button.addEventListener("click", () => {
+      setStrategyModalVisible(true);
+    });
+  });
+
+  if (strategyBadge) {
+    strategyBadge.addEventListener("click", () => {
+      setStrategyModalVisible(true);
+    });
+  }
+
+  if (strategyCloseButton) {
+    strategyCloseButton.addEventListener("click", () => {
+      setStrategyModalVisible(false);
+    });
+  }
+
+  if (strategyOverlay) {
+    strategyOverlay.addEventListener("click", (event) => {
+      if (event.target === strategyOverlay) {
+        setStrategyModalVisible(false);
+      }
+    });
+  }
+
+  if (strategyToggle) {
+    strategyToggle.addEventListener("click", () => {
+      setStrategyEnabledState(!strategyEnabled, { notify: true });
+    });
+  }
+
+  strategyOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      const type = option.dataset.strategy ?? "";
+      if (!type.length) {
+        return;
+      }
+      markActiveStrategy(type);
+      dispatchStrategyConfig(type);
+    });
+  });
+
+  if (strategyOptions.length > 0) {
+    markActiveStrategy(currentStrategy);
+  }
 
   if (settingsCloseButton) {
     settingsCloseButton.addEventListener("click", () => {
@@ -438,18 +563,20 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     if (!strategyBadge) {
       return;
     }
+    setStrategyEnabledState(enabled);
     if (!enabled || !info || info === "Strategy disabled") {
       strategyBadge.textContent = "No Strategy";
       strategyBadge.style.opacity = "0.6";
       return;
     }
     const mapping: Record<string, string> = {
-      smart: "🧠 Smart",
-      mixed: "🔄 Mixed",
+      smart: "🧠 Smart Orchestrator",
+      mixed: "🔄 Mixed Rotation",
       "round-robin": "🔁 Round Robin",
-      fixed: "📌 Fixed"
+      fixed: "📌 Fixed Model"
     };
     const key = deriveStrategyType(info);
+    markActiveStrategy(key);
     strategyBadge.textContent = mapping[key] ?? info.split(":")[0] ?? info;
     strategyBadge.style.opacity = "1";
   }

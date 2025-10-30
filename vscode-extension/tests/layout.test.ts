@@ -11,6 +11,7 @@ describe("renderAppShell", () => {
 
     expect(html).toContain('<img src="https://cdn/logo.svg" alt="Poe Code" />');
     expect(html).not.toContain("model-summary");
+    expect(html).toContain('<button data-action="strategy-open">Strategy</button>');
     expect(html).toContain('<button data-action="chat-history">Chat History</button>');
     expect(html).toContain('<button data-action="open-settings">Settings</button>');
     expect(html).toContain('<button data-action="new-chat" class="primary">New Message</button>');

@@ -117,4 +117,30 @@ describe("getWebviewContent", () => {
 
     expect(() => new Script(scriptText)).not.toThrow();
   });
+
+  it("renders an enhanced welcome layout with feature highlights", async () => {
+    setupVscodeMock();
+
+    const { getWebviewContent } = await import("../src/extension.js");
+    const mockWebview = {
+      cspSource: "vscode-resource",
+      asWebviewUri: (uri: unknown) => ({
+        toString: () => String(uri),
+      }),
+    };
+
+    const html = getWebviewContent(mockWebview as any, {
+      logoUri: "logo",
+      appShellHtml: "<div>shell</div>",
+      modelSelectorHtml: "<div>selector</div>",
+      providerSettings: [],
+      defaultModel: "Model",
+    });
+
+    expect(html).toContain('class="welcome-grid"');
+    expect(html).toContain('data-feature="strategies"');
+    expect(html).toContain('data-feature="models"');
+    expect(html).toContain('data-feature="tools"');
+    expect(html).toContain('class="welcome-actions"');
+  });
 });
