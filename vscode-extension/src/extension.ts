@@ -666,10 +666,6 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poe Code</title>
     <style>
-        :root {
-            --sidebar-width: 240px;
-        }
-
         * {
             box-sizing: border-box;
         }
@@ -679,91 +675,14 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
+            font-size: 13px;
         }
 
         .poe-layout {
-            display: grid;
-            grid-template-columns: minmax(200px, 260px) 1fr;
+            display: flex;
+            flex-direction: column;
             height: 100vh;
             overflow: hidden;
-        }
-
-        .sidebar-wrapper {
-            background-color: var(--vscode-sideBar-background);
-            border-right: 1px solid var(--vscode-panel-border);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
-
-        .sidebar-wrapper .app-header {
-            padding: 16px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .sidebar-wrapper .app-header h1 {
-            font-size: 16px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--vscode-foreground);
-        }
-
-        .sidebar-wrapper .app-header img {
-            width: 24px;
-            height: 24px;
-        }
-
-        .app-nav {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .app-nav button {
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--vscode-button-border);
-            background: transparent;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            font-size: 13px;
-            transition: background-color 0.2s ease;
-            text-align: left;
-        }
-
-        .app-nav button:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-
-        .model-list {
-            list-style: none;
-            margin: 16px 0;
-            padding: 0 16px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .model-item {
-            padding: 8px 10px;
-            border-radius: 6px;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-
-        .model-item:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-
-        .model-item.active {
-            background-color: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
         }
 
         .main-pane {
@@ -774,11 +693,59 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             position: relative;
         }
 
+        .top-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editor-background);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-left img {
+            width: 20px;
+            height: 20px;
+        }
+
+        .header-left h1 {
+            font-size: 13px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--vscode-foreground);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-button {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--vscode-button-border);
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s ease;
+        }
+
+        .header-button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
         .status-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 20px;
+            padding: 8px 16px;
             border-bottom: 1px solid var(--vscode-panel-border);
             background-color: var(--vscode-editor-background);
         }
@@ -786,20 +753,20 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .status-left {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .model-badge {
-            font-size: 12px;
-            padding: 4px 10px;
+            font-size: 11px;
+            padding: 3px 8px;
             border-radius: 999px;
             background-color: var(--vscode-badge-background);
             color: var(--vscode-badge-foreground);
         }
 
         .strategy-badge {
-            font-size: 12px;
-            padding: 4px 10px;
+            font-size: 11px;
+            padding: 3px 8px;
             border-radius: 999px;
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
@@ -809,7 +776,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .chat-scroll {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 16px;
             scroll-behavior: smooth;
         }
 
@@ -819,7 +786,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .message-wrapper {
-            margin-bottom: 24px;
+            margin-bottom: 16px;
             animation: fadeIn 0.2s ease;
         }
 
@@ -835,25 +802,25 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .message-header {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: var(--vscode-descriptionForeground);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .avatar {
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background-color: var(--vscode-button-background);
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--vscode-button-foreground);
-            font-size: 12px;
+            font-size: 10px;
             font-weight: 600;
             overflow: hidden;
         }
@@ -869,9 +836,10 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .message-content {
-            padding: 16px;
-            border-radius: 10px;
-            line-height: 1.65;
+            padding: 12px;
+            border-radius: 8px;
+            line-height: 1.5;
+            font-size: 12px;
             background-color: var(--vscode-input-background);
             border: 1px solid var(--vscode-input-border);
             overflow-x: auto;
@@ -883,16 +851,18 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .message-content pre {
-            padding: 12px;
+            padding: 10px;
             background-color: var(--vscode-editor-background);
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: auto;
+            font-size: 12px;
         }
 
         .message-content code {
             background-color: var(--vscode-editor-background);
             padding: 2px 4px;
-            border-radius: 4px;
+            border-radius: 3px;
+            font-size: 12px;
             font-family: var(--vscode-editor-font-family, monospace);
         }
 
@@ -934,25 +904,25 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .composer {
-            padding: 16px 20px;
+            padding: 12px 16px;
             border-top: 1px solid var(--vscode-panel-border);
             background-color: var(--vscode-editor-background);
             display: flex;
             align-items: flex-end;
-            gap: 12px;
+            gap: 10px;
         }
 
         #message-input {
             flex: 1;
-            min-height: 80px;
-            max-height: 220px;
+            min-height: 60px;
+            max-height: 180px;
             border: 1px solid var(--vscode-input-border);
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
-            border-radius: 8px;
-            padding: 14px;
-            font-size: 14px;
-            line-height: 1.6;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            line-height: 1.5;
             resize: none;
             outline: none;
         }
@@ -960,17 +930,17 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .composer-actions {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
 
         .composer-button {
-            padding: 8px 14px;
-            border-radius: 6px;
+            padding: 6px 12px;
+            border-radius: 4px;
             border: 1px solid var(--vscode-button-border);
             background: transparent;
             color: var(--vscode-foreground);
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .composer-button.primary {
@@ -989,21 +959,21 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             justify-content: flex-end;
             background-color: rgba(0, 0, 0, 0.35);
             backdrop-filter: blur(2px);
-            padding: 24px;
+            padding: 20px;
             z-index: 200;
         }
 
         .settings-content {
-            width: 320px;
+            width: 300px;
             max-width: 100%;
             background-color: var(--vscode-editorWidget-background);
             border: 1px solid var(--vscode-panel-border);
-            border-radius: 8px;
-            padding: 20px;
+            border-radius: 6px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 18px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+            gap: 14px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
         }
 
         .settings-header {
@@ -1014,12 +984,12 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
 
         .settings-header h3 {
             margin: 0;
-            font-size: 16px;
+            font-size: 13px;
         }
 
         .settings-section h4 {
-            margin: 0 0 12px 0;
-            font-size: 13px;
+            margin: 0 0 10px 0;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: var(--vscode-descriptionForeground);
@@ -1028,17 +998,17 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .provider-list {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
         }
 
         .provider-item {
-            padding: 10px 12px;
-            border-radius: 6px;
+            padding: 8px 10px;
+            border-radius: 4px;
             border: 1px solid var(--vscode-panel-border);
             background-color: var(--vscode-editor-background);
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
 
         .provider-item.active {
@@ -1047,22 +1017,85 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .provider-item strong {
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .provider-item span {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
         }
 
         .provider-empty {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
         }
 
         .settings-actions {
             display: flex;
             justify-content: flex-end;
+        }
+
+        .history-page {
+            position: absolute;
+            inset: 0;
+            background-color: var(--vscode-editor-background);
+            z-index: 150;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+
+        .history-header h2 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .history-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .history-item {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-panel-border);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .history-item:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .history-item-title {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .history-item-preview {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
         }
 
         .message-wrapper.diff {
@@ -1079,21 +1112,21 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         .diff-preview {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
 
         .diff-preview .diff-header {
             font-weight: 600;
-            font-size: 13px;
+            font-size: 12px;
             color: var(--vscode-foreground);
         }
 
         .diff-preview .diff-body {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
             font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 13px;
+            font-size: 11px;
         }
 
         .diff-row {
@@ -1102,8 +1135,8 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
 
         .diff-row code {
             display: block;
-            padding: 4px 6px;
-            border-radius: 4px;
+            padding: 3px 5px;
+            border-radius: 3px;
             background-color: transparent;
             white-space: pre-wrap;
         }
@@ -1124,22 +1157,23 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
 
         .tool-notifications {
             position: fixed;
-            right: 24px;
-            bottom: 24px;
+            right: 20px;
+            bottom: 20px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             z-index: 100;
         }
 
         .tool-notification {
-            padding: 10px 14px;
-            border-radius: 6px;
+            padding: 8px 12px;
+            border-radius: 4px;
             background-color: var(--vscode-editorHoverWidget-background);
             color: var(--vscode-editorHoverWidget-foreground);
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
             border-left: 3px solid transparent;
             opacity: 0.95;
+            font-size: 12px;
             transition: opacity 0.3s ease, transform 0.3s ease;
         }
 
@@ -1162,20 +1196,21 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
 
         .welcome-message {
             text-align: center;
-            padding: 32px;
+            padding: 24px;
             background-color: var(--vscode-editor-background);
             border: 1px dashed var(--vscode-panel-border);
-            border-radius: 10px;
-            margin-top: 32px;
+            border-radius: 8px;
+            margin-top: 24px;
         }
 
         .welcome-message h2 {
-            margin-bottom: 8px;
-            font-size: 20px;
+            margin-bottom: 6px;
+            font-size: 15px;
         }
 
         .welcome-message p {
             margin: 0;
+            font-size: 12px;
             color: var(--vscode-descriptionForeground);
         }
 
@@ -1186,8 +1221,18 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
 </head>
 <body>
     <div class="poe-layout">
-        <aside class="sidebar-wrapper" data-slot="app-shell"></aside>
         <main class="main-pane">
+            <header class="top-header">
+                <div class="header-left">
+                    <img src="${options.logoUri}" alt="Poe Code" />
+                    <h1>Poe Code</h1>
+                </div>
+                <div class="header-right">
+                    <button type="button" class="header-button" data-action="view-history">Chat history</button>
+                    <button type="button" class="header-button" data-action="open-settings">Settings</button>
+                    <button type="button" class="header-button" data-action="new-chat">New message</button>
+                </div>
+            </header>
             <header class="status-bar">
                 <div class="status-left">
                     <span id="model-badge" class="model-badge">${options.defaultModel}</span>
@@ -1199,7 +1244,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
                 <div id="messages">
                     <div class="welcome-message">
                         <h2>Welcome to Poe Code</h2>
-                        <p>Start chatting with Poe models or explore tooling via the sidebar.</p>
+                        <p>Start chatting with Poe models</p>
                     </div>
                 </div>
                 <div id="thinking-indicator" class="thinking hidden">
@@ -1220,17 +1265,26 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
                 <div class="settings-content">
                     <header class="settings-header">
                         <h3>Settings</h3>
-                        <button type="button" class="composer-button" data-action="settings-close">Close</button>
+                        <button type="button" class="header-button" data-action="settings-close">Close</button>
                     </header>
                     <div class="settings-section">
                         <h4>Providers</h4>
                         <div id="provider-settings" class="provider-list"></div>
                     </div>
                     <div class="settings-actions">
-                        <button type="button" class="composer-button" data-action="settings-open-mcp">
+                        <button type="button" class="header-button" data-action="settings-open-mcp">
                             Open MCP Configuration
                         </button>
                     </div>
+                </div>
+            </section>
+            <section id="history-page" class="history-page hidden">
+                <header class="history-header">
+                    <h2>Chat History</h2>
+                    <button type="button" class="header-button" data-action="history-close">Close</button>
+                </header>
+                <div id="history-content" class="history-content">
+                    <div class="history-empty">No chat history yet</div>
                 </div>
             </section>
             <div id="tool-notifications" class="tool-notifications"></div>

@@ -22,7 +22,6 @@ export interface WebviewApp {
 export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const doc = options.document;
   const view = doc.defaultView ?? (globalThis as typeof globalThis & Window);
-  const appShellHost = doc.querySelector<HTMLElement>("[data-slot='app-shell']");
   const modelSelectorHost = doc.querySelector<HTMLElement>(
     "[data-slot='model-selector']"
   );
@@ -50,28 +49,28 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const settingsOpenMcpButton = settingsPanel?.querySelector(
     "[data-action='settings-open-mcp']"
   ) as HTMLButtonElement | null;
+  const historyPage = doc.getElementById("history-page") as HTMLElement | null;
+  const historyContent = doc.getElementById("history-content") as HTMLElement | null;
+  const historyCloseButton = historyPage?.querySelector(
+    "[data-action='history-close']"
+  ) as HTMLButtonElement | null;
 
-  if (appShellHost) {
-    appShellHost.innerHTML = options.appShellHtml;
-  }
   if (modelSelectorHost) {
     modelSelectorHost.innerHTML = options.modelSelectorHtml;
   }
 
-  const sidebarList = appShellHost?.querySelector(".model-list") as
-    | HTMLElement
-    | null;
   const modelInput = modelSelectorHost?.querySelector("input") as
     | HTMLInputElement
     | null;
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
-    '<div class="welcome-message"><h2>Welcome to Poe Code</h2><p>Start chatting with Poe models or explore tooling via the sidebar.</p></div>';
+    '<div class="welcome-message"><h2>Welcome to Poe Code</h2><p>Start chatting with Poe models</p></div>';
 
   const notifications: ToolNotification[] = [];
   let activeModel = options.defaultModel;
   let settingsVisible = false;
+  let historyVisible = false;
 
   function setActiveModel(model: string): void {
     if (!model.length) {
@@ -87,56 +86,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       modelInput.value = model;
     }
 
-    if (sidebarList) {
-      let matched = false;
-      const items = Array.from(sidebarList.querySelectorAll(".model-item"));
-      for (const item of items) {
-        const text = item.textContent ?? "";
-        const isMatch = text.trim() === model;
-        item.classList.toggle("active", isMatch);
-        if (isMatch) {
-          matched = true;
-        }
-      }
-      if (!matched) {
-        const newItem = doc.createElement("li");
-        newItem.className = "model-item active";
-        newItem.textContent = model;
-        sidebarList.prepend(newItem);
-        wireModelItem(newItem);
-      }
-    }
     highlightActiveProvider(model);
-  }
-
-  function wireModelItem(item: Element): void {
-    item.addEventListener("click", () => {
-      const text = item.textContent ?? "";
-      const trimmed = text.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      setActiveModel(trimmed);
-      options.postMessage({ type: "setModel", model: trimmed });
-    });
-  }
-
-  if (sidebarList) {
-    const existingItems = Array.from(sidebarList.querySelectorAll(".model-item"));
-    if (existingItems.length === 0 && options.providerSettings.length > 0) {
-      for (const provider of options.providerSettings) {
-        const element = doc.createElement("li");
-        element.className =
-          provider.label === options.defaultModel
-            ? "model-item active"
-            : "model-item";
-        element.textContent = provider.label;
-        sidebarList.appendChild(element);
-      }
-    }
-    for (const item of Array.from(sidebarList.querySelectorAll(".model-item"))) {
-      wireModelItem(item);
-    }
   }
 
   if (modelInput) {
@@ -208,7 +158,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     });
   }
 
-  const navButtons = appShellHost?.querySelectorAll("[data-action]") ?? [];
+  const navButtons = doc.querySelectorAll("[data-action]");
   navButtons.forEach((button) => {
     const action = button.getAttribute("data-action");
     if (action === "new-chat") {
@@ -217,27 +167,27 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       });
     } else if (action === "open-settings") {
       button.addEventListener("click", () => {
-        toggleSettingsPanel();
+        showSettingsPanel();
       });
-    } else if (action === "view-diffs") {
+    } else if (action === "view-history") {
       button.addEventListener("click", () => {
-        focusLatestDiff();
+        showHistoryPage();
+      });
+    } else if (action === "settings-close") {
+      button.addEventListener("click", () => {
+        hideSettingsPanel();
+      });
+    } else if (action === "settings-open-mcp") {
+      button.addEventListener("click", () => {
+        options.postMessage({ type: "openSettings" });
+        hideSettingsPanel();
+      });
+    } else if (action === "history-close") {
+      button.addEventListener("click", () => {
+        hideHistoryPage();
       });
     }
   });
-
-  if (settingsCloseButton) {
-    settingsCloseButton.addEventListener("click", () => {
-      hideSettingsPanel();
-    });
-  }
-
-  if (settingsOpenMcpButton) {
-    settingsOpenMcpButton.addEventListener("click", () => {
-      options.postMessage({ type: "openSettings" });
-      hideSettingsPanel();
-    });
-  }
 
   function toggleThinking(active: boolean): void {
     if (!thinkingIndicator) {
@@ -471,6 +421,89 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         element.classList.toggle("active", match);
       }
     });
+  }
+
+  function showHistoryPage(): void {
+    historyVisible = true;
+    if (historyPage) {
+      historyPage.classList.remove("hidden");
+    }
+    populateHistory();
+  }
+
+  function hideHistoryPage(): void {
+    historyVisible = false;
+    if (historyPage) {
+      historyPage.classList.add("hidden");
+    }
+  }
+
+  function populateHistory(): void {
+    if (!historyContent || !messagesDiv) {
+      return;
+    }
+
+    const messages = messagesDiv.querySelectorAll(".message-wrapper");
+
+    if (messages.length === 0) {
+      historyContent.innerHTML = '<div class="history-empty">No chat history yet</div>';
+      return;
+    }
+
+    historyContent.innerHTML = "";
+
+    let currentConversation: HTMLElement[] = [];
+    messages.forEach((msg, index) => {
+      if (msg.classList.contains("user")) {
+        if (currentConversation.length > 0) {
+          addHistoryItem(currentConversation, index - currentConversation.length);
+          currentConversation = [];
+        }
+      }
+      currentConversation.push(msg as HTMLElement);
+    });
+
+    if (currentConversation.length > 0) {
+      addHistoryItem(currentConversation, messages.length - currentConversation.length);
+    }
+  }
+
+  function addHistoryItem(messages: HTMLElement[], startIndex: number): void {
+    if (!historyContent) {
+      return;
+    }
+
+    const firstUserMsg = messages.find(m => m.classList.contains("user"));
+    if (!firstUserMsg) {
+      return;
+    }
+
+    const userContent = firstUserMsg.querySelector(".message-content");
+    const preview = userContent?.textContent?.trim() || "Empty message";
+
+    const item = doc.createElement("div");
+    item.className = "history-item";
+
+    const title = doc.createElement("div");
+    title.className = "history-item-title";
+    title.textContent = `Message ${startIndex + 1}`;
+
+    const previewDiv = doc.createElement("div");
+    previewDiv.className = "history-item-preview";
+    previewDiv.textContent = preview.substring(0, 100) + (preview.length > 100 ? "..." : "");
+
+    item.appendChild(title);
+    item.appendChild(previewDiv);
+
+    item.addEventListener("click", () => {
+      hideHistoryPage();
+      const messageElement = messages[0];
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+
+    historyContent.appendChild(item);
   }
 
   setActiveModel(options.defaultModel);
