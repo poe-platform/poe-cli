@@ -701,7 +701,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--vscode-foreground);
         }
@@ -715,6 +715,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             display: flex;
             align-items: center;
             gap: 8px;
+            justify-content: flex-end;
         }
 
         .app-nav button {
@@ -724,12 +725,21 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             background: transparent;
             color: var(--vscode-foreground);
             cursor: pointer;
-            font-size: 11px;
+            font-size: 10px;
             transition: background-color 0.2s ease;
         }
 
         .app-nav button:hover {
             background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .app-nav button.primary {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+
+        .app-nav button.primary:hover {
+            background-color: var(--vscode-button-hoverBackground);
         }
 
         .model-list {
@@ -846,7 +856,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             padding: 12px;
             border-radius: 8px;
             line-height: 1.5;
-            font-size: 12px;
+            font-size: 11px;
             background-color: var(--vscode-input-background);
             border: 1px solid var(--vscode-input-border);
             overflow-x: auto;
@@ -857,12 +867,55 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             border-left: 3px solid var(--vscode-textBlockQuote-border);
         }
 
+        .message-wrapper.tool .message-content {
+            border-style: dashed;
+            background-color: var(--vscode-editor-background);
+        }
+
+        .message-wrapper.tool.running .message-content {
+            border-color: var(--vscode-descriptionForeground);
+        }
+
+        .message-wrapper.tool.success .message-content {
+            border-color: var(--vscode-gitDecoration-addedResourceForeground);
+        }
+
+        .message-wrapper.tool.error .message-content {
+            border-color: var(--vscode-errorForeground);
+        }
+
         .message-content pre {
             padding: 10px;
             background-color: var(--vscode-editor-background);
             border-radius: 6px;
             overflow: auto;
             font-size: 11px;
+        }
+
+        .tool-icon {
+            font-size: 11px;
+        }
+
+        .tool-title {
+            font-weight: 600;
+        }
+
+        .message-tool-status {
+            margin-bottom: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .message-tool-args {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 10px;
+            margin: 0;
+        }
+
+        .message-tool-error {
+            margin-top: 6px;
+            font-size: 10px;
+            color: var(--vscode-errorForeground);
         }
 
         .message-content code {
@@ -928,7 +981,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             color: var(--vscode-input-foreground);
             border-radius: 6px;
             padding: 10px;
-            font-size: 12px;
+            font-size: 11px;
             line-height: 1.5;
             resize: none;
             outline: none;
@@ -1158,12 +1211,10 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
         }
 
         .chat-history {
-            position: absolute;
-            inset: 0;
             display: flex;
             flex-direction: column;
+            flex: 1;
             background-color: var(--vscode-editor-background);
-            z-index: 300;
         }
 
         .chat-history-header {

@@ -26,6 +26,9 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const modelSelectorHost = doc.querySelector<HTMLElement>(
     "[data-slot='model-selector']"
   );
+  const chatContainer = doc.getElementById("chat-container") as
+    | HTMLElement
+    | null;
   const messagesDiv = doc.getElementById("messages") as HTMLElement | null;
   const messageInput = doc.getElementById("message-input") as
     | HTMLTextAreaElement
@@ -40,6 +43,8 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const toolNotifications = doc.getElementById("tool-notifications") as
     | HTMLElement
     | null;
+  const composer = doc.querySelector(".composer") as HTMLElement | null;
+  const statusBar = doc.querySelector(".status-bar") as HTMLElement | null;
   const settingsPanel = doc.getElementById("settings-panel") as HTMLElement | null;
   const providerSettingsContainer = doc.getElementById(
     "provider-settings"
@@ -78,6 +83,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   const notifications: ToolNotification[] = [];
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
+  const pendingToolMessages = new Map<string, HTMLElement[]>();
   let activeModel = options.defaultModel;
   let settingsVisible = false;
   let historyVisible = false;
@@ -179,6 +185,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   if (clearButton) {
     clearButton.addEventListener("click", () => {
       options.postMessage({ type: "clearHistory" });
+      hideChatHistory();
     });
   }
 
@@ -189,6 +196,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       button.addEventListener("click", () => {
         saveCurrentChatToHistory();
         options.postMessage({ type: "clearHistory" });
+        hideChatHistory();
       });
     } else if (action === "open-settings") {
       button.addEventListener("click", () => {
@@ -313,6 +321,119 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     messagesDiv.appendChild(wrapper);
   }
 
+  function rememberToolMessage(toolName: string, element: HTMLElement): void {
+    const existing = pendingToolMessages.get(toolName);
+    if (existing) {
+      existing.push(element);
+    } else {
+      pendingToolMessages.set(toolName, [element]);
+    }
+  }
+
+  function consumeToolMessage(toolName: string): HTMLElement | undefined {
+    const queue = pendingToolMessages.get(toolName);
+    if (!queue || queue.length === 0) {
+      return undefined;
+    }
+    const [current, ...remaining] = queue;
+    if (remaining.length > 0) {
+      pendingToolMessages.set(toolName, remaining);
+    } else {
+      pendingToolMessages.delete(toolName);
+    }
+    return current;
+  }
+
+  function addToolMessage(details: { toolName: string; args?: unknown }): void {
+    if (!messagesDiv) {
+      return;
+    }
+    const welcome = messagesDiv.querySelector(".welcome-message");
+    if (welcome) {
+      welcome.remove();
+    }
+    const wrapper = doc.createElement("div");
+    wrapper.className = "message-wrapper tool running";
+    wrapper.dataset.toolName = details.toolName;
+
+    const header = doc.createElement("div");
+    header.className = "message-header";
+
+    const icon = doc.createElement("span");
+    icon.className = "tool-icon";
+    icon.textContent = "🔧";
+    header.appendChild(icon);
+
+    const title = doc.createElement("span");
+    title.className = "tool-title";
+    title.textContent = `Tool · ${details.toolName}`;
+    header.appendChild(title);
+
+    wrapper.appendChild(header);
+
+    const content = doc.createElement("div");
+    content.className = "message-content";
+
+    const statusLine = doc.createElement("div");
+    statusLine.className = "message-tool-status";
+    statusLine.textContent = "Running tool…";
+    content.appendChild(statusLine);
+
+    if (details.args && typeof details.args === "object") {
+      try {
+        const formatted = JSON.stringify(details.args, null, 2);
+        if (formatted) {
+          const argsBlock = doc.createElement("pre");
+          argsBlock.className = "message-tool-args";
+          argsBlock.textContent = formatted;
+          content.appendChild(argsBlock);
+        }
+      } catch {
+        // Ignore serialization failures.
+      }
+    }
+
+    wrapper.appendChild(content);
+    messagesDiv.appendChild(wrapper);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    rememberToolMessage(details.toolName, wrapper);
+  }
+
+  function completeToolMessage(details: {
+    toolName: string;
+    success: boolean;
+    error?: string;
+  }): void {
+    const entry = consumeToolMessage(details.toolName);
+    if (!entry) {
+      return;
+    }
+    entry.classList.remove("running");
+    entry.classList.add(details.success ? "success" : "error");
+
+    const statusLine = entry.querySelector<HTMLElement>(".message-tool-status");
+    if (statusLine) {
+      if (details.success) {
+        statusLine.textContent = "✓ Tool completed successfully.";
+      } else if (details.error && details.error.length > 0) {
+        statusLine.textContent = `✗ Tool failed: ${details.error}`;
+      } else {
+        statusLine.textContent = "✗ Tool failed.";
+      }
+    }
+
+    if (!details.success && details.error && details.error.length > 0) {
+      const errorLine = doc.createElement("div");
+      errorLine.className = "message-tool-error";
+      errorLine.textContent = details.error;
+      entry.querySelector(".message-content")?.appendChild(errorLine);
+    }
+
+    if (messagesDiv) {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  }
+
   function updateStrategyBadge(info: string | null, enabled: boolean): void {
     if (!strategyBadge) {
       return;
@@ -370,6 +491,8 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     if (messageInput) {
       messageInput.value = "";
     }
+    pendingToolMessages.clear();
+    hideChatHistory();
   }
 
   function saveCurrentChatToHistory(): void {
@@ -403,6 +526,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   function showChatHistory(): void {
     historyVisible = true;
+    if (chatContainer) {
+      chatContainer.classList.add("hidden");
+    }
+    if (composer) {
+      composer.classList.add("hidden");
+    }
+    if (statusBar) {
+      statusBar.classList.add("hidden");
+    }
     if (chatHistory) {
       chatHistory.classList.remove("hidden");
     }
@@ -411,6 +543,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   function hideChatHistory(): void {
     historyVisible = false;
+    if (chatContainer) {
+      chatContainer.classList.remove("hidden");
+    }
+    if (composer) {
+      composer.classList.remove("hidden");
+    }
+    if (statusBar) {
+      statusBar.classList.remove("hidden");
+    }
     if (chatHistory) {
       chatHistory.classList.add("hidden");
     }
@@ -585,12 +726,24 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         }
         case "toolStarting": {
           if (typeof message.toolName === "string") {
+            addToolMessage({
+              toolName: message.toolName,
+              args: message.args
+            });
             showToolNotification(`🔧 ${message.toolName}`, "running");
           }
           break;
         }
         case "toolExecuted": {
           if (typeof message.toolName === "string") {
+            completeToolMessage({
+              toolName: message.toolName,
+              success: Boolean(message.success),
+              error:
+                typeof message.error === "string" && message.error.length > 0
+                  ? message.error
+                  : undefined
+            });
             if (message.success) {
               showToolNotification(`✓ ${message.toolName} completed`, "success");
             } else {

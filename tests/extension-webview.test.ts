@@ -165,4 +165,29 @@ describe("initializeWebviewApp", () => {
 
     expect(postMessage).toHaveBeenCalledWith({ type: "openSettings" });
   });
+
+  it("interleaves tool call updates in the transcript", () => {
+    app.handleMessage({
+      type: "toolStarting",
+      toolName: "write_file",
+      args: { path: "index.ts" }
+    });
+
+    const toolMessages = Array.from(
+      document.querySelectorAll(".message-wrapper.tool")
+    );
+    expect(toolMessages.length).toBe(1);
+    const entry = toolMessages[0]!;
+    expect(entry.textContent).toContain("write_file");
+    expect(entry.classList.contains("running")).toBe(true);
+
+    app.handleMessage({
+      type: "toolExecuted",
+      toolName: "write_file",
+      success: true
+    });
+
+    expect(entry.classList.contains("success")).toBe(true);
+    expect(entry.textContent).toContain("completed");
+  });
 });
