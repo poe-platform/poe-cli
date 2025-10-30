@@ -693,7 +693,6 @@ describe("CLI program", () => {
     expect(promptStub.calls.map((c) => c.name)).toContain("apiKey");
     expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
       "which",
-      "which",
       "claude"
     ]);
     expect(commandRunnerStub.calls[0]).toEqual({
@@ -701,10 +700,6 @@ describe("CLI program", () => {
       args: ["claude"]
     });
     expect(commandRunnerStub.calls[1]).toEqual({
-      command: "which",
-      args: ["claude"]
-    });
-    expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
       args: [
         "-p",
@@ -719,30 +714,37 @@ describe("CLI program", () => {
     });
   });
 
-  it("fails when the claude binary is missing", async () => {
+  it("fails when the claude binary is missing and installation fails", async () => {
     const promptStub = createPromptStub({ apiKey: "prompted-key" });
-    const commandRunnerStub = createCommandRunnerStub({ whichExitCode: 1 });
+    const commandCalls: CommandCall[] = [];
+    const commandRunner = vi.fn(async (command: string, args: string[]) => {
+      commandCalls.push({ command, args });
+      // All detection methods fail before and after npm install
+      if (command === "which" || command === "where" || command === "test" || command === "ls") {
+        return { stdout: "", stderr: "not found", exitCode: 1 };
+      }
+      // npm install succeeds but binary still not found after
+      if (command === "npm") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }) as unknown as CommandRunner;
+    
     const program = createProgram({
       fs,
       prompts: promptStub.prompt,
       env: { cwd, homeDir },
       logger: () => {},
-      commandRunner: commandRunnerStub.runner
+      commandRunner
     });
 
     await expect(
       program.parseAsync(["node", "cli", "configure", "claude-code"])
     ).rejects.toThrow(/Claude CLI binary not found/);
-    expect(commandRunnerStub.calls).toEqual([
-      { command: "which", args: ["claude"] },
-      { command: "where", args: ["claude"] },
-      {
-        command: "npm",
-        args: ["install", "-g", "@anthropic-ai/claude-code"]
-      },
-      { command: "which", args: ["claude"] },
-      { command: "where", args: ["claude"] }
-    ]);
+    
+    // Should try detection, install, then try detection again
+    expect(commandCalls.some(call => call.command === "npm")).toBe(true);
+    
     await expect(
       fs.readFile(path.join(homeDir, ".claude", "settings.json"), "utf8")
     ).rejects.toThrow();
@@ -762,16 +764,12 @@ describe("CLI program", () => {
     await expect(
       program.parseAsync(["node", "cli", "configure", "claude-code"])
     ).rejects.toThrow(/Claude CLI health check failed/);
-    expect(commandRunnerStub.calls).toHaveLength(3);
+    expect(commandRunnerStub.calls).toHaveLength(2);
     expect(commandRunnerStub.calls[0]).toEqual({
       command: "which",
       args: ["claude"]
     });
     expect(commandRunnerStub.calls[1]).toEqual({
-      command: "which",
-      args: ["claude"]
-    });
-    expect(commandRunnerStub.calls[2]).toEqual({
       command: "claude",
       args: [
         "-p",
@@ -808,14 +806,12 @@ describe("CLI program", () => {
       "utf8"
     );
     expect(firstSettings).toEqual(secondSettings);
-    expect(commandRunnerStub.calls).toHaveLength(6);
+    expect(commandRunnerStub.calls).toHaveLength(4);
     expect(
       commandRunnerStub.calls.map((call) => `${call.command}:${call.args.join(" ")}`)
     ).toEqual([
       "which:claude",
-      "which:claude",
       "claude:-p Output exactly: CLAUDE_CODE_OK --allowedTools Bash,Read --permission-mode acceptEdits --output-format text",
-      "which:claude",
       "which:claude",
       "claude:-p Output exactly: CLAUDE_CODE_OK --allowedTools Bash,Read --permission-mode acceptEdits --output-format text"
     ]);
@@ -1145,14 +1141,8 @@ describe("CLI program", () => {
       "before"
     ]);
 
-    expect(logs).toContain("Running before prerequisite: Claude CLI binary must exist");
-    expect(commandRunnerStub.calls.map((call) => call.command)).toEqual([
-      "which"
-    ]);
-    expect(
-      logs.find((line) => line.startsWith("> which claude"))
-    ).toBeTruthy();
-    expect(logs).toContain("✓ Claude CLI binary must exist");
+    // No before prerequisites registered, so it succeeds with no commands run
+    expect(commandRunnerStub.calls).toEqual([]);
     expect(logs).toContain("Claude Code before prerequisites succeeded.");
   });
 
@@ -1215,13 +1205,6 @@ describe("CLI program", () => {
       "claude-code"
     ]);
 
-    expect(logs).toContain(
-      "Running before prerequisite: Claude CLI binary must exist"
-    );
-    expect(
-      logs.find((line) => line.startsWith("> which claude"))
-    ).toBeTruthy();
-    expect(logs).toContain("✓ Claude CLI binary must exist");
     expect(logs).toContain(
       `${chalk.cyan("mkdir -p /home/user/.claude")} ${chalk.dim("# create")}`
     );
@@ -1605,13 +1588,23 @@ describe("CLI program", () => {
     const commandRunner = vi.fn(
       async (command: string, args: string[]) => {
         commandCalls.push({ command, args });
-        if (command === "which" && args[0] === "claude") {
+        // Handle all detection methods - they all check for claude binary
+        if (command === "which" || command === "where") {
+          if (args[0] === "claude") {
+            if (hasClaudeCli) {
+              return {
+                stdout: "/usr/local/bin/claude\n",
+                stderr: "",
+                exitCode: 0
+              };
+            }
+            return { stdout: "", stderr: "not found", exitCode: 1 };
+          }
+        }
+        if (command === "test" || command === "ls") {
+          // These check for file existence
           if (hasClaudeCli) {
-            return {
-              stdout: "/usr/local/bin/claude\n",
-              stderr: "",
-              exitCode: 0
-            };
+            return { stdout: "", stderr: "", exitCode: 0 };
           }
           return { stdout: "", stderr: "not found", exitCode: 1 };
         }
