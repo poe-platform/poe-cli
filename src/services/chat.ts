@@ -337,11 +337,7 @@ export class PoeChatService {
 
     if (tools && tools.length > 0) {
       request.tools = tools;
-      console.log(`[DEBUG] Sending ${tools.length} tools to ${this.currentModel}`);
-      console.log(`[DEBUG] Tool names: ${tools.map(t => t.function.name).join(", ")}`);
     }
-
-    console.log(`[DEBUG] Request to Poe API:`, JSON.stringify(request, null, 2));
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
@@ -360,7 +356,6 @@ export class PoeChatService {
     }
 
     const result = await response.json();
-    console.log(`[DEBUG] Response from Poe API:`, JSON.stringify(result, null, 2));
 
     return result;
   }
