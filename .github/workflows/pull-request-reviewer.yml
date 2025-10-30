@@ -1,19 +1,15 @@
 name: Pull Request Reviewer
-
 on:
   pull_request:
     types:
       - opened
       - ready_for_review
       - synchronize
-  workflow_dispatch:
-
+  workflow_dispatch: null
 jobs:
   review:
     name: Cross-check Pull Request
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.state == 'open'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,19 +19,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build CLI
         run: npm run build
-
       - name: Determine reviewer
         id: reviewer
         env:
@@ -67,12 +59,10 @@ jobs:
             }
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs.join("\n")}\n`);
           NODE
-
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
         run: npx poe-setup login --api-key "${POE_API_KEY}"
-
       - name: Configure reviewer provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
@@ -93,7 +83,6 @@ jobs:
               exit 1
               ;;
           esac
-
       - name: Run review agent
         id: agent
         env:
@@ -118,7 +107,6 @@ jobs:
           NODE
           )
           npx poe-setup agent "$PROMPT" | tee review-summary.txt
-
       - name: Submit review comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
