@@ -11,13 +11,6 @@ function truncate(text, limit) {
   return text.length <= limit ? text : `${text.slice(0, limit)}\n...`;
 }
 
-function ensureValue(value, message) {
-  if (!value) {
-    throw new Error(message);
-  }
-  return value;
-}
-
 function parseMetadata(payload) {
   const start = payload.indexOf("{");
   const end = payload.lastIndexOf("}");
@@ -36,14 +29,16 @@ function parseMetadata(payload) {
     throw new Error("Agent response is not an object.");
   }
 
-  const title = ensureValue(
-    typeof metadata.title === "string" ? metadata.title.trim() : "",
-    "Agent response missing title."
-  );
-  const body = ensureValue(
-    typeof metadata.body === "string" ? metadata.body.trim() : "",
-    "Agent response missing body."
-  );
+  const title =
+    typeof metadata.title === "string" ? metadata.title.trim() : "";
+  if (!title) {
+    throw new Error("Agent response missing title.");
+  }
+  const body =
+    typeof metadata.body === "string" ? metadata.body.trim() : "";
+  if (!body) {
+    throw new Error("Agent response missing body.");
+  }
 
   return { title, body };
 }
@@ -52,11 +47,12 @@ function main() {
   const { SERVICE, ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GITHUB_OUTPUT } =
     process.env;
 
-  ensureValue(GITHUB_OUTPUT, "Missing GITHUB_OUTPUT path");
-  const service = ensureValue(
-    SERVICE,
-    "Missing service configuration for PR metadata generation."
-  );
+  if (!GITHUB_OUTPUT) {
+    throw new Error("Missing GITHUB_OUTPUT path");
+  }
+  if (!SERVICE) {
+    throw new Error("Missing service configuration for PR metadata generation.");
+  }
 
   run("git fetch origin main", "inherit");
 
@@ -85,11 +81,8 @@ function main() {
   }
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || "").trim();
-    throw new Error(
-      `poe-setup exited with ${result.status}${
-        detail ? `: ${detail}` : ""
-      }`
-    );
+    const suffix = detail ? `: ${detail}` : "";
+    throw new Error(`poe-setup exited with ${result.status}${suffix}`);
   }
 
   const metadata = parseMetadata((result.stdout || "").trim());
