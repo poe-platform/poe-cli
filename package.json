@@ -1,6 +1,6 @@
 {
   "name": "poe-setup",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "CLI tool to configure Poe API for various development tools.",
   "type": "module",
   "scripts": {
@@ -67,4 +67,3 @@
     "url": "https://github.com/poe-platform/poe-cli.git"
   }
 }
-
