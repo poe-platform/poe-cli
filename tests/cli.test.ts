@@ -83,6 +83,51 @@ function createCommandRunnerStub(options?: {
   return { runner, calls };
 }
 
+function createInstallCommandRunner(options: {
+  binary: string;
+  installCommand: string;
+  installArgs: string[];
+  postChecks?: Array<{ command: string; args: string[] }>;
+}): { runner: CommandRunner; calls: CommandCall[] } {
+  let installed = false;
+  const calls: CommandCall[] = [];
+  const runner = vi.fn(async (command: string, args: string[]) => {
+    calls.push({ command, args });
+    if (command === "which") {
+      if (installed) {
+        return {
+          stdout: `/usr/local/bin/${options.binary}\n`,
+          stderr: "",
+          exitCode: 0
+        };
+      }
+      return { stdout: "", stderr: "not found", exitCode: 1 };
+    }
+    if (
+      command === options.installCommand &&
+      args.length === options.installArgs.length &&
+      args.every((value, index) => value === options.installArgs[index])
+    ) {
+      installed = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (
+      installed &&
+      options.postChecks?.some(
+        (check) =>
+          check.command === command &&
+          check.args.length === args.length &&
+          check.args.every((value, index) => value === args[index])
+      )
+    ) {
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  }) as unknown as CommandRunner;
+
+  return { runner, calls };
+}
+
 const CLAUDE_HELPER_LINES = [
   "#!/bin/bash",
   'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
@@ -203,6 +248,12 @@ describe("CLI program", () => {
 
   it("configures opencode CLI integration", async () => {
     const { prompt } = createPromptStub({});
+    const commandRunner = createInstallCommandRunner({
+      binary: "opencode",
+      installCommand: "npm",
+      installArgs: ["install", "-g", "opencode-cli"],
+      postChecks: [{ command: "opencode", args: ["--version"] }]
+    });
     const logs: string[] = [];
     const program = createProgram({
       fs,
@@ -210,7 +261,8 @@ describe("CLI program", () => {
       env: { cwd, homeDir },
       logger: (message) => {
         logs.push(message);
-      }
+      },
+      commandRunner: commandRunner.runner
     });
 
     await program.parseAsync([
@@ -265,6 +317,14 @@ describe("CLI program", () => {
     expect(
       logs.find((line) => line.includes("Configured OpenCode CLI."))
     ).toBeTruthy();
+    expect(
+      commandRunner.calls.some(
+        (call) =>
+          call.command === "npm" &&
+          call.args[0] === "install" &&
+          call.args.includes("opencode-cli")
+      )
+    ).toBe(true);
   });
 
   it("configures roo code integration", async () => {
@@ -324,6 +384,11 @@ describe("CLI program", () => {
 
   it("simulates commands without writing when using --dry-run", async () => {
     const { prompt } = createPromptStub({});
+    const commandRunner = createInstallCommandRunner({
+      binary: "codex",
+      installCommand: "npm",
+      installArgs: ["install", "-g", "@poe/codex-cli"]
+    });
     const logs: string[] = [];
     const program = createProgram({
       fs,
@@ -331,7 +396,8 @@ describe("CLI program", () => {
       env: { cwd, homeDir },
       logger: (message) => {
         logs.push(message);
-      }
+      },
+      commandRunner: commandRunner.runner
     });
 
     await program.parseAsync([
@@ -372,6 +438,12 @@ describe("CLI program", () => {
     expect(logs).toContain(
       `${chalk.green("cat > /workspace/demo/.env")} ${chalk.dim("# create")}`
     );
+    expect(
+      commandRunner.calls.filter((call) => call.command === "which").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      commandRunner.calls.some((call) => call.command === "npm")
+    ).toBe(false);
   });
 
   it("renders unified diff output for dry-run updates", async () => {
@@ -749,11 +821,18 @@ describe("CLI program", () => {
 
   it("removes codex configuration", async () => {
     const { prompt } = createPromptStub({});
+    const commandRunner = createInstallCommandRunner({
+      binary: "codex",
+      installCommand: "npm",
+      installArgs: ["install", "-g", "@poe/codex-cli"],
+      postChecks: [{ command: "codex", args: ["--version"] }]
+    });
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
-      logger: () => {}
+      logger: () => {},
+      commandRunner: commandRunner.runner
     });
 
     await program.parseAsync([
@@ -772,6 +851,15 @@ describe("CLI program", () => {
     await expect(
       fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8")
     ).rejects.toThrow();
+    expect(
+      commandRunner.calls.some(
+        (call) =>
+          call.command === "npm" &&
+          call.args.length === 3 &&
+          call.args[0] === "install" &&
+          call.args[2] === "@poe/codex-cli"
+      )
+    ).toBe(true);
   });
 
   it("stores prompted api key during configure", async () => {
