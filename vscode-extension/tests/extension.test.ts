@@ -141,6 +141,5 @@ describe("getWebviewContent", () => {
     expect(html).toContain('data-feature="strategies"');
     expect(html).toContain('data-feature="models"');
     expect(html).toContain('data-feature="tools"');
-    expect(html).toContain('class="welcome-actions"');
   });
 });

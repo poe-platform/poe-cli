@@ -1401,32 +1401,6 @@ ${code}
             max-width: 540px;
         }
 
-        .welcome-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .welcome-action {
-            padding: 10px 18px;
-            border-radius: 8px;
-            border: 1px solid var(--vscode-button-border);
-            background-color: transparent;
-            cursor: pointer;
-            color: var(--vscode-foreground);
-            font-size: 11px;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
-        }
-
-        .welcome-action:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-
-        .welcome-action.primary {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
         .welcome-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -1546,14 +1520,6 @@ ${code}
                                 Orchestrate Poe models, strategies, and developer tools without leaving VS Code.
                                 Configure your agent once and reuse it across every session.
                             </p>
-                            <div class="welcome-actions">
-                                <button type="button" class="welcome-action primary" data-action="strategy-open">
-                                    Configure strategy
-                                </button>
-                                <button type="button" class="welcome-action" data-action="open-settings">
-                                    Manage providers
-                                </button>
-                            </div>
                         </div>
                         <div class="welcome-grid">
                             <article class="welcome-card" data-feature="strategies">
