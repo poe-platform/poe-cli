@@ -166,7 +166,9 @@ export async function spawnClaudeCode(
     "--allowedTools",
     "Bash,Read",
     "--permission-mode",
-    "acceptEdits"
+    "acceptEdits",
+    "--output-format",
+    "text"
   ];
   const args = [...defaults, ...(options.args ?? [])];
   return options.runCommand("claude", args);
