@@ -23,10 +23,6 @@ OpenCode
 
 `poe-cli configure opencode`
 
-Poe Code 
-
-`poe-cli configure roo-code`
-
 ## Interactive mode
 
 ```bash
