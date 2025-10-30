@@ -50,6 +50,13 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const settingsOpenMcpButton = settingsPanel?.querySelector(
     "[data-action='settings-open-mcp']"
   ) as HTMLButtonElement | null;
+  const chatHistory = doc.getElementById("chat-history") as HTMLElement | null;
+  const chatHistoryContent = chatHistory?.querySelector(
+    ".chat-history-content"
+  ) as HTMLElement | null;
+  const historyCloseButton = chatHistory?.querySelector(
+    "[data-action='history-close']"
+  ) as HTMLButtonElement | null;
 
   if (appShellHost) {
     appShellHost.innerHTML = options.appShellHtml;
@@ -58,9 +65,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     modelSelectorHost.innerHTML = options.modelSelectorHtml;
   }
 
-  const sidebarList = appShellHost?.querySelector(".model-list") as
-    | HTMLElement
-    | null;
   const modelInput = modelSelectorHost?.querySelector("input") as
     | HTMLInputElement
     | null;
@@ -70,8 +74,10 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     '<div class="welcome-message"><h2>Welcome to Poe Code</h2><p>Start chatting with Poe models or explore tooling via the sidebar.</p></div>';
 
   const notifications: ToolNotification[] = [];
+  const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
   let activeModel = options.defaultModel;
   let settingsVisible = false;
+  let historyVisible = false;
 
   function setActiveModel(model: string): void {
     if (!model.length) {
@@ -87,56 +93,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       modelInput.value = model;
     }
 
-    if (sidebarList) {
-      let matched = false;
-      const items = Array.from(sidebarList.querySelectorAll(".model-item"));
-      for (const item of items) {
-        const text = item.textContent ?? "";
-        const isMatch = text.trim() === model;
-        item.classList.toggle("active", isMatch);
-        if (isMatch) {
-          matched = true;
-        }
-      }
-      if (!matched) {
-        const newItem = doc.createElement("li");
-        newItem.className = "model-item active";
-        newItem.textContent = model;
-        sidebarList.prepend(newItem);
-        wireModelItem(newItem);
-      }
-    }
     highlightActiveProvider(model);
-  }
-
-  function wireModelItem(item: Element): void {
-    item.addEventListener("click", () => {
-      const text = item.textContent ?? "";
-      const trimmed = text.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      setActiveModel(trimmed);
-      options.postMessage({ type: "setModel", model: trimmed });
-    });
-  }
-
-  if (sidebarList) {
-    const existingItems = Array.from(sidebarList.querySelectorAll(".model-item"));
-    if (existingItems.length === 0 && options.providerSettings.length > 0) {
-      for (const provider of options.providerSettings) {
-        const element = doc.createElement("li");
-        element.className =
-          provider.label === options.defaultModel
-            ? "model-item active"
-            : "model-item";
-        element.textContent = provider.label;
-        sidebarList.appendChild(element);
-      }
-    }
-    for (const item of Array.from(sidebarList.querySelectorAll(".model-item"))) {
-      wireModelItem(item);
-    }
   }
 
   if (modelInput) {
@@ -213,15 +170,16 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     const action = button.getAttribute("data-action");
     if (action === "new-chat") {
       button.addEventListener("click", () => {
+        saveCurrentChatToHistory();
         options.postMessage({ type: "clearHistory" });
       });
     } else if (action === "open-settings") {
       button.addEventListener("click", () => {
         toggleSettingsPanel();
       });
-    } else if (action === "view-diffs") {
+    } else if (action === "chat-history") {
       button.addEventListener("click", () => {
-        focusLatestDiff();
+        toggleChatHistory();
       });
     }
   });
@@ -236,6 +194,12 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     settingsOpenMcpButton.addEventListener("click", () => {
       options.postMessage({ type: "openSettings" });
       hideSettingsPanel();
+    });
+  }
+
+  if (historyCloseButton) {
+    historyCloseButton.addEventListener("click", () => {
+      hideChatHistory();
     });
   }
 
@@ -391,16 +355,93 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
   }
 
-  function focusLatestDiff(): void {
+  function saveCurrentChatToHistory(): void {
     if (!messagesDiv) {
       return;
     }
-    const diffs = messagesDiv.querySelectorAll(".message-wrapper.diff");
-    if (diffs.length === 0) {
+    const messages = Array.from(messagesDiv.querySelectorAll(".message-wrapper"));
+    if (messages.length === 0 || messages.some(m => m.classList.contains("welcome-message"))) {
       return;
     }
-    const lastDiff = diffs[diffs.length - 1] as HTMLElement;
-    lastDiff.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    const firstMessage = messages[0]?.querySelector(".message-content")?.textContent ?? "";
+    const title = firstMessage.substring(0, 50) + (firstMessage.length > 50 ? "..." : "");
+    const preview = firstMessage.substring(0, 100) + (firstMessage.length > 100 ? "..." : "");
+
+    chatHistoryStore.push({
+      id: `chat-${Date.now()}`,
+      title: title || "New Chat",
+      preview: preview || "Empty chat",
+      messages: Array.from(messages).map(m => m.outerHTML)
+    });
+  }
+
+  function toggleChatHistory(): void {
+    if (historyVisible) {
+      hideChatHistory();
+    } else {
+      showChatHistory();
+    }
+  }
+
+  function showChatHistory(): void {
+    historyVisible = true;
+    if (chatHistory) {
+      chatHistory.classList.remove("hidden");
+    }
+    renderChatHistory();
+  }
+
+  function hideChatHistory(): void {
+    historyVisible = false;
+    if (chatHistory) {
+      chatHistory.classList.add("hidden");
+    }
+  }
+
+  function renderChatHistory(): void {
+    if (!chatHistoryContent) {
+      return;
+    }
+
+    if (chatHistoryStore.length === 0) {
+      chatHistoryContent.innerHTML = '<div class="chat-history-empty">No chat history available yet.</div>';
+      return;
+    }
+
+    chatHistoryContent.innerHTML = "";
+    for (const chat of chatHistoryStore.slice().reverse()) {
+      const item = doc.createElement("div");
+      item.className = "chat-history-item";
+      item.dataset.chatId = chat.id;
+
+      const title = doc.createElement("div");
+      title.className = "chat-history-item-title";
+      title.textContent = chat.title;
+
+      const preview = doc.createElement("div");
+      preview.className = "chat-history-item-preview";
+      preview.textContent = chat.preview;
+
+      item.appendChild(title);
+      item.appendChild(preview);
+
+      item.addEventListener("click", () => {
+        loadChatFromHistory(chat.id);
+      });
+
+      chatHistoryContent.appendChild(item);
+    }
+  }
+
+  function loadChatFromHistory(chatId: string): void {
+    const chat = chatHistoryStore.find(c => c.id === chatId);
+    if (!chat || !messagesDiv) {
+      return;
+    }
+
+    messagesDiv.innerHTML = chat.messages.join("");
+    hideChatHistory();
   }
 
   function toggleSettingsPanel(): void {
