@@ -53,6 +53,10 @@ function main() {
   if (!SERVICE) {
     throw new Error("Missing service configuration for PR metadata generation.");
   }
+  const service = SERVICE.trim();
+  if (!service) {
+    throw new Error("Service identifier is empty.");
+  }
 
   run("git fetch origin main", "inherit");
 
