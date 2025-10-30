@@ -21,6 +21,8 @@ import {
 import {
   parseTomlDocument,
   serializeTomlDocument,
+  mergeTomlTables,
+  isTomlTable,
   type TomlTable
 } from "../utils/toml.js";
 import {
@@ -28,6 +30,7 @@ import {
   type InstallContext,
   type ServiceInstallDefinition
 } from "./service-install.js";
+import { renderTemplate } from "../utils/templates.js";
 
 export interface ConfigureCodexOptions {
   fs: FileSystem;
@@ -55,14 +58,7 @@ const CODEX_TOP_LEVEL_FIELDS = [
   "model",
   "model_reasoning_effort"
 ] as const;
-const CODEX_PROVIDER_BASE_FIELDS = {
-  name: "poe",
-  base_url: CODEX_BASE_URL,
-  wire_api: "chat"
-} as const;
-const CODEX_PROVIDER_ENV_KEY = "POE_API_KEY" as const;
-const CODEX_PROVIDER_LEGACY_ENV_KEY = "OPENAI_API_KEY" as const;
-const CODEX_PROVIDER_BEARER_TOKEN = "POE_API_KEY" as const;
+const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
 
 const CODEX_MANIFEST: ServiceManifest<
   ConfigureCodexOptions,
@@ -87,7 +83,7 @@ const CODEX_MANIFEST: ServiceManifest<
       kind: "transformFile",
       target: ({ options }) => options.configPath,
       label: "Merge Codex configuration",
-      transform({ content, context }) {
+      async transform({ content, context }) {
         let document: TomlTable;
         if (content == null) {
           document = {};
@@ -98,11 +94,13 @@ const CODEX_MANIFEST: ServiceManifest<
             document = {};
           }
         }
-        applyCodexConfiguration(document, {
-          model: context.options.model,
-          reasoningEffort: context.options.reasoningEffort
-        });
-        const nextContent = serializeTomlDocument(document);
+        const rendered = await renderTemplate(
+          CODEX_CONFIG_TEMPLATE_ID,
+          { ...context.options }
+        );
+        const templateDocument = parseTomlDocument(rendered);
+        const nextTable = mergeTomlTables(document, templateDocument);
+        const nextContent = serializeTomlDocument(nextTable);
         return {
           content: nextContent,
           changed: nextContent !== (content ?? "")
@@ -162,40 +160,10 @@ const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Codex CLI via npm."
 };
 
-function applyCodexConfiguration(
-  document: TomlTable,
-  config: {
-    model: string;
-    reasoningEffort: string;
-  }
-): void {
-  document["model_provider"] = CODEX_PROVIDER_ID;
-  document["model"] = config.model;
-  document["model_reasoning_effort"] = config.reasoningEffort;
-
-  const providersValue = document["model_providers"];
-  const providers: TomlTable = isPlainObject(providersValue)
-    ? providersValue
-    : {};
-  if (!isPlainObject(providersValue)) {
-    document["model_providers"] = providers;
-  }
-
-  const poeValue = providers[CODEX_PROVIDER_ID];
-  const poeProvider: TomlTable = isPlainObject(poeValue) ? poeValue : {};
-  if (!isPlainObject(poeValue)) {
-    providers[CODEX_PROVIDER_ID] = poeProvider;
-  }
-
-  Object.assign(poeProvider, CODEX_PROVIDER_BASE_FIELDS);
-  poeProvider["env_key"] = CODEX_PROVIDER_ENV_KEY;
-  poeProvider["experimental_bearer_token"] = CODEX_PROVIDER_BEARER_TOKEN;
-}
-
 function stripCodexConfiguration(
   document: TomlTable
 ): { changed: boolean; empty: boolean } {
-  if (!isPlainObject(document)) {
+  if (!isTomlTable(document)) {
     return { changed: false, empty: false };
   }
 
@@ -204,12 +172,12 @@ function stripCodexConfiguration(
   }
 
   const providers = document["model_providers"];
-  if (!isPlainObject(providers)) {
+  if (!isTomlTable(providers)) {
     return { changed: false, empty: false };
   }
 
   const poeConfig = providers[CODEX_PROVIDER_ID];
-  if (!isPlainObject(poeConfig) || !matchesExpectedProviderConfig(poeConfig)) {
+  if (!isTomlTable(poeConfig) || !matchesExpectedProviderConfig(poeConfig)) {
     return { changed: false, empty: false };
   }
 
@@ -238,43 +206,35 @@ function stripCodexConfiguration(
 }
 
 function matchesExpectedProviderConfig(table: TomlTable): boolean {
-  for (const [key, expectedValue] of Object.entries(
-    CODEX_PROVIDER_BASE_FIELDS
-  )) {
-    if (table[key] !== expectedValue) {
-      return false;
-    }
+  if (table["name"] !== "poe") {
+    return false;
+  }
+  if (table["base_url"] !== CODEX_BASE_URL) {
+    return false;
+  }
+  if (table["wire_api"] !== "chat") {
+    return false;
   }
 
   const envKey = table["env_key"];
   if (
-    envKey !== CODEX_PROVIDER_ENV_KEY &&
-    envKey !== CODEX_PROVIDER_LEGACY_ENV_KEY
+    envKey != null &&
+    envKey !== "OPENAI_API_KEY" &&
+    envKey !== "POE_API_KEY"
   ) {
     return false;
   }
 
   const bearer = table["experimental_bearer_token"];
-  if (
-    bearer != null &&
-    bearer !== CODEX_PROVIDER_BEARER_TOKEN
-  ) {
+  if (bearer != null && typeof bearer !== "string") {
     return false;
   }
 
   return true;
 }
 
-function isPlainObject(value: unknown): value is TomlTable {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
-}
-
 function isTableEmpty(value: unknown): value is TomlTable {
-  return isPlainObject(value) && Object.keys(value).length === 0;
+  return isTomlTable(value) && Object.keys(value).length === 0;
 }
 
 export async function configureCodex(

@@ -38,7 +38,7 @@ describe("codex service", () => {
     expect(content.trim()).toContain('model = "gpt-5"');
     expect(content.trim()).toContain('model_reasoning_effort = "medium"');
     expect(content.trim()).toContain(
-      'experimental_bearer_token = "POE_API_KEY"'
+      'experimental_bearer_token = "sk-test"'
     );
     await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects
       .toThrow();
@@ -215,8 +215,7 @@ describe("codex service", () => {
       name: "poe",
       base_url: "https://api.poe.com/v1",
       wire_api: "chat",
-      env_key: "POE_API_KEY",
-      experimental_bearer_token: "POE_API_KEY"
+      experimental_bearer_token: "sk-test"
     });
 
     const backupContent = await fs.readFile(

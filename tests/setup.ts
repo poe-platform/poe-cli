@@ -42,6 +42,20 @@ const templateFixtures = new Map<string, string>([
       "#!/bin/bash",
       'node -e "console.log(require({{{credentialsPathLiteral}}}).apiKey)"'
     ].join("\n")
+  ],
+  [
+    "codex/config.toml.hbs",
+    [
+      'model_provider = "poe"',
+      'model = "{{model}}"',
+      'model_reasoning_effort = "{{reasoningEffort}}"',
+      "",
+      "[model_providers.poe]",
+      'name = "poe"',
+      'base_url = "https://api.poe.com/v1"',
+      'wire_api = "chat"',
+      'experimental_bearer_token = "{{apiKey}}"'
+    ].join("\n")
   ]
 ]);
 
