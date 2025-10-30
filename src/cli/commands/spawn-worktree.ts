@@ -3,7 +3,8 @@ import type { CliContainer } from "../container.js";
 import {
   buildProviderContext,
   type ExecutionResources,
-  resolveCommandFlags
+  resolveCommandFlags,
+  resolveServiceAdapter
 } from "./shared.js";
 import { spawnGitWorktree } from "../../commands/spawn-worktree.js";
 import { simpleGit as createSimpleGit } from "simple-git";
@@ -37,7 +38,7 @@ export function registerSpawnWorktreeCommand(
         agentArgs: string[] = [],
         options: SpawnWorktreeCommandOptions
       ) => {
-        const adapter = container.registry.require(service);
+        const adapter = resolveServiceAdapter(container, service);
         if (!adapter.supportsSpawn) {
           throw new Error(`${adapter.label} does not support spawn.`);
         }
@@ -56,7 +57,7 @@ export function registerSpawnWorktreeCommand(
               : "";
           const branchSuffix = options.branch ? ` into ${options.branch}` : "";
           logger.dryRun(
-            `would create git worktree, run ${adapter.label}${argsSuffix}, and merge${branchSuffix}.`
+            `Dry run: would create git worktree, run ${adapter.label}${argsSuffix}, and merge${branchSuffix}.`
           );
           return;
         }

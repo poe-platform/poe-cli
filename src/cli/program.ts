@@ -23,7 +23,7 @@ export function createProgram(dependencies: CliDependencies): Command {
   const program = bootstrapProgram(container);
 
   if (dependencies.exitOverride ?? true) {
-    program.exitOverride();
+    applyExitOverride(program);
   }
 
   return program;
@@ -55,3 +55,10 @@ function bootstrapProgram(container: CliContainer): Command {
 }
 
 export type { CliDependencies };
+
+function applyExitOverride(command: Command): void {
+  command.exitOverride();
+  for (const child of command.commands) {
+    applyExitOverride(child);
+  }
+}

@@ -31,7 +31,9 @@ export function registerQueryCommand(
       const model = options.model ?? DEFAULT_QUERY_MODEL;
 
       if (flags.dryRun) {
-        logger.dryRun(`would query "${model}" with text "${text}".`);
+        logger.dryRun(
+          `Dry run: would query "${model}" with text "${text}".`
+        );
         return;
       }
 

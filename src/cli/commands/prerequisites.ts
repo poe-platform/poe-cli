@@ -5,6 +5,7 @@ import {
   normalizePhase,
   registerProviderPrerequisites,
   resolveCommandFlags,
+  resolveServiceAdapter,
   runPrerequisites
 } from "./shared.js";
 
@@ -22,7 +23,7 @@ export function registerPrerequisitesCommand(
     .argument("<phase>", "Phase to execute (before | after)")
     .action(async (service: string, phase: string) => {
       const normalizedPhase = normalizePhase(phase);
-      const adapter = container.registry.require(service);
+      const adapter = resolveServiceAdapter(container, service);
       const flags = resolveCommandFlags(program);
       const resources = createExecutionResources(
         container,

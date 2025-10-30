@@ -4,7 +4,8 @@ import {
   buildProviderContext,
   createExecutionResources,
   type ExecutionResources,
-  resolveCommandFlags
+  resolveCommandFlags,
+  resolveServiceAdapter
 } from "./shared.js";
 import { DEFAULT_ROO_CONFIG_NAME } from "../constants.js";
 
@@ -25,7 +26,7 @@ export function registerRemoveCommand(
     )
     .option("--config-name <name>", "Configuration profile name")
     .action(async (service: string, options: RemoveCommandOptions) => {
-      const adapter = container.registry.require(service);
+      const adapter = resolveServiceAdapter(container, service);
       const flags = resolveCommandFlags(program);
       const resources = createExecutionResources(
         container,

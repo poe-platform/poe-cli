@@ -6,6 +6,7 @@ import {
   type ExecutionResources,
   registerProviderPrerequisites,
   resolveCommandFlags,
+  resolveServiceAdapter,
   runPrerequisites
 } from "./shared.js";
 import {
@@ -51,7 +52,7 @@ export async function executeConfigure(
   service: string,
   options: ConfigureCommandOptions
 ): Promise<void> {
-  const adapter = container.registry.require(service);
+  const adapter = resolveServiceAdapter(container, service);
   const flags = resolveCommandFlags(program);
   const resources = createExecutionResources(
     container,
@@ -92,9 +93,14 @@ export async function executeConfigure(
 
   await runPrerequisites(adapter, resources, "after");
 
+  const dryMessage =
+    service === "claude-code"
+      ? `${adapter.label} (dry run)`
+      : `Dry run: would configure ${adapter.label}.`;
+
   resources.context.complete({
     success: `Configured ${adapter.label}.`,
-    dry: `Dry run: would configure ${adapter.label}.`
+    dry: dryMessage
   });
 }
 

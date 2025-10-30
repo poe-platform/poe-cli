@@ -100,4 +100,15 @@ export async function runPrerequisites(
   }
 }
 
+export function resolveServiceAdapter(
+  container: CliContainer,
+  service: string
+): ProviderAdapter {
+  const adapter = container.registry.get(service);
+  if (!adapter) {
+    throw new Error(`Unknown service "${service}".`);
+  }
+  return adapter;
+}
+
 export { normalizePhase };

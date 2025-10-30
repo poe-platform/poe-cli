@@ -36,19 +36,12 @@ export function createLoggerFactory(
     const verbose = context.verbose ?? false;
     const scope = context.scope;
 
-    const format = (message: string): string => {
-      if (!scope) {
-        return message;
-      }
-      return `${chalk.dim(`[${scope}]`)} ${message}`;
-    };
-
     const send = (message: string): void => {
-      emitter(format(message));
+      emitter(message);
     };
 
     const scoped: ScopedLogger = {
-      context: { dryRun, verbose, scope },
+      context: { dryRun, verbose, scope: context.scope },
       info(message) {
         send(message);
       },
@@ -62,16 +55,13 @@ export function createLoggerFactory(
         send(chalk.red(message));
       },
       dryRun(message) {
-        if (dryRun) {
-          send(chalk.cyan(`[dry-run] ${message}`));
-          return;
-        }
         send(message);
       },
       verbose(message) {
-        if (verbose) {
-          send(chalk.dim(message));
+        if (!verbose) {
+          return;
         }
+        send(message);
       },
       child(next) {
         return create({

@@ -225,7 +225,7 @@ function decorateMutationCommand(
 ): string {
   const colored = colorizeMutation(command, outcome);
   const suffix = describeOutcomeDetail(outcome);
-  return suffix ? `${colored} ${chalk.dim(suffix)}` : colored;
+  return suffix ? `${colored} ${chalk.dim(`# ${suffix}`)}` : colored;
 }
 
 function colorizeMutation(
@@ -253,13 +253,13 @@ function describeOutcomeDetail(
 ): string | undefined {
   switch (outcome.detail) {
     case "create":
-      return "created";
+      return "create";
     case "update":
-      return "updated";
+      return "update";
     case "delete":
-      return "removed";
+      return "delete";
     case "noop":
-      return undefined;
+      return "no change";
     default:
       return outcome.detail;
   }

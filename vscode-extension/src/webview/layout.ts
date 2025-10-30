@@ -5,6 +5,10 @@ interface AppShellOptions {
 }
 
 export function renderAppShell(options: AppShellOptions): string {
+  const modelItems = options.models
+    .map((model) => `<li class="model-summary-item">${model}</li>`)
+    .join("");
+
   return `
     <div class="brand">
       <img src="${options.logoUrl}" alt="Poe Code" />
@@ -15,6 +19,11 @@ export function renderAppShell(options: AppShellOptions): string {
       <button data-action="open-settings">Settings</button>
       <button data-action="new-chat">New Message</button>
     </nav>
+    <section class="model-summary">
+      <h2>Models</h2>
+      <ul class="model-summary-list">
+        ${modelItems}
+      </ul>
+    </section>
   `;
 }
-

@@ -25,6 +25,8 @@ export function registerRootHandler(
       logger.info(`${index + 1}) ${entry.name}`);
     });
 
+    logger.info("Enter number that you want to configure:");
+
     const descriptor = container.promptLibrary.serviceSelection();
     const response = await container.prompts(descriptor);
     const selection = response[descriptor.name];

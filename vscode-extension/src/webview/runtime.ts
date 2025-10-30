@@ -68,6 +68,9 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const modelInput = modelSelectorHost?.querySelector("input") as
     | HTMLInputElement
     | null;
+  const modelButtons = Array.from(
+    modelSelectorHost?.querySelectorAll<HTMLButtonElement>(".model-item") ?? []
+  );
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
@@ -93,6 +96,11 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       modelInput.value = model;
     }
 
+    modelButtons.forEach((button) => {
+      const buttonModel = button.dataset.model ?? button.textContent?.trim() ?? "";
+      button.classList.toggle("active", buttonModel === model);
+    });
+
     highlightActiveProvider(model);
   }
 
@@ -106,6 +114,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     });
     modelInput.addEventListener("blur", () => publishModel(modelInput.value));
   }
+
+  modelButtons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      const targetModel =
+        button.dataset.model ?? button.textContent?.trim() ?? "";
+      publishModel(targetModel);
+    });
+  });
 
   function publishModel(value: string): void {
     const trimmed = value.trim();

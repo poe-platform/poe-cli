@@ -3,7 +3,8 @@ import type { CliContainer } from "../container.js";
 import {
   buildProviderContext,
   createExecutionResources,
-  resolveCommandFlags
+  resolveCommandFlags,
+  resolveServiceAdapter
 } from "./shared.js";
 import type { CommandRunnerResult } from "../../utils/prerequisites.js";
 
@@ -29,7 +30,7 @@ export function registerSpawnCommand(
       "Additional arguments forwarded to the service CLI"
     )
     .action(async (service: string, promptText: string, agentArgs: string[] = []) => {
-      const adapter = container.registry.require(service);
+      const adapter = resolveServiceAdapter(container, service);
       if (!adapter.supportsSpawn) {
         throw new Error(`${adapter.label} does not support spawn.`);
       }
@@ -50,7 +51,7 @@ export function registerSpawnCommand(
         const extra =
           agentArgs.length > 0 ? ` with args ${JSON.stringify(agentArgs)}` : "";
         resources.logger.dryRun(
-          `would spawn ${adapter.label} with prompt "${promptText}"${extra}.`
+          `Dry run: would spawn ${adapter.label} with prompt "${promptText}"${extra}.`
         );
         return;
       }
