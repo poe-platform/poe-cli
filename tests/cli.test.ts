@@ -8,6 +8,7 @@ import type { CommandRunner } from "../src/utils/prerequisites.js";
 import * as claudeService from "../src/services/claude-code.js";
 import * as codexService from "../src/services/codex.js";
 import * as opencodeService from "../src/services/opencode.js";
+import { CREDENTIALS_PATH_SEGMENTS } from "../src/utils/paths.js";
 
 interface PromptCall {
   name: string;
@@ -875,7 +876,7 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
@@ -893,7 +894,7 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     await program.parseAsync([
       "node",
@@ -922,7 +923,7 @@ describe("CLI program", () => {
       },
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     await program.parseAsync(["node", "cli", "login"]);
 
@@ -977,7 +978,7 @@ describe("CLI program", () => {
         logs.push(message);
       }
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     await program.parseAsync([
       "node",
@@ -1009,7 +1010,7 @@ describe("CLI program", () => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     await program.parseAsync(["node", "cli", "login"]);
     await expect(fs.readFile(credentialsPath, "utf8")).resolves.toBeTruthy();

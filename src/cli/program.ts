@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
+import { CREDENTIALS_PATH_SEGMENTS } from "../utils/paths.js";
 import { initProject } from "../commands/init.js";
 import {
   configureClaudeCode,
@@ -209,11 +210,7 @@ export function createProgram(dependencies: CliDependencies): Command {
   program.option("--dry-run", "Simulate commands without writing changes.");
   program.option("--verbose", "Enable verbose logging.");
 
-  const credentialsPath = path.join(
-    env.homeDir,
-    ".poe-setup",
-    "credentials.json"
-  );
+  const credentialsPath = path.join(env.homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
   const getStoredApiKey = async (): Promise<string | null> =>
     loadCredentials({ fs: baseFs, filePath: credentialsPath });

@@ -4,6 +4,7 @@ import { InteractiveCli } from "./interactive.js";
 import type { CliDependencies } from "./program.js";
 import path from "node:path";
 import { loadCredentials } from "../services/credentials.js";
+import { CREDENTIALS_PATH_SEGMENTS } from "../utils/paths.js";
 import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
 import { McpManager } from "../services/mcp-manager.js";
@@ -13,7 +14,7 @@ export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
   const { fs, env } = dependencies;
-  const credentialsPath = path.join(env.homeDir, ".poe-setup", "credentials.json");
+  const credentialsPath = path.join(env.homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
   // Initialize MCP manager
   const mcpManager = new McpManager(fs, env.homeDir);

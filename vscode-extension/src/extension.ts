@@ -11,6 +11,7 @@ import { ChatState } from './state/chat-state.js';
 import { loadProviderSettings } from './config/provider-settings.js';
 import type { ProviderSetting } from './config/provider-settings.js';
 import { openMcpSettings } from './commands/open-mcp-settings.js';
+import { CREDENTIALS_PATH_SEGMENTS, POE_SETUP_DIR } from './constants.js';
 
 interface ActiveWebview {
     kind: 'panel' | 'sidebar';
@@ -493,7 +494,7 @@ async function openPoeTerminal() {
 
 async function getPoeCredentials(): Promise<{ apiKey: string } | null> {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const credentialsPath = path.join(homeDir, '.poe-setup', 'credentials.json');
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     try {
         await fs.promises.access(credentialsPath, fs.constants.F_OK);
@@ -512,8 +513,8 @@ async function isPoeSetupConfigured(): Promise<boolean> {
 
 async function configurePoeSetup(apiKey: string): Promise<void> {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const poeSetupDir = path.join(homeDir, '.poe-setup');
-    const credentialsPath = path.join(poeSetupDir, 'credentials.json');
+    const poeSetupDir = path.join(homeDir, POE_SETUP_DIR);
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
 
     try {
         // Create directory if it doesn't exist

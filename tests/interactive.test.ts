@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import type { CliDependencies } from "../src/cli/program.js";
 import { createInteractiveCommandExecutor } from "../src/cli/interactive-command-runner.js";
+import { CREDENTIALS_PATH_SEGMENTS } from "../src/utils/paths.js";
 
 interface PromptCall {
   name: string;
@@ -98,11 +99,7 @@ describe("Interactive command executor", () => {
     expect(httpClient).toHaveBeenCalledTimes(1);
     expect(output).toContain("Poe API key verified via EchoBot.");
 
-    const credentialsPath = path.join(
-      homeDir,
-      ".poe-setup",
-      "credentials.json"
-    );
+    const credentialsPath = path.join(homeDir, ...CREDENTIALS_PATH_SEGMENTS);
     const stored = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
     expect(stored.apiKey).toBe("sk-live");
   });

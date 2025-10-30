@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/services/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import { CREDENTIALS_PATH_SEGMENTS } from "../src/utils/paths.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -17,7 +18,7 @@ describe("claude-code service", () => {
   const home = "/home/user";
   const settingsPath = path.join(home, ".claude", "settings.json");
   const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
-  const credentialsPath = path.join(home, ".poe-setup", "credentials.json");
+  const credentialsPath = path.join(home, ...CREDENTIALS_PATH_SEGMENTS);
   const apiKey = "sk-test";
 
   beforeEach(async () => {
