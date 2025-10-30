@@ -42,7 +42,6 @@ import {
   type PrerequisiteRunHooks
 } from "../utils/prerequisites.js";
 import {
-  type MutationEffect,
   type MutationLogDetails,
   type ServiceMutationHooks,
   type ServiceMutationOutcome

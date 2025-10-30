@@ -1,4 +1,4 @@
-import { McpClient, type McpServerConfig, type McpTool } from "./mcp-client.js";
+import { McpClient, type McpServerConfig } from "./mcp-client.js";
 import type { Tool } from "./chat.js";
 import type { FileSystem } from "../utils/file-system.js";
 import path from "node:path";
@@ -21,7 +21,7 @@ export class McpManager {
     try {
       const content = await this.fs.readFile(this.configPath, "utf8");
       return JSON.parse(content);
-    } catch (error) {
+    } catch {
       // Config doesn't exist, return empty
       return { servers: [] };
     }
