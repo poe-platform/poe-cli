@@ -23,27 +23,17 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const doc = options.document;
   const view = doc.defaultView ?? (globalThis as typeof globalThis & Window);
   const appShellHost = doc.querySelector<HTMLElement>("[data-slot='app-shell']");
-  const modelSelectorHost = doc.querySelector<HTMLElement>(
-    "[data-slot='model-selector']"
-  );
+  const modelSelectorHost = doc.querySelector<HTMLElement>("[data-slot='model-selector']");
   const messagesDiv = doc.getElementById("messages") as HTMLElement | null;
-  const messageInput = doc.getElementById("message-input") as
-    | HTMLTextAreaElement
-    | null;
+  const messageInput = doc.getElementById("message-input") as HTMLTextAreaElement | null;
   const sendButton = doc.getElementById("send-button") as HTMLButtonElement | null;
   const clearButton = doc.getElementById("clear-button") as HTMLButtonElement | null;
-  const thinkingIndicator = doc.getElementById("thinking-indicator") as
-    | HTMLElement
-    | null;
+  const thinkingIndicator = doc.getElementById("thinking-indicator") as HTMLElement | null;
   const modelBadge = doc.getElementById("model-badge") as HTMLElement | null;
   const strategyBadge = doc.getElementById("strategy-badge") as HTMLElement | null;
-  const toolNotifications = doc.getElementById("tool-notifications") as
-    | HTMLElement
-    | null;
+  const toolNotifications = doc.getElementById("tool-notifications") as HTMLElement | null;
   const settingsPanel = doc.getElementById("settings-panel") as HTMLElement | null;
-  const providerSettingsContainer = doc.getElementById(
-    "provider-settings"
-  ) as HTMLElement | null;
+  const providerSettingsContainer = doc.getElementById("provider-settings") as HTMLElement | null;
   const settingsCloseButton = settingsPanel?.querySelector(
     "[data-action='settings-close']"
   ) as HTMLButtonElement | null;
@@ -58,12 +48,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     modelSelectorHost.innerHTML = options.modelSelectorHtml;
   }
 
-  const sidebarList = appShellHost?.querySelector(".model-list") as
-    | HTMLElement
-    | null;
-  const modelInput = modelSelectorHost?.querySelector("input") as
-    | HTMLInputElement
-    | null;
+  const modelInput = modelSelectorHost?.querySelector("input") as HTMLInputElement | null;
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
@@ -87,56 +72,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       modelInput.value = model;
     }
 
-    if (sidebarList) {
-      let matched = false;
-      const items = Array.from(sidebarList.querySelectorAll(".model-item"));
-      for (const item of items) {
-        const text = item.textContent ?? "";
-        const isMatch = text.trim() === model;
-        item.classList.toggle("active", isMatch);
-        if (isMatch) {
-          matched = true;
-        }
-      }
-      if (!matched) {
-        const newItem = doc.createElement("li");
-        newItem.className = "model-item active";
-        newItem.textContent = model;
-        sidebarList.prepend(newItem);
-        wireModelItem(newItem);
-      }
-    }
     highlightActiveProvider(model);
-  }
-
-  function wireModelItem(item: Element): void {
-    item.addEventListener("click", () => {
-      const text = item.textContent ?? "";
-      const trimmed = text.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      setActiveModel(trimmed);
-      options.postMessage({ type: "setModel", model: trimmed });
-    });
-  }
-
-  if (sidebarList) {
-    const existingItems = Array.from(sidebarList.querySelectorAll(".model-item"));
-    if (existingItems.length === 0 && options.providerSettings.length > 0) {
-      for (const provider of options.providerSettings) {
-        const element = doc.createElement("li");
-        element.className =
-          provider.label === options.defaultModel
-            ? "model-item active"
-            : "model-item";
-        element.textContent = provider.label;
-        sidebarList.appendChild(element);
-      }
-    }
-    for (const item of Array.from(sidebarList.querySelectorAll(".model-item"))) {
-      wireModelItem(item);
-    }
   }
 
   if (modelInput) {
@@ -211,17 +147,19 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const navButtons = appShellHost?.querySelectorAll("[data-action]") ?? [];
   navButtons.forEach((button) => {
     const action = button.getAttribute("data-action");
-    if (action === "new-chat") {
+    if (action === "new-message") {
       button.addEventListener("click", () => {
-        options.postMessage({ type: "clearHistory" });
+        if (messageInput) {
+          messageInput.focus();
+        }
       });
     } else if (action === "open-settings") {
       button.addEventListener("click", () => {
         toggleSettingsPanel();
       });
-    } else if (action === "view-diffs") {
+    } else if (action === "open-history") {
       button.addEventListener("click", () => {
-        focusLatestDiff();
+        options.postMessage({ type: "openHistory" });
       });
     }
   });
@@ -264,11 +202,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     return avatar;
   }
 
-  function addMessageHtml(
-    html: string,
-    role: "user" | "assistant",
-    model?: string
-  ): void {
+  function addMessageHtml(html: string, role: "user" | "assistant", model?: string): void {
     if (!messagesDiv) {
       return;
     }
@@ -516,10 +450,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         }
         case "strategyStatus": {
           const enabled = Boolean(message.enabled);
-          updateStrategyBadge(
-            typeof message.info === "string" ? message.info : null,
-            enabled
-          );
+          updateStrategyBadge(typeof message.info === "string" ? message.info : null, enabled);
           if (typeof message.currentModel === "string") {
             setActiveModel(message.currentModel);
           }
