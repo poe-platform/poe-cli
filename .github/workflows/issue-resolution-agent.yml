@@ -110,9 +110,7 @@ jobs:
             const number = process.env.ISSUE_NUMBER;
             const lines = [
               `You are resolving GitHub issue #${number}: ${title}.`,
-              "Adhere to TDD and repository contribution guidelines.",
-              "Implement the fix locally and prepare commits but do not push.",
-              "Summarize your plan before making changes."
+              "Implement the fix locally and prepare commits but do not push."
             ];
             if (body.trim()) {
               lines.push("Issue details:\n" + body);
