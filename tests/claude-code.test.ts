@@ -248,4 +248,28 @@ describe("claude-code service", () => {
       ]
     });
   });
+
+  it("falls back to Windows path lookup when which is unavailable", async () => {
+    const captured: Array<{ command: string; args: string[] }> = [];
+    const runCommand = vi.fn(async (command: string, args: string[]) => {
+      captured.push({ command, args });
+      if (command === "which") {
+        return { stdout: "", stderr: "not found", exitCode: 1 };
+      }
+      if (command === "where") {
+        return { stdout: "C:\\\\Apps\\\\claude.cmd\r\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    claudeService.registerClaudeCodePrerequisites(manager);
+    await manager.run("before");
+
+    expect(captured.map((entry) => entry.command)).toEqual(["which", "where"]);
+    expect(captured[1]).toEqual({ command: "where", args: ["claude"] });
+  });
 });

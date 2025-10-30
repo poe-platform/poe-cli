@@ -205,10 +205,19 @@ function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
     id: "claude-cli-binary",
     description: "Claude CLI binary must exist",
     async run({ runCommand }) {
-      const result = await runCommand("which", ["claude"]);
-      if (result.exitCode !== 0) {
-        throw new Error("Claude CLI binary not found on PATH.");
+      const detectors: Array<{ command: string; args: string[] }> = [
+        { command: "which", args: ["claude"] },
+        { command: "where", args: ["claude"] }
+      ];
+
+      for (const detector of detectors) {
+        const result = await runCommand(detector.command, detector.args);
+        if (result.exitCode === 0) {
+          return;
+        }
       }
+
+      throw new Error("Claude CLI binary not found on PATH.");
     }
   };
 }
