@@ -109,11 +109,20 @@ jobs:
           NODE
             )
           poe-setup spawn "$SERVICE" "$PROMPT"
+      - name: Generate pull request metadata
+        id: pr_metadata
+        env:
+          SERVICE: ${{ steps.provider.outputs.service }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: node scripts/workflows/generate-pr-metadata.cjs
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
           branch: ${{ steps.provider.outputs.branch }}
-          title: "Agent fix for issue #${{ github.event.issue.number }}"
+          title: ${{ steps.pr_metadata.outputs.title }}
+          body: ${{ steps.pr_metadata.outputs.body }}
           commit-message: "chore: resolve issue #${{ github.event.issue.number }}"
           labels: ${{ steps.provider.outputs.pr_label }}
           delete-branch: true
