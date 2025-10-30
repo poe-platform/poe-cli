@@ -20,6 +20,7 @@ import {
 import {
   configureOpenCode,
   installOpenCode,
+  registerOpenCodePrerequisites,
   removeOpenCode,
   spawnOpenCode
 } from "../services/opencode.js";
@@ -417,6 +418,13 @@ export function createProgram(dependencies: CliDependencies): Command {
         runCommand: context.runCommand,
         logger
       });
+      registerOpenCodePrerequisites(prerequisites);
+      const beforeHooks = createPrerequisiteHooks("before", logger, isVerbose);
+      if (beforeHooks) {
+        await prerequisites.run("before", beforeHooks);
+      } else {
+        await prerequisites.run("before");
+      }
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
       const configPath = environment.resolveHomePath(
         ".config",
@@ -438,6 +446,12 @@ export function createProgram(dependencies: CliDependencies): Command {
         },
         mutationHooks ? { hooks: mutationHooks } : undefined
       );
+      const afterHooks = createPrerequisiteHooks("after", logger, isVerbose);
+      if (afterHooks) {
+        await prerequisites.run("after", afterHooks);
+      } else {
+        await prerequisites.run("after");
+      }
       context.complete({
         success: "Configured OpenCode CLI.",
         dry: "Dry run: would configure OpenCode CLI."
@@ -857,6 +871,10 @@ export function createProgram(dependencies: CliDependencies): Command {
 
       if (service === "claude-code") {
         registerClaudeCodePrerequisites(context.prerequisites);
+      } else if (service === "codex") {
+        registerCodexPrerequisites(context.prerequisites);
+      } else if (service === "opencode") {
+        registerOpenCodePrerequisites(context.prerequisites);
       }
 
       const hooks = createPrerequisiteHooks(

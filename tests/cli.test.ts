@@ -267,7 +267,14 @@ describe("CLI program", () => {
       binary: "opencode",
       installCommand: "npm",
       installArgs: ["install", "-g", "opencode-ai"],
-      postChecks: [{ command: "opencode", args: ["--version"] }]
+      postChecks: [
+        { command: "opencode", args: ["--version"] },
+        {
+          command: "opencode",
+          args: ["run", "Output exactly: OPEN_CODE_OK"],
+          stdout: "OPEN_CODE_OK\n"
+        }
+      ]
     });
     const logs: string[] = [];
     const program = createProgram({
