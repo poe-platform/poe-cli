@@ -3,6 +3,12 @@ import type { FileSystem } from "../utils/file-system.js";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type { McpManager } from "./mcp-manager.js";
+import { spawnGitWorktree } from "../commands/spawn-worktree.js";
+import { spawnCodex } from "./codex.js";
+import { spawnClaudeCode } from "./claude-code.js";
+import { spawnOpenCode } from "./opencode.js";
+import { simpleGit as createSimpleGit } from "simple-git";
+import type { CommandRunnerResult } from "../utils/prerequisites.js";
 
 export interface ToolExecutorDependencies {
   fs: FileSystem;
@@ -52,6 +58,8 @@ export class DefaultToolExecutor implements ToolExecutor {
         return await this.runCommand(args);
       case "search_web":
         return await this.searchWeb(args);
+      case "spawn_git_worktree":
+        return await this.spawnGitWorktreeTool(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -207,6 +215,99 @@ export class DefaultToolExecutor implements ToolExecutor {
     return `Web search functionality not yet implemented. Query: ${query}`;
   }
 
+  private async spawnGitWorktreeTool(
+    args: Record<string, unknown>
+  ): Promise<string> {
+    const agent = args.agent;
+    if (typeof agent !== "string" || agent.length === 0) {
+      throw new Error("Missing required parameter: agent");
+    }
+    if (
+      agent !== "codex" &&
+      agent !== "claude-code" &&
+      agent !== "opencode"
+    ) {
+      throw new Error(`Unsupported agent "${agent}".`);
+    }
+
+    const prompt = args.prompt;
+    if (typeof prompt !== "string" || prompt.length === 0) {
+      throw new Error("Missing required parameter: prompt");
+    }
+
+    const agentArgsInput = args.agentArgs;
+    const agentArgs = Array.isArray(agentArgsInput)
+      ? agentArgsInput.map((value) => String(value))
+      : [];
+
+    const branchOverride =
+      typeof args.branch === "string" && args.branch.length > 0
+        ? args.branch
+        : undefined;
+
+    const git = createSimpleGit({ baseDir: this.cwd });
+    const targetBranch = branchOverride
+      ? branchOverride
+      : (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
+
+    const logs: string[] = [];
+    const runner = async (
+      command: string,
+      commandArgs: string[]
+    ): Promise<CommandRunnerResult> =>
+      runCommandInCwd(command, commandArgs, this.cwd);
+
+    const runAgent = async (input: {
+      agent: string;
+      prompt: string;
+      args: string[];
+      cwd: string;
+    }): Promise<CommandRunnerResult> => {
+      if (input.agent !== agent) {
+        throw new Error(
+          `Mismatched agent "${input.agent}" (expected "${agent}").`
+        );
+      }
+      if (agent === "codex") {
+        return await spawnCodex({
+          prompt: input.prompt,
+          args: input.args,
+          runCommand: runner
+        });
+      }
+      if (agent === "claude-code") {
+        return await spawnClaudeCode({
+          prompt: input.prompt,
+          args: input.args,
+          runCommand: runner
+        });
+      }
+      return await spawnOpenCode({
+        prompt: input.prompt,
+        args: input.args,
+        runCommand: runner
+      });
+    };
+
+    await spawnGitWorktree({
+      agent,
+      prompt,
+      agentArgs,
+      basePath: this.cwd,
+      targetBranch,
+      runAgent,
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    if (logs.length === 0) {
+      logs.push("Worktree workflow completed.");
+    }
+
+    return logs.join("\n");
+  }
+
   private async tryReadFile(targetPath: string): Promise<string | null> {
     try {
       return await this.fs.readFile(targetPath, "utf8");
@@ -222,6 +323,55 @@ export class DefaultToolExecutor implements ToolExecutor {
       throw error;
     }
   }
+}
+
+function runCommandInCwd(
+  command: string,
+  args: string[],
+  cwd: string
+): Promise<CommandRunnerResult> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string | Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string | Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      const exitCode =
+        typeof error.code === "number"
+          ? error.code
+          : Number.isInteger(Number(error.code))
+          ? Number(error.code)
+          : 127;
+      resolve({
+        stdout,
+        stderr: stderr ? `${stderr}${message}` : message,
+        exitCode
+      });
+    });
+
+    child.once("close", (code) => {
+      resolve({
+        stdout,
+        stderr,
+        exitCode: typeof code === "number" ? code : 0
+      });
+    });
+  });
 }
 
 export function getAvailableTools(mcpManager?: McpManager): Tool[] {
@@ -294,6 +444,40 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
             }
           },
           required: ["command"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "spawn_git_worktree",
+        description: "Create a git worktree, run an agent, and attempt to merge the resulting changes.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent: {
+              type: "string",
+              description: "Agent identifier to launch (claude-code | codex | opencode).",
+              enum: ["claude-code", "codex", "opencode"]
+            },
+            prompt: {
+              type: "string",
+              description: "Prompt text to provide to the agent."
+            },
+            agentArgs: {
+              type: "array",
+              description: "Additional arguments forwarded to the agent CLI.",
+              items: {
+                type: "string"
+              },
+              default: []
+            },
+            branch: {
+              type: "string",
+              description: "Target branch to merge into. Defaults to the current branch."
+            }
+          },
+          required: ["agent", "prompt"]
         }
       }
     },

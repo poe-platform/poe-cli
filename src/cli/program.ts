@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import type { FileSystem } from "../utils/file-system.js";
 import { initProject } from "../commands/init.js";
+import { spawnGitWorktree } from "../commands/spawn-worktree.js";
 import {
   configureClaudeCode,
   installClaudeCode,
@@ -48,6 +49,7 @@ import {
   type ServiceMutationHooks,
   type ServiceMutationOutcome
 } from "../services/service-manifest.js";
+import { simpleGit as createSimpleGit } from "simple-git";
 import chalk from "chalk";
 import { createCliEnvironment } from "./environment.js";
 import { createServiceRegistry } from "./service-registry.js";
@@ -142,6 +144,10 @@ interface QueryCommandOptions {
 interface AgentCommandOptions {
   apiKey?: string;
   model?: string;
+}
+
+interface SpawnWorktreeCommandOptions {
+  branch?: string;
 }
 
 interface RemoveCommandOptions {
@@ -607,6 +613,33 @@ export function createProgram(dependencies: CliDependencies): Command {
     logger(`${descriptor} spawn completed.`);
   }
 
+  async function runAgentForWorktree(
+    service: string,
+    promptText: string,
+    agentArgs: string[],
+    runner: CommandRunner
+  ): Promise<CommandRunnerResult> {
+    if (service === "claude-code") {
+      return await spawnClaudeCode({
+        prompt: promptText,
+        args: agentArgs,
+        runCommand: runner
+      });
+    }
+    if (service === "codex") {
+      return await spawnCodex({
+        prompt: promptText,
+        args: agentArgs,
+        runCommand: runner
+      });
+    }
+    return await spawnOpenCode({
+      prompt: promptText,
+      args: agentArgs,
+      runCommand: runner
+    });
+  }
+
   program.action(async () => {
     const adapters = serviceRegistry.list();
     if (adapters.length === 0) {
@@ -1057,6 +1090,83 @@ export function createProgram(dependencies: CliDependencies): Command {
         agentArgs: string[] = []
       ) => {
         await spawnService(service, promptText, agentArgs ?? []);
+      }
+    );
+
+  program
+    .command("spawn-git-worktree")
+    .description(
+      "Create a git worktree, run an agent, and attempt to merge changes."
+    )
+    .argument(
+      "<service>",
+      "Service to spawn (claude-code | codex | opencode)"
+    )
+    .argument("<prompt>", "Prompt to provide to the agent")
+    .argument("[agentArgs...]", "Additional arguments forwarded to the agent")
+    .option("--branch <name>", "Target branch to merge into")
+    .action(
+      async (
+        service: string,
+        promptText: string,
+        agentArgs: string[] | undefined,
+        commandOptions: SpawnWorktreeCommandOptions
+      ) => {
+        const adapter = serviceRegistry.get(service);
+        if (!adapter) {
+          throw new Error(`Unknown service "${service}".`);
+        }
+        if (!adapter.supportsSpawn) {
+          throw new Error(`${adapter.label} does not support spawn.`);
+        }
+
+        const opts = program.optsWithGlobals();
+        const isDryRun = Boolean(opts.dryRun);
+        const isVerbose = Boolean(opts.verbose);
+        const forwardedArgs = agentArgs ?? [];
+
+        if (isDryRun) {
+          const suffix =
+            forwardedArgs.length > 0
+              ? ` with args ${JSON.stringify(forwardedArgs)}`
+              : "";
+          const branchSuffix = commandOptions.branch
+            ? ` into ${commandOptions.branch}`
+            : "";
+          logger(
+            `Dry run: would create git worktree, run ${adapter.label}${suffix}, and merge${branchSuffix}.`
+          );
+          return;
+        }
+
+        const runner = isVerbose
+          ? createLoggingCommandRunner(commandRunner, logger)
+          : commandRunner;
+        const currentBranch =
+          commandOptions.branch ??
+          (
+            await createSimpleGit({ baseDir: environment.cwd }).revparse([
+              "--abbrev-ref",
+              "HEAD"
+            ])
+          ).trim();
+
+        await spawnGitWorktree({
+          agent: service,
+          prompt: promptText,
+          agentArgs: forwardedArgs,
+          basePath: environment.cwd,
+          targetBranch: currentBranch,
+          logger,
+          runAgent: async ({ agent, prompt, args }) => {
+            if (agent !== service) {
+              throw new Error(
+                `Mismatched agent request "${agent}" (expected "${service}").`
+              );
+            }
+            return await runAgentForWorktree(service, prompt, args, runner);
+          }
+        });
       }
     );
 
