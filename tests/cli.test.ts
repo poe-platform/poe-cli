@@ -87,7 +87,7 @@ function createInstallCommandRunner(options: {
   binary: string;
   installCommand: string;
   installArgs: string[];
-  postChecks?: Array<{ command: string; args: string[] }>;
+  postChecks?: Array<{ command: string; args: string[]; stdout?: string }>;
 }): { runner: CommandRunner; calls: CommandCall[] } {
   let installed = false;
   const calls: CommandCall[] = [];
@@ -103,6 +103,21 @@ function createInstallCommandRunner(options: {
       }
       return { stdout: "", stderr: "not found", exitCode: 1 };
     }
+    if (command === "where") {
+      if (installed) {
+        return {
+          stdout: `/usr/local/bin/${options.binary}\n`,
+          stderr: "",
+          exitCode: 0
+        };
+      }
+      return { stdout: "", stderr: "", exitCode: 1 };
+    }
+    if (command === "test" || command === "ls") {
+      return installed
+        ? { stdout: "", stderr: "", exitCode: 0 }
+        : { stdout: "", stderr: "", exitCode: 1 };
+    }
     if (
       command === options.installCommand &&
       args.length === options.installArgs.length &&
@@ -111,16 +126,16 @@ function createInstallCommandRunner(options: {
       installed = true;
       return { stdout: "", stderr: "", exitCode: 0 };
     }
-    if (
-      installed &&
-      options.postChecks?.some(
+    if (options.postChecks) {
+      const match = options.postChecks.find(
         (check) =>
           check.command === command &&
           check.args.length === args.length &&
           check.args.every((value, index) => value === args[index])
-      )
-    ) {
-      return { stdout: "", stderr: "", exitCode: 0 };
+      );
+      if (match) {
+        return { stdout: match.stdout ?? "", stderr: "", exitCode: 0 };
+      }
     }
     return { stdout: "", stderr: "", exitCode: 0 };
   }) as unknown as CommandRunner;
@@ -383,11 +398,18 @@ describe("CLI program", () => {
   });
 
   it("simulates commands without writing when using --dry-run", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ apiKey: "prompted-key" });
     const commandRunner = createInstallCommandRunner({
       binary: "codex",
       installCommand: "npm",
-      installArgs: ["install", "-g", "@openai/codex"]
+      installArgs: ["install", "-g", "@openai/codex"],
+      postChecks: [
+        {
+          command: "codex",
+          args: ["exec", "Output exactly: CODEX_OK"],
+          stdout: "CODEX_OK\n"
+        }
+      ]
     });
     const logs: string[] = [];
     const program = createProgram({
@@ -740,7 +762,7 @@ describe("CLI program", () => {
 
     await expect(
       program.parseAsync(["node", "cli", "configure", "claude-code"])
-    ).rejects.toThrow(/Claude CLI binary not found/);
+    ).rejects.toThrow(/claude cli binary not found/i);
     
     // Should try detection, install, then try detection again
     expect(commandCalls.some(call => call.command === "npm")).toBe(true);
@@ -818,12 +840,19 @@ describe("CLI program", () => {
   });
 
   it("removes codex configuration", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ apiKey: "prompted-key" });
     const commandRunner = createInstallCommandRunner({
       binary: "codex",
       installCommand: "npm",
       installArgs: ["install", "-g", "@openai/codex"],
-      postChecks: [{ command: "codex", args: ["--version"] }]
+      postChecks: [
+        { command: "codex", args: ["--version"] },
+        {
+          command: "codex",
+          args: ["exec", "Output exactly: CODEX_OK"],
+          stdout: "CODEX_OK\n"
+        }
+      ]
     });
     const program = createProgram({
       fs,

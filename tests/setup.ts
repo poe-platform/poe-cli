@@ -37,28 +37,6 @@ const templateFixtures = new Map<string, string>([
     ["openai>=1.0.0", "python-dotenv>=1.0.0"].join("\n")
   ],
   [
-    "codex/config.toml.hbs",
-    [
-      'model_provider = "poe"',
-      'model = "{{model}}"',
-      'model_reasoning_effort = "{{reasoningEffort}}"',
-      "",
-      "[model_providers.poe]",
-      'name = "poe"',
-      'base_url = "https://api.poe.com/v1"',
-      'wire_api = "chat"',
-      'env_key = "POE_API_KEY"'
-    ].join("\n")
-  ],
-  [
-    "claude-code/bashrc.hbs",
-    [
-      'export POE_API_KEY="{{apiKey}}"',
-      "export ANTHROPIC_API_KEY=$POE_API_KEY",
-      'export ANTHROPIC_BASE_URL="https://api.poe.com"'
-    ].join("\n")
-  ],
-  [
     "claude-code/anthropic_key.sh.hbs",
     [
       "#!/bin/bash",

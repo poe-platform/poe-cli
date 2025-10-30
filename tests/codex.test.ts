@@ -28,6 +28,7 @@ describe("codex service", () => {
     await codexService.configureCodex({
       fs,
       configPath,
+      apiKey: "sk-test",
       model: "gpt-5",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
@@ -36,6 +37,11 @@ describe("codex service", () => {
     const content = await fs.readFile(configPath, "utf8");
     expect(content.trim()).toContain('model = "gpt-5"');
     expect(content.trim()).toContain('model_reasoning_effort = "medium"');
+    expect(content.trim()).toContain(
+      'experimental_bearer_token = "POE_API_KEY"'
+    );
+    await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects
+      .toThrow();
 
     await expect(
       fs.readFile(`${configPath}.backup.20240101T000000`, "utf8")
@@ -49,6 +55,7 @@ describe("codex service", () => {
     await codexService.configureCodex({
       fs,
       configPath,
+      apiKey: "sk-test",
       model: "gpt-5",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
@@ -69,6 +76,7 @@ describe("codex service", () => {
     await codexService.configureCodex({
       fs,
       configPath,
+      apiKey: "sk-test",
       model: "gpt-5",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
@@ -107,6 +115,36 @@ describe("codex service", () => {
         'base_url="https://api.poe.com/v1"',
         'wire_api="chat"',
         'env_key="POE_API_KEY"',
+        'experimental_bearer_token="POE_API_KEY"',
+        "",
+        "[features]",
+        "foo = true",
+        ""
+      ].join("\n"),
+      { encoding: "utf8" }
+    );
+
+    const removed = await codexService.removeCodex({ fs, configPath });
+    expect(removed).toBe(true);
+
+    const content = await fs.readFile(configPath, "utf8");
+    expect(content.trim()).toBe("[features]\nfoo = true");
+  });
+
+  it("removes legacy codex provider configuration", async () => {
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(
+      configPath,
+      [
+        'model_provider="poe"',
+        'model="gpt-5"',
+        'model_reasoning_effort="medium"',
+        "",
+        "[model_providers.poe]",
+        'name="poe"',
+        'base_url="https://api.poe.com/v1"',
+        'wire_api="chat"',
+        'env_key="OPENAI_API_KEY"',
         "",
         "[features]",
         "foo = true",
@@ -129,6 +167,7 @@ describe("codex service", () => {
     await codexService.configureCodex({
       fs,
       configPath,
+      apiKey: "sk-test",
       model: "gpt-5",
       reasoningEffort: "medium",
       timestamp: () => "20240202T101010"
@@ -139,6 +178,9 @@ describe("codex service", () => {
       "utf8"
     );
     expect(backupContent).toBe("legacy-config");
+    await expect(
+      fs.readFile(path.join(configDir, "auth.json"), "utf8")
+    ).rejects.toThrow();
   });
 
   it("merges codex configuration with existing content", async () => {
@@ -154,6 +196,7 @@ describe("codex service", () => {
     await codexService.configureCodex({
       fs,
       configPath,
+      apiKey: "sk-test",
       model: "gpt-5",
       reasoningEffort: "medium",
       timestamp: () => "20240303T030303"
@@ -172,7 +215,8 @@ describe("codex service", () => {
       name: "poe",
       base_url: "https://api.poe.com/v1",
       wire_api: "chat",
-      env_key: "POE_API_KEY"
+      env_key: "POE_API_KEY",
+      experimental_bearer_token: "POE_API_KEY"
     });
 
     const backupContent = await fs.readFile(
@@ -181,6 +225,9 @@ describe("codex service", () => {
     );
     expect(backupContent.trim()).toContain('model_provider = "legacy"');
     expect(backupContent.trim()).toContain("[features]");
+    await expect(
+      fs.readFile(path.join(configDir, "auth.json"), "utf8")
+    ).rejects.toThrow();
   });
 
   it("spawns the codex CLI with the provided prompt and args", async () => {

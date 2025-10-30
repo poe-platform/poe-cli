@@ -48,9 +48,9 @@ import {
   type ServiceMutationOutcome
 } from "../services/service-manifest.js";
 import chalk from "chalk";
-
-type PromptFn = (questions: unknown) => Promise<Record<string, unknown>>;
-type LoggerFn = (message: string) => void;
+import { createCliEnvironment } from "./environment.js";
+import { createServiceRegistry } from "./service-registry.js";
+import type { PromptFn, LoggerFn } from "./types.js";
 
 interface HttpResponse {
   ok: boolean;
@@ -153,13 +153,6 @@ const DEFAULT_QUERY_MODEL = "Claude-Sonnet-4.5";
 const DEFAULT_ROO_MODEL = "Claude-Sonnet-4.5";
 const DEFAULT_ROO_BASE_URL = "https://api.poe.com/v1";
 const DEFAULT_ROO_CONFIG_NAME = "poe";
-const SERVICE_LABELS = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  opencode: "OpenCode CLI",
-  "roo-code": "Roo Code"
-} as const;
-
 export function createProgram(dependencies: CliDependencies): Command {
   const {
     fs: baseFs,
@@ -172,8 +165,15 @@ export function createProgram(dependencies: CliDependencies): Command {
     chatServiceFactory: providedChatServiceFactory
   } = dependencies;
 
-  const platform = env.platform ?? process.platform;
-  const envVariables = env.variables ?? process.env;
+  const environment = createCliEnvironment({
+    cwd: env.cwd,
+    homeDir: env.homeDir,
+    platform: env.platform,
+    variables: env.variables
+  });
+
+  const platform = environment.platform;
+  const envVariables = environment.variables;
 
   const httpClient: HttpClient =
     providedHttpClient ??
@@ -202,6 +202,21 @@ export function createProgram(dependencies: CliDependencies): Command {
       return createAgentSession(options);
     });
 
+  const serviceRegistry = createServiceRegistry();
+  const baseServices = [
+    { name: "claude-code", label: "Claude Code", supportsSpawn: true },
+    { name: "codex", label: "Codex", supportsSpawn: true },
+    { name: "opencode", label: "OpenCode CLI", supportsSpawn: true },
+    { name: "roo-code", label: "Roo Code", supportsSpawn: false }
+  ] as const;
+  for (const service of baseServices) {
+    serviceRegistry.register({
+      name: service.name,
+      label: service.label,
+      supportsSpawn: service.supportsSpawn
+    });
+  }
+
   const program = new Command();
   program
     .name("poe-setup")
@@ -209,11 +224,7 @@ export function createProgram(dependencies: CliDependencies): Command {
   program.option("--dry-run", "Simulate commands without writing changes.");
   program.option("--verbose", "Enable verbose logging.");
 
-  const credentialsPath = path.join(
-    env.homeDir,
-    ".poe-setup",
-    "credentials.json"
-  );
+  const credentialsPath = environment.credentialsPath;
 
   const getStoredApiKey = async (): Promise<string | null> =>
     loadCredentials({ fs: baseFs, filePath: credentialsPath });
@@ -276,6 +287,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     service: string,
     options: ConfigureCommandOptions
   ): Promise<void> {
+    const adapter = serviceRegistry.get(service);
+    if (!adapter) {
+      throw new Error(`Unknown service "${service}".`);
+    }
     const opts = program.optsWithGlobals();
     const isDryRun = Boolean(opts.dryRun);
     const isVerbose = Boolean(opts.verbose);
@@ -308,8 +323,14 @@ export function createProgram(dependencies: CliDependencies): Command {
         await prerequisites.run("before");
       }
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
-      const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
-      const keyHelperPath = path.join(env.homeDir, ".claude", "anthropic_key.sh");
+      const settingsPath = environment.resolveHomePath(
+        ".claude",
+        "settings.json"
+      );
+      const keyHelperPath = environment.resolveHomePath(
+        ".claude",
+        "anthropic_key.sh"
+      );
       await configureClaudeCode(
         {
           fs: context.fs,
@@ -350,6 +371,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       } else {
         await prerequisites.run("before");
       }
+      const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
       const model =
         options.model ??
         (await ensureOption(undefined, prompts, "model", "Model", DEFAULT_MODEL));
@@ -362,11 +384,15 @@ export function createProgram(dependencies: CliDependencies): Command {
           "Reasoning effort",
           DEFAULT_REASONING
         ));
-      const configPath = path.join(env.homeDir, ".codex", "config.toml");
+      const configPath = environment.resolveHomePath(
+        ".codex",
+        "config.toml"
+      );
       await configureCodex(
         {
           fs: context.fs,
           configPath,
+          apiKey,
           model,
           reasoningEffort
         },
@@ -392,14 +418,12 @@ export function createProgram(dependencies: CliDependencies): Command {
         logger
       });
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
-      const configPath = path.join(
-        env.homeDir,
+      const configPath = environment.resolveHomePath(
         ".config",
         "opencode",
         "config.json"
       );
-      const authPath = path.join(
-        env.homeDir,
+      const authPath = environment.resolveHomePath(
         ".local",
         "share",
         "opencode",
@@ -450,14 +474,13 @@ export function createProgram(dependencies: CliDependencies): Command {
           DEFAULT_ROO_BASE_URL
         ));
       const apiKey = await resolveApiKey(options.apiKey, { isDryRun });
-      const configPath = path.join(
-        env.homeDir,
+      const configPath = environment.resolveHomePath(
         "Documents",
         "roo-config.json"
       );
       const settingsPath = resolveVsCodeSettingsPath(
         platform,
-        env.homeDir,
+        environment.homeDir,
         envVariables
       );
       if (!settingsPath) {
@@ -465,7 +488,7 @@ export function createProgram(dependencies: CliDependencies): Command {
           "Unable to determine VSCode settings path for the current platform."
         );
       }
-      const autoImportPath = formatAutoImportPath(env.homeDir, configPath);
+      const autoImportPath = formatAutoImportPath(environment.homeDir, configPath);
       await configureRooCode(
         {
           fs: context.fs,
@@ -486,7 +509,7 @@ export function createProgram(dependencies: CliDependencies): Command {
       return;
     }
 
-    throw new Error(`Unknown service "${service}".`);
+    throw new Error(`Service "${service}" does not support configure.`);
   }
 
   async function spawnService(
@@ -494,6 +517,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     promptText: string,
     agentArgs: string[]
   ): Promise<void> {
+    const adapter = serviceRegistry.get(service);
+    if (!adapter) {
+      throw new Error(`Unknown service "${service}".`);
+    }
     const opts = program.optsWithGlobals();
     const isDryRun = Boolean(opts.dryRun);
     const isVerbose = Boolean(opts.verbose);
@@ -507,11 +534,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       runCommand: commandRunnerForContext
     });
 
-    const descriptor = SERVICE_LABELS[service as keyof typeof SERVICE_LABELS];
-    if (!descriptor) {
-      throw new Error(`Unknown service "${service}".`);
-    }
-    if (service !== "claude-code" && service !== "codex" && service !== "opencode") {
+    const descriptor = adapter.label;
+    if (!adapter.supportsSpawn) {
       throw new Error(`${descriptor} does not support spawn.`);
     }
 
@@ -570,14 +594,14 @@ export function createProgram(dependencies: CliDependencies): Command {
   }
 
   program.action(async () => {
-    const serviceIds = Object.keys(SERVICE_LABELS);
-    if (serviceIds.length === 0) {
+    const adapters = serviceRegistry.list();
+    if (adapters.length === 0) {
       logger("No services available to configure.");
       return;
     }
 
-    serviceIds.forEach((serviceId, index) => {
-      logger(`${index + 1}) ${serviceId}`);
+    adapters.forEach((entry, index) => {
+      logger(`${index + 1}) ${entry.name}`);
     });
     logger("Enter number that you want to configure:");
 
@@ -600,11 +624,11 @@ export function createProgram(dependencies: CliDependencies): Command {
     }
 
     const selectedIndex = normalizedSelection - 1;
-    if (selectedIndex < 0 || selectedIndex >= serviceIds.length) {
+    if (selectedIndex < 0 || selectedIndex >= adapters.length) {
       throw new Error("Invalid service selection.");
     }
 
-    await configureService(serviceIds[selectedIndex], {});
+    await configureService(adapters[selectedIndex].name, {});
   });
 
   program
@@ -634,7 +658,7 @@ export function createProgram(dependencies: CliDependencies): Command {
 
       await initProject({
         fs: context.fs,
-        cwd: env.cwd,
+        cwd: environment.cwd,
         projectName,
         apiKey,
         model
@@ -784,8 +808,8 @@ export function createProgram(dependencies: CliDependencies): Command {
       const session = await chatServiceFactory({
         apiKey,
         model,
-        cwd: env.cwd,
-        homeDir: env.homeDir,
+        cwd: environment.cwd,
+        homeDir: environment.homeDir,
         fs: baseFs,
         logger
       });
@@ -812,10 +836,11 @@ export function createProgram(dependencies: CliDependencies): Command {
     .argument("<phase>", "Phase to execute (before | after)")
     .action(async (service: string, phase: string) => {
       const normalizedPhase = normalizePhase(phase);
-      const descriptor = SERVICE_LABELS[service as keyof typeof SERVICE_LABELS];
-      if (!descriptor) {
+      const adapter = serviceRegistry.get(service);
+      if (!adapter) {
         throw new Error(`Unknown service "${service}".`);
       }
+      const descriptor = adapter.label;
 
       const opts = program.optsWithGlobals();
       const isDryRun = Boolean(opts.dryRun);
@@ -859,6 +884,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     )
     .option("--config-name <name>", "Configuration profile name")
     .action(async (service: string, options: RemoveCommandOptions) => {
+      const adapter = serviceRegistry.get(service);
+      if (!adapter) {
+        throw new Error(`Unknown service "${service}".`);
+      }
       const opts = program.optsWithGlobals();
       const isDryRun = Boolean(opts.dryRun);
       const isVerbose = Boolean(opts.verbose);
@@ -876,8 +905,14 @@ export function createProgram(dependencies: CliDependencies): Command {
         collector: !isVerbose ? context.recordMutation : undefined
       });
       if (service === "claude-code") {
-        const settingsPath = path.join(env.homeDir, ".claude", "settings.json");
-        const keyHelperPath = path.join(env.homeDir, ".claude", "anthropic_key.sh");
+        const settingsPath = environment.resolveHomePath(
+          ".claude",
+          "settings.json"
+        );
+        const keyHelperPath = environment.resolveHomePath(
+          ".claude",
+          "anthropic_key.sh"
+        );
         const removed = await removeClaudeCode(
           {
             fs: context.fs,
@@ -896,7 +931,10 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
 
       if (service === "codex") {
-        const configPath = path.join(env.homeDir, ".codex", "config.toml");
+        const configPath = environment.resolveHomePath(
+          ".codex",
+          "config.toml"
+        );
         const removed = await removeCodex(
           { fs: context.fs, configPath },
           mutationHooks ? { hooks: mutationHooks } : undefined
@@ -911,14 +949,12 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
 
       if (service === "opencode") {
-        const configPath = path.join(
-          env.homeDir,
+        const configPath = environment.resolveHomePath(
           ".config",
           "opencode",
           "config.json"
         );
-        const authPath = path.join(
-          env.homeDir,
+        const authPath = environment.resolveHomePath(
           ".local",
           "share",
           "opencode",
@@ -942,14 +978,13 @@ export function createProgram(dependencies: CliDependencies): Command {
       }
 
       if (service === "roo-code") {
-        const configPath = path.join(
-          env.homeDir,
+        const configPath = environment.resolveHomePath(
           "Documents",
           "roo-config.json"
         );
         const settingsPath = resolveVsCodeSettingsPath(
           platform,
-          env.homeDir,
+          environment.homeDir,
           envVariables
         );
         if (!settingsPath) {
@@ -972,7 +1007,7 @@ export function createProgram(dependencies: CliDependencies): Command {
             configPath,
             settingsPath,
             configName,
-            autoImportPath: formatAutoImportPath(env.homeDir, configPath)
+            autoImportPath: formatAutoImportPath(environment.homeDir, configPath)
           },
           mutationHooks ? { hooks: mutationHooks } : undefined
         );
@@ -985,7 +1020,7 @@ export function createProgram(dependencies: CliDependencies): Command {
         return;
       }
 
-      throw new Error(`Unknown service "${service}".`);
+      throw new Error(`Service "${service}" does not support remove.`);
     });
 
   program

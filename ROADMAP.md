@@ -10,6 +10,29 @@
     - we should utilize it for the checks like this thing `Output exactly: CLAUDE_CODE_OK`
     - not all agents support it, only claude-code, codex, opencode
 
+### CLI Architecture
+
+- [ ] Extract command bootstrap into a thin module that wires Commander and defers route registration to dedicated command files.
+- [x] Move environment and path resolution into a reusable `CliEnvironment` helper consumed by commands and providers.
+- [x] Introduce a `ServiceRegistry` (or similar) that abstracts provider discovery and dispatch instead of hard-coded `if` chains.
+- [ ] Wrap shared dependencies (prompts, fs, http client, command runner) in a container passed to command/provider factories to improve testability.
+- [ ] Define a `ProviderAdapter` contract (install/configure/remove/spawn/prereqs) and migrate existing providers to implementations.
+- [ ] Consolidate provider-specific path definitions into config objects owned by the providers.
+- [ ] Delegate spawn handling to provider adapters so the CLI core simply forwards requests.
+- [ ] Split each CLI command into its own module exposing `register(program, deps)` to keep `program.ts` declarative.
+- [ ] Extract shared option resolvers (API key, model, reasoning effort) into composable helpers that commands reuse.
+- [ ] Provide dedicated handlers for interactive/default actions that can be swapped without touching every command.
+- [ ] Promote `createCommandContext`, dry-run recording, and mutation logging into a shared utility module.
+- [ ] Introduce a logger facade that standardizes verbose and dry-run output handling.
+- [ ] Replace direct HTTP calls with a Poe API client abstraction responsible for error handling.
+- [ ] Centralize prompt schemas so providers declare required inputs without wiring prompt logic manually.
+- [ ] Document the new provider and command registration architecture in `ARCHITECTURE.md`.
+- [ ] Add telemetry hooks at the registry layer so new commands inherit consistent success/failure reporting.
+- [ ] Prepare for dynamic provider discovery (e.g., config-driven or plugin-based) to scale integrations.
+- [ ] Once modularized, cover the registry/command boundaries with integration-style tests.
+
+- [x] Update Codex provider to store bearer token configuration without auth.json.
+
 
 ## Extension redesign
 
@@ -28,3 +51,13 @@
 ## Code quality
 
 - [ ] make sure that `credentialsPath` `.poe-setup/credentials.json` is defined in 1 single place, so it can be changed easily
+
+
+## Worktrees spawn-git-worktree <agent> 
+
+- [ ] Automatically create a new worktree somewhere in tmp (make sure this works on all platforms)
+- [ ] Spawn agent with given prompt 
+- [ ] use import simpleGit from 'simple-git';
+- [ ] when no git repo is present in cwd, fail early
+- [ ] After completion, automatically merge git commits if any, automatically merge any file changes (or new files, deletions) into the main repo
+- [ ] when conflicts happen, have the same agent resolve them, provide command to run and resolve conflicts. 

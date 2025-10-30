@@ -32,6 +32,7 @@ import {
 export interface ConfigureCodexOptions {
   fs: FileSystem;
   configPath: string;
+  apiKey: string;
   model: string;
   reasoningEffort: string;
   timestamp?: () => string;
@@ -54,12 +55,14 @@ const CODEX_TOP_LEVEL_FIELDS = [
   "model",
   "model_reasoning_effort"
 ] as const;
-const CODEX_PROVIDER_EXPECTED_FIELDS = {
+const CODEX_PROVIDER_BASE_FIELDS = {
   name: "poe",
   base_url: CODEX_BASE_URL,
-  wire_api: "chat",
-  env_key: "POE_API_KEY"
+  wire_api: "chat"
 } as const;
+const CODEX_PROVIDER_ENV_KEY = "POE_API_KEY" as const;
+const CODEX_PROVIDER_LEGACY_ENV_KEY = "OPENAI_API_KEY" as const;
+const CODEX_PROVIDER_BEARER_TOKEN = "POE_API_KEY" as const;
 
 const CODEX_MANIFEST: ServiceManifest<
   ConfigureCodexOptions,
@@ -184,7 +187,9 @@ function applyCodexConfiguration(
     providers[CODEX_PROVIDER_ID] = poeProvider;
   }
 
-  Object.assign(poeProvider, CODEX_PROVIDER_EXPECTED_FIELDS);
+  Object.assign(poeProvider, CODEX_PROVIDER_BASE_FIELDS);
+  poeProvider["env_key"] = CODEX_PROVIDER_ENV_KEY;
+  poeProvider["experimental_bearer_token"] = CODEX_PROVIDER_BEARER_TOKEN;
 }
 
 function stripCodexConfiguration(
@@ -233,9 +238,31 @@ function stripCodexConfiguration(
 }
 
 function matchesExpectedProviderConfig(table: TomlTable): boolean {
-  return Object.entries(CODEX_PROVIDER_EXPECTED_FIELDS).every(
-    ([key, expectedValue]) => table[key] === expectedValue
-  );
+  for (const [key, expectedValue] of Object.entries(
+    CODEX_PROVIDER_BASE_FIELDS
+  )) {
+    if (table[key] !== expectedValue) {
+      return false;
+    }
+  }
+
+  const envKey = table["env_key"];
+  if (
+    envKey !== CODEX_PROVIDER_ENV_KEY &&
+    envKey !== CODEX_PROVIDER_LEGACY_ENV_KEY
+  ) {
+    return false;
+  }
+
+  const bearer = table["experimental_bearer_token"];
+  if (
+    bearer != null &&
+    bearer !== CODEX_PROVIDER_BEARER_TOKEN
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function isPlainObject(value: unknown): value is TomlTable {
