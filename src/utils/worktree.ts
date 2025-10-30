@@ -22,9 +22,10 @@ interface WorktreeMetadata {
   baseCommit: string;
 }
 
-interface WorktreeOverrides extends Partial<WorktreeDependencies> {
-  fs?: Partial<typeof nodeFs> & Pick<typeof nodeFs, "readFile" | "writeFile" | "mkdir">;
-}
+type WorktreeOverrides = Partial<Omit<WorktreeDependencies, "fs">> & {
+  fs?: Partial<typeof nodeFs> &
+    Pick<typeof nodeFs, "readFile" | "writeFile" | "mkdir">;
+};
 
 const registry = new Map<string, WorktreeMetadata>();
 
@@ -37,13 +38,19 @@ const defaultDependencies: WorktreeDependencies = {
 };
 
 function resolveDependencies(
-  overrides?: Partial<WorktreeDependencies>
+  overrides?: WorktreeOverrides
 ): WorktreeDependencies {
   if (!overrides) {
     return defaultDependencies;
   }
+  const fsImpl = overrides.fs
+    ? ({
+        ...defaultDependencies.fs,
+        ...overrides.fs
+      } as typeof nodeFs)
+    : defaultDependencies.fs;
   return {
-    fs: overrides.fs ?? defaultDependencies.fs,
+    fs: fsImpl,
     os: overrides.os ?? defaultDependencies.os,
     crypto: overrides.crypto ?? defaultDependencies.crypto,
     clock: overrides.clock ?? defaultDependencies.clock,
@@ -74,7 +81,7 @@ export interface MergeResult {
 
 export async function isGitRepository(
   cwd: string,
-  overrides?: Partial<WorktreeDependencies>
+  overrides?: WorktreeOverrides
 ): Promise<boolean> {
   const deps = resolveDependencies(overrides);
   try {
@@ -139,7 +146,7 @@ export async function createWorktree(
 
 export async function getChanges(
   worktreePath: string,
-  overrides?: Partial<WorktreeDependencies>
+  overrides?: WorktreeOverrides
 ): Promise<WorktreeChangeSummary> {
   const deps = resolveDependencies(overrides);
   const metadata = registry.get(worktreePath);

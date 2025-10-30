@@ -73,7 +73,10 @@ export async function spawnGitWorktree(
         : cause
         ? new Error(String(cause))
         : undefined;
-    const wrapped = new Error(message, { cause: base });
+    const wrapped = new Error(message);
+    if (base) {
+      (wrapped as { cause?: unknown }).cause = base;
+    }
     (wrapped as { worktreeLogged?: boolean }).worktreeLogged = true;
     throw wrapped;
   };
