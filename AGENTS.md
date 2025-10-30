@@ -1,10 +1,15 @@
 # Principles
 
-- TDD is a MUST (only for code changes)
+- TDD is a MUST (only for code changes, not for configs)
 - SOLID
 - YAGNI, KISS
 - Never copy/paste more than 5 lines of code
 - Never revert code that you didn't create
+
+# github workflows
+
+Do not write unit tests
+Use `npm run lint:workflows`
 
 # Testing file changes
 

@@ -36,6 +36,8 @@ jobs:
 
       - name: Build CLI
         run: npm run build
+      - name: Install CLI globally
+        run: npm install -g .
 
       - name: Determine provider
         id: provider
@@ -72,7 +74,7 @@ jobs:
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
-        run: npx poe-setup login --api-key "${POE_API_KEY}"
+        run: poe-setup login --api-key "${POE_API_KEY}"
 
       - name: Configure provider
         env:
@@ -81,10 +83,10 @@ jobs:
           SERVICE="${{ steps.provider.outputs.service }}"
           case "$SERVICE" in
             claude-code|opencode)
-              npx poe-setup configure "$SERVICE" --api-key "${POE_API_KEY}" --install
+              poe-setup configure "$SERVICE"
               ;;
             codex)
-              npx poe-setup configure "$SERVICE"
+              poe-setup configure "$SERVICE"
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
@@ -118,7 +120,7 @@ jobs:
             process.stdout.write(lines.join("\n\n"));
           NODE
             )
-          npx poe-setup spawn "$SERVICE" "$PROMPT"
+          poe-setup spawn "$SERVICE" "$PROMPT"
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
