@@ -215,9 +215,6 @@ describe("claude-code service", () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       calls.push({ command, args });
-      if (command === "which") {
-        return { stdout: "/usr/bin/claude\n", stderr: "", exitCode: 0 };
-      }
       if (command === "claude") {
         return { stdout: "CLAUDE_CODE_OK\n", stderr: "", exitCode: 0 };
       }
@@ -229,12 +226,10 @@ describe("claude-code service", () => {
     });
 
     claudeService.registerClaudeCodePrerequisites(manager);
-    await manager.run("before");
     await manager.run("after");
 
-    expect(calls.map((entry) => entry.command)).toEqual(["which", "claude"]);
-    expect(calls[0]).toEqual({ command: "which", args: ["claude"] });
-    expect(calls[1]).toEqual({
+    expect(calls.map((entry) => entry.command)).toEqual(["claude"]);
+    expect(calls[0]).toEqual({
       command: "claude",
       args: [
         "-p",
@@ -261,13 +256,10 @@ describe("claude-code service", () => {
       }
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    const manager = createPrerequisiteManager({
-      isDryRun: false,
-      runCommand
-    });
 
-    claudeService.registerClaudeCodePrerequisites(manager);
-    await manager.run("before");
+    // Test the binary check directly (used during installation)
+    const binaryCheck = claudeService.createClaudeCliBinaryCheck();
+    await binaryCheck.run({ isDryRun: false, runCommand });
 
     expect(captured.map((entry) => entry.command)).toEqual(["which", "where"]);
     expect(captured[1]).toEqual({ command: "where", args: ["claude"] });

@@ -40,7 +40,6 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
   id: "claude-code",
   summary: "Configure Claude Code to route through Poe.",
   prerequisites: {
-    before: ["claude-cli-binary"],
     after: ["claude-cli-health"]
   },
   configure: [
@@ -189,7 +188,6 @@ export async function removeClaudeCode(
 export function registerClaudeCodePrerequisites(
   prerequisites: PrerequisiteManager
 ): void {
-  prerequisites.registerBefore(createClaudeCliBinaryCheck());
   prerequisites.registerAfter(createClaudeCliHealthCheck());
 }
 
@@ -199,7 +197,7 @@ export async function installClaudeCode(
   return runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, context);
 }
 
-function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
+export function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
   return {
     id: "claude-cli-binary",
     description: "Claude CLI binary must exist",
@@ -219,6 +217,16 @@ function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
           args: ["claude"],
           validate: (result) =>
             result.exitCode === 0 && result.stdout.trim().length > 0
+        },
+        {
+          command: "test",
+          args: ["-f", "/usr/local/bin/claude"],
+          validate: (result) => result.exitCode === 0
+        },
+        {
+          command: "ls",
+          args: ["/usr/local/bin/claude"],
+          validate: (result) => result.exitCode === 0
         }
       ];
 
