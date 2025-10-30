@@ -251,7 +251,7 @@ describe("CLI program", () => {
     const commandRunner = createInstallCommandRunner({
       binary: "opencode",
       installCommand: "npm",
-      installArgs: ["install", "-g", "opencode-cli"],
+      installArgs: ["install", "-g", "opencode-ai"],
       postChecks: [{ command: "opencode", args: ["--version"] }]
     });
     const logs: string[] = [];
@@ -322,7 +322,7 @@ describe("CLI program", () => {
         (call) =>
           call.command === "npm" &&
           call.args[0] === "install" &&
-          call.args.includes("opencode-cli")
+          call.args.includes("opencode-ai")
       )
     ).toBe(true);
   });
@@ -387,7 +387,7 @@ describe("CLI program", () => {
     const commandRunner = createInstallCommandRunner({
       binary: "codex",
       installCommand: "npm",
-      installArgs: ["install", "-g", "@poe/codex-cli"]
+      installArgs: ["install", "-g", "@openai/codex"]
     });
     const logs: string[] = [];
     const program = createProgram({
@@ -826,7 +826,7 @@ describe("CLI program", () => {
     const commandRunner = createInstallCommandRunner({
       binary: "codex",
       installCommand: "npm",
-      installArgs: ["install", "-g", "@poe/codex-cli"],
+      installArgs: ["install", "-g", "@openai/codex"],
       postChecks: [{ command: "codex", args: ["--version"] }]
     });
     const program = createProgram({
@@ -859,7 +859,7 @@ describe("CLI program", () => {
           call.command === "npm" &&
           call.args.length === 3 &&
           call.args[0] === "install" &&
-          call.args[2] === "@poe/codex-cli"
+          call.args[2] === "@openai/codex"
       )
     ).toBe(true);
   });

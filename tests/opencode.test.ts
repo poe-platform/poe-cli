@@ -162,7 +162,7 @@ describe("opencode service", () => {
     });
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
-      "prompt",
+      "run",
       "List all files",
       "--format",
       "markdown"

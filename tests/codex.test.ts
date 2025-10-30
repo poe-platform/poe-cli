@@ -196,7 +196,7 @@ describe("codex service", () => {
     });
 
     expect(runCommand).toHaveBeenCalledWith("codex", [
-      "--prompt",
+      "exec",
       "Describe the codebase",
       "--output",
       "json"
