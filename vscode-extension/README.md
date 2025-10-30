@@ -183,6 +183,33 @@ Check your settings:
 }
 ```
 
+## Browser Preview
+
+You can preview and test the webview UI **outside of VSCode** in any browser with full functionality!
+
+### Quick Start
+
+```bash
+# From vscode-extension directory
+npm run preview
+```
+
+This starts a local server at `http://localhost:3000` with:
+- ✅ Full Poe API integration
+- ✅ Real tool execution
+- ✅ WebSocket for real-time updates
+- ✅ Browser DevTools for debugging
+
+See [`preview/README.md`](preview/README.md) for detailed documentation.
+
+### Why Use Browser Preview?
+
+- **Faster iteration** - No extension rebuild needed
+- **Better debugging** - Use browser DevTools
+- **Easy sharing** - Send URL to others for review
+- **Cross-browser testing** - Test in Chrome, Firefox, Safari
+- **No VSCode required** - Develop UI independently
+
 ## Development
 
 To modify the extension:
@@ -192,7 +219,8 @@ To modify the extension:
 3. Test in VS Code:
    - Press `F5` to open Extension Development Host
    - Test your changes
-4. Package when ready: `npm run package`
+4. **Or test in browser**: `npm run preview` (faster!)
+5. Package when ready: `npm run package`
 
 ### Project Structure
 

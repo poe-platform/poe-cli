@@ -143,7 +143,11 @@
     "package": "vsce package",
     "lint": "eslint src --ext ts",
     "test": "vitest run",
-    "typecheck": "tsc -p ./ --noEmit"
+    "typecheck": "tsc -p ./ --noEmit",
+    "preview": "npm run preview:install && npm run preview:start",
+    "preview:install": "cd preview && npm install",
+    "preview:start": "cd preview && npm start",
+    "preview:dev": "cd preview && npm run dev"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
