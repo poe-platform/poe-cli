@@ -3,13 +3,13 @@
 
 ## CLI
 
-- [ ] `login` should mention where to get teh api key https://poe.com/api_key. WHen pasting the key, it should not be shown (treat as password)
+- [x] `login` should mention where to get teh api key https://poe.com/api_key. WHen pasting the key, it should not be shown (treat as password)
 - [x] Add option `spawn` analogous to configure/remove
     - it should take prompt and any arbitrary arguments that are passed through to the agent call
     - this must live in the service definition
     - we should utilize it for the checks like this thing `Output exactly: CLAUDE_CODE_OK`
     - not all agents support it, only claude-code, codex, opencode
-- [ ] should be interactive per default
+- [x] should be interactive per default
     `poe-setup` -> interactive
     `poe-setup connfigure` -> show options
 
@@ -32,20 +32,20 @@
 - [x] Document the new provider and command registration architecture in `ARCHITECTURE.md`.
 - [x] Add telemetry hooks at the registry layer so new commands inherit consistent success/failure reporting.
 - [x] Prepare for dynamic provider discovery (e.g., config-driven or plugin-based) to scale integrations.
-- [ ] Once modularized, cover the registry/command boundaries with integration-style tests.
+- [x] Once modularized, cover the registry/command boundaries with integration-style tests.
 
 - [x] Update Codex provider to store bearer token configuration without auth.json.
 
 
 ## Extension redesign
 
-- [ ] Single pane layout, only the chat interface
-- [ ] Dedicated chat history page
-- [ ] Top right menu items (from right)
+- [x] Single pane layout, only the chat interface
+- [x] Dedicated chat history page
+- [x] Top right menu items (from right)
     - New message
     - Settings
     - Chat history
-- [ ] Smaller font
+- [x] Smaller font
 
 ## WIP (do not implement) Poe Agent
 - [ ] Ability to spawn any supported sub-agents (including new worktrees) (add specialized tool for this)
@@ -57,14 +57,14 @@
 
 ## VSCode extension
 
-- [ ] Visualize tool calls interleaved in the messages, make it look nice
+- [x] Visualize tool calls interleaved in the messages, make it look nice
 
 
 ## Worktrees spawn-git-worktree <agent> 
 
-- [ ] Automatically create a new worktree somewhere in tmp (make sure this works on all platforms)
-- [ ] Spawn agent with given prompt 
-- [ ] use import simpleGit from 'simple-git';
-- [ ] when no git repo is present in cwd, fail early
-- [ ] After completion, automatically merge git commits if any, automatically merge any file changes (or new files, deletions) into the main repo
-- [ ] when conflicts happen, have the same agent resolve them, provide command to run and resolve conflicts. 
+- [x] Automatically create a new worktree somewhere in tmp (make sure this works on all platforms)
+- [x] Spawn agent with given prompt 
+- [x] use import simpleGit from 'simple-git';
+- [x] when no git repo is present in cwd, fail early
+- [x] After completion, automatically merge git commits if any, automatically merge any file changes (or new files, deletions) into the main repo
+- [x] when conflicts happen, have the same agent resolve them, provide command to run and resolve conflicts. 
