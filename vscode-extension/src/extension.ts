@@ -592,6 +592,9 @@ interface WebviewContentOptions {
     modelSelectorHtml: string;
     providerSettings: ProviderSetting[];
     defaultModel: string;
+    bodyStartHtml?: string;
+    additionalScripts?: string[];
+    additionalCspDirectives?: string[];
 }
 
 function escapeTemplateLiteral(value: string): string {
@@ -657,12 +660,26 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     const escapedModelSelector = escapeTemplateLiteral(options.modelSelectorHtml);
     const nonce = createNonce();
     const cspSource = webview.cspSource;
+    const bodyStartHtml = options.bodyStartHtml ?? "";
+    const extraScripts = (options.additionalScripts ?? [])
+        .map((code) => `<script nonce="${nonce}">
+${code}
+</script>`)
+        .join("\n");
+    const cspDirectives = [
+        `default-src 'none'`,
+        `img-src ${cspSource} https: data:`,
+        `style-src ${cspSource} 'unsafe-inline'`,
+        `script-src 'nonce-${nonce}'`,
+        ...(options.additionalCspDirectives ?? []),
+    ];
+    const contentSecurityPolicy = cspDirectives.join("; ");
     const bootstrapPlaceholder = "__POE_BOOTSTRAP__";
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poe Code</title>
     <style>
@@ -1507,6 +1524,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
     </style>
 </head>
 <body>
+    ${bodyStartHtml}
     <div class="poe-layout">
         <header class="app-header" data-slot="app-shell">
             <!-- Will be populated by renderAppShell -->
@@ -1636,6 +1654,7 @@ export function getWebviewContent(webview: vscode.Webview, options: WebviewConte
             <div id="tool-notifications" class="tool-notifications"></div>
         </main>
     </div>
+    ${extraScripts}
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         const bootstrap = ${bootstrapPlaceholder};

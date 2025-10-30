@@ -10,8 +10,9 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs/promises';
+import Module from 'module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,8 +23,9 @@ const distPath = path.join(projectRoot, 'dist');
 
 // Dynamic imports of existing services
 let PoeChatService, DefaultToolExecutor, getAvailableTools;
-let renderMarkdown, renderDiffPreview;
+let renderMarkdown, renderDiffPreview, renderAppShell, renderModelSelector;
 let loadProviderSettings;
+let getWebviewContent;
 
 async function loadServices() {
     try {
@@ -38,15 +40,37 @@ async function loadServices() {
         // Import webview utilities (compiled from TypeScript)
         const markdownPath = path.join(__dirname, '..', 'out', 'webview', 'markdown.js');
         const diffPath = path.join(__dirname, '..', 'out', 'webview', 'diff-preview.js');
+        const layoutPath = path.join(__dirname, '..', 'out', 'webview', 'layout.js');
+        const selectorPath = path.join(__dirname, '..', 'out', 'webview', 'model-selector.js');
         const settingsPath = path.join(__dirname, '..', 'out', 'config', 'provider-settings.js');
 
         const markdownModule = await import(markdownPath);
         const diffModule = await import(diffPath);
+        const layoutModule = await import(layoutPath);
+        const selectorModule = await import(selectorPath);
         const settingsModule = await import(settingsPath);
 
         renderMarkdown = markdownModule.renderMarkdown;
         renderDiffPreview = diffModule.renderDiffPreview;
+        renderAppShell = layoutModule.renderAppShell;
+        renderModelSelector = selectorModule.renderModelSelector;
         loadProviderSettings = settingsModule.loadProviderSettings;
+
+        const vscodeStubPath = path.join(__dirname, 'stubs', 'vscode.js');
+        const ModuleCtor = Module.Module;
+        const originalResolveFilename = ModuleCtor._resolveFilename;
+        ModuleCtor._resolveFilename = function (request, parent, isMain, options) {
+            if (request === 'vscode') {
+                return vscodeStubPath;
+            }
+            return originalResolveFilename.call(this, request, parent, isMain, options);
+        };
+        try {
+            const extensionModule = await import(pathToFileURL(path.join(__dirname, '..', 'out', 'extension.js')).href);
+            getWebviewContent = extensionModule.getWebviewContent;
+        } finally {
+            ModuleCtor._resolveFilename = originalResolveFilename;
+        }
 
         console.log('✅ All services loaded successfully');
     } catch (error) {
@@ -70,6 +94,134 @@ async function getCredentials() {
     }
 }
 
+function createPreviewBridgeScript() {
+    return `(function () {
+  const STATUS_ID = "preview-connection-status";
+  const STYLE_ID = "preview-connection-style";
+  const ensureStyle = () => {
+    if (document.getElementById(STYLE_ID)) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = "\\n      .connection-status {\\n        position: fixed;\\n        top: 16px;\\n        right: 20px;\\n        padding: 8px 14px;\\n        border-radius: 6px;\\n        font-size: 12px;\\n        font-weight: 500;\\n        background-color: rgba(25, 29, 37, 0.9);\\n        color: #fff;\\n        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);\\n        z-index: 1000;\\n        transition: opacity 0.3s ease;\\n      }\\n      .connection-status--connected {\\n        background-color: rgba(17, 128, 67, 0.9);\\n      }\\n      .connection-status--reconnecting {\\n        background-color: rgba(124, 86, 36, 0.9);\\n      }\\n      .connection-status--error {\\n        background-color: rgba(168, 34, 34, 0.9);\\n      }\\n      .connection-status--hidden {\\n        opacity: 0;\\n        pointer-events: none;\\n      }\\n    ";
+    document.head.appendChild(style);
+  };
+  ensureStyle();
+  const statusEl = () => document.getElementById(STATUS_ID);
+  function updateStatus(state, message) {
+    const el = statusEl();
+    if (!el) {
+      return;
+    }
+    el.textContent = message;
+    el.dataset.state = state;
+    el.className = "connection-status connection-status--" + state;
+    if (state === "connected") {
+      setTimeout(() => {
+        el.classList.add("connection-status--hidden");
+      }, 1500);
+    } else {
+      el.classList.remove("connection-status--hidden");
+    }
+  }
+  let retries = 0;
+  let socket;
+  const maxRetries = 5;
+  const vscodeStateKey = "preview-vscode-state";
+  const vscodeApi = {
+    postMessage(message) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+      }
+    },
+    setState(value) {
+      try {
+        sessionStorage.setItem(vscodeStateKey, JSON.stringify(value));
+      } catch (error) {
+        console.warn("Unable to persist preview state", error);
+      }
+    },
+    getState() {
+      const stored = sessionStorage.getItem(vscodeStateKey);
+      if (!stored) {
+        return undefined;
+      }
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return undefined;
+      }
+    }
+  };
+  window.acquireVsCodeApi = () => vscodeApi;
+  function connect() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(protocol + "//" + window.location.host);
+    socket.addEventListener("open", () => {
+      retries = 0;
+      updateStatus("connected", "✓ Connected to server");
+    });
+    socket.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        window.dispatchEvent(new MessageEvent("message", { data: payload }));
+      } catch (error) {
+        console.error("Failed to parse message", error);
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (retries >= maxRetries) {
+        updateStatus("error", "✗ Unable to reconnect");
+        return;
+      }
+      retries += 1;
+      updateStatus("reconnecting", "Reconnecting to server…");
+      const delay = Math.min(1000 * Math.pow(2, retries), 10000);
+      setTimeout(connect, delay);
+    });
+    socket.addEventListener("error", () => {
+      updateStatus("error", "✗ Connection error");
+    });
+  }
+  updateStatus("connecting", "Connecting to server…");
+  connect();
+})();`;
+}
+
+async function renderPreviewPage() {
+    const extensionRoot = path.join(__dirname, '..');
+    const providerSettings = await loadProviderSettings(extensionRoot);
+    const defaultModel = providerSettings[0]?.label || 'Claude-Sonnet-4.5';
+    const modelOptions = Array.from(new Set(
+        [defaultModel, ...providerSettings.map((provider) => provider.label)].filter(Boolean)
+    ));
+    const logoUri = '/poe-logo.png';
+    const appShellHtml = renderAppShell({
+        logoUrl: logoUri,
+        models: modelOptions,
+        activeModel: defaultModel
+    });
+    const modelSelectorHtml = renderModelSelector({
+        models: modelOptions,
+        selected: defaultModel
+    });
+    const html = getWebviewContent({
+        cspSource: "'self'",
+        asWebviewUri: (uri) => ({ toString: () => String(uri) })
+    } as any, {
+        logoUri,
+        appShellHtml,
+        modelSelectorHtml,
+        providerSettings,
+        defaultModel,
+        bodyStartHtml: '<div id="preview-connection-status" class="connection-status connection-status--connecting">Connecting to server...</div>',
+        additionalScripts: [createPreviewBridgeScript()],
+        additionalCspDirectives: ['connect-src ws: wss:']
+    });
+    return html;
+}
+
 // Main server setup
 async function startServer() {
     await loadServices();
@@ -83,10 +235,20 @@ async function startServer() {
 
     const app = express();
     const server = createServer(app);
-    const wss = new WebSocketServer({ server });
+   const wss = new WebSocketServer({ server });
 
     // Middleware
     app.use(express.json());
+
+    app.get('/', async (_req, res) => {
+        try {
+            const html = await renderPreviewPage();
+            res.status(200).type('html').send(html);
+        } catch (error) {
+            console.error('❌ Failed to render preview page', error);
+            res.status(500).send('<h1>Failed to render preview</h1>');
+        }
+    });
 
     // Serve preview directory files (index.html)
     app.use(express.static(__dirname));
