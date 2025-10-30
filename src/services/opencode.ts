@@ -132,7 +132,7 @@ const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
       id: "install-opencode-cli-npm",
       description: "Install OpenCode CLI via npm",
       command: "npm",
-      args: ["install", "-g", "opencode-ai"]
+      args: ["install", "-g", "opencode-cli"]
     }
   ],
   postChecks: [createOpenCodeVersionCheck()],
@@ -156,7 +156,7 @@ export async function configureOpenCode(
 export async function spawnOpenCode(
   options: SpawnOpenCodeOptions
 ): Promise<CommandRunnerResult> {
-  const args = ["run", options.prompt, ...(options.args ?? [])];
+  const args = ["prompt", options.prompt, ...(options.args ?? [])];
   return options.runCommand("opencode", args);
 }
 

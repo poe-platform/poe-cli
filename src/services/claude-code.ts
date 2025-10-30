@@ -205,14 +205,27 @@ function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
     id: "claude-cli-binary",
     description: "Claude CLI binary must exist",
     async run({ runCommand }) {
-      const detectors: Array<{ command: string; args: string[] }> = [
-        { command: "which", args: ["claude"] },
-        { command: "where", args: ["claude"] }
+      const detectors: Array<{
+        command: string;
+        args: string[];
+        validate: (result: CommandRunnerResult) => boolean;
+      }> = [
+        {
+          command: "which",
+          args: ["claude"],
+          validate: (result) => result.exitCode === 0
+        },
+        {
+          command: "where",
+          args: ["claude"],
+          validate: (result) =>
+            result.exitCode === 0 && result.stdout.trim().length > 0
+        }
       ];
 
       for (const detector of detectors) {
         const result = await runCommand(detector.command, detector.args);
-        if (result.exitCode === 0) {
+        if (detector.validate(result)) {
           return;
         }
       }

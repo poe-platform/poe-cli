@@ -144,7 +144,7 @@ const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
       id: "install-codex-cli-npm",
       description: "Install Codex CLI via npm",
       command: "npm",
-      args: ["install", "-g", "@openai/codex"]
+      args: ["install", "-g", "@poe/codex-cli"]
     }
   ],
   postChecks: [createCodexVersionCheck()],
@@ -259,7 +259,7 @@ export async function configureCodex(
 export async function spawnCodex(
   options: SpawnCodexOptions
 ): Promise<CommandRunnerResult> {
-  const args = ["exec", options.prompt, ...(options.args ?? [])];
+  const args = ["--prompt", options.prompt, ...(options.args ?? [])];
   return options.runCommand("codex", args);
 }
 

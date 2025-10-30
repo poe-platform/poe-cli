@@ -735,11 +735,13 @@ describe("CLI program", () => {
     ).rejects.toThrow(/Claude CLI binary not found/);
     expect(commandRunnerStub.calls).toEqual([
       { command: "which", args: ["claude"] },
+      { command: "where", args: ["claude"] },
       {
         command: "npm",
         args: ["install", "-g", "@anthropic-ai/claude-code"]
       },
-      { command: "which", args: ["claude"] }
+      { command: "which", args: ["claude"] },
+      { command: "where", args: ["claude"] }
     ]);
     await expect(
       fs.readFile(path.join(homeDir, ".claude", "settings.json"), "utf8")
