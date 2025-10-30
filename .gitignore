@@ -12,3 +12,8 @@ vscode-extension/vitest.config.mjs.map
 g/
 test-*/
 *.test-project/
+
+
+# Local act secrets
+.github/workflows/local/.secrets
+.secrets
