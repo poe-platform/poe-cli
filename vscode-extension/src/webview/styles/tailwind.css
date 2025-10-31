@@ -15,3 +15,12 @@
     --error: var(--vscode-errorForeground);
   }
 }
+
+@layer utilities {
+  .h-screen {
+    height: 100vh;
+  }
+  .min-h-screen {
+    min-height: 100vh;
+  }
+}

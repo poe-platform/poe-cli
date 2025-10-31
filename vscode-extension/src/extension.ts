@@ -763,12 +763,12 @@ ${tailwindCss}
 </head>
 <body class="m-0 bg-surface text-text antialiased">
     ${bodyStartHtml}
-    <div class="flex h-screen flex-col bg-surface">
+    <div class="flex flex-col bg-surface" style="height:100vh;min-height:100vh;">
         <header data-slot="app-shell"></header>
-        <main class="flex flex-1 flex-col">
+        <main class="flex min-h-0 flex-1 flex-col">
             <div class="flex min-h-0 flex-1 overflow-hidden">
-            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[1fr_auto] overflow-hidden">
-                <div class="flex flex-1 min-h-0 flex-col overflow-y-auto">
+            <section id="chat-container" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div class="flex-1 min-h-0 overflow-y-auto">
                     <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
                         <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
                             <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
@@ -777,7 +777,7 @@ ${tailwindCss}
                             <span>Thinking...</span>
                         </div>
                     </div>
-                    <div id="messages" class="flex flex-1 flex-col gap-4 px-6 pb-6 pt-6">
+                    <div id="messages" class="flex flex-col gap-4 px-6 pb-6 pt-6">
                         <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
                             <div class="space-y-2">
                                 <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
@@ -800,7 +800,7 @@ ${tailwindCss}
                         </div>
                     </div>
                 </div>
-                <footer class="composer border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
+                <footer class="composer mt-auto border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
                     <div class="flex w-full items-end gap-3">
                         <textarea
                             id="message-input"

@@ -100,6 +100,19 @@ test("preview webview connects and echoes responses", async ({ page }) => {
     const assistantMessage = page.locator('[data-test="message-wrapper-assistant"] .message-content').last();
     await expect(assistantMessage).toContainText("Mock response: ping", { timeout: 10_000 });
 
+    const composer = page.locator('.composer');
+    await expect(composer).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const composerRect = document.querySelector('.composer')?.getBoundingClientRect() ?? null;
+      return {
+        composerRect,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(metrics.composerRect).not.toBeNull();
+    const composerBottom = (metrics.composerRect?.y ?? 0) + (metrics.composerRect?.height ?? 0);
+    expect(composerBottom).toBeGreaterThanOrEqual(metrics.viewportHeight * 0.9);
+
     await expect(page).toHaveScreenshot("webview-preview.png", { animations: "disabled", fullPage: false });
   } finally {
     serverProcess.kill();
