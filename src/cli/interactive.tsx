@@ -37,7 +37,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "system",
-      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType 'help' for available commands.\nType '/model' to view or switch models.\nType '/strategy' to configure model selection strategies.\nOr just start chatting - the model can use tools to help you!"
+      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType '/help' for available commands.\nType '/model' to view or switch models.\nType '/strategy' to configure model selection strategies.\nOr just start chatting - the model can use tools to help you!"
     }
   ]);
   const [input, setInput] = useState("");

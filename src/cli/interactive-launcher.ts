@@ -4,11 +4,14 @@ import { InteractiveCli } from "./interactive.js";
 import type { CliDependencies } from "./program.js";
 import path from "node:path";
 import * as nodeFs from "node:fs";
-import { loadCredentials } from "../services/credentials.js";
+import {
+  deleteCredentials,
+  loadCredentials,
+  saveCredentials
+} from "../services/credentials.js";
 import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
 import { McpManager } from "../services/mcp-manager.js";
-import { createInteractiveCommandExecutor } from "./interactive-command-runner.js";
 import { resolveCredentialsPath } from "./environment.js";
 import { AgentTaskRegistry } from "../services/agent-task-registry.js";
 import type { FsLike } from "../services/agent-task-registry.js";
@@ -99,11 +102,6 @@ export async function launchInteractiveMode(
     await initializeChatService(apiKey);
   }
 
-  const commandExecutor = await createInteractiveCommandExecutor({
-    ...dependencies,
-    logger: () => {}
-  });
-
   const setToolCallHandler = (handler: typeof toolCallHandler) => {
     toolCallHandler = handler;
   };
@@ -117,6 +115,44 @@ export async function launchInteractiveMode(
       const slashCommand = parts[0].toLowerCase();
       const slashArgs = parts.slice(1);
 
+      if (slashCommand === "help") {
+        return `Available commands:
+- /login <api-key> - Store your Poe API key and connect the agent
+- /logout - Remove stored credentials and disconnect the agent
+- /model [model-name] - Show or change the current model
+- /strategy [...] - Configure multi-model strategy options
+- /clear - Clear the current conversation history
+- /history - Show the current conversation history
+- /tools - List available tools
+- /tasks [...] - Manage background tasks
+- /mcp [...] - Manage MCP servers`;
+      }
+
+      if (slashCommand === "login") {
+        const apiKeyValue = slashArgs.join(" ").trim();
+        if (apiKeyValue.length === 0) {
+          return "Usage: /login <api-key>";
+        }
+
+        const normalizedApiKey = apiKeyValue.trim();
+        await saveCredentials({
+          fs: fileSystem,
+          filePath: credentialsPath,
+          apiKey: normalizedApiKey
+        });
+        const message = await initializeChatService(normalizedApiKey);
+        return `Stored Poe API key.\n${message}`;
+      }
+
+      if (slashCommand === "logout") {
+        await deleteCredentials({
+          fs: fileSystem,
+          filePath: credentialsPath
+        });
+        chatService = null;
+        return "Removed stored Poe API key.";
+      }
+
       if (slashCommand === "model") {
         if (slashArgs.length === 0) {
           const currentModel = chatService?.getModel() || "Not connected";
@@ -125,7 +161,7 @@ export async function launchInteractiveMode(
 
         const newModel = slashArgs.join(" ");
         if (!chatService) {
-          return "Please login first with: login <api-key>";
+          return "Please login first with: /login <api-key>";
         }
 
         chatService.setModel(newModel);
@@ -134,7 +170,7 @@ export async function launchInteractiveMode(
 
       if (slashCommand === "strategy") {
         if (!chatService) {
-          return "Please login first with: login <api-key>";
+          return "Please login first with: /login <api-key>";
         }
 
         if (slashArgs.length === 0) {
@@ -187,7 +223,7 @@ export async function launchInteractiveMode(
 
       if (slashCommand === "clear") {
         if (!chatService) {
-          return "Please login first with: login <api-key>";
+          return "Please login first with: /login <api-key>";
         }
         chatService.clearHistory();
         return "Conversation history cleared";
@@ -195,7 +231,7 @@ export async function launchInteractiveMode(
 
       if (slashCommand === "history") {
         if (!chatService) {
-          return "Please login first with: login <api-key>";
+          return "Please login first with: /login <api-key>";
         }
         const history = chatService.getHistory();
         return `Conversation history (${history.length} messages):\n${JSON.stringify(history, null, 2)}`;
@@ -323,23 +359,6 @@ Example:
       }
     }
 
-    // Attempt to run a CLI command through the shared executor
-    const parsedCommand = commandExecutor.identify(trimmedInput);
-    if (parsedCommand) {
-      let message = await commandExecutor.execute(parsedCommand);
-      if (parsedCommand.command === "login") {
-        const stored = await loadCredentials({ fs: fileSystem, filePath: credentialsPath });
-        if (stored) {
-          const chatMessage = await initializeChatService(stored);
-          message = message ? `${message}\n${chatMessage}` : chatMessage;
-        }
-      } else if (parsedCommand.command === "logout") {
-        chatService = null;
-      }
-      const rendered = message ?? "";
-      return rendered.length > 0 ? rendered : "Command completed.";
-    }
-
     // If chat service is initialized, treat this as a chat message
     if (chatService) {
           try {
@@ -379,7 +398,7 @@ Example:
             );
           }
     } else {
-      return `Please login first with: login <api-key>\n\nOr use one of these commands:\n- help\n- configure <service>\n- init <project-name>`;
+      return `Please login first with: /login <api-key>\n\nType '/help' for a list of commands.`;
     }
   };
 
