@@ -3,9 +3,17 @@ const path = require("node:path");
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    path.join(__dirname, "vscode-extension/src/webview/**/*.ts"),
-    path.join(__dirname, "vscode-extension/src/webview/**/*.tsx"),
-    path.join(__dirname, "vscode-extension/src/webview/**/*.html"),
+    "./vscode-extension/src/webview/**/*.{ts,tsx,html}",
+  ],
+  safelist: [
+    {
+      pattern:
+        /(bg|text|border|ring|hover:bg|hover:text|hover:border|focus:border|focus-visible:ring)-(surface|surface-raised|text|text-muted|border|accent|accent-fg|success|error)/,
+    },
+    {
+      pattern:
+        /(shadow|rounded)-(sm|md|lg|xl|2xl)/,
+    },
   ],
   theme: {
     extend: {

@@ -768,21 +768,21 @@ ${tailwindCss}
         <main class="relative flex flex-1 overflow-hidden bg-surface">
             <section id="chat-container" class="flex flex-1 flex-col overflow-hidden">
                 <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
-                    <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border/20 bg-surface-raised/80 p-6 shadow-lg">
+                    <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
                         <div class="space-y-2">
                             <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
                             <p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="strategies">
+                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="strategies">
                                 <h3 class="text-sm font-semibold text-text">Strategies</h3>
                                 <p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
                             </article>
-                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="models">
+                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="models">
                                 <h3 class="text-sm font-semibold text-text">Model library</h3>
                                 <p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
                             </article>
-                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="tools">
+                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="tools">
                                 <h3 class="text-sm font-semibold text-text">Dev workflows</h3>
                                 <p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
                             </article>
@@ -790,19 +790,19 @@ ${tailwindCss}
                     </div>
                 </div>
                 <div id="thinking-indicator" class="hidden px-6 pb-6 text-sm text-text-muted">
-                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border/30 bg-surface-raised/80 px-4 py-2 shadow-sm">
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse [animation-delay:0.2s]"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse [animation-delay:0.4s]"></span>
+                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.4s;"></span>
                         <span>Thinking...</span>
                     </div>
                 </div>
-                <footer class="composer border-t border-border/20 bg-surface px-6 py-4">
+                <footer class="composer border-t border-border bg-surface px-6 py-4">
                     <div class="flex w-full items-end gap-3">
                         <textarea
                             id="message-input"
                             data-test="message-input"
-                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border/30 bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
                             placeholder="Ask Poe..."
                             rows="1"
                         ></textarea>
@@ -811,7 +811,7 @@ ${tailwindCss}
                                 id="clear-button"
                                 type="button"
                                 data-test="clear-button"
-                                class="rounded-xl border border-border/20 px-4 py-2 text-sm font-medium text-text-muted transition hover:border-border/40 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                                class="rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-muted transition hover:border-border hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                             >
                                 Clear
                             </button>
@@ -819,7 +819,7 @@ ${tailwindCss}
                                 id="send-button"
                                 type="button"
                                 data-test="send-button"
-                                class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                                class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                             >
                                 Send
                             </button>
@@ -827,20 +827,20 @@ ${tailwindCss}
                     </div>
                 </footer>
             </section>
-            <section id="chat-history" class="chat-history hidden h-full w-80 flex-shrink-0 flex-col border-l border-border/20 bg-surface-raised/80 shadow-xl" data-test="chat-history-panel">
-                <div class="chat-history-header flex items-center justify-between border-b border-border/20 px-5 py-4" data-test="chat-history-header">
+            <section id="chat-history" class="chat-history hidden h-full w-80 flex-shrink-0 flex-col border-l border-border bg-surface-raised shadow-xl" data-test="chat-history-panel">
+                <div class="chat-history-header flex items-center justify-between border-b border-border px-5 py-4" data-test="chat-history-header">
                     <h3 class="text-sm font-semibold text-text">Chat history</h3>
                     <button
                         type="button"
                         data-action="history-close"
                         data-test="chat-history-close"
-                        class="rounded-lg border border-border/20 px-3 py-1.5 text-xs font-medium text-text-muted transition hover:border-border/40 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                        class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted transition hover:border-border hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
                         Close
                     </button>
                 </div>
                 <div class="chat-history-content flex-1 space-y-3 overflow-y-auto px-5 py-4" data-test="chat-history-content">
-                    <div class="chat-history-empty rounded-xl border border-dashed border-border/30 bg-surface px-4 py-6 text-sm text-text-muted" data-test="chat-history-empty">
+                    <div class="chat-history-empty rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-sm text-text-muted" data-test="chat-history-empty">
                         Start a conversation to see recent chats here.
                     </div>
                 </div>

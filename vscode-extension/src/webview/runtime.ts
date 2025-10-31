@@ -71,7 +71,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
-    '<div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border/20 bg-surface-raised/80 p-6 shadow-lg"><div class="space-y-2"><h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2><p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p></div><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="strategies"><h3 class="text-sm font-semibold text-text">Strategies</h3><p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p></article><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="models"><h3 class="text-sm font-semibold text-text">Model library</h3><p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p></article><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="tools"><h3 class="text-sm font-semibold text-text">Dev workflows</h3><p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p></article></div></div>';
+    '<div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel"><div class="space-y-2"><h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2><p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p></div><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="strategies"><h3 class="text-sm font-semibold text-text">Strategies</h3><p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p></article><article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="models"><h3 class="text-sm font-semibold text-text">Model library</h3><p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p></article><article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="tools"><h3 class="text-sm font-semibold text-text">Dev workflows</h3><p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p></article></div></div>';
 
   const notifications: ToolNotification[] = [];
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
@@ -86,50 +86,50 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   const uiClasses = {
     messageWrapperBase:
-      "message-wrapper flex flex-col gap-3 rounded-2xl border border-border/20 bg-surface-raised/80 p-4 shadow-lg transition",
+      "message-wrapper flex flex-col gap-3 rounded-2xl border border-border bg-surface-raised p-4 shadow-panel transition",
     messageWrapperUser: "bg-surface",
-    messageWrapperAssistant: "bg-surface-raised/90",
+    messageWrapperAssistant: "bg-surface-raised",
     messageHeader:
       "message-header flex items-center gap-3 text-sm font-semibold text-text",
     messageModel: "message-model ml-auto text-xs font-medium text-text-muted",
     avatar:
-      "avatar flex h-9 w-9 items-center justify-center rounded-xl border border-border/20 bg-surface text-xs font-semibold text-text",
-    avatarAssistant: "bg-surface-raised/80 overflow-hidden",
+      "avatar flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-xs font-semibold text-text",
+    avatarAssistant: "bg-surface-raised overflow-hidden",
     avatarUser: "uppercase bg-surface text-text",
     messageContent:
-      "message-content space-y-3 text-sm leading-6 text-text [&_a]:text-accent [&_a]:underline [&_code]:font-mono [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border/20 [&_pre]:bg-surface [&_pre]:px-3 [&_pre]:py-2",
+      "message-content space-y-3 text-sm leading-6 text-text [&_a]:text-accent [&_a]:underline [&_code]:font-mono [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border [&_pre]:bg-surface [&_pre]:px-3 [&_pre]:py-2",
     diffWrapper:
-      "message-wrapper diff flex flex-col gap-3 overflow-hidden rounded-2xl border border-border/20 bg-surface shadow-lg",
+      "message-wrapper diff flex flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-surface shadow-panel",
     diffContent:
       "message-content text-sm leading-6 text-text [&_pre]:border-0 [&_pre]:bg-transparent",
     errorWrapper:
-      "message-wrapper error flex flex-col gap-3 rounded-2xl border border-error/50 bg-error/10 p-4 text-error shadow-lg",
+      "message-wrapper error flex flex-col gap-3 rounded-2xl border border-error bg-surface p-4 text-error shadow-panel",
     toolWrapper:
-      "message-wrapper tool flex flex-col gap-3 rounded-2xl border border-dashed border-border/30 bg-surface px-4 py-3 shadow-md transition",
-    toolWrapperSuccess: "border-success/60",
-    toolWrapperError: "border-error/60 bg-error/10",
+      "message-wrapper tool flex flex-col gap-3 rounded-2xl border border-dashed border-border bg-surface px-4 py-3 shadow-md transition",
+    toolWrapperSuccess: "border-success",
+    toolWrapperError: "border-error bg-surface",
     toolHeader:
       "message-header flex items-center gap-3 text-sm font-semibold text-text",
     toolIcon:
-      "tool-icon flex h-8 w-8 items-center justify-center rounded-xl bg-surface-raised/70 text-base",
+      "tool-icon flex h-8 w-8 items-center justify-center rounded-xl bg-surface-raised text-base",
     toolTitle: "tool-title text-sm font-semibold text-text",
     toolStatus: "message-tool-status text-sm font-semibold text-text",
     toolStatusSuccess: "text-success",
     toolStatusError: "text-error",
     toolArgs:
-      "message-tool-args rounded-xl bg-surface-raised/60 px-3 py-2 text-xs font-mono text-text",
+      "message-tool-args rounded-xl bg-surface-raised px-3 py-2 text-xs font-mono text-text",
     toolError: "message-tool-error text-xs text-error",
     toolNotification:
-      "tool-notification pointer-events-auto rounded-xl border border-border/20 bg-surface-raised/90 px-4 py-2 text-sm font-medium text-text shadow-lg transition-opacity duration-200",
-    toolNotificationRunning: "border-border/40",
-    toolNotificationSuccess: "border-success/50 text-success",
-    toolNotificationError: "border-error/50 text-error",
+      "tool-notification pointer-events-auto rounded-xl border border-border bg-surface-raised px-4 py-2 text-sm font-medium text-text shadow-md transition-opacity duration-200",
+    toolNotificationRunning: "border-border",
+    toolNotificationSuccess: "border-success text-success",
+    toolNotificationError: "border-error text-error",
     chatHistoryItem:
-      "chat-history-item cursor-pointer rounded-xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60",
+      "chat-history-item cursor-pointer rounded-xl border border-border bg-surface p-4 transition hover:bg-surface-raised",
     chatHistoryTitle: "chat-history-item-title text-sm font-semibold text-text",
     chatHistoryPreview: "chat-history-item-preview text-xs text-text-muted",
     chatHistoryEmpty:
-      "chat-history-empty rounded-xl border border-dashed border-border/30 bg-surface px-4 py-6 text-sm text-text-muted text-center",
+      "chat-history-empty rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-sm text-text-muted text-center",
   } as const;
 
   function setActiveModel(model: string): void {

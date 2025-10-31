@@ -6,7 +6,7 @@ interface AppShellOptions {
 
 export function renderAppShell(options: AppShellOptions): string {
   return `
-    <header class="flex w-full items-center justify-between border-b border-border/20 bg-surface-raised/80 px-5 py-3 backdrop-blur-sm" data-test="app-header">
+    <header class="flex w-full items-center justify-between border-b border-border bg-surface-raised px-5 py-3 backdrop-blur-sm" data-test="app-header">
       <div class="flex items-center gap-2.5">
         <img src="${options.logoUrl}" alt="Poe Code" class="h-7 w-7 rounded-lg shadow-sm" data-test="brand-logo" />
         <span class="text-sm font-semibold text-text" data-test="brand-title">Poe Code</span>
@@ -15,7 +15,7 @@ export function renderAppShell(options: AppShellOptions): string {
         <button
           data-action="chat-history"
           data-test="chat-history-button"
-          class="group relative rounded-xl p-2.5 text-text-muted transition duration-150 hover:bg-surface-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          class="group relative rounded-xl p-2.5 text-text-muted transition duration-150 hover:bg-surface-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           type="button"
           aria-label="Open chat history"
         >
@@ -24,7 +24,7 @@ export function renderAppShell(options: AppShellOptions): string {
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span
-            class="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-raised px-2 py-1 text-xs text-text opacity-0 shadow-sm transition duration-150 group-hover:opacity-100"
+            class="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-raised px-2 py-1 text-xs text-text opacity-0 shadow-md transition duration-150 group-hover:opacity-100"
             data-test="tooltip-chat-history"
           >
             History
@@ -33,7 +33,7 @@ export function renderAppShell(options: AppShellOptions): string {
         <button
           data-action="open-settings"
           data-test="settings-button"
-          class="group relative rounded-xl p-2.5 text-text-muted transition duration-150 hover:bg-surface-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          class="group relative rounded-xl p-2.5 text-text-muted transition duration-150 hover:bg-surface-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           type="button"
           aria-label="Open settings"
         >
@@ -42,7 +42,7 @@ export function renderAppShell(options: AppShellOptions): string {
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           <span
-            class="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-raised px-2 py-1 text-xs text-text opacity-0 shadow-sm transition duration-150 group-hover:opacity-100"
+            class="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-raised px-2 py-1 text-xs text-text opacity-0 shadow-md transition duration-150 group-hover:opacity-100"
             data-test="tooltip-settings"
           >
             Settings
@@ -51,7 +51,7 @@ export function renderAppShell(options: AppShellOptions): string {
         <button
           data-action="new-chat"
           data-test="new-chat-button"
-          class="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-md transition duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          class="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-md transition duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           type="button"
           aria-label="Start new chat"
         >
