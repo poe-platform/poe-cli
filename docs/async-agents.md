@@ -663,3 +663,10 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 ```
+
+
+# Details
+
+- it must work in the vscode extension as well
+- it must work with non-interactive agent - the non-interactive shouldnt stop until all remaining subagents are done
+- vscode shouuld send notification when sub-agents are done
