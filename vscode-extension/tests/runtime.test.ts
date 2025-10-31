@@ -16,7 +16,6 @@ function createDocument() {
     <div id="messages"></div>
     <textarea id="message-input"></textarea>
     <button id="send-button"></button>
-    <button id="clear-button"></button>
     <div id="thinking-indicator" class="hidden"></div>
     <div id="tool-notifications"></div>
     <poe-settings-panel id="settings-panel"></poe-settings-panel>

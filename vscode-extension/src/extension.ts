@@ -763,9 +763,9 @@ ${tailwindCss}
 </head>
 <body class="m-0 bg-surface text-text antialiased">
     ${bodyStartHtml}
-    <div class="flex h-screen flex-col overflow-hidden bg-surface">
-        <div data-slot="app-shell"></div>
-        <main class="relative flex flex-1 overflow-hidden bg-surface">
+    <div class="flex h-screen overflow-hidden bg-surface">
+        <aside class="flex w-20 flex-col" data-slot="app-shell"></aside>
+        <main class="flex flex-1 flex-col overflow-hidden bg-surface">
             <section id="chat-container" class="flex flex-1 flex-col overflow-hidden">
                 <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
                     <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
@@ -789,7 +789,7 @@ ${tailwindCss}
                         </div>
                     </div>
                 </div>
-                <div id="thinking-indicator" class="hidden px-6 pb-6 text-sm text-text-muted">
+                <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
                     <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
                         <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
                         <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
@@ -797,35 +797,26 @@ ${tailwindCss}
                         <span>Thinking...</span>
                     </div>
                 </div>
-                <footer class="composer border-t border-border bg-surface px-6 py-4">
-                    <div class="flex w-full items-end gap-3">
-                        <textarea
-                            id="message-input"
-                            data-test="message-input"
-                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
-                            placeholder="Ask Poe..."
-                            rows="1"
-                        ></textarea>
-                        <div class="flex items-center gap-2">
-                            <button
-                                id="clear-button"
-                                type="button"
-                                data-test="clear-button"
-                                class="rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-muted transition hover:border-border hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                            >
-                                Clear
-                            </button>
-                            <button
-                                id="send-button"
-                                type="button"
-                                data-test="send-button"
-                                class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                            >
-                                Send
-                            </button>
-                        </div>
-                    </div>
-                </footer>
+            </section>
+            <footer class="composer border-t border-border bg-surface px-6 py-4">
+                <div class="flex w-full items-end gap-3">
+                    <textarea
+                        id="message-input"
+                        data-test="message-input"
+                        class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                        placeholder="Ask Poe..."
+                        rows="1"
+                    ></textarea>
+                    <button
+                        id="send-button"
+                        type="button"
+                        data-test="send-button"
+                        class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                        Send
+                    </button>
+                </div>
+            </footer>
             </section>
             <section id="chat-history" class="chat-history hidden h-full w-80 flex-shrink-0 flex-col border-l border-border bg-surface-raised shadow-xl" data-test="chat-history-panel">
                 <div class="chat-history-header flex items-center justify-between border-b border-border px-5 py-4" data-test="chat-history-header">

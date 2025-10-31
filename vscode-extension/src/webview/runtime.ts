@@ -48,7 +48,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     | HTMLTextAreaElement
     | null;
   const sendButton = doc.getElementById("send-button") as HTMLButtonElement | null;
-  const clearButton = doc.getElementById("clear-button") as HTMLButtonElement | null;
   const thinkingIndicator = doc.getElementById("thinking-indicator") as
     | HTMLElement
     | null;
@@ -209,13 +208,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     });
     messageInput.value = "";
     adjustInputHeight();
-  }
-
-  if (clearButton) {
-    clearButton.addEventListener("click", () => {
-      options.postMessage({ type: "clearHistory" });
-      hideChatHistory();
-    });
   }
 
   if (appShellHost) {

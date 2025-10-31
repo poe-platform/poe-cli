@@ -77,16 +77,17 @@ test("preview webview connects and echoes responses", async ({ page }) => {
     await page.waitForFunction(() => (window as any).__poePreviewConnected === true, null, { timeout: 20_000 });
     await page.waitForFunction(() => typeof (window as any).initializeWebviewApp === "function");
 
-    const header = page.locator('[data-test="app-header"]');
-    await expect(header).toBeVisible();
+    const navigation = page.locator('[data-test="app-navigation"]');
+    await expect(navigation).toBeVisible();
 
     const historyButton = page.locator('[data-test="chat-history-button"]');
     await expect(historyButton).toHaveAttribute("aria-label", "Open chat history");
-    await historyButton.hover();
-    await expect(page.locator('[data-test="tooltip-chat-history"]')).toBeVisible();
 
     const settingsButton = page.locator('[data-test="settings-button"]');
     await expect(settingsButton).toHaveAttribute("aria-label", "Open settings");
+
+    const newChatButton = page.locator('[data-test="new-chat-button"]');
+    await expect(newChatButton).toHaveAttribute("aria-label", "Start new chat");
 
     const input = page.locator('[data-test="message-input"]');
     await expect(input).toBeVisible();

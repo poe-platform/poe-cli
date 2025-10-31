@@ -154,9 +154,9 @@ describe("initializeWebviewApp", () => {
     });
   });
 
-  it("sends clear signal and resets history snapshot", () => {
-    const clearButton = document.getElementById("clear-button") as HTMLButtonElement;
-    clearButton.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
+  it("sends clear signal and resets history snapshot via new chat control", () => {
+    const newChat = document.querySelector("[data-action='new-chat']") as HTMLButtonElement;
+    newChat.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
     expect(postMessage).toHaveBeenCalledWith({ type: "clearHistory" });
 
     document.getElementById("messages")!.innerHTML = "<div>Test</div>";
