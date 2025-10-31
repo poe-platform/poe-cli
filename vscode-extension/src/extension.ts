@@ -766,7 +766,7 @@ ${tailwindCss}
     <div class="flex h-screen flex-col bg-surface">
         <header data-slot="app-shell"></header>
         <main class="flex flex-1 flex-col">
-            <div class="flex flex-1 overflow-hidden">
+            <div class="flex min-h-0 flex-1 overflow-hidden">
             <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[auto_1fr_auto] overflow-hidden">
                 <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
                     <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
