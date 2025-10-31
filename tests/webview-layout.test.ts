@@ -13,10 +13,10 @@ describe("renderAppShell", () => {
     expect(html).toContain('data-action="chat-history"');
     expect(html).not.toContain("model-summary");
 
+    const newChatIndex = html.indexOf('data-action="new-chat"');
     const historyIndex = html.indexOf('data-action="chat-history"');
     const settingsIndex = html.indexOf('data-action="open-settings"');
-    const newChatIndex = html.indexOf('data-action="new-chat"');
+    expect(newChatIndex).toBeLessThan(historyIndex);
     expect(historyIndex).toBeLessThan(settingsIndex);
-    expect(settingsIndex).toBeLessThan(newChatIndex);
   });
 });

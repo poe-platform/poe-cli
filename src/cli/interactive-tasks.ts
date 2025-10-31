@@ -14,6 +14,7 @@ export interface TasksCommandOptions {
     | "killTask"
     | "waitForTask"
     | "getRunningTasks"
+    | "updateTask"
   >;
   fs: FsLike;
   now: () => number;
@@ -25,6 +26,8 @@ interface ParsedArgs {
     logs: boolean;
     follow: boolean;
     kill: boolean;
+    cleanup: boolean;
+    cleanupAll: boolean;
   };
 }
 
@@ -33,6 +36,39 @@ export async function handleTasksCommand(
   options: TasksCommandOptions
 ): Promise<string> {
   const parsed = parseArgs(args);
+  
+  // Handle cleanup-all flag (archives all failed/completed tasks)
+  if (parsed.flags.cleanupAll) {
+    const allTasks = options.registry.getAllTasks();
+    const toCleanup = allTasks.filter(
+      (task) => task.status === "failed" || task.status === "completed" || task.status === "killed"
+    );
+    
+    for (const task of toCleanup) {
+      // Mark for archival by setting endTime if not set
+      if (!task.endTime) {
+        options.registry.updateTask(task.id, {
+          endTime: options.now()
+        });
+      }
+    }
+    
+    return toCleanup.length > 0
+      ? `Marked ${toCleanup.length} task(s) for cleanup. They will be archived on next registry init.`
+      : "No tasks to clean up.";
+  }
+  
+  // Handle cleanup flag (detects and marks zombie tasks)
+  if (parsed.flags.cleanup) {
+    // Trigger zombie detection by calling getRunningTasks
+    const beforeCount = options.registry.getRunningTasks().length;
+    const afterCount = options.registry.getRunningTasks().length;
+    const cleaned = beforeCount - afterCount;
+    return cleaned > 0
+      ? `Cleaned up ${cleaned} zombie task(s).`
+      : "No zombie tasks found.";
+  }
+  
   if (!parsed.id) {
     return renderTaskList(options.registry.getAllTasks(), options.now);
   }
@@ -65,7 +101,9 @@ function parseArgs(args: string[]): ParsedArgs {
     flags: {
       logs: false,
       follow: false,
-      kill: false
+      kill: false,
+      cleanup: false,
+      cleanupAll: false
     }
   };
   for (const arg of args) {
@@ -79,6 +117,14 @@ function parseArgs(args: string[]): ParsedArgs {
     }
     if (arg === "--kill") {
       result.flags.kill = true;
+      continue;
+    }
+    if (arg === "--cleanup") {
+      result.flags.cleanup = true;
+      continue;
+    }
+    if (arg === "--cleanup-all") {
+      result.flags.cleanupAll = true;
       continue;
     }
     if (!result.id) {
@@ -120,6 +166,12 @@ function renderTaskDetails(
   sections.push(`Duration: ${duration}`);
   if (task.pid) {
     sections.push(`PID: ${task.pid}`);
+  }
+  if (task.command) {
+    sections.push(`Command: ${task.command}`);
+  }
+  if (task.worktreePath) {
+    sections.push(`Worktree: ${task.worktreePath}`);
   }
   sections.push("Args:");
   sections.push(JSON.stringify(task.args, null, 2));

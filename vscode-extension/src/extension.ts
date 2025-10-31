@@ -765,9 +765,10 @@ ${tailwindCss}
     ${bodyStartHtml}
     <div class="flex h-screen flex-col bg-surface">
         <header data-slot="app-shell"></header>
-        <main class="flex flex-1 overflow-hidden">
-            <section id="chat-container" class="relative flex flex-1 flex-col overflow-hidden">
-                <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-6">
+        <main class="flex flex-1 flex-col">
+            <div class="flex flex-1 overflow-hidden">
+            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[1fr_auto] overflow-hidden">
+                <div id="messages" class="flex h-full flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
                     <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
                         <div class="space-y-2">
                             <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
@@ -797,7 +798,7 @@ ${tailwindCss}
                         <span>Thinking...</span>
                     </div>
                 </div>
-                <footer class="composer sticky bottom-0 border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
+                <footer class="composer border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
                     <div class="flex w-full items-end gap-3">
                         <textarea
                             id="message-input"
@@ -817,7 +818,7 @@ ${tailwindCss}
                     </div>
                 </footer>
             </section>
-            <section id="chat-history" class="chat-history hidden h-full flex-1 flex-col overflow-hidden border-l border-border bg-surface-raised shadow-xl" data-test="chat-history-panel">
+            <section id="chat-history" class="chat-history hidden flex min-h-0 flex-1 flex-col overflow-hidden border-l border-border bg-surface-raised shadow-xl" data-test="chat-history-panel">
                 <div class="chat-history-header flex items-center justify-between border-b border-border px-5 py-4" data-test="chat-history-header">
                     <h3 class="text-sm font-semibold text-text">Chat history</h3>
                     <button
@@ -835,11 +836,12 @@ ${tailwindCss}
                     </div>
                 </div>
             </section>
-            <section id="settings-view" class="hidden flex flex-1 overflow-y-auto bg-surface px-6 py-6" data-test="settings-view">
+            <section id="settings-view" class="hidden flex min-h-0 flex-1 overflow-y-auto bg-surface px-6 py-6" data-test="settings-view">
                 <div class="mx-auto w-full max-w-3xl">
                     <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
                 </div>
             </section>
+            </div>
         </main>
         <div id="tool-notifications" class="pointer-events-none fixed bottom-6 right-6 flex flex-col gap-3"></div>
     </div>
