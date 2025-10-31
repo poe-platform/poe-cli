@@ -290,17 +290,6 @@ export class DefaultToolExecutor implements ToolExecutor {
       if (!this.taskRegistry) {
         return;
       }
-      const runnerPath = fileURLToPath(new URL("./task-runner.js", import.meta.url));
-      const payload = JSON.stringify({
-        taskId: request.taskId,
-        toolName: request.toolName,
-        args: request.args,
-        context: request.context,
-        directories: {
-          tasks: this.taskRegistry.getTasksDirectory(),
-          logs: this.taskRegistry.getLogsDirectory()
-        }
-      });
       
       // Build human-readable CLI command
       const commandParts = ["spawn-git-worktree"];
@@ -318,10 +307,109 @@ export class DefaultToolExecutor implements ToolExecutor {
       }
       const commandString = commandParts.join(" ");
       
+      // Create inline script that imports and runs the task
+      const taskData = JSON.stringify({
+        taskId: request.taskId,
+        toolName: request.toolName,
+        args: request.args,
+        cwd: request.context.cwd,
+        tasksDir: this.taskRegistry.getTasksDirectory(),
+        logsDir: this.taskRegistry.getLogsDirectory()
+      });
+      
+      const inlineScript = `
+        import { spawnGitWorktree } from './commands/spawn-worktree.js';
+        import { spawnCodex } from './services/codex.js';
+        import { spawnClaudeCode } from './services/claude-code.js';
+        import { spawnOpenCode } from './services/opencode.js';
+        import { AgentTaskRegistry } from './services/agent-task-registry.js';
+        import { TaskLogger } from './services/task-logger.js';
+        import { simpleGit } from 'simple-git';
+        import { spawn } from 'node:child_process';
+        import * as fs from 'node:fs';
+        import path from 'node:path';
+        
+        const data = ${taskData};
+        const fsLike = fs;
+        
+        const registry = new AgentTaskRegistry({
+          fs: fsLike,
+          tasksDir: data.tasksDir,
+          logsDir: data.logsDir
+        });
+        
+        const logger = new TaskLogger({
+          fs: fsLike,
+          filePath: path.join(data.logsDir, data.taskId + '.log'),
+          now: () => new Date()
+        });
+        
+        const progressFile = path.join(data.tasksDir, data.taskId + '.progress.jsonl');
+        const writeProgress = (update) => {
+          fs.appendFileSync(progressFile, JSON.stringify(update) + '\\n');
+        };
+        
+        async function runCommand(cmd, args, cwd) {
+          return new Promise((resolve) => {
+            const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+            let stdout = '', stderr = '';
+            child.stdout?.on('data', (d) => stdout += d);
+            child.stderr?.on('data', (d) => stderr += d);
+            child.on('close', (code) => resolve({ stdout, stderr, exitCode: code || 0 }));
+          });
+        }
+        
+        async function runAgent(details) {
+          if (details.agent === 'codex') {
+            return await spawnCodex({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+          }
+          if (details.agent === 'claude-code') {
+            return await spawnClaudeCode({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+          }
+          return await spawnOpenCode({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+        }
+        
+        (async () => {
+          try {
+            logger.info('Starting ' + data.toolName);
+            writeProgress({ type: 'progress', message: 'Starting ' + data.toolName, timestamp: Date.now() });
+            
+            const git = simpleGit({ baseDir: data.cwd });
+            const branch = data.args.branch || (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
+            
+            await spawnGitWorktree({
+              agent: data.args.agent,
+              prompt: data.args.prompt,
+              agentArgs: data.args.agentArgs || [],
+              basePath: data.cwd,
+              targetBranch: branch,
+              runAgent,
+              logger: (msg) => {
+                logger.info(msg);
+                writeProgress({ type: 'progress', message: msg, timestamp: Date.now() });
+              }
+            });
+            
+            const result = 'Worktree workflow completed successfully';
+            registry.updateTask(data.taskId, { status: 'completed', result, endTime: Date.now() });
+            writeProgress({ type: 'complete', result, timestamp: Date.now() });
+            logger.info('Task completed');
+          } catch (error) {
+            const message = error.message || String(error);
+            registry.updateTask(data.taskId, { status: 'failed', error: message, endTime: Date.now() });
+            writeProgress({ type: 'error', error: message, timestamp: Date.now() });
+            logger.error('Task failed: ' + message);
+            process.exit(1);
+          } finally {
+            registry.dispose();
+          }
+        })();
+      `.trim();
+      
       try {
-        // Capture stderr to log errors
-        const child = spawn(process.execPath, [runnerPath, "--payload", payload], {
-          cwd: request.context.cwd,
+        // Spawn node with inline script
+        const child = spawn(process.execPath, ['--input-type=module', '-e', inlineScript], {
+          cwd: path.join(fileURLToPath(new URL('.', import.meta.url)), '..'),
           detached: true,
           stdio: ["ignore", "ignore", "pipe"], // Capture stderr
           env: {
