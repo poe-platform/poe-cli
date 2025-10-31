@@ -543,7 +543,7 @@ export class AgentTaskRegistry {
     }
   }
 
-  private archiveTask(id: string): void {
+  archiveTask(id: string): void {
     const archiveDir = path.join(this.tasksDir, "archive");
     if (!this.fs.existsSync(archiveDir)) {
       this.fs.mkdirSync(archiveDir, { recursive: true });

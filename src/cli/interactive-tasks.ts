@@ -15,6 +15,7 @@ export interface TasksCommandOptions {
     | "waitForTask"
     | "getRunningTasks"
     | "updateTask"
+    | "archiveTask"
   >;
   fs: FsLike;
   now: () => number;
@@ -37,7 +38,7 @@ export async function handleTasksCommand(
 ): Promise<string> {
   const parsed = parseArgs(args);
   
-  // Handle cleanup-all flag (archives all failed/completed tasks)
+  // Handle cleanup-all flag (archives all failed/completed tasks immediately)
   if (parsed.flags.cleanupAll) {
     const allTasks = options.registry.getAllTasks();
     const toCleanup = allTasks.filter(
@@ -45,16 +46,12 @@ export async function handleTasksCommand(
     );
     
     for (const task of toCleanup) {
-      // Mark for archival by setting endTime if not set
-      if (!task.endTime) {
-        options.registry.updateTask(task.id, {
-          endTime: options.now()
-        });
-      }
+      // Archive immediately
+      options.registry.archiveTask(task.id);
     }
     
     return toCleanup.length > 0
-      ? `Marked ${toCleanup.length} task(s) for cleanup. They will be archived on next registry init.`
+      ? `Archived ${toCleanup.length} task(s).`
       : "No tasks to clean up.";
   }
   
