@@ -81,6 +81,8 @@ export async function handleTasksCommand(
   }
   
   if (!parsed.id) {
+    // Trigger zombie detection before listing tasks
+    options.registry.getRunningTasks();
     return renderTaskList(options.registry.getAllTasks(), options.now);
   }
 
