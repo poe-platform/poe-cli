@@ -302,41 +302,72 @@ export class DefaultToolExecutor implements ToolExecutor {
         }
       });
       
-      // Build human-readable command
-      const commandParts = [request.toolName];
+      // Build human-readable CLI command
+      const commandParts = ["spawn-git-worktree"];
       if (request.args.agent) {
-        commandParts.push(`--agent=${request.args.agent}`);
+        commandParts.push(String(request.args.agent));
       }
       if (request.args.prompt) {
-        commandParts.push(`--prompt="${request.args.prompt}"`);
+        commandParts.push(`"${request.args.prompt}"`);
       }
       if (Array.isArray(request.args.agentArgs) && request.args.agentArgs.length > 0) {
         commandParts.push(...request.args.agentArgs.map(String));
       }
+      if (request.args.branch) {
+        commandParts.push(`--branch ${request.args.branch}`);
+      }
       const commandString = commandParts.join(" ");
       
       try {
+        // Capture stderr to log errors
         const child = spawn(process.execPath, [runnerPath, "--payload", payload], {
           cwd: request.context.cwd,
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", "ignore", "pipe"], // Capture stderr
           env: {
             ...process.env
           }
         });
         
+        // Capture stderr for error logging
+        let stderrData = "";
+        if (child.stderr) {
+          child.stderr.on("data", (data) => {
+            stderrData += data.toString();
+          });
+        }
+        
         // Register error handler BEFORE unref to catch early errors
         child.once("error", (error) => {
           const message = error instanceof Error ? error.message : String(error);
+          const fullError = stderrData ? `${message}\nStderr: ${stderrData}` : message;
           this.eventLogger("task_spawn_failed", {
             id: request.taskId,
-            message
+            message: fullError
           });
           this.taskRegistry?.updateTask(request.taskId, {
             status: "failed",
-            error: `Process error: ${message}`,
+            error: `Process error: ${fullError}`,
             endTime: this.now()
           });
+        });
+        
+        // Also capture exit with non-zero code
+        child.once("exit", (code, signal) => {
+          if (code !== null && code !== 0) {
+            const exitError = `Process exited with code ${code}${stderrData ? `\nStderr: ${stderrData}` : ""}`;
+            this.eventLogger("task_exit_error", {
+              id: request.taskId,
+              code,
+              signal,
+              stderr: stderrData
+            });
+            this.taskRegistry?.updateTask(request.taskId, {
+              status: "failed",
+              error: exitError,
+              endTime: this.now()
+            });
+          }
         });
         
         child.unref();
