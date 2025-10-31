@@ -1,6 +1,7 @@
 import type { ProviderSetting } from "../config/provider-settings.js";
 import { PoeSettingsPanel, registerPoeSettingsPanel } from "./components/settings-panel.js";
 import type { StrategyKind } from "./components/settings-panel.js";
+import { findLastUserIndex, type ConversationEntry } from "@poe/shared-utils";
 
 interface InitializeOptions {
   document: Document;
@@ -79,11 +80,53 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const notifications: ToolNotification[] = [];
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
   const pendingToolMessages = new Map<string, HTMLElement[]>();
+  type TimelineEntry = ConversationEntry & { element: HTMLElement };
+  const conversationTimeline: TimelineEntry[] = [];
   let activeModel = options.defaultModel;
   let activeView: "chat" | "history" | "settings" = "chat";
 
   function joinClasses(...values: Array<string | null | undefined>): string {
     return values.filter(Boolean).join(" ");
+  }
+
+  function appendTimelineEntry(entry: TimelineEntry): void {
+    conversationTimeline.push(entry);
+  }
+
+  function insertTimelineEntry(entry: TimelineEntry, index: number): void {
+    if (index < 0 || index >= conversationTimeline.length) {
+      conversationTimeline.push(entry);
+      return;
+    }
+    conversationTimeline.splice(index, 0, entry);
+  }
+
+  function clearTimeline(): void {
+    conversationTimeline.length = 0;
+  }
+
+  function rebuildTimelineFromDom(): void {
+    clearTimeline();
+    if (!messagesDiv) {
+      return;
+    }
+    const wrappers = Array.from(
+      messagesDiv.querySelectorAll<HTMLElement>(".message-wrapper")
+    );
+    for (const wrapper of wrappers) {
+      const tag = wrapper.getAttribute("data-test");
+      if (tag === "message-wrapper-user") {
+        appendTimelineEntry({ role: "user", element: wrapper });
+        continue;
+      }
+      if (tag === "message-wrapper-assistant") {
+        appendTimelineEntry({ role: "assistant", element: wrapper });
+        continue;
+      }
+      if (wrapper.classList.contains("tool")) {
+        appendTimelineEntry({ role: "tool", element: wrapper });
+      }
+    }
   }
 
   const uiClasses = {
@@ -403,6 +446,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     wrapper.appendChild(header);
     wrapper.appendChild(content);
     messagesDiv.appendChild(wrapper);
+    appendTimelineEntry({ role, element: wrapper });
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
@@ -507,7 +551,28 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
 
     wrapper.appendChild(content);
-    messagesDiv.appendChild(wrapper);
+
+    const entry: TimelineEntry = { role: "tool", element: wrapper };
+    const lastUserIndex = findLastUserIndex(conversationTimeline);
+    if (lastUserIndex >= 0) {
+      const anchor = conversationTimeline[lastUserIndex];
+      const parent = anchor.element.parentElement ?? messagesDiv;
+      if (parent) {
+        const nextSibling = anchor.element.nextSibling;
+        if (nextSibling) {
+          parent.insertBefore(wrapper, nextSibling);
+        } else {
+          parent.appendChild(wrapper);
+        }
+      } else {
+        messagesDiv.appendChild(wrapper);
+      }
+      insertTimelineEntry(entry, lastUserIndex + 1);
+    } else {
+      messagesDiv.appendChild(wrapper);
+      appendTimelineEntry(entry);
+    }
+
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     rememberToolMessage(details.toolName, wrapper);
   }
@@ -614,6 +679,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       messageInput.value = "";
     }
     pendingToolMessages.clear();
+    clearTimeline();
     setView("chat");
   }
 
@@ -685,6 +751,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
 
     messagesDiv.innerHTML = chat.messages.join("");
+    rebuildTimelineFromDom();
     setView("chat");
   }
 

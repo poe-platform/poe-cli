@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import path from "node:path";
+import { findLastUserIndex } from "@poe/shared-utils";
 
 interface InteractiveCliProps {
   onExit: () => void;
@@ -24,15 +25,6 @@ interface ToolCallDisplay {
   result?: string;
   error?: string;
   completed: boolean;
-}
-
-function findLastUserIndex(entries: Message[]): number {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    if (entries[index]?.role === "user") {
-      return index;
-    }
-  }
-  return -1;
 }
 
 export const InteractiveCli: React.FC<InteractiveCliProps> = ({
