@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { JSDOM } from "jsdom";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Window } from "happy-dom";
 import { renderAppShell } from "../vscode-extension/src/webview/layout.js";
-import { renderModelSelector } from "../vscode-extension/src/webview/model-selector.js";
 import type { ProviderSetting } from "../vscode-extension/src/config/provider-settings.js";
-import { initializeWebviewApp } from "../vscode-extension/src/webview/runtime.js";
+import type { WebviewApp } from "../vscode-extension/src/webview/runtime.js";
 
 const providers: ProviderSetting[] = [
   { id: "anthropic", label: "Claude-Sonnet-4.5" },
@@ -16,10 +15,7 @@ const shellHtml = renderAppShell({
   activeModel: providers[0]?.label ?? "",
 });
 
-const selectorHtml = renderModelSelector({
-  models: providers.map((provider) => provider.label),
-  selected: providers[0]?.label ?? "",
-});
+const modelOptions = providers.map((provider) => provider.label);
 
 vi.mock("vscode", () => {
   const noop = () => undefined;
@@ -57,7 +53,7 @@ vi.mock("vscode", () => {
   };
 });
 
-async function createDocument(): Promise<Document> {
+async function createEnvironment(): Promise<Window> {
   const { getWebviewContent } = await import("../vscode-extension/src/extension.js");
   const stubWebview = {
     cspSource: "vscode-resource:",
@@ -65,43 +61,93 @@ async function createDocument(): Promise<Document> {
   const html = getWebviewContent(stubWebview as any, {
     logoUri: "vscode-resource:/poe-bw.svg",
     appShellHtml: shellHtml,
-    modelSelectorHtml: selectorHtml,
     providerSettings: providers,
+    modelOptions,
     defaultModel: providers[0]?.label ?? "",
   });
-  const dom = new JSDOM(html, { url: "https://localhost" });
-  return dom.window.document;
+  const window = new Window();
+  window.document.write(html);
+  return window;
+}
+
+async function openSettings(document: Document) {
+  const trigger = document.querySelector(
+    "[data-action='open-settings']"
+  ) as HTMLButtonElement;
+  trigger.click();
+  const panel = document.getElementById("settings-panel") as HTMLElement & {
+    updateComplete?: Promise<unknown>;
+    shadowRoot: ShadowRoot;
+    open: boolean;
+  };
+  if ((panel as any).updateComplete) {
+    await (panel as any).updateComplete;
+  } else {
+    await Promise.resolve();
+  }
+  return panel;
 }
 
 describe("initializeWebviewApp", () => {
   let document: Document;
+  let windowRef: Window;
   let postMessage: ReturnType<typeof vi.fn>;
-  let app: ReturnType<typeof initializeWebviewApp>;
+  let app: WebviewApp;
+  let initializeWebviewApp: typeof import("../vscode-extension/src/webview/runtime.js").initializeWebviewApp;
 
   beforeEach(async () => {
-    document = await createDocument();
+    windowRef = await createEnvironment();
+    document = windowRef.document;
+    Object.assign(globalThis, {
+      window: windowRef as unknown as Window & typeof globalThis,
+      document,
+      CustomEvent: windowRef.CustomEvent,
+      Event: windowRef.Event,
+      MouseEvent: windowRef.MouseEvent,
+      HTMLElement: windowRef.HTMLElement,
+      customElements: windowRef.customElements,
+    });
+    vi.resetModules();
+    ({ initializeWebviewApp } = await import("../vscode-extension/src/webview/runtime.js"));
     postMessage = vi.fn();
     app = initializeWebviewApp({
       document,
       appShellHtml: shellHtml,
-      modelSelectorHtml: selectorHtml,
       providerSettings: providers,
+      modelOptions,
       defaultModel: providers[0]?.label ?? "",
       logoUrl: "vscode-resource:/poe-bw.svg",
       postMessage
     });
   });
 
-  it("renders provider models inside the navigation list", () => {
-    const items = Array.from(
-      document.querySelectorAll(".model-item")
-    ).map((item) => item.textContent?.trim());
-    expect(items).toEqual(["Claude-Sonnet-4.5", "GPT-4.1"]);
+  afterEach(() => {
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+    delete (globalThis as any).CustomEvent;
+    delete (globalThis as any).Event;
+    delete (globalThis as any).MouseEvent;
+    delete (globalThis as any).HTMLElement;
+    delete (globalThis as any).customElements;
   });
 
-  it("publishes model change when selecting a model from the list", () => {
-    const secondItem = document.querySelectorAll(".model-item")[1] as HTMLElement;
-    secondItem.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
+  it("registers provider metadata on the settings panel", () => {
+    const panel = document.getElementById("settings-panel") as any;
+    expect(panel.providers).toEqual(providers);
+  });
+
+  it("publishes model change when selecting provider inside the settings panel", async () => {
+    const panel = await openSettings(document);
+    postMessage.mockClear();
+
+    panel.dispatchEvent(
+      new document.defaultView!.CustomEvent("model-change", {
+        detail: { model: "GPT-4.1" },
+        bubbles: true,
+        composed: true,
+      })
+    );
+
     expect(postMessage).toHaveBeenCalledWith({
       type: "setModel",
       model: "GPT-4.1"
@@ -139,31 +185,24 @@ describe("initializeWebviewApp", () => {
     expect(assistantBubble?.innerHTML).toContain("<strong>Bold</strong>");
   });
 
-  it("shows provider settings when opening the settings panel", () => {
-    const settingsButton = document.querySelector("[data-action='open-settings']") as HTMLElement;
-    settingsButton.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
-
-    const panel = document.getElementById("settings-panel")!;
-    expect(panel.classList.contains("hidden")).toBe(false);
-
-    const providerItems = Array.from(
-      document.querySelectorAll("#provider-settings .provider-item strong")
-    ).map((item) => item.textContent?.trim());
-    expect(providerItems).toEqual(["Claude-Sonnet-4.5", "GPT-4.1"]);
+  it("marks the settings panel open when triggered", async () => {
+    const panel = await openSettings(document);
+    expect(panel.open).toBe(true);
   });
 
-  it("opens MCP configuration from the settings panel", () => {
-    const settingsButton = document.querySelector("[data-action='open-settings']") as HTMLElement;
-    settingsButton.dispatchEvent(new document.defaultView!.MouseEvent("click", { bubbles: true }));
+  it("opens MCP configuration from the settings panel", async () => {
+    const panel = await openSettings(document);
+    postMessage.mockClear();
 
-    const openMcpButton = document.querySelector(
-      "[data-action='settings-open-mcp']"
-    ) as HTMLButtonElement;
-    openMcpButton.dispatchEvent(
-      new document.defaultView!.MouseEvent("click", { bubbles: true })
+    panel.dispatchEvent(
+      new document.defaultView!.CustomEvent("open-mcp", {
+        bubbles: true,
+        composed: true,
+      })
     );
 
     expect(postMessage).toHaveBeenCalledWith({ type: "openSettings" });
+    expect(panel.open).toBe(false);
   });
 
   it("interleaves tool call updates in the transcript", () => {

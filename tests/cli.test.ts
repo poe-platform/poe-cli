@@ -1869,6 +1869,52 @@ beforeEach(() => {
     spawnSpy.mockRestore();
   });
 
+  it("spawns a poe-code agent using the built-in agent command", async () => {
+    const { prompt } = createPromptStub({});
+    const logs: string[] = [];
+    const chatFactory = vi.fn(async (options: any) => ({
+      setToolCallCallback: vi.fn(),
+      getModel: () => options.model,
+      async sendMessage(message: string) {
+        logs.push(`sent:${message}`);
+        return { role: "assistant", content: "Poe output" };
+      },
+      dispose: vi.fn()
+    }));
+    const program = createProgram({
+      fs,
+      prompts: prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      chatServiceFactory: chatFactory as any
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "poe-code",
+      "Explain the prompt",
+      "--",
+      "--model",
+      "GPT-5",
+      "--api-key",
+      "sk-explicit"
+    ]);
+
+    expect(chatFactory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "sk-explicit",
+        model: "GPT-5",
+        cwd,
+        homeDir
+      })
+    );
+    expect(logs.some((line) => line.includes("Poe Code response (GPT-5): Poe output"))).toBe(true);
+  });
+
   it("fails when spawn command exits with error", async () => {
     const { prompt } = createPromptStub({});
     const spawnSpy = vi

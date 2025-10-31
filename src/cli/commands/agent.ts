@@ -1,9 +1,9 @@
 import type { Command } from "commander";
-import type { CliContainer } from "../container.js";
 import { resolveCommandFlags } from "./shared.js";
 import { DEFAULT_QUERY_MODEL } from "../constants.js";
 import type { AgentToolCallEvent } from "../chat.js";
 import type { ScopedLogger } from "../logger.js";
+import type { CliContainer } from "../container.js";
 
 export interface AgentCommandOptions {
   apiKey?: string;
@@ -42,34 +42,55 @@ export function registerAgentCommand(
         dryRun: flags.dryRun
       });
 
-      const session = await container.chatServiceFactory({
-        apiKey,
+      const message = await runAgentConversation({
+        container,
+        logger,
+        text,
         model,
-        cwd: container.env.cwd,
-        homeDir: container.env.homeDir,
-        fs: container.fs,
-        logger: (message) => logger.info(message)
+        apiKey
       });
-
-      try {
-        if ("setToolCallCallback" in session && session.setToolCallCallback) {
-          session.setToolCallCallback((event) => logToolCallEvent(event, logger));
-        }
-        const response = await session.sendMessage(text);
-        const activeModel =
-          "getModel" in session && session.getModel
-            ? session.getModel()
-            : model;
-        logger.info(`Agent response (${activeModel}): ${response.content}`);
-      } finally {
-        if ("dispose" in session && session.dispose) {
-          await session.dispose();
-        }
-      }
+      logger.info(message);
     });
 }
 
-function logToolCallEvent(
+export interface AgentConversationOptions {
+  container: CliContainer;
+  logger: ScopedLogger;
+  text: string;
+  model: string;
+  apiKey: string;
+}
+
+export async function runAgentConversation(
+  options: AgentConversationOptions
+): Promise<string> {
+  const session = await options.container.chatServiceFactory({
+    apiKey: options.apiKey,
+    model: options.model,
+    cwd: options.container.env.cwd,
+    homeDir: options.container.env.homeDir,
+    fs: options.container.fs,
+    logger: (message) => options.logger.info(message)
+  });
+
+  try {
+    if ("setToolCallCallback" in session && session.setToolCallCallback) {
+      session.setToolCallCallback((event) => logToolCallEvent(event, options.logger));
+    }
+    const response = await session.sendMessage(options.text);
+    const activeModel =
+      "getModel" in session && session.getModel
+        ? session.getModel()
+        : options.model;
+    return `Agent response (${activeModel}): ${response.content}`;
+  } finally {
+    if ("dispose" in session && session.dispose) {
+      await session.dispose();
+    }
+  }
+}
+
+export function logToolCallEvent(
   event: AgentToolCallEvent,
   logger: ScopedLogger
 ): void {

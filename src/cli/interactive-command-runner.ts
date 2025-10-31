@@ -1,4 +1,4 @@
-import { CommanderError } from "commander";
+import { Command, CommanderError } from "commander";
 import { createProgram, type CliDependencies } from "./program.js";
 
 export interface ParsedInteractiveCommand {
@@ -39,6 +39,14 @@ export async function createInteractiveCommandExecutor(
     if (tokens.length === 0) {
       return null;
     }
+    const first = tokens[0];
+    if (first.toLowerCase() === "help") {
+      return {
+        command: "help",
+        tokens,
+        normalized: tokens
+      };
+    }
     const key = tokens[0];
     const canonical =
       commandMap.get(key) ?? commandMap.get(key.toLowerCase());
@@ -63,6 +71,10 @@ export async function createInteractiveCommandExecutor(
     }
 
     outputBuffer.length = 0;
+
+    if (parsed.command === "help") {
+      return renderHelp(program, parsed.tokens.slice(1));
+    }
 
     try {
       await program.parseAsync(
@@ -103,6 +115,38 @@ function buildCommandMap(
     }
   }
   return map;
+}
+
+function renderHelp(program: Command, topics: string[]): string {
+  if (topics.length === 0) {
+    return program.helpInformation();
+  }
+
+  const [topic, ...rest] = topics;
+  if (rest.length > 0) {
+    return `Unknown help topic "${topics.join(" ")}".`;
+  }
+
+  const command = findCommand(program, topic);
+  if (!command) {
+    return `Unknown help topic "${topic}".`;
+  }
+
+  return command.helpInformation();
+}
+
+function findCommand(program: Command, name: string): Command | undefined {
+  const direct = program.commands.find((cmd) => cmd.name() === name);
+  if (direct) {
+    return direct;
+  }
+  const lower = name.toLowerCase();
+  return program.commands.find((cmd) => {
+    if (cmd.name().toLowerCase() === lower) {
+      return true;
+    }
+    return cmd.aliases().some((alias) => alias === name || alias.toLowerCase() === lower);
+  });
 }
 
 function tokenizeInput(input: string): string[] {

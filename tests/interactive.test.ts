@@ -106,4 +106,14 @@ describe("Interactive command executor", () => {
     const stored = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
     expect(stored.apiKey).toBe("sk-live");
   });
+
+  it("shows CLI help when help command is used", async () => {
+    const executor = await createExecutor();
+
+    const parsed = executor.identify("help");
+    expect(parsed).toBeTruthy();
+
+    const output = await executor.execute(parsed!);
+    expect(output).toContain("Usage: poe-setup");
+  });
 });

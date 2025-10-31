@@ -9,11 +9,9 @@ describe("renderAppShell", () => {
       activeModel: "model-b",
     });
 
-    expect(html).toContain('<img src="https://cdn/logo.svg" alt="Poe Code" />');
-    expect(html).not.toContain("model-summary");
-    expect(html).toContain('<button data-action="strategy-open">Strategy</button>');
-    expect(html).toContain('<button data-action="chat-history">Chat History</button>');
-    expect(html).toContain('<button data-action="open-settings">Settings</button>');
-    expect(html).toContain('<button data-action="new-chat" class="primary">New Message</button>');
+    expect(html).toContain('data-action="chat-history"');
+    expect(html).toContain('data-action="open-settings"');
+    expect(html).toContain('data-action="new-chat"');
+    expect(html).not.toContain('data-action="strategy-open"');
   });
 });

@@ -8,41 +8,21 @@ function createDocument() {
   document.body.innerHTML = `
     <div data-slot="app-shell">
       <nav>
-        <button type="button" data-action="strategy-open">Strategy</button>
+        <button type="button" data-action="open-settings">Settings</button>
         <button type="button" data-action="new-chat">New</button>
+        <button type="button" data-action="chat-history">History</button>
       </nav>
     </div>
-    <div data-slot="model-selector"></div>
-    <div id="messages">
-      <div class="welcome-message">
-        <button type="button" data-action="strategy-open">Configure</button>
-      </div>
-    </div>
-    <section id="strategy-modal" class="strategy-modal hidden" aria-hidden="true">
-      <div class="strategy-surface">
-        <button type="button" class="strategy-close" data-action="strategy-close">Close</button>
-        <button type="button" id="strategy-toggle" role="switch" aria-checked="false">
-          <span class="strategy-thumb"></span>
-        </button>
-        <div class="strategy-options">
-          <button type="button" class="strategy-option" data-strategy="smart"></button>
-          <button type="button" class="strategy-option" data-strategy="mixed"></button>
-          <button type="button" class="strategy-option" data-strategy="round-robin"></button>
-          <button type="button" class="strategy-option" data-strategy="fixed"></button>
-        </div>
-      </div>
-    </div>
+    <div id="messages"></div>
     <textarea id="message-input"></textarea>
     <button id="send-button"></button>
     <button id="clear-button"></button>
     <div id="thinking-indicator" class="hidden"></div>
-    <span id="model-badge"></span>
-    <span id="strategy-badge"></span>
     <div id="tool-notifications"></div>
-    <div id="settings-panel" class="hidden">
-      <button data-action="settings-close"></button>
-      <button data-action="settings-open-mcp"></button>
-      <div id="provider-settings"></div>
+    <poe-settings-panel id="settings-panel"></poe-settings-panel>
+    <div id="chat-history" class="hidden">
+      <button data-action="history-close"></button>
+      <div class="chat-history-content"></div>
     </div>
   `;
   return { document, window };
@@ -57,16 +37,11 @@ describe("initializeWebviewApp", () => {
       document,
       appShellHtml: `
         <aside class="sidebar">
-          <ul class="model-list"></ul>
+          <button data-action="open-settings">Settings</button>
         </aside>
       `,
-      modelSelectorHtml: `
-        <div>
-          <input id="model-search" />
-          <datalist id="model-list"></datalist>
-        </div>
-      `,
       providerSettings: [],
+      modelOptions: ["Baseline"],
       defaultModel: "Baseline",
       logoUrl: "logo.svg",
       postMessage,
@@ -102,46 +77,59 @@ describe("initializeWebviewApp", () => {
     expect(assistantMessages[0].innerHTML).toContain("Hi there!");
   });
 
-  it("sends strategy updates when toggled or selecting options", () => {
-    const { document } = createDocument();
+  it("sends strategy updates when toggled or selecting options", async () => {
+    const { document, window } = createDocument();
     const postMessage = vi.fn();
 
     initializeWebviewApp({
       document,
       appShellHtml: `
         <nav>
-          <button data-action="strategy-open">Strategy</button>
+          <button data-action="open-settings">Settings</button>
         </nav>
       `,
-      modelSelectorHtml: "<div></div>",
       providerSettings: [],
+      modelOptions: ["Baseline"],
       defaultModel: "Baseline",
       logoUrl: "logo.svg",
       postMessage,
     });
 
     const openButton = document.querySelector(
-      "[data-action='strategy-open']"
+      "[data-action='open-settings']"
     ) as HTMLButtonElement;
     openButton.click();
-    const strategyModal = document.getElementById("strategy-modal") as HTMLElement;
-    expect(strategyModal.classList.contains("hidden")).toBe(false);
+
+    const settingsPanel = document.getElementById("settings-panel") as HTMLElement & {
+      updateComplete?: Promise<unknown>;
+      shadowRoot: ShadowRoot;
+    };
+    await (settingsPanel as any).updateComplete;
+
     expect(postMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ type: "getStrategyStatus" })
     );
 
-    const toggle = document.getElementById("strategy-toggle") as HTMLElement;
-    toggle.click();
+    settingsPanel.dispatchEvent(
+      new window.CustomEvent("strategy-toggle", {
+        detail: { enabled: true },
+        bubbles: true,
+        composed: true,
+      })
+    );
     expect(postMessage).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ type: "toggleStrategy", enabled: true })
     );
 
-    const smartOption = document.querySelector(
-      ".strategy-option[data-strategy='smart']"
-    ) as HTMLElement;
-    smartOption.click();
+    settingsPanel.dispatchEvent(
+      new window.CustomEvent("strategy-change", {
+        detail: { config: { type: "smart" } },
+        bubbles: true,
+        composed: true,
+      })
+    );
     expect(postMessage).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
@@ -158,15 +146,20 @@ describe("initializeWebviewApp", () => {
     const app = initializeWebviewApp({
       document,
       appShellHtml: "<div></div>",
-      modelSelectorHtml: "<div></div>",
       providerSettings: [],
+      modelOptions: ["Baseline"],
       defaultModel: "Baseline",
       logoUrl: "logo.svg",
       postMessage,
     });
 
-    const badge = document.getElementById("strategy-badge") as HTMLElement;
-    expect(badge.textContent).toBe("");
+    const settingsPanel = document.getElementById("settings-panel") as HTMLElement & {
+      strategyEnabled?: boolean;
+      strategyInfo?: string;
+      strategyType?: string;
+      activeModel?: string;
+    };
+    expect(settingsPanel.strategyEnabled).toBe(undefined);
 
     app.handleMessage({
       type: "strategyStatus",
@@ -175,7 +168,9 @@ describe("initializeWebviewApp", () => {
       currentModel: "GPT-5",
     });
 
-    expect(badge.textContent).toContain("Smart");
-    expect(badge.dataset.state).toBe("enabled");
+    expect(settingsPanel.strategyEnabled).toBe(true);
+    expect(settingsPanel.strategyInfo).toContain("smart");
+    expect(settingsPanel.strategyType).toBe("smart");
+    expect(settingsPanel.activeModel).toBe("GPT-5");
   });
 });

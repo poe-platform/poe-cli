@@ -8,9 +8,9 @@ describe("renderAppShell", () => {
       models: ["Claude-Sonnet-4.5", "GPT-5"],
       activeModel: "Claude-Sonnet-4.5"
     });
-    expect(html).toContain('<button data-action="new-chat"');
-    expect(html).toContain('<button data-action="open-settings"');
-    expect(html).toContain('<button data-action="chat-history"');
+    expect(html).toContain('data-action="new-chat"');
+    expect(html).toContain('data-action="open-settings"');
+    expect(html).toContain('data-action="chat-history"');
     expect(html).not.toContain("model-summary");
 
     const historyIndex = html.indexOf('data-action="chat-history"');

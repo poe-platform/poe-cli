@@ -102,8 +102,8 @@ describe("getWebviewContent", () => {
     const html = getWebviewContent(mockWebview as any, {
       logoUri: "logo",
       appShellHtml: "<div>shell</div>",
-      modelSelectorHtml: "<div>selector</div>",
       providerSettings: [],
+      modelOptions: ["Model"],
       defaultModel: "Model",
     });
 
@@ -132,8 +132,8 @@ describe("getWebviewContent", () => {
     const html = getWebviewContent(mockWebview as any, {
       logoUri: "logo",
       appShellHtml: "<div>shell</div>",
-      modelSelectorHtml: "<div>selector</div>",
       providerSettings: [],
+      modelOptions: ["Model"],
       defaultModel: "Model",
     });
 

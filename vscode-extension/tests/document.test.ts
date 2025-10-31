@@ -38,8 +38,8 @@ describe("getWebviewContent", () => {
       {
         logoUri: "logo.png",
         appShellHtml: "<div>shell</div>",
-        modelSelectorHtml: "<div>selector</div>",
         providerSettings: [],
+        modelOptions: ["Model"],
         defaultModel: "Model",
         bodyStartHtml: "<div id='preview-banner'></div>",
         additionalScripts: ["window.__preview__ = true;"],
@@ -50,7 +50,6 @@ describe("getWebviewContent", () => {
     expect(html).toContain("window.__preview__ = true;");
     expect(html).toContain("connect-src ws: wss:");
     expect(html).toContain("<div>shell</div>");
-    expect(html).toContain("<div>selector</div>");
     expect(html).toContain("<div id='preview-banner'></div>");
   });
 });
