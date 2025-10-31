@@ -60,13 +60,24 @@ export async function handleTasksCommand(
   
   // Handle cleanup flag (detects and marks zombie tasks)
   if (parsed.flags.cleanup) {
-    // Trigger zombie detection by calling getRunningTasks
-    const beforeCount = options.registry.getRunningTasks().length;
-    const afterCount = options.registry.getRunningTasks().length;
-    const cleaned = beforeCount - afterCount;
-    return cleaned > 0
-      ? `Cleaned up ${cleaned} zombie task(s).`
-      : "No zombie tasks found.";
+    const allTasks = options.registry.getAllTasks();
+    const runningBefore = allTasks.filter((t) => t.status === "running");
+    
+    // Trigger zombie detection by calling getRunningTasks (modifies tasks in-place)
+    options.registry.getRunningTasks();
+    
+    // Check how many are still running after zombie detection
+    const allTasksAfter = options.registry.getAllTasks();
+    const runningAfter = allTasksAfter.filter((t) => t.status === "running");
+    const cleaned = runningBefore.length - runningAfter.length;
+    
+    if (cleaned > 0) {
+      const zombieIds = runningBefore
+        .filter((t) => !runningAfter.find((r) => r.id === t.id))
+        .map((t) => t.id);
+      return `Cleaned up ${cleaned} zombie task(s):\n${zombieIds.join("\n")}`;
+    }
+    return "No zombie tasks found.";
   }
   
   if (!parsed.id) {
