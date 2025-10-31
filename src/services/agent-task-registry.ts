@@ -1,4 +1,4 @@
-import type { FSWatcher } from "node:fs";
+import type { FSWatcher, Stats } from "node:fs";
 import path from "node:path";
 
 export type AgentTaskStatus = "running" | "completed" | "failed" | "killed";
@@ -25,6 +25,8 @@ export interface ProgressUpdate {
   timestamp: number;
 }
 
+type MinimalStats = Pick<Stats, "size" | "mtimeMs">;
+
 export interface FsLike {
   promises: {
     mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
@@ -40,7 +42,7 @@ export interface FsLike {
       options?: { encoding?: BufferEncoding }
     ): Promise<void>;
     readdir(path: string): Promise<string[]>;
-    stat(path: string): Promise<{ mtimeMs: number }>;
+    stat(path: string): Promise<MinimalStats>;
     unlink(path: string): Promise<void>;
     rename(oldPath: string, newPath: string): Promise<void>;
   };
@@ -53,7 +55,7 @@ export interface FsLike {
   readFileSync(path: string, encoding: BufferEncoding): string;
   writeFileSync(path: string, data: string, options?: { encoding?: BufferEncoding }): void;
   appendFileSync(path: string, data: string): void;
-  statSync(path: string): { size: number };
+  statSync(path: string): MinimalStats;
   unlinkSync(path: string): void;
   renameSync(oldPath: string, newPath: string): void;
   readdirSync(path: string): string[];

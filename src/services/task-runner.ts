@@ -5,6 +5,7 @@ import { TaskLogger } from "./task-logger.js";
 import { AgentTaskRegistry } from "./agent-task-registry.js";
 import type { FsLike, ProgressUpdate } from "./agent-task-registry.js";
 import { DefaultToolExecutor } from "./tools.js";
+import type { FileSystem } from "../utils/file-system.js";
 
 export interface TaskRunnerOptions {
   fs: FsLike;
@@ -131,6 +132,7 @@ async function main(): Promise<void> {
   }
 
   const fsLike = fs as unknown as FsLike;
+  const nodeFileSystem = createNodeFileSystem();
   const registry = new AgentTaskRegistry({
     fs: fsLike,
     tasksDir: payload.directories.tasks,
@@ -139,7 +141,7 @@ async function main(): Promise<void> {
 
   try {
     const executor = new DefaultToolExecutor({
-      fs: fs.promises,
+      fs: nodeFileSystem,
       cwd: payload.context.cwd
     });
 
@@ -172,4 +174,35 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(modulePath
     console.error("Task runner failed", error);
     process.exitCode = 1;
   });
+}
+
+function createNodeFileSystem(): FileSystem {
+  const promises = fs.promises;
+
+  function readFile(path: string, encoding: BufferEncoding): Promise<string>;
+  function readFile(path: string): Promise<Buffer>;
+  function readFile(path: string, encoding?: BufferEncoding) {
+    if (encoding) {
+      return promises.readFile(path, encoding);
+    }
+    return promises.readFile(path);
+  }
+
+  return {
+    readFile,
+    writeFile: async (path, data, options) => {
+      await promises.writeFile(path, data, options);
+    },
+    mkdir: async (target, options) => {
+      await promises.mkdir(target, options);
+    },
+    stat: (target) => promises.stat(target),
+    unlink: (target) => promises.unlink(target),
+    readdir: (target) => promises.readdir(target),
+    rm: promises.rm ? ((path, options) => promises.rm(path, options)) : undefined,
+    copyFile: promises.copyFile
+      ? ((src, dest) => promises.copyFile(src, dest))
+      : undefined,
+    chmod: promises.chmod ? ((target, mode) => promises.chmod(target, mode)) : undefined
+  };
 }

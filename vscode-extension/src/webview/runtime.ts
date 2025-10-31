@@ -330,7 +330,8 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     const wrapper = doc.createElement("div");
     wrapper.className = joinClasses(
       uiClasses.messageWrapperBase,
-      role === "assistant" ? uiClasses.messageWrapperAssistant : uiClasses.messageWrapperUser
+      role === "assistant" ? uiClasses.messageWrapperAssistant : uiClasses.messageWrapperUser,
+      role
     );
     wrapper.setAttribute("data-test", role === "assistant" ? "message-wrapper-assistant" : "message-wrapper-user");
 
