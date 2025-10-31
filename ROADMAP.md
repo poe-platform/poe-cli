@@ -1,15 +1,12 @@
 <!-- Must keep this document up to date -->
 # Roadmap
 
-## vscode extension
-
-- 
-
 ## cli
 
-- [ ] add another alias `poe-code` for interactive CLI
-- [ ] `help` is broken in interactive mode
+- [x] add another alias `poe-code` for interactive CLI
+- [x] `help` is broken in interactive mode
 - [ ] can you roll own terminal markdown renderer and add support for that. For unsupported formatting, you can just render as plaintext. 
+- [x] spawn should support also poe-code (poe-cli agent)
 
 ## vscode extension
 
@@ -24,8 +21,9 @@
 ## issue-resolution-agent
 
 - [ ] It should run pr checks, and currently doesn't
-- [ ] support poe-code agent `poe-cli agent`
+- [ ] support tag `poe-code` aliased to agent `poe-cli agent`
 
 ## Poe Agent
-- [ ] Ability to spawn any supported sub-agents (including new worktrees) (add specialized tool for this)
+- [ ] Ability to spawn any supported sub-agents (including new worktrees)
+    - only configured agents are exposed as options, see below
 - [ ] configure utility should store in the own json config file also which agents are config and offer those dynamically in the tool description
