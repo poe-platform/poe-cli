@@ -2,6 +2,7 @@ import type { Tool, ToolExecutor } from "./chat.js";
 import type { FileSystem } from "../utils/file-system.js";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { McpManager } from "./mcp-manager.js";
 import { spawnGitWorktree } from "../commands/spawn-worktree.js";
 import { spawnCodex } from "./codex.js";
@@ -9,6 +10,25 @@ import { spawnClaudeCode } from "./claude-code.js";
 import { spawnOpenCode } from "./opencode.js";
 import { simpleGit as createSimpleGit } from "simple-git";
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
+import type { AgentTaskRegistry } from "./agent-task-registry.js";
+
+interface BackgroundTaskRequest {
+  taskId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  context: {
+    cwd: string;
+  };
+}
+
+type BackgroundTaskSpawner = (request: BackgroundTaskRequest) => Promise<void> | void;
+
+interface ParsedWorktreeArgs {
+  agent: "codex" | "claude-code" | "opencode";
+  prompt: string;
+  agentArgs: string[];
+  branch?: string;
+}
 
 export interface ToolExecutorDependencies {
   fs: FileSystem;
@@ -21,6 +41,10 @@ export interface ToolExecutorDependencies {
     previousContent: string | null;
     nextContent: string;
   }) => void | Promise<void>;
+  taskRegistry?: AgentTaskRegistry;
+  spawnBackgroundTask?: BackgroundTaskSpawner;
+  logger?: (event: string, payload?: Record<string, unknown>) => void;
+  now?: () => number;
 }
 
 export class DefaultToolExecutor implements ToolExecutor {
@@ -29,6 +53,10 @@ export class DefaultToolExecutor implements ToolExecutor {
   private allowedPaths: string[];
   private mcpManager?: McpManager;
   private onWriteFile?: ToolExecutorDependencies["onWriteFile"];
+  private taskRegistry?: AgentTaskRegistry;
+  private spawnTask?: BackgroundTaskSpawner;
+  private eventLogger: (event: string, payload?: Record<string, unknown>) => void;
+  private now: () => number;
 
   constructor(dependencies: ToolExecutorDependencies) {
     this.fs = dependencies.fs;
@@ -36,6 +64,12 @@ export class DefaultToolExecutor implements ToolExecutor {
     this.allowedPaths = dependencies.allowedPaths || [dependencies.cwd];
     this.mcpManager = dependencies.mcpManager;
     this.onWriteFile = dependencies.onWriteFile;
+    this.taskRegistry = dependencies.taskRegistry;
+    this.eventLogger = dependencies.logger ?? (() => {});
+    this.now = dependencies.now ?? Date.now;
+    this.spawnTask =
+      dependencies.spawnBackgroundTask ??
+      (this.taskRegistry ? this.createBackgroundSpawner() : undefined);
   }
 
   async executeTool(
@@ -218,36 +252,106 @@ export class DefaultToolExecutor implements ToolExecutor {
   private async spawnGitWorktreeTool(
     args: Record<string, unknown>
   ): Promise<string> {
-    const agent = args.agent;
-    if (typeof agent !== "string" || agent.length === 0) {
-      throw new Error("Missing required parameter: agent");
-    }
-    if (
-      agent !== "codex" &&
-      agent !== "claude-code" &&
-      agent !== "opencode"
-    ) {
-      throw new Error(`Unsupported agent "${agent}".`);
+    const parsed = this.parseWorktreeArgs(args);
+    const serializableArgs: Record<string, unknown> = {
+      agent: parsed.agent,
+      prompt: parsed.prompt,
+      agentArgs: parsed.agentArgs
+    };
+    if (parsed.branch) {
+      serializableArgs.branch = parsed.branch;
     }
 
-    const prompt = args.prompt;
-    if (typeof prompt !== "string" || prompt.length === 0) {
-      throw new Error("Missing required parameter: prompt");
+    if (this.taskRegistry && this.spawnTask) {
+      const taskId = this.taskRegistry.registerTask({
+        toolName: "spawn_git_worktree",
+        args: serializableArgs
+      });
+      await Promise.resolve(
+        this.spawnTask({
+          taskId,
+          toolName: "spawn_git_worktree",
+          args: serializableArgs,
+          context: { cwd: this.cwd }
+        })
+      );
+      this.eventLogger("task_queued", {
+        id: taskId,
+        tool: "spawn_git_worktree"
+      });
+      return `Started background task ${taskId}`;
     }
 
-    const agentArgsInput = args.agentArgs;
-    const agentArgs = Array.isArray(agentArgsInput)
-      ? agentArgsInput.map((value) => String(value))
-      : [];
+    return await this.executeWorktreeSynchronously(parsed);
+  }
 
-    const branchOverride =
-      typeof args.branch === "string" && args.branch.length > 0
-        ? args.branch
-        : undefined;
+  private createBackgroundSpawner(): BackgroundTaskSpawner {
+    return (request) => {
+      if (!this.taskRegistry) {
+        return;
+      }
+      const runnerPath = fileURLToPath(new URL("./task-runner.js", import.meta.url));
+      const payload = JSON.stringify({
+        taskId: request.taskId,
+        toolName: request.toolName,
+        args: request.args,
+        context: request.context,
+        directories: {
+          tasks: this.taskRegistry.getTasksDirectory(),
+          logs: this.taskRegistry.getLogsDirectory()
+        }
+      });
+      try {
+        const child = spawn(process.execPath, [runnerPath, "--payload", payload], {
+          cwd: request.context.cwd,
+          detached: true,
+          stdio: "ignore",
+          env: {
+            ...process.env
+          }
+        });
+        child.once("error", (error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.eventLogger("task_spawn_failed", {
+            id: request.taskId,
+            message
+          });
+          this.taskRegistry?.updateTask(request.taskId, {
+            status: "failed",
+            error: message,
+            endTime: this.now()
+          });
+        });
+        child.unref();
+        if (typeof child.pid === "number") {
+          this.taskRegistry.updateTask(request.taskId, { pid: child.pid });
+        }
+        this.eventLogger("task_spawned", {
+          id: request.taskId,
+          tool: request.toolName,
+          pid: child.pid ?? null
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.eventLogger("task_spawn_error", {
+          id: request.taskId,
+          message
+        });
+        this.taskRegistry.updateTask(request.taskId, {
+          status: "failed",
+          error: message,
+          endTime: this.now()
+        });
+      }
+    };
+  }
 
+  private async executeWorktreeSynchronously(
+    input: ParsedWorktreeArgs
+  ): Promise<string> {
     const git = createSimpleGit({ baseDir: this.cwd });
-    const targetBranch = branchOverride
-      ? branchOverride
+    const branch = input.branch
+      ? input.branch
       : (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
 
     const logs: string[] = [];
@@ -257,44 +361,44 @@ export class DefaultToolExecutor implements ToolExecutor {
     ): Promise<CommandRunnerResult> =>
       runCommandInCwd(command, commandArgs, this.cwd);
 
-    const runAgent = async (input: {
+    const runAgent = async (details: {
       agent: string;
       prompt: string;
       args: string[];
       cwd: string;
     }): Promise<CommandRunnerResult> => {
-      if (input.agent !== agent) {
+      if (details.agent !== input.agent) {
         throw new Error(
-          `Mismatched agent "${input.agent}" (expected "${agent}").`
+          `Mismatched agent "${details.agent}" (expected "${input.agent}").`
         );
       }
-      if (agent === "codex") {
+      if (input.agent === "codex") {
         return await spawnCodex({
-          prompt: input.prompt,
-          args: input.args,
+          prompt: details.prompt,
+          args: details.args,
           runCommand: runner
         });
       }
-      if (agent === "claude-code") {
+      if (input.agent === "claude-code") {
         return await spawnClaudeCode({
-          prompt: input.prompt,
-          args: input.args,
+          prompt: details.prompt,
+          args: details.args,
           runCommand: runner
         });
       }
       return await spawnOpenCode({
-        prompt: input.prompt,
-        args: input.args,
+        prompt: details.prompt,
+        args: details.args,
         runCommand: runner
       });
     };
 
     await spawnGitWorktree({
-      agent,
-      prompt,
-      agentArgs,
+      agent: input.agent,
+      prompt: input.prompt,
+      agentArgs: input.agentArgs,
       basePath: this.cwd,
-      targetBranch,
+      targetBranch: branch,
       runAgent,
       logger: (message) => {
         logs.push(message);
@@ -306,6 +410,38 @@ export class DefaultToolExecutor implements ToolExecutor {
     }
 
     return logs.join("\n");
+  }
+
+  private parseWorktreeArgs(args: Record<string, unknown>): ParsedWorktreeArgs {
+    const agentValue = args.agent;
+    if (typeof agentValue !== "string" || agentValue.length === 0) {
+      throw new Error("Missing required parameter: agent");
+    }
+    if (agentValue !== "codex" && agentValue !== "claude-code" && agentValue !== "opencode") {
+      throw new Error(`Unsupported agent "${agentValue}".`);
+    }
+
+    const promptValue = args.prompt;
+    if (typeof promptValue !== "string" || promptValue.length === 0) {
+      throw new Error("Missing required parameter: prompt");
+    }
+
+    const agentArgsValue = args.agentArgs;
+    const agentArgs = Array.isArray(agentArgsValue)
+      ? agentArgsValue.map((entry) => String(entry))
+      : [];
+
+    const branchValue =
+      typeof args.branch === "string" && args.branch.length > 0
+        ? args.branch
+        : undefined;
+
+    return {
+      agent: agentValue as ParsedWorktreeArgs["agent"],
+      prompt: promptValue,
+      agentArgs,
+      branch: branchValue
+    };
   }
 
   private async tryReadFile(targetPath: string): Promise<string | null> {

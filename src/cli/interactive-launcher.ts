@@ -3,21 +3,25 @@ import { render } from "ink";
 import { InteractiveCli } from "./interactive.js";
 import type { CliDependencies } from "./program.js";
 import path from "node:path";
+import * as nodeFs from "node:fs";
 import { loadCredentials } from "../services/credentials.js";
 import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
 import { McpManager } from "../services/mcp-manager.js";
 import { createInteractiveCommandExecutor } from "./interactive-command-runner.js";
 import { resolveCredentialsPath } from "./environment.js";
+import { AgentTaskRegistry } from "../services/agent-task-registry.js";
+import type { FsLike } from "../services/agent-task-registry.js";
+import { handleTasksCommand } from "./interactive-tasks.js";
 
 export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
-  const { fs, env } = dependencies;
+  const { fs: fileSystem, env } = dependencies;
   const credentialsPath = resolveCredentialsPath(env.homeDir);
 
   // Initialize MCP manager
-  const mcpManager = new McpManager(fs, env.homeDir);
+  const mcpManager = new McpManager(fileSystem, env.homeDir);
 
   // Auto-connect to configured MCP servers
   try {
@@ -28,7 +32,7 @@ export async function launchInteractiveMode(
 
   // Initialize chat service
   let chatService: PoeChatService | null = null;
-  const apiKey = await loadCredentials({ fs, filePath: credentialsPath });
+  const apiKey = await loadCredentials({ fs: fileSystem, filePath: credentialsPath });
 
   // Tool call callback handler (will be set by React component)
   let toolCallHandler: ((toolName: string, args: Record<string, unknown>, result?: string, error?: string) => void) | undefined;
@@ -37,7 +41,7 @@ export async function launchInteractiveMode(
   let systemPrompt: string | undefined;
   try {
     const systemPromptPath = path.join(env.cwd, "SYSTEM_PROMPT.md");
-    systemPrompt = await fs.readFile(systemPromptPath, "utf8");
+    systemPrompt = await fileSystem.readFile(systemPromptPath, "utf8");
   } catch {
     // System prompt file doesn't exist, use default behavior
   }
@@ -57,19 +61,36 @@ export async function launchInteractiveMode(
     }
   };
 
+  const tasksDir = path.join(env.homeDir, ".poe-setup", "tasks");
+  const logsDir = path.join(env.homeDir, ".poe-setup", "logs", "tasks");
+  const fsLike = nodeFs as unknown as FsLike;
+  const taskRegistry = new AgentTaskRegistry({
+    fs: fsLike,
+    tasksDir,
+    logsDir,
+    logger: (event, payload) => {
+      dependencies.logger?.(`task:${event} ${JSON.stringify(payload ?? {})}`);
+    }
+  });
+
   async function initializeChatService(apiKeyValue: string): Promise<string> {
     const toolExecutor = new DefaultToolExecutor({
-      fs,
+      fs: fileSystem,
       cwd: env.cwd,
       allowedPaths: [env.cwd, env.homeDir],
-      mcpManager
+      mcpManager,
+      taskRegistry,
+      logger: (event, payload) => {
+        dependencies.logger?.(`tool:${event} ${JSON.stringify(payload ?? {})}`);
+      }
     });
     chatService = new PoeChatService(
       apiKeyValue,
       "Claude-Sonnet-4.5",
       toolExecutor,
       forwardToolCall,
-      systemPrompt
+      systemPrompt,
+      taskRegistry
     );
     return "Chat service initialized with Claude-Sonnet-4.5";
   }
@@ -197,6 +218,15 @@ export async function launchInteractiveMode(
         return result;
       }
 
+      if (slashCommand === "tasks") {
+        const output = await handleTasksCommand(slashArgs, {
+          registry: taskRegistry,
+          fs: fsLike,
+          now: Date.now
+        });
+        return output;
+      }
+
       if (slashCommand === "mcp") {
         if (slashArgs.length === 0) {
           const servers = await mcpManager.listServers();
@@ -298,7 +328,7 @@ Example:
     if (parsedCommand) {
       let message = await commandExecutor.execute(parsedCommand);
       if (parsedCommand.command === "login") {
-        const stored = await loadCredentials({ fs, filePath: credentialsPath });
+        const stored = await loadCredentials({ fs: fileSystem, filePath: credentialsPath });
         if (stored) {
           const chatMessage = await initializeChatService(stored);
           message = message ? `${message}\n${chatMessage}` : chatMessage;
@@ -327,7 +357,7 @@ Example:
                   const absolutePath = path.isAbsolute(filePath)
                     ? filePath
                     : path.join(env.cwd, filePath);
-                  const content = await fs.readFile(absolutePath, "utf8");
+              const content = await fileSystem.readFile(absolutePath, "utf8");
                   fileContents.push(`\n\n--- Content of ${filePath} ---\n${content}\n--- End of ${filePath} ---`);
                 } catch (error) {
                   fileContents.push(`\n\n[Error reading ${filePath}: ${error instanceof Error ? error.message : String(error)}]`);
@@ -366,11 +396,12 @@ Example:
       onSetToolCallHandler: setToolCallHandler,
       cwd: env.cwd,
       fs: {
-        readdir: (path: string) => fs.readdir(path),
-        stat: (path: string) => fs.stat(path)
+        readdir: (path: string) => fileSystem.readdir(path),
+        stat: (path: string) => fileSystem.stat(path)
       }
     })
   );
 
   await waitUntilExit();
+  taskRegistry.dispose();
 }

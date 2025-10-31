@@ -5,6 +5,7 @@ import {
   StrategyConfigManager,
   ModelContext,
 } from "./model-strategy.js";
+import type { AgentTaskRegistry } from "./agent-task-registry.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -84,19 +85,22 @@ export class PoeChatService {
   private onToolCall?: ToolCallCallback;
   private modelStrategy?: ModelStrategy;
   private strategyEnabled: boolean = false;
+  private taskRegistry?: AgentTaskRegistry;
 
   constructor(
     apiKey: string,
     model: string = "Claude-Sonnet-4.5",
     toolExecutor?: ToolExecutor,
     onToolCall?: ToolCallCallback,
-    systemPrompt?: string
+    systemPrompt?: string,
+    taskRegistry?: AgentTaskRegistry
   ) {
     this.apiKey = apiKey;
     this.baseUrl = "https://api.poe.com/v1";
     this.currentModel = model;
     this.toolExecutor = toolExecutor;
     this.onToolCall = onToolCall;
+    this.taskRegistry = taskRegistry;
 
     // Load saved strategy configuration
     const savedConfig = StrategyConfigManager.loadConfig();
@@ -179,6 +183,7 @@ export class PoeChatService {
     userMessage: string,
     tools?: Tool[]
   ): Promise<ChatMessage> {
+    this.injectCompletedTasks();
     // Add user message to history
     this.conversationHistory.push({
       role: "user",
@@ -276,6 +281,25 @@ export class PoeChatService {
     }
 
     throw new Error("Maximum tool call iterations reached");
+  }
+
+  private injectCompletedTasks(): void {
+    if (!this.taskRegistry) {
+      return;
+    }
+    const completed = this.taskRegistry.getCompletedTasks();
+    if (completed.length === 0) {
+      return;
+    }
+    for (const task of completed) {
+      const symbol = task.status === "completed" ? "✅" : task.status === "failed" ? "❌" : "⏹";
+      const details = task.result ?? task.error ?? "Task finished.";
+      this.conversationHistory.push({
+        role: "system",
+        content: `${symbol} Task ${task.id} finished\n\n${details}`
+      });
+    }
+    this.taskRegistry.clearCompleted();
   }
 
   private detectMessageContext(message: string): ModelContext {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import * as fs from "node:fs";
 import type { FileSystem } from "../utils/file-system.js";
 import { DefaultToolExecutor, getAvailableTools } from "./tools.js";
 import { McpManager } from "./mcp-manager.js";
@@ -7,6 +8,8 @@ import {
   type ChatMessage,
   type ToolCallCallback
 } from "./chat.js";
+import { AgentTaskRegistry } from "./agent-task-registry.js";
+import type { FsLike } from "./agent-task-registry.js";
 
 export interface AgentSession {
   getModel(): string;
@@ -47,11 +50,24 @@ export async function createAgentSession(
   const cwdContext = `\n\nIMPORTANT: You are working in the directory: ${options.cwd}\nWhen accessing files, use paths relative to this directory.`;
   systemPrompt = systemPrompt ? `${systemPrompt}${cwdContext}` : cwdContext;
 
+  const tasksDir = path.join(options.homeDir, ".poe-setup", "tasks");
+  const logsDir = path.join(options.homeDir, ".poe-setup", "logs", "tasks");
+  const nativeFs = fs as unknown as FsLike;
+  const taskRegistry = new AgentTaskRegistry({
+    fs: nativeFs,
+    tasksDir,
+    logsDir,
+    logger: (event, payload) => {
+      options.logger(`task:${event} ${JSON.stringify(payload ?? {})}`);
+    }
+  });
+
   const toolExecutor = new DefaultToolExecutor({
     fs: options.fs,
     cwd: options.cwd,
     allowedPaths: [options.cwd, options.homeDir],
     mcpManager,
+    taskRegistry,
     onWriteFile: async ({ relativePath }) => {
       options.logger(`Tool write_file -> ${relativePath}`);
     }
@@ -65,7 +81,8 @@ export async function createAgentSession(
     (event) => {
       toolCallback?.(event);
     },
-    systemPrompt
+    systemPrompt,
+    taskRegistry
   );
 
   return {
@@ -81,6 +98,7 @@ export async function createAgentSession(
       return chatService.sendMessage(prompt, tools);
     },
     async dispose() {
+      taskRegistry.dispose();
       await mcpManager.disconnectAll();
     }
   };

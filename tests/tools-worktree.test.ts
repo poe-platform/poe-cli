@@ -77,7 +77,70 @@ describe("worktree tool", () => {
     vol.mkdirSync("/repo", { recursive: true });
   });
 
-  it("invokes spawnGitWorktree with provided options", async () => {
+  it("registers an async task and starts the background runner", async () => {
+    const { DefaultToolExecutor } = await import("../src/services/tools.js");
+    const registerTask = vi.fn(() => "task_1");
+    const getTask = vi.fn(() => ({
+      id: "task_1",
+      toolName: "spawn_git_worktree",
+      args: {
+        agent: "codex",
+        prompt: "Implement feature",
+        agentArgs: ["--verbose"]
+      },
+      status: "running",
+      startTime: 1,
+      logFile: "/logs/task_1.log",
+      progressFile: "/tasks/task_1.progress.jsonl"
+    }));
+    const background = vi.fn();
+
+    const executor = new DefaultToolExecutor({
+      fs,
+      cwd: "/repo",
+      taskRegistry: {
+        registerTask,
+        getTask,
+        updateTask: vi.fn(),
+        onTaskComplete: vi.fn(),
+        onTaskProgress: vi.fn(),
+        getCompletedTasks: () => [],
+        clearCompleted: vi.fn()
+      } as unknown as any,
+      spawnBackgroundTask: background
+    });
+
+    const result = await executor.executeTool("spawn_git_worktree", {
+      agent: "codex",
+      prompt: "Implement feature",
+      agentArgs: ["--verbose"]
+    });
+
+    expect(registerTask).toHaveBeenCalledWith({
+      toolName: "spawn_git_worktree",
+      args: {
+        agent: "codex",
+        prompt: "Implement feature",
+        agentArgs: ["--verbose"]
+      }
+    });
+    expect(background).toHaveBeenCalledWith({
+      taskId: "task_1",
+      toolName: "spawn_git_worktree",
+      args: {
+        agent: "codex",
+        prompt: "Implement feature",
+        agentArgs: ["--verbose"]
+      },
+      context: {
+        cwd: "/repo"
+      }
+    });
+    expect(result).toContain("Started background task task_1");
+    expect(spawnGitWorktreeMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to synchronous execution when async infrastructure unavailable", async () => {
     const { DefaultToolExecutor } = await import("../src/services/tools.js");
     const executor = new DefaultToolExecutor({
       fs,
