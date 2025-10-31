@@ -86,6 +86,15 @@ export async function spawnGitWorktree(
       ...options,
       context
     });
+    const trimmedStdout = initialResult.stdout.trim();
+    if (trimmedStdout.length > 0) {
+      options.logger(trimmedStdout);
+    }
+    const trimmedStderr = initialResult.stderr.trim();
+    if (trimmedStderr.length > 0) {
+      options.logger(trimmedStderr);
+    }
+
     if (initialResult.exitCode !== 0) {
       return preserveAndThrow("Agent execution failed", initialResult);
     }
