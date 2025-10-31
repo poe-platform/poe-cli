@@ -28,6 +28,7 @@ interface ParsedWorktreeArgs {
   prompt: string;
   agentArgs: string[];
   branch?: string;
+  runAsync: boolean;
 }
 
 export interface ToolExecutorDependencies {
@@ -262,7 +263,11 @@ export class DefaultToolExecutor implements ToolExecutor {
       serializableArgs.branch = parsed.branch;
     }
 
-    if (this.taskRegistry && this.spawnTask) {
+    if (parsed.runAsync) {
+      serializableArgs.async = true;
+    }
+
+    if (parsed.runAsync && this.taskRegistry && this.spawnTask) {
       const taskId = this.taskRegistry.registerTask({
         toolName: "spawn_git_worktree",
         args: serializableArgs
@@ -411,24 +416,49 @@ export class DefaultToolExecutor implements ToolExecutor {
         const child = spawn(process.execPath, ['--input-type=module', '-e', inlineScript], {
           cwd: path.join(fileURLToPath(new URL('.', import.meta.url)), '..'),
           detached: true,
-          stdio: ["ignore", "ignore", "pipe"], // Capture stderr
+          stdio: ["ignore", "pipe", "pipe"], // Capture stdout/stderr for streaming
           env: {
             ...process.env
           }
         });
         
-        // Capture stderr for error logging
+        // Capture stdout/stderr for logging and streaming
+        let stdoutData = "";
         let stderrData = "";
+        if (child.stdout) {
+          child.stdout.on("data", (data) => {
+            const chunk = data.toString();
+            stdoutData += chunk;
+            this.eventLogger("task_stdout", {
+              id: request.taskId,
+              tool: request.toolName,
+              chunk
+            });
+          });
+        }
         if (child.stderr) {
           child.stderr.on("data", (data) => {
-            stderrData += data.toString();
+            const chunk = data.toString();
+            stderrData += chunk;
+            this.eventLogger("task_stderr", {
+              id: request.taskId,
+              tool: request.toolName,
+              chunk
+            });
           });
         }
         
         // Register error handler BEFORE unref to catch early errors
         child.once("error", (error) => {
           const message = error instanceof Error ? error.message : String(error);
-          const fullError = stderrData ? `${message}\nStderr: ${stderrData}` : message;
+          const parts: string[] = [message];
+          if (stdoutData) {
+            parts.push(`Stdout: ${stdoutData}`);
+          }
+          if (stderrData) {
+            parts.push(`Stderr: ${stderrData}`);
+          }
+          const fullError = parts.join("\n");
           this.eventLogger("task_spawn_failed", {
             id: request.taskId,
             message: fullError
@@ -443,11 +473,19 @@ export class DefaultToolExecutor implements ToolExecutor {
         // Also capture exit with non-zero code
         child.once("exit", (code, signal) => {
           if (code !== null && code !== 0) {
-            const exitError = `Process exited with code ${code}${stderrData ? `\nStderr: ${stderrData}` : ""}`;
+            const details: string[] = [`Process exited with code ${code}`];
+            if (stdoutData) {
+              details.push(`Stdout: ${stdoutData}`);
+            }
+            if (stderrData) {
+              details.push(`Stderr: ${stderrData}`);
+            }
+            const exitError = details.join("\n");
             this.eventLogger("task_exit_error", {
               id: request.taskId,
               code,
               signal,
+              stdout: stdoutData,
               stderr: stderrData
             });
             this.taskRegistry?.updateTask(request.taskId, {
@@ -587,11 +625,33 @@ export class DefaultToolExecutor implements ToolExecutor {
         ? args.branch
         : undefined;
 
+    const asyncValue = args.async;
+    let runAsync = false;
+    if (typeof asyncValue === "boolean") {
+      runAsync = asyncValue;
+    } else if (typeof asyncValue === "string") {
+      const normalized = asyncValue.trim().toLowerCase();
+      if (normalized === "true") {
+        runAsync = true;
+      } else if (normalized === "false" || normalized.length === 0) {
+        runAsync = false;
+      } else {
+        throw new Error(
+          `Invalid async option "${asyncValue}". Expected boolean, "true", or "false".`
+        );
+      }
+    } else if (asyncValue !== undefined) {
+      throw new Error(
+        `Invalid async option type "${typeof asyncValue}". Expected boolean or string.`
+      );
+    }
+
     return {
       agent: agentValue as ParsedWorktreeArgs["agent"],
       prompt: promptValue,
       agentArgs,
-      branch: branchValue
+      branch: branchValue,
+      runAsync
     };
   }
 
