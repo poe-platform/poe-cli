@@ -11,6 +11,7 @@ import { spawnOpenCode } from "./opencode.js";
 import { simpleGit as createSimpleGit } from "simple-git";
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import type { AgentTaskRegistry } from "./agent-task-registry.js";
+import { tokenizeCommandLine } from "../utils/command-line.js";
 
 interface BackgroundTaskRequest {
   taskId: string;
@@ -191,52 +192,192 @@ export class DefaultToolExecutor implements ToolExecutor {
   }
 
   private async runCommand(args: Record<string, unknown>): Promise<string> {
-    const command = args.command as string;
-
-    if (!command) {
+    const commandValue = args.command;
+    if (typeof commandValue !== "string" || commandValue.trim().length === 0) {
       throw new Error("Missing required parameter: command");
     }
 
-    // Parse command into executable and args
-    const parts = command.trim().split(/\s+/);
-    const executable = parts[0];
-    const commandArgs = parts.slice(1);
+    const tokens = tokenizeCommandLine(commandValue);
+    if (tokens.length === 0) {
+      throw new Error("Missing required parameter: command");
+    }
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(executable, commandArgs, {
+    const [executable, ...commandArgs] = tokens;
+
+    if (this.isManagedCommand(executable)) {
+      return await this.runManagedCommand(executable, commandArgs);
+    }
+
+    return await this.executeExternalCommand(executable, commandArgs);
+  }
+
+  private isManagedCommand(command: string): boolean {
+    return command === "claude-code" || command === "claude";
+  }
+
+  private async runManagedCommand(
+    command: string,
+    args: string[]
+  ): Promise<string> {
+    if (command === "claude-code" || command === "claude") {
+      return await this.executeClaudeCodeCommand(args);
+    }
+    throw new Error(`Unsupported managed command "${command}".`);
+  }
+
+  private async executeClaudeCodeCommand(args: string[]): Promise<string> {
+    if (args.length === 0) {
+      throw new Error(
+        "Claude Code requires a prompt argument (e.g. claude-code \"Write hello world\")."
+      );
+    }
+
+    const [firstArg, ...rest] = args;
+    const promptParts: string[] = [firstArg];
+    let forwardedArgs: string[] = [];
+    if (rest.length > 0) {
+      const optionIndex = rest.findIndex((value) => value.startsWith("--"));
+      if (optionIndex === -1) {
+        promptParts.push(...rest);
+      } else {
+        promptParts.push(...rest.slice(0, optionIndex));
+        forwardedArgs = rest.slice(optionIndex);
+      }
+    }
+    const prompt = promptParts.join(" ").trim();
+    if (prompt.length === 0) {
+      throw new Error(
+        "Claude Code requires a prompt argument (e.g. claude-code \"Write hello world\")."
+      );
+    }
+
+    const result = await spawnClaudeCode({
+      prompt,
+      args: forwardedArgs,
+      runCommand: (cmd, commandArgs) => this.runProcess(cmd, commandArgs)
+    });
+
+    if (result.exitCode !== 0) {
+      if (this.isNotFoundError(result)) {
+        throw new Error(
+          "Claude Code CLI is not installed or not available in the PATH. Run `poe-cli configure claude-code` to install it."
+        );
+      }
+      const detail = this.formatProcessOutput(result);
+      const suffix = detail.length > 0 ? ` Details: ${detail}` : "";
+      throw new Error(`Claude Code failed with exit code ${result.exitCode}.${suffix}`);
+    }
+
+    const output = this.formatProcessOutput(result);
+    return output.length > 0 ? output : "Claude Code command completed successfully";
+  }
+
+  private async executeExternalCommand(
+    executable: string,
+    args: string[]
+  ): Promise<string> {
+    const result = await this.runProcess(executable, args);
+    if (result.exitCode !== 0) {
+      if (this.isNotFoundError(result)) {
+        throw new Error(
+          `Command "${executable}" is not installed or not available in the PATH.`
+        );
+      }
+      const detail = this.formatProcessOutput(result);
+      if (detail.length > 0) {
+        throw new Error(`Command "${executable}" exited with code ${result.exitCode}.\n${detail}`);
+      }
+      throw new Error(`Command "${executable}" exited with code ${result.exitCode}.`);
+    }
+
+    const output = this.formatProcessOutput(result);
+    return output.length > 0 ? output : "Command completed successfully";
+  }
+
+  private async runProcess(
+    command: string,
+    args: string[]
+  ): Promise<CommandRunnerResult> {
+    return await new Promise((resolve) => {
+      let settled = false;
+      let stdout = "";
+      let stderr = "";
+
+      const child = spawn(command, args, {
         cwd: this.cwd,
         stdio: ["ignore", "pipe", "pipe"]
       });
 
-      let stdout = "";
-      let stderr = "";
+      child.stdout?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string | Buffer) => {
+        stdout += chunk.toString();
+      });
 
-      if (child.stdout) {
-        child.stdout.on("data", (data) => {
-          stdout += data.toString();
+      child.stderr?.setEncoding("utf8");
+      child.stderr?.on("data", (chunk: string | Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      const finish = (result: CommandRunnerResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(result);
+      };
+
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        const exitCode =
+          typeof error.code === "number"
+            ? error.code
+            : typeof error.errno === "number"
+            ? error.errno
+            : 127;
+        const message =
+          error instanceof Error ? error.message : String(error ?? "error");
+        const combinedStderr =
+          stderr.length > 0 ? `${stderr}${stderr.endsWith("\n") ? "" : "\n"}${message}` : message;
+        finish({
+          stdout,
+          stderr: combinedStderr,
+          exitCode
         });
-      }
-
-      if (child.stderr) {
-        child.stderr.on("data", (data) => {
-          stderr += data.toString();
-        });
-      }
-
-      child.on("error", (error) => {
-        reject(new Error(`Command failed: ${error.message}`));
       });
 
       child.on("close", (code) => {
-        if (code !== 0) {
-          reject(
-            new Error(`Command exited with code ${code}\nStderr: ${stderr}`)
-          );
-        } else {
-          resolve(stdout || stderr || "Command completed successfully");
-        }
+        finish({
+          stdout,
+          stderr,
+          exitCode: code ?? 0
+        });
       });
     });
+  }
+
+  private formatProcessOutput(result: CommandRunnerResult): string {
+    const stdout = result.stdout.trim();
+    const stderr = result.stderr.trim();
+    if (stdout.length > 0 && stderr.length > 0) {
+      return `${stdout}\n${stderr}`;
+    }
+    if (stdout.length > 0) {
+      return stdout;
+    }
+    if (stderr.length > 0) {
+      return stderr;
+    }
+    return "";
+  }
+
+  private isNotFoundError(result: CommandRunnerResult): boolean {
+    const stderrLower = result.stderr.toLowerCase();
+    if (stderrLower.includes("enoent")) {
+      return true;
+    }
+    if (stderrLower.includes("not found")) {
+      return true;
+    }
+    return result.exitCode === 127;
   }
 
   private async searchWeb(args: Record<string, unknown>): Promise<string> {

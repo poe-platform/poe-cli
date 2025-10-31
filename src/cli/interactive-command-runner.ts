@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { createProgram, type CliDependencies } from "./program.js";
+import { tokenizeCommandLine } from "../utils/command-line.js";
 
 export interface ParsedInteractiveCommand {
   command: string;
@@ -35,7 +36,7 @@ export async function createInteractiveCommandExecutor(
   const commandMap = buildCommandMap(program.commands.map((cmd) => cmd));
 
   const identify = (input: string): ParsedInteractiveCommand | null => {
-    const tokens = tokenizeInput(input);
+    const tokens = tokenizeCommandLine(input);
     if (tokens.length === 0) {
       return null;
     }
@@ -147,46 +148,6 @@ function findCommand(program: Command, name: string): Command | undefined {
     }
     return cmd.aliases().some((alias) => alias === name || alias.toLowerCase() === lower);
   });
-}
-
-function tokenizeInput(input: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | null = null;
-  for (const char of input.trim()) {
-    if (quote) {
-      if (char === quote) {
-        quote = null;
-        continue;
-      }
-      current += char;
-      continue;
-    }
-
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-
-    if (char === " " || char === "\t") {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-  if (quote && tokens.length > 0) {
-    // Treat unmatched quotes as literal by restoring the quote.
-    const last = tokens.pop() ?? "";
-    tokens.push(`${last}${quote}`);
-  }
-  return tokens;
 }
 
 function normalizeTokens(
