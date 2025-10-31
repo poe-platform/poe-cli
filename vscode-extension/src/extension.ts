@@ -767,8 +767,16 @@ ${tailwindCss}
         <header data-slot="app-shell"></header>
         <main class="flex flex-1 flex-col">
             <div class="flex flex-1 overflow-hidden">
-            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[1fr_auto] overflow-hidden">
-                <div id="messages" class="flex h-full flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
+            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[auto_1fr_auto] overflow-hidden">
+                <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
+                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.4s;"></span>
+                        <span>Thinking...</span>
+                    </div>
+                </div>
+                <div id="messages" class="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
                     <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
                         <div class="space-y-2">
                             <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
@@ -788,14 +796,6 @@ ${tailwindCss}
                                 <p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
                             </article>
                         </div>
-                    </div>
-                </div>
-                <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
-                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.4s;"></span>
-                        <span>Thinking...</span>
                     </div>
                 </div>
                 <footer class="composer border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
@@ -836,9 +836,11 @@ ${tailwindCss}
                     </div>
                 </div>
             </section>
-            <section id="settings-view" class="hidden flex min-h-0 flex-1 overflow-y-auto bg-surface px-6 py-6" data-test="settings-view">
-                <div class="mx-auto w-full max-w-3xl">
-                    <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
+            <section id="settings-view" class="hidden flex min-h-0 flex-1 overflow-hidden bg-surface" data-test="settings-view">
+                <div class="flex flex-1 flex-col overflow-y-auto px-6 py-6">
+                    <div class="mx-auto w-full max-w-3xl flex-1">
+                        <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
+                    </div>
                 </div>
             </section>
             </div>
