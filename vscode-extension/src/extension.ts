@@ -617,7 +617,7 @@ async function showWelcomeMessage(context: vscode.ExtensionContext) {
 function getMissingCredentialsContent(): string {
     const tailwindCss = loadTailwindCss();
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="color-scheme: light dark;">
 <head>
     <meta charset="UTF-8">
     <style>
@@ -758,340 +758,51 @@ ${code}
     <style id="poe-tailwind">
 ${tailwindCss}
     </style>
-    <style id="poe-webview-styles">
-        :root {
-            color-scheme: light dark;
-        }
-
-        body {
-            margin: 0;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-        }
-
-        #messages {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .welcome-message {
-            display: grid;
-            gap: 24px;
-            border-radius: 16px;
-            border: 1px dashed var(--vscode-panel-border);
-            background-color: var(--vscode-editorWidget-background);
-            padding: 32px;
-        }
-
-        .welcome-hero h2 {
-            margin: 0;
-            font-size: 20px;
-        }
-
-        .welcome-hero p {
-            margin: 8px 0 0;
-            font-size: 13px;
-            color: var(--vscode-descriptionForeground);
-            line-height: 1.6;
-        }
-
-        .welcome-grid {
-            display: grid;
-            gap: 16px;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        }
-
-        .welcome-card {
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 12px;
-            padding: 16px;
-            background-color: var(--vscode-editor-background);
-        }
-
-        .welcome-card h3 {
-            margin: 0 0 6px 0;
-            font-size: 14px;
-        }
-
-        .welcome-card p {
-            margin: 0;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            line-height: 1.6;
-        }
-
-        .message-wrapper {
-            border-radius: 16px;
-            border: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editorWidget-background);
-            padding: 18px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-        }
-
-        .message-wrapper.user {
-            background-color: var(--vscode-editor-background);
-        }
-
-        .message-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--vscode-editor-foreground);
-        }
-
-        .message-header .message-model {
-            margin-left: auto;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 9999px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            overflow: hidden;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .avatar.assistant img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .message-content {
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .message-content pre {
-            border-radius: 8px;
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            padding: 12px;
-            overflow: auto;
-        }
-
-        .message-wrapper.diff {
-            background-color: var(--vscode-editorWidget-background);
-        }
-
-        .message-wrapper.diff .message-content {
-            border: none;
-            padding: 0;
-        }
-
-        .message-wrapper.tool {
-            border-style: dashed;
-        }
-
-        .message-wrapper.tool.success {
-            border-color: var(--vscode-gitDecoration-addedResourceForeground);
-        }
-
-        .message-wrapper.tool.error {
-            border-color: var(--vscode-errorForeground);
-        }
-
-        .message-tool-status {
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .message-tool-args {
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 11px;
-            margin: 0;
-        }
-
-        .message-tool-error {
-            margin-top: 8px;
-            font-size: 11px;
-            color: var(--vscode-errorForeground);
-        }
-
-        .tool-notifications {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            pointer-events: none;
-            z-index: 200;
-        }
-
-        .tool-notification {
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-size: 12px;
-            font-weight: 500;
-            background-color: var(--vscode-editorWidget-background);
-            border: 1px solid transparent;
-            color: var(--vscode-editor-foreground);
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
-            opacity: 0.95;
-            transition: opacity 0.3s ease;
-        }
-
-        .tool-notification.running {
-            border-color: var(--vscode-panel-border);
-        }
-
-        .tool-notification.success {
-            border-color: var(--vscode-gitDecoration-addedResourceForeground);
-        }
-
-        .tool-notification.error {
-            border-color: var(--vscode-errorForeground);
-        }
-
-        .tool-notification.fade {
-            opacity: 0;
-        }
-
-        .chat-history {
-            width: 320px;
-            border-left: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editorWidget-background);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chat-history-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-        }
-
-        .chat-history-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .chat-history-item {
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 10px;
-            padding: 12px;
-            background-color: var(--vscode-editor-background);
-            cursor: pointer;
-            transition: border-color 0.2s ease, background-color 0.2s ease;
-        }
-
-        .chat-history-item:hover {
-            border-color: var(--vscode-focusBorder);
-            background-color: var(--vscode-editorWidget-background);
-        }
-
-        .chat-history-item-title {
-            margin: 0 0 4px 0;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .chat-history-item-preview {
-            margin: 0;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .chat-history-empty {
-            text-align: center;
-            padding: 32px 16px;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .thinking-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 9999px;
-            background-color: var(--vscode-descriptionForeground);
-            animation: thinking-bounce 1s infinite ease-in-out;
-        }
-
-        .thinking-dot:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        .thinking-dot:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-
-        @keyframes thinking-bounce {
-            0%, 80%, 100% {
-                opacity: 0.3;
-                transform: translateY(0);
-            }
-            40% {
-                opacity: 1;
-                transform: translateY(-3px);
-            }
-        }
-    </style>
+    <style id="poe-webview-styles"></style>
     ${headHtml}
 </head>
-<body class="bg-surface text-text font-sans antialiased">
+<body class="m-0 bg-surface text-text antialiased">
     ${bodyStartHtml}
-    <div class="flex h-screen flex-col overflow-hidden">
-        <header class="flex items-center justify-between border-b border-outline bg-surface px-5 py-4" data-slot="app-shell"></header>
+    <div class="flex h-screen flex-col overflow-hidden bg-surface">
+        <div data-slot="app-shell"></div>
         <main class="relative flex flex-1 overflow-hidden bg-surface">
             <section id="chat-container" class="flex flex-1 flex-col overflow-hidden">
-                <div id="messages" class="flex-1 overflow-y-auto px-6 py-6">
-                    <div class="welcome-message">
-                        <div class="welcome-hero">
-                            <h2>Welcome to Poe Code</h2>
-                            <p>Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
+                <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
+                    <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border/20 bg-surface-raised/80 p-6 shadow-lg">
+                        <div class="space-y-2">
+                            <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
+                            <p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
                         </div>
-                        <div class="welcome-grid">
-                            <article class="welcome-card" data-feature="strategies">
-                                <h3>Strategies</h3>
-                                <p>Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
+                        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="strategies">
+                                <h3 class="text-sm font-semibold text-text">Strategies</h3>
+                                <p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
                             </article>
-                            <article class="welcome-card" data-feature="models">
-                                <h3>Model library</h3>
-                                <p>Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
+                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="models">
+                                <h3 class="text-sm font-semibold text-text">Model library</h3>
+                                <p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
                             </article>
-                            <article class="welcome-card" data-feature="tools">
-                                <h3>Dev workflows</h3>
-                                <p>Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
+                            <article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="tools">
+                                <h3 class="text-sm font-semibold text-text">Dev workflows</h3>
+                                <p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
                             </article>
                         </div>
                     </div>
                 </div>
-                <div id="thinking-indicator" class="hidden px-6 pb-6 text-sm text-subtle">
-                    <div class="flex items-center gap-2 rounded-lg border border-dashed border-outline bg-surface-muted px-3 py-2">
-                        <span class="thinking-dot"></span>
-                        <span class="thinking-dot"></span>
-                        <span class="thinking-dot"></span>
+                <div id="thinking-indicator" class="hidden px-6 pb-6 text-sm text-text-muted">
+                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border/30 bg-surface-raised/80 px-4 py-2 shadow-sm">
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse [animation-delay:0.2s]"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted/80 motion-safe:animate-pulse [animation-delay:0.4s]"></span>
                         <span>Thinking...</span>
                     </div>
                 </div>
-                <footer class="composer border-t border-outline bg-surface px-6 py-4">
+                <footer class="composer border-t border-border/20 bg-surface px-6 py-4">
                     <div class="flex w-full items-end gap-3">
                         <textarea
                             id="message-input"
                             data-test="message-input"
-                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-lg border border-outline bg-surface-muted px-3 py-3 text-sm leading-6 text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border/30 bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                             placeholder="Ask Poe..."
                             rows="1"
                         ></textarea>
@@ -1100,7 +811,7 @@ ${tailwindCss}
                                 id="clear-button"
                                 type="button"
                                 data-test="clear-button"
-                                class="rounded-md border border-outline px-3 py-2 text-xs font-medium text-subtle transition hover:bg-surface-muted hover:text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                                class="rounded-xl border border-border/20 px-4 py-2 text-sm font-medium text-text-muted transition hover:border-border/40 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                             >
                                 Clear
                             </button>
@@ -1108,7 +819,7 @@ ${tailwindCss}
                                 id="send-button"
                                 type="button"
                                 data-test="send-button"
-                                class="rounded-md bg-button px-4 py-2 text-xs font-semibold text-button-foreground shadow focus:outline-none focus:ring-2 focus:ring-accent"
+                                class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                             >
                                 Send
                             </button>
@@ -1116,25 +827,25 @@ ${tailwindCss}
                     </div>
                 </footer>
             </section>
-            <section id="chat-history" class="chat-history hidden" data-test="chat-history-panel">
-                <div class="chat-history-header" data-test="chat-history-header">
-                    <h3 class="text-sm font-semibold">Chat history</h3>
+            <section id="chat-history" class="chat-history hidden h-full w-80 flex-shrink-0 flex-col border-l border-border/20 bg-surface-raised/80 shadow-xl" data-test="chat-history-panel">
+                <div class="chat-history-header flex items-center justify-between border-b border-border/20 px-5 py-4" data-test="chat-history-header">
+                    <h3 class="text-sm font-semibold text-text">Chat history</h3>
                     <button
                         type="button"
                         data-action="history-close"
                         data-test="chat-history-close"
-                        class="rounded-md border border-outline px-3 py-1 text-xs text-subtle hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                        class="rounded-lg border border-border/20 px-3 py-1.5 text-xs font-medium text-text-muted transition hover:border-border/40 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                     >
                         Close
                     </button>
                 </div>
-                <div class="chat-history-content" data-test="chat-history-content">
-                    <div class="chat-history-empty" data-test="chat-history-empty">
+                <div class="chat-history-content flex-1 space-y-3 overflow-y-auto px-5 py-4" data-test="chat-history-content">
+                    <div class="chat-history-empty rounded-xl border border-dashed border-border/30 bg-surface px-4 py-6 text-sm text-text-muted" data-test="chat-history-empty">
                         Start a conversation to see recent chats here.
                     </div>
                 </div>
             </section>
-            <div id="tool-notifications" class="tool-notifications"></div>
+            <div id="tool-notifications" class="pointer-events-none fixed bottom-6 right-6 flex flex-col gap-3"></div>
         </main>
     </div>
     <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>

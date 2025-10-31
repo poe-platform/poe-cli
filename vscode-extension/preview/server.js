@@ -32,9 +32,9 @@ let getWebviewContent;
 async function loadServices() {
     try {
         // Import chat and tools services
-        const chatModule = await import(path.join(distPath, 'services', 'chat.js'));
-        const toolsModule = await import(path.join(distPath, 'services', 'tools.js'));
-        const tasksModule = await import(path.join(distPath, 'services', 'agent-task-registry.js'));
+        const chatModule = await import(pathToFileURL(path.join(distPath, 'services', 'chat.js')).href);
+        const toolsModule = await import(pathToFileURL(path.join(distPath, 'services', 'tools.js')).href);
+        const tasksModule = await import(pathToFileURL(path.join(distPath, 'services', 'agent-task-registry.js')).href);
 
         PoeChatService = chatModule.PoeChatService;
         DefaultToolExecutor = toolsModule.DefaultToolExecutor;
@@ -42,10 +42,10 @@ async function loadServices() {
         AgentTaskRegistry = tasksModule.AgentTaskRegistry;
 
         // Import webview utilities (compiled from TypeScript)
-        const markdownPath = path.join(__dirname, '..', 'out', 'webview', 'markdown.js');
-        const diffPath = path.join(__dirname, '..', 'out', 'webview', 'diff-preview.js');
-        const layoutPath = path.join(__dirname, '..', 'out', 'webview', 'layout.js');
-        const settingsPath = path.join(__dirname, '..', 'out', 'config', 'provider-settings.js');
+        const markdownPath = pathToFileURL(path.join(__dirname, '..', 'out', 'webview', 'markdown.js')).href;
+        const diffPath = pathToFileURL(path.join(__dirname, '..', 'out', 'webview', 'diff-preview.js')).href;
+        const layoutPath = pathToFileURL(path.join(__dirname, '..', 'out', 'webview', 'layout.js')).href;
+        const settingsPath = pathToFileURL(path.join(__dirname, '..', 'out', 'config', 'provider-settings.js')).href;
 
         const markdownModule = await import(markdownPath);
         const diffModule = await import(diffPath);

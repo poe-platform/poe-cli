@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --surface: var(--vscode-editor-background);
+    --surface-raised: var(--vscode-editorWidget-background);
+    --text: var(--vscode-editor-foreground);
+    --text-muted: var(--vscode-descriptionForeground);
+    --border: var(--vscode-panel-border);
+    --accent: var(--vscode-button-background);
+    --accent-fg: var(--vscode-button-foreground);
+    --success: var(--vscode-gitDecoration-addedResourceForeground);
+    --error: var(--vscode-errorForeground);
+  }
+}

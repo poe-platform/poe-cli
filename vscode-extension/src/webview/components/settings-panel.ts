@@ -163,10 +163,10 @@ export class PoeSettingsPanel extends LitElement {
   private renderModelOption(option: ProviderSetting): unknown {
     const isActive = option.label === this.activeModel;
     const baseClasses =
-      "w-full rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-accent";
+      "w-full rounded-xl border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
     const className = isActive
-      ? `${baseClasses} border-transparent bg-button text-button-foreground`
-      : `${baseClasses} border-outline text-subtle hover:bg-surface-muted hover:text-text`;
+      ? `${baseClasses} border-transparent bg-accent text-accent-fg shadow-sm`
+      : `${baseClasses} border-border/20 text-text-muted hover:border-border/40 hover:bg-surface-raised/60 hover:text-text`;
     return html`
       <button
         type="button"
@@ -175,7 +175,7 @@ export class PoeSettingsPanel extends LitElement {
         @click=${() => this.applyModel(option.label)}
       >
         <div class="font-medium">${option.label}</div>
-        <div class="text-xs text-subtle">${option.id}</div>
+        <div class="text-xs text-text-muted">${option.id}</div>
       </button>
     `;
   }
@@ -183,10 +183,10 @@ export class PoeSettingsPanel extends LitElement {
   private renderStrategyOption(option: StrategyDescriptor): unknown {
     const isActive = option.id === this.strategyType;
     const baseClasses =
-      "w-full rounded-md border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-accent";
+      "w-full rounded-xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
     const className = isActive
-      ? `${baseClasses} border-accent bg-surface-muted`
-      : `${baseClasses} border-outline text-subtle hover:bg-surface-muted hover:text-text`;
+      ? `${baseClasses} border-accent bg-surface-raised/70`
+      : `${baseClasses} border-border/20 text-text-muted hover:border-border/40 hover:bg-surface-raised/60 hover:text-text`;
     return html`
       <button
         type="button"
@@ -200,7 +200,7 @@ export class PoeSettingsPanel extends LitElement {
             ? html`<span class="text-xs font-semibold text-accent">Selected</span>`
             : null}
         </div>
-        <p class="mt-1 text-xs text-subtle">${option.description}</p>
+        <p class="mt-1 text-xs text-text-muted">${option.description}</p>
       </button>
     `;
   }
@@ -216,18 +216,18 @@ export class PoeSettingsPanel extends LitElement {
         @click=${this.handleOverlayClick}
       >
         <div
-          class="flex h-full w-full max-w-md flex-col border-l border-outline bg-surface shadow-panel"
+          class="flex h-full w-full max-w-md flex-col border-l border-border/20 bg-surface-raised/90 shadow-panel"
         >
-          <header class="flex items-center justify-between border-b border-outline px-5 py-4">
+          <header class="flex items-center justify-between border-b border-border/20 px-5 py-4">
             <div>
               <h2 class="text-base font-semibold text-text">Assistant settings</h2>
-              <p class="text-xs text-subtle">
+              <p class="text-xs text-text-muted">
                 Choose your default model and routing strategy.
               </p>
             </div>
             <button
               type="button"
-              class="rounded-md border border-outline px-3 py-1 text-xs text-subtle hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent"
+              class="rounded-lg border border-border/20 px-3 py-1.5 text-xs font-medium text-text-muted transition hover:border-border/40 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
               @click=${this.requestClose}
             >
               Close
@@ -238,21 +238,21 @@ export class PoeSettingsPanel extends LitElement {
             <section class="space-y-3">
               <div>
                 <h3 class="text-sm font-semibold text-text">Default model</h3>
-                <p class="text-xs text-subtle">
+                <p class="text-xs text-text-muted">
                   Select a configured provider or enter any Poe model identifier.
                 </p>
               </div>
               <div class="space-y-2">
                 ${this.providers.length > 0
                   ? this.providers.map((provider) => this.renderModelOption(provider))
-                  : html`<p class="rounded-md border border-dashed border-outline px-3 py-3 text-xs text-subtle">
+                  : html`<p class="rounded-xl border border-dashed border-border/20 bg-surface px-3 py-3 text-xs text-text-muted">
                       No providers configured yet. Open MCP configuration to add providers.
                     </p>`}
               </div>
               <form class="mt-3 flex gap-2" @submit=${this.handleModelSubmit}>
                 <input
                   type="text"
-                  class="flex-1 rounded-md border border-outline bg-surface-muted px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                  class="flex-1 rounded-xl border border-border/20 bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                   placeholder="Custom model id"
                   .value=${this._modelInput}
                   @input=${this.handleModelInput}
@@ -260,7 +260,7 @@ export class PoeSettingsPanel extends LitElement {
                 />
                 <button
                   type="submit"
-                  class="rounded-md bg-button px-3 py-2 text-xs font-semibold text-button-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                  class="rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 >
                   Use model
                 </button>
@@ -271,7 +271,7 @@ export class PoeSettingsPanel extends LitElement {
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <h3 class="text-sm font-semibold text-text">Model strategy</h3>
-                  <p class="text-xs text-subtle">
+                  <p class="text-xs text-text-muted">
                     Enable orchestration to let Poe choose models on the fly.
                   </p>
                 </div>
@@ -283,15 +283,15 @@ export class PoeSettingsPanel extends LitElement {
                     @change=${this.handleStrategyToggle}
                   />
                   <span
-                    class=${`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+                    class=${`relative inline-flex h-5 w-10 items-center rounded-full border transition ${
                       this.strategyEnabled
-                        ? "bg-button"
-                        : "bg-surface-muted border border-outline"
+                        ? "border-transparent bg-accent"
+                        : "border-border/30 bg-surface-raised/70"
                     }`}
                   >
                     <span
                       class=${`absolute left-1 h-3.5 w-3.5 rounded-full bg-surface transition ${
-                        this.strategyEnabled ? "translate-x-5 bg-button-foreground" : ""
+                        this.strategyEnabled ? "translate-x-5 bg-accent-fg" : ""
                       }`}
                     ></span>
                   </span>
@@ -304,18 +304,18 @@ export class PoeSettingsPanel extends LitElement {
 
               ${this.strategyEnabled && this.strategyType === "fixed"
                 ? html`
-                    <div class="flex items-center gap-2 rounded-md border border-dashed border-outline px-3 py-3">
+                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border/20 bg-surface px-3 py-3">
                       <div class="flex-1">
                         <p class="text-xs font-medium text-text">
                           Fixed model id
                         </p>
-                        <p class="text-[11px] text-subtle">
+                        <p class="text-[11px] text-text-muted">
                           Set the exact model Poe should use when the strategy is fixed.
                         </p>
                       </div>
                       <input
                         type="text"
-                        class="w-48 rounded-md border border-outline bg-surface px-2 py-1 text-xs text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                        class="w-48 rounded-xl border border-border/20 bg-surface px-2 py-1 text-xs text-text focus:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                         .value=${this._fixedModelInput}
                         @input=${this.handleFixedModelInput}
                         @blur=${this.handleFixedModelCommit}
@@ -326,26 +326,26 @@ export class PoeSettingsPanel extends LitElement {
                 : null}
 
               ${this.strategyInfo
-                ? html`<p class="rounded-md border border-outline px-3 py-2 text-xs text-subtle">
+                ? html`<p class="rounded-xl border border-border/20 bg-surface px-3 py-2 text-xs text-text-muted">
                     Active strategy: ${this.strategyInfo}
                   </p>`
                 : null}
             </section>
           </div>
 
-          <footer class="border-t border-outline bg-surface px-5 py-4">
+          <footer class="border-t border-border/20 bg-surface px-5 py-4">
             <div class="flex items-center justify-between">
               <button
                 type="button"
                 data-action="open-mcp"
-                class="rounded-md border border-outline px-3 py-2 text-xs font-medium text-subtle hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                class="rounded-xl border border-border/20 px-3 py-2 text-xs font-medium text-text-muted transition hover:border-border/40 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                 @click=${this.handleOpenMcp}
               >
                 Open MCP configuration
               </button>
               <button
                 type="button"
-                class="rounded-md bg-button px-3 py-2 text-xs font-semibold text-button-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                class="rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 @click=${this.requestClose}
               >
                 Done

@@ -10,15 +10,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        surface: "var(--vscode-editor-background)",
-        "surface-muted": "var(--vscode-editorWidget-background)",
-        outline: "var(--vscode-panel-border)",
-        accent: "var(--vscode-focusBorder)",
-        text: "var(--vscode-editor-foreground)",
-        subtle: "var(--vscode-descriptionForeground)",
-        button: "var(--vscode-button-background)",
-        "button-foreground": "var(--vscode-button-foreground)",
-        danger: "var(--vscode-errorForeground)",
+        surface: { DEFAULT: "var(--surface)", raised: "var(--surface-raised)" },
+        text: { DEFAULT: "var(--text)", muted: "var(--text-muted)" },
+        border: "var(--border)",
+        accent: { DEFAULT: "var(--accent)", fg: "var(--accent-fg)" },
+        success: "var(--success)",
+        error: "var(--error)",
       },
       fontFamily: {
         sans: [

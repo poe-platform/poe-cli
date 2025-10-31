@@ -71,7 +71,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
-    '<div class="welcome-message"><div class="welcome-hero"><h2>Welcome to Poe Code</h2><p>Configure strategies and models to tailor your chat workflow.</p></div><div class="welcome-grid"><article class="welcome-card" data-feature="strategies"><h3>Adaptive orchestration</h3><p>Enable smart, mixed, or fixed model flows.</p></article></div></div>';
+    '<div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border/20 bg-surface-raised/80 p-6 shadow-lg"><div class="space-y-2"><h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2><p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p></div><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="strategies"><h3 class="text-sm font-semibold text-text">Strategies</h3><p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p></article><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="models"><h3 class="text-sm font-semibold text-text">Model library</h3><p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p></article><article class="welcome-card rounded-2xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60" data-feature="tools"><h3 class="text-sm font-semibold text-text">Dev workflows</h3><p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p></article></div></div>';
 
   const notifications: ToolNotification[] = [];
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
@@ -79,6 +79,58 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   let activeModel = options.defaultModel;
   let settingsVisible = false;
   let historyVisible = false;
+
+  function joinClasses(...values: Array<string | null | undefined>): string {
+    return values.filter(Boolean).join(" ");
+  }
+
+  const uiClasses = {
+    messageWrapperBase:
+      "message-wrapper flex flex-col gap-3 rounded-2xl border border-border/20 bg-surface-raised/80 p-4 shadow-lg transition",
+    messageWrapperUser: "bg-surface",
+    messageWrapperAssistant: "bg-surface-raised/90",
+    messageHeader:
+      "message-header flex items-center gap-3 text-sm font-semibold text-text",
+    messageModel: "message-model ml-auto text-xs font-medium text-text-muted",
+    avatar:
+      "avatar flex h-9 w-9 items-center justify-center rounded-xl border border-border/20 bg-surface text-xs font-semibold text-text",
+    avatarAssistant: "bg-surface-raised/80 overflow-hidden",
+    avatarUser: "uppercase bg-surface text-text",
+    messageContent:
+      "message-content space-y-3 text-sm leading-6 text-text [&_a]:text-accent [&_a]:underline [&_code]:font-mono [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border/20 [&_pre]:bg-surface [&_pre]:px-3 [&_pre]:py-2",
+    diffWrapper:
+      "message-wrapper diff flex flex-col gap-3 overflow-hidden rounded-2xl border border-border/20 bg-surface shadow-lg",
+    diffContent:
+      "message-content text-sm leading-6 text-text [&_pre]:border-0 [&_pre]:bg-transparent",
+    errorWrapper:
+      "message-wrapper error flex flex-col gap-3 rounded-2xl border border-error/50 bg-error/10 p-4 text-error shadow-lg",
+    toolWrapper:
+      "message-wrapper tool flex flex-col gap-3 rounded-2xl border border-dashed border-border/30 bg-surface px-4 py-3 shadow-md transition",
+    toolWrapperSuccess: "border-success/60",
+    toolWrapperError: "border-error/60 bg-error/10",
+    toolHeader:
+      "message-header flex items-center gap-3 text-sm font-semibold text-text",
+    toolIcon:
+      "tool-icon flex h-8 w-8 items-center justify-center rounded-xl bg-surface-raised/70 text-base",
+    toolTitle: "tool-title text-sm font-semibold text-text",
+    toolStatus: "message-tool-status text-sm font-semibold text-text",
+    toolStatusSuccess: "text-success",
+    toolStatusError: "text-error",
+    toolArgs:
+      "message-tool-args rounded-xl bg-surface-raised/60 px-3 py-2 text-xs font-mono text-text",
+    toolError: "message-tool-error text-xs text-error",
+    toolNotification:
+      "tool-notification pointer-events-auto rounded-xl border border-border/20 bg-surface-raised/90 px-4 py-2 text-sm font-medium text-text shadow-lg transition-opacity duration-200",
+    toolNotificationRunning: "border-border/40",
+    toolNotificationSuccess: "border-success/50 text-success",
+    toolNotificationError: "border-error/50 text-error",
+    chatHistoryItem:
+      "chat-history-item cursor-pointer rounded-xl border border-border/20 bg-surface p-4 transition hover:border-border/40 hover:bg-surface-raised/60",
+    chatHistoryTitle: "chat-history-item-title text-sm font-semibold text-text",
+    chatHistoryPreview: "chat-history-item-preview text-xs text-text-muted",
+    chatHistoryEmpty:
+      "chat-history-empty rounded-xl border border-dashed border-border/30 bg-surface px-4 py-6 text-sm text-text-muted text-center",
+  } as const;
 
   function setActiveModel(model: string): void {
     if (!model.length) {
@@ -246,11 +298,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   function renderAvatar(role: "user" | "assistant"): HTMLElement {
     const avatar = doc.createElement("div");
-    avatar.className = `avatar ${role}`;
+    avatar.className = joinClasses(
+      uiClasses.avatar,
+      role === "assistant" ? uiClasses.avatarAssistant : uiClasses.avatarUser
+    );
     if (role === "assistant") {
       const img = doc.createElement("img");
       img.src = options.logoUrl;
       img.alt = "Poe";
+      img.className = "h-full w-full object-cover";
       avatar.appendChild(img);
     } else {
       avatar.textContent = "U";
@@ -272,11 +328,14 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
 
     const wrapper = doc.createElement("div");
-    wrapper.className = `message-wrapper ${role}`;
+    wrapper.className = joinClasses(
+      uiClasses.messageWrapperBase,
+      role === "assistant" ? uiClasses.messageWrapperAssistant : uiClasses.messageWrapperUser
+    );
     wrapper.setAttribute("data-test", role === "assistant" ? "message-wrapper-assistant" : "message-wrapper-user");
 
     const header = doc.createElement("div");
-    header.className = "message-header";
+    header.className = uiClasses.messageHeader;
     header.appendChild(renderAvatar(role));
 
     const label = doc.createElement("span");
@@ -285,13 +344,13 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
     if (model && role === "assistant") {
       const modelTag = doc.createElement("strong");
-      modelTag.className = "message-model";
+      modelTag.className = uiClasses.messageModel;
       modelTag.textContent = model;
       header.appendChild(modelTag);
     }
 
     const content = doc.createElement("div");
-    content.className = "message-content";
+    content.className = uiClasses.messageContent;
     content.innerHTML = html;
 
     wrapper.appendChild(header);
@@ -305,10 +364,10 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       return;
     }
     const container = doc.createElement("div");
-    container.className = "message-wrapper diff";
+    container.className = uiClasses.diffWrapper;
     container.setAttribute("data-test", "message-wrapper-diff");
     const content = doc.createElement("div");
-    content.className = "message-content";
+    content.className = uiClasses.diffContent;
     content.innerHTML = html;
     container.appendChild(content);
     messagesDiv.appendChild(container);
@@ -320,9 +379,9 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       return;
     }
     const wrapper = doc.createElement("div");
-    wrapper.className = "message-wrapper error";
+    wrapper.className = uiClasses.errorWrapper;
     const content = doc.createElement("div");
-    content.className = "message-content";
+    content.className = uiClasses.messageContent;
     content.textContent = text;
     wrapper.appendChild(content);
     messagesDiv.appendChild(wrapper);
@@ -360,29 +419,29 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       welcome.remove();
     }
     const wrapper = doc.createElement("div");
-    wrapper.className = "message-wrapper tool running";
+    wrapper.className = joinClasses(uiClasses.toolWrapper, "running");
     wrapper.dataset.toolName = details.toolName;
 
     const header = doc.createElement("div");
-    header.className = "message-header";
+    header.className = uiClasses.toolHeader;
 
     const icon = doc.createElement("span");
-    icon.className = "tool-icon";
+    icon.className = uiClasses.toolIcon;
     icon.textContent = "🔧";
     header.appendChild(icon);
 
     const title = doc.createElement("span");
-    title.className = "tool-title";
+    title.className = uiClasses.toolTitle;
     title.textContent = `Tool · ${details.toolName}`;
     header.appendChild(title);
 
     wrapper.appendChild(header);
 
     const content = doc.createElement("div");
-    content.className = "message-content";
+    content.className = uiClasses.messageContent;
 
     const statusLine = doc.createElement("div");
-    statusLine.className = "message-tool-status";
+    statusLine.className = uiClasses.toolStatus;
     statusLine.textContent = "Running tool…";
     content.appendChild(statusLine);
 
@@ -391,7 +450,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         const formatted = JSON.stringify(details.args, null, 2);
         if (formatted) {
           const argsBlock = doc.createElement("pre");
-          argsBlock.className = "message-tool-args";
+          argsBlock.className = uiClasses.toolArgs;
           argsBlock.textContent = formatted;
           content.appendChild(argsBlock);
         }
@@ -415,11 +474,19 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     if (!entry) {
       return;
     }
-    entry.classList.remove("running");
-    entry.classList.add(details.success ? "success" : "error");
+    entry.className = joinClasses(
+      uiClasses.toolWrapper,
+      details.success ? uiClasses.toolWrapperSuccess : uiClasses.toolWrapperError,
+      details.success ? "success" : "error"
+    );
+    entry.dataset.toolName = details.toolName;
 
     const statusLine = entry.querySelector<HTMLElement>(".message-tool-status");
     if (statusLine) {
+      statusLine.className = joinClasses(
+        uiClasses.toolStatus,
+        details.success ? uiClasses.toolStatusSuccess : uiClasses.toolStatusError
+      );
       if (details.success) {
         statusLine.textContent = "✓ Tool completed successfully.";
       } else if (details.error && details.error.length > 0) {
@@ -431,7 +498,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
     if (!details.success && details.error && details.error.length > 0) {
       const errorLine = doc.createElement("div");
-      errorLine.className = "message-tool-error";
+      errorLine.className = uiClasses.toolError;
       errorLine.textContent = details.error;
       entry.querySelector(".message-content")?.appendChild(errorLine);
     }
@@ -474,12 +541,19 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       return;
     }
     const item = doc.createElement("div");
-    item.className = `tool-notification ${variant}`;
+    const variantClass =
+      variant === "running"
+        ? uiClasses.toolNotificationRunning
+        : variant === "success"
+          ? uiClasses.toolNotificationSuccess
+          : uiClasses.toolNotificationError;
+    item.className = joinClasses(uiClasses.toolNotification, variantClass);
     item.textContent = text;
+    item.style.opacity = "1";
     toolNotifications.appendChild(item);
     const timeoutId = view.setTimeout(() => {
-      item.classList.add("fade");
-      const removal = view.setTimeout(() => item.remove(), 400);
+      item.style.opacity = "0";
+      const removal = view.setTimeout(() => item.remove(), 200);
       notifications.push({ element: item, timeoutId: removal });
     }, 2500);
     notifications.push({ element: item, timeoutId });
@@ -558,22 +632,27 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
 
     if (chatHistoryStore.length === 0) {
-      chatHistoryContent.innerHTML = '<div class="chat-history-empty">No chat history available yet.</div>';
+      chatHistoryContent.innerHTML = "";
+      const empty = doc.createElement("div");
+      empty.className = uiClasses.chatHistoryEmpty;
+      empty.setAttribute("data-test", "chat-history-empty");
+      empty.textContent = "No chat history available yet.";
+      chatHistoryContent.appendChild(empty);
       return;
     }
 
     chatHistoryContent.innerHTML = "";
     for (const chat of chatHistoryStore.slice().reverse()) {
       const item = doc.createElement("div");
-      item.className = "chat-history-item";
+      item.className = uiClasses.chatHistoryItem;
       item.dataset.chatId = chat.id;
 
       const title = doc.createElement("div");
-      title.className = "chat-history-item-title";
+      title.className = uiClasses.chatHistoryTitle;
       title.textContent = chat.title;
 
       const preview = doc.createElement("div");
-      preview.className = "chat-history-item-preview";
+      preview.className = uiClasses.chatHistoryPreview;
       preview.textContent = chat.preview;
 
       item.appendChild(title);
