@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { renderAppShell } from './webview/layout.js';
-import { renderModelSelector } from './webview/model-selector.js';
 import { renderMarkdown } from './webview/markdown.js';
 import { renderDiffPreview } from './webview/diff-preview.js';
 import { initializeWebviewApp } from './webview/runtime.js';
@@ -319,15 +318,11 @@ async function attachPoeWebview(
         models: modelOptions,
         activeModel: currentModel
     });
-    const modelSelectorHtml = renderModelSelector({
-        models: modelOptions,
-        selected: currentModel
-    });
 
     webview.html = getWebviewContent(webview, {
         logoUri,
         appShellHtml,
-        modelSelectorHtml,
+        modelOptions,
         providerSettings,
         defaultModel: currentModel
     });
@@ -569,6 +564,7 @@ async function showWelcomeMessage(context: vscode.ExtensionContext) {
 }
 
 function getMissingCredentialsContent(): string {
+    const tailwindCss = loadTailwindCss();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -579,6 +575,7 @@ function getMissingCredentialsContent(): string {
         p { line-height: 1.5; }
         code { background: var(--vscode-editor-inactiveSelectionBackground); padding: 2px 4px; border-radius: 4px; }
     </style>
+    <style>${tailwindCss}</style>
 </head>
 <body>
     <h2>Poe API key required</h2>
@@ -589,12 +586,15 @@ function getMissingCredentialsContent(): string {
 interface WebviewContentOptions {
     logoUri: string;
     appShellHtml: string;
-    modelSelectorHtml: string;
     providerSettings: ProviderSetting[];
+    modelOptions: string[];
     defaultModel: string;
     bodyStartHtml?: string;
     additionalScripts?: string[];
     additionalCspDirectives?: string[];
+    headHtml?: string;
+    useGlobalBootstrap?: boolean;
+    allowScriptFromSelf?: boolean;
 }
 
 function escapeTemplateLiteral(value: string): string {
@@ -654,27 +654,49 @@ function detectLanguage(targetPath: string): string {
     }
 }
 
+let cachedTailwindCss: string | null = null;
+function loadTailwindCss(): string {
+    if (cachedTailwindCss !== null) {
+        return cachedTailwindCss;
+    }
+    const cssPath = path.join(__dirname, "webview", "styles", "tailwind.css");
+    try {
+        cachedTailwindCss = fs.readFileSync(cssPath, "utf8");
+    } catch {
+        cachedTailwindCss = "";
+    }
+    return cachedTailwindCss;
+}
+
 export function getWebviewContent(webview: vscode.Webview, options: WebviewContentOptions): string {
     const providerJson = JSON.stringify(options.providerSettings);
+    const modelOptionsJson = JSON.stringify(options.modelOptions);
     const escapedAppShell = escapeTemplateLiteral(options.appShellHtml);
-    const escapedModelSelector = escapeTemplateLiteral(options.modelSelectorHtml);
+    const tailwindCss = escapeTemplateLiteral(loadTailwindCss());
     const nonce = createNonce();
     const cspSource = webview.cspSource;
     const bodyStartHtml = options.bodyStartHtml ?? "";
+    const headHtml = options.headHtml ?? "";
     const extraScripts = (options.additionalScripts ?? [])
         .map((code) => `<script nonce="${nonce}">
 ${code}
 </script>`)
         .join("\n");
+    const scriptSources = [`'nonce-${nonce}'`];
+    if (options.allowScriptFromSelf) {
+        scriptSources.push("'self'");
+    }
     const cspDirectives = [
         `default-src 'none'`,
         `img-src ${cspSource} https: data:`,
         `style-src ${cspSource} 'unsafe-inline'`,
-        `script-src 'nonce-${nonce}'`,
+        `script-src ${scriptSources.join(" ")}`,
         ...(options.additionalCspDirectives ?? []),
     ];
     const contentSecurityPolicy = cspDirectives.join("; ");
-    const bootstrapPlaceholder = "__POE_BOOTSTRAP__";
+    const bootstrapSource = options.useGlobalBootstrap
+        ? "window.initializeWebviewApp"
+        : initializeWebviewApp.toString();
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -682,450 +704,278 @@ ${code}
     <meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poe Code</title>
-    <style>
+    <style id="poe-tailwind">
+${tailwindCss}
+    </style>
+    <style id="poe-webview-styles">
         :root {
-            --sidebar-width: 240px;
-        }
-
-        * {
-            box-sizing: border-box;
+            color-scheme: light dark;
         }
 
         body {
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
         }
 
-        .poe-layout {
+        #messages {
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        .app-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 16px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editor-background);
-        }
-
-        .app-header .brand {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--vscode-foreground);
-        }
-
-        .app-header img {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-
-        .app-nav {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-
-        .app-nav button {
-            padding: 6px 10px;
-            border-radius: 4px;
-            border: 1px solid var(--vscode-button-border);
-            background: transparent;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            font-size: 10px;
-            transition: background-color 0.2s ease;
-        }
-
-        .app-nav button:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-
-        .app-nav button.primary {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .app-nav button.primary:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-
-        .model-list {
-            display: none;
-        }
-
-        .model-item {
-            display: none;
-        }
-
-        .main-pane {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 16px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editor-background);
-        }
-
-        .status-left {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .model-badge {
-            font-size: 10px;
-            padding: 3px 8px;
-            border-radius: 999px;
-            background-color: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-        }
-
-        .strategy-badge {
-            font-size: 10px;
-            padding: 3px 8px;
-            border-radius: 999px;
-            background-color: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            opacity: 0.6;
-            cursor: pointer;
-            transition: opacity 0.2s ease;
-        }
-
-        .strategy-badge:hover {
-            opacity: 1;
-        }
-
-        .strategy-badge[data-state="enabled"] {
-            opacity: 1;
-        }
-
-        .strategy-modal {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            padding: 48px 24px;
-            background-color: rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(2px);
-            z-index: 240;
-        }
-
-        .strategy-surface {
-            width: min(520px, 100%);
-            background-color: var(--vscode-editorWidget-background);
-            border-radius: 12px;
-            border: 1px solid var(--vscode-panel-border);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            padding: 24px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-            animation: slideUp 0.2s ease;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .strategy-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
             gap: 16px;
         }
 
-        .strategy-header h3 {
-            margin: 0;
-            font-size: 16px;
+        .welcome-message {
+            display: grid;
+            gap: 24px;
+            border-radius: 16px;
+            border: 1px dashed var(--vscode-panel-border);
+            background-color: var(--vscode-editorWidget-background);
+            padding: 32px;
         }
 
-        .strategy-header p {
-            margin: 4px 0 0;
+        .welcome-hero h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .welcome-hero p {
+            margin: 8px 0 0;
+            font-size: 13px;
+            color: var(--vscode-descriptionForeground);
+            line-height: 1.6;
+        }
+
+        .welcome-grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+
+        .welcome-card {
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 12px;
+            padding: 16px;
+            background-color: var(--vscode-editor-background);
+        }
+
+        .welcome-card h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
+        }
+
+        .welcome-card p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            line-height: 1.6;
+        }
+
+        .message-wrapper {
+            border-radius: 16px;
+            border: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editorWidget-background);
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+        }
+
+        .message-wrapper.user {
+            background-color: var(--vscode-editor-background);
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-editor-foreground);
+        }
+
+        .message-header .message-model {
+            margin-left: auto;
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
         }
 
-        .strategy-close {
-            align-self: center;
-        }
-
-        .strategy-toggle-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            border-radius: 10px;
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-        }
-
-        .strategy-toggle-label {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .strategy-toggle-label span:first-child {
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .strategy-toggle-label span:last-child {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        #strategy-toggle {
-            width: 46px;
-            height: 24px;
-            border-radius: 12px;
-            border: none;
-            background-color: var(--vscode-input-border);
-            position: relative;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-
-        #strategy-toggle .strategy-thumb {
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background-color: var(--vscode-editor-background);
-            transition: transform 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-        }
-
-        #strategy-toggle.active {
-            background-color: var(--vscode-button-background);
-        }
-
-        #strategy-toggle.active .strategy-thumb {
-            transform: translateX(22px);
-        }
-
-        .strategy-options {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 14px;
-        }
-
-        .strategy-option {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 6px;
-            border-radius: 10px;
-            border: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editor-background);
-            padding: 14px;
-            cursor: pointer;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            text-align: left;
-        }
-
-        .strategy-option:hover {
-            border-color: var(--vscode-focusBorder);
-        }
-
-        .strategy-option.active {
-            border-color: var(--vscode-focusBorder);
-            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-        }
-
-        .strategy-option strong {
-            font-size: 12px;
-        }
-
-        .strategy-option span {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .chat-scroll {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            scroll-behavior: smooth;
-        }
-
-        #messages {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        .message-wrapper {
-            margin-bottom: 16px;
-            animation: fadeIn 0.2s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(6px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .message-header {
-            font-size: 10px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: var(--vscode-descriptionForeground);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
         .avatar {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background-color: var(--vscode-button-background);
+            width: 32px;
+            height: 32px;
+            border-radius: 9999px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--vscode-button-foreground);
-            font-size: 10px;
-            font-weight: 600;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
             overflow: hidden;
+            font-size: 12px;
+            font-weight: 600;
         }
 
-        .avatar.assistant {
-            background: transparent;
-        }
-
-        .avatar img {
+        .avatar.assistant img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
         .message-content {
-            padding: 12px;
-            border-radius: 8px;
-            line-height: 1.5;
-            font-size: 11px;
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border);
-            overflow-x: auto;
-        }
-
-        .message-wrapper.assistant .message-content {
-            background-color: var(--vscode-textBlockQuote-background);
-            border-left: 3px solid var(--vscode-textBlockQuote-border);
-        }
-
-        .message-wrapper.tool .message-content {
-            border-style: dashed;
-            background-color: var(--vscode-editor-background);
-        }
-
-        .message-wrapper.tool.running .message-content {
-            border-color: var(--vscode-descriptionForeground);
-        }
-
-        .message-wrapper.tool.success .message-content {
-            border-color: var(--vscode-gitDecoration-addedResourceForeground);
-        }
-
-        .message-wrapper.tool.error .message-content {
-            border-color: var(--vscode-errorForeground);
+            font-size: 13px;
+            line-height: 1.6;
         }
 
         .message-content pre {
-            padding: 10px;
+            border-radius: 8px;
             background-color: var(--vscode-editor-background);
-            border-radius: 6px;
+            border: 1px solid var(--vscode-panel-border);
+            padding: 12px;
             overflow: auto;
-            font-size: 11px;
         }
 
-        .tool-icon {
-            font-size: 11px;
+        .message-wrapper.diff {
+            background-color: var(--vscode-editorWidget-background);
         }
 
-        .tool-title {
-            font-weight: 600;
+        .message-wrapper.diff .message-content {
+            border: none;
+            padding: 0;
+        }
+
+        .message-wrapper.tool {
+            border-style: dashed;
+        }
+
+        .message-wrapper.tool.success {
+            border-color: var(--vscode-gitDecoration-addedResourceForeground);
+        }
+
+        .message-wrapper.tool.error {
+            border-color: var(--vscode-errorForeground);
         }
 
         .message-tool-status {
-            margin-bottom: 6px;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
+            margin-bottom: 4px;
         }
 
         .message-tool-args {
             font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 10px;
+            font-size: 11px;
             margin: 0;
         }
 
         .message-tool-error {
-            margin-top: 6px;
-            font-size: 10px;
+            margin-top: 8px;
+            font-size: 11px;
             color: var(--vscode-errorForeground);
         }
 
-        .message-content code {
-            background-color: var(--vscode-editor-background);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 11px;
+        .tool-notifications {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+            z-index: 200;
         }
 
-        .thinking {
+        .tool-notification {
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            background-color: var(--vscode-editorWidget-background);
+            border: 1px solid transparent;
+            color: var(--vscode-editor-foreground);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+            opacity: 0.95;
+            transition: opacity 0.3s ease;
+        }
+
+        .tool-notification.running {
+            border-color: var(--vscode-panel-border);
+        }
+
+        .tool-notification.success {
+            border-color: var(--vscode-gitDecoration-addedResourceForeground);
+        }
+
+        .tool-notification.error {
+            border-color: var(--vscode-errorForeground);
+        }
+
+        .tool-notification.fade {
+            opacity: 0;
+        }
+
+        .chat-history {
+            width: 320px;
+            border-left: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editorWidget-background);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-history-header {
             display: flex;
             align-items: center;
-            gap: 6px;
-            color: var(--vscode-descriptionForeground);
-            margin-top: 16px;
+            justify-content: space-between;
+            padding: 16px;
+            border-bottom: 1px solid var(--vscode-panel-border);
         }
 
-        .thinking.hidden {
-            display: none;
+        .chat-history-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .chat-history-item {
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 10px;
+            padding: 12px;
+            background-color: var(--vscode-editor-background);
+            cursor: pointer;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .chat-history-item:hover {
+            border-color: var(--vscode-focusBorder);
+            background-color: var(--vscode-editorWidget-background);
+        }
+
+        .chat-history-item-title {
+            margin: 0 0 4px 0;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chat-history-item-preview {
+            margin: 0;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .chat-history-empty {
+            text-align: center;
+            padding: 32px 16px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
         }
 
         .thinking-dot {
             width: 6px;
             height: 6px;
-            border-radius: 50%;
+            border-radius: 9999px;
             background-color: var(--vscode-descriptionForeground);
-            animation: thinking 1s ease-in-out infinite;
+            animation: thinking-bounce 1s infinite ease-in-out;
         }
 
         .thinking-dot:nth-child(2) {
@@ -1136,499 +986,116 @@ ${code}
             animation-delay: 0.4s;
         }
 
-        @keyframes thinking {
+        @keyframes thinking-bounce {
             0%, 80%, 100% {
-                opacity: 0.2;
+                opacity: 0.3;
+                transform: translateY(0);
             }
             40% {
                 opacity: 1;
+                transform: translateY(-3px);
             }
         }
-
-        .composer {
-            padding: 12px 16px;
-            border-top: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editor-background);
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
-        }
-
-        #message-input {
-            flex: 1;
-            min-height: 60px;
-            max-height: 180px;
-            border: 1px solid var(--vscode-input-border);
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border-radius: 6px;
-            padding: 10px;
-            font-size: 11px;
-            line-height: 1.5;
-            resize: none;
-            outline: none;
-        }
-
-        .composer-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .composer-button {
-            padding: 6px 10px;
-            border-radius: 4px;
-            border: 1px solid var(--vscode-button-border);
-            background: transparent;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            font-size: 11px;
-        }
-
-        .composer-button.primary {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .composer-button.primary:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-
-        .settings-panel {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            justify-content: flex-end;
-            background-color: rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(2px);
-            padding: 24px;
-            z-index: 200;
-        }
-
-        .settings-content {
-            width: 320px;
-            max-width: 100%;
-            background-color: var(--vscode-editorWidget-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 8px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-        }
-
-        .settings-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .settings-header h3 {
-            margin: 0;
-            font-size: 13px;
-        }
-
-        .settings-section h4 {
-            margin: 0 0 10px 0;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .provider-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .provider-item {
-            padding: 10px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--vscode-panel-border);
-            background-color: var(--vscode-editor-background);
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .provider-item.active {
-            border-color: var(--vscode-focusBorder);
-            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-        }
-
-        .provider-item strong {
-            font-size: 11px;
-        }
-
-        .provider-item span {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .provider-empty {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .settings-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .message-wrapper.diff {
-            background-color: var(--vscode-editorWidget-background);
-            border: 1px solid var(--vscode-panel-border);
-        }
-
-        .message-wrapper.diff .message-content {
-            background-color: transparent;
-            border: none;
-            padding: 0;
-        }
-
-        .diff-preview {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .diff-preview .diff-header {
-            font-weight: 600;
-            font-size: 13px;
-            color: var(--vscode-foreground);
-        }
-
-        .diff-preview .diff-body {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 13px;
-        }
-
-        .diff-row {
-            display: block;
-        }
-
-        .diff-row code {
-            display: block;
-            padding: 4px 6px;
-            border-radius: 4px;
-            background-color: transparent;
-            white-space: pre-wrap;
-        }
-
-        .diff-added {
-            background-color: rgba(46, 204, 113, 0.16);
-            color: var(--vscode-foreground);
-        }
-
-        .diff-removed {
-            background-color: rgba(231, 76, 60, 0.16);
-            color: var(--vscode-foreground);
-        }
-
-        .diff-context {
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .tool-notifications {
-            position: fixed;
-            right: 24px;
-            bottom: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            z-index: 100;
-        }
-
-        .tool-notification {
-            padding: 10px 14px;
-            border-radius: 6px;
-            background-color: var(--vscode-editorHoverWidget-background);
-            color: var(--vscode-editorHoverWidget-foreground);
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-            border-left: 3px solid transparent;
-            opacity: 0.95;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-        }
-
-        .tool-notification.running {
-            border-left-color: #0984e3;
-        }
-
-        .tool-notification.success {
-            border-left-color: #2ecc71;
-        }
-
-        .tool-notification.error {
-            border-left-color: #d63031;
-        }
-
-        .tool-notification.fade {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-
-        .welcome-message {
-            display: grid;
-            gap: 24px;
-            padding: 32px;
-            margin-top: 32px;
-            border-radius: 12px;
-            background-color: var(--vscode-editorWidget-background);
-            border: 1px solid var(--vscode-panel-border);
-        }
-
-        .welcome-hero {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            text-align: left;
-        }
-
-        .welcome-hero h2 {
-            margin: 0;
-            font-size: 18px;
-        }
-
-        .welcome-hero p {
-            margin: 0;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            max-width: 540px;
-        }
-
-        .welcome-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-            gap: 18px;
-        }
-
-        .welcome-card {
-            border-radius: 10px;
-            padding: 16px;
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            text-align: left;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .welcome-card h3 {
-            margin: 0;
-            font-size: 13px;
-        }
-
-        .welcome-card p {
-            margin: 0;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-            line-height: 1.5;
-        }
-
-        .chat-history {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            background-color: var(--vscode-editor-background);
-        }
-
-        .chat-history-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-        }
-
-        .chat-history-header h3 {
-            margin: 0;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .chat-history-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-        }
-
-        .chat-history-item {
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            border-radius: 6px;
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border);
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-
-        .chat-history-item:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-
-        .chat-history-item-title {
-            font-size: 11px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .chat-history-item-preview {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .chat-history-empty {
-            text-align: center;
-            padding: 32px;
-            color: var(--vscode-descriptionForeground);
-            font-size: 11px;
-        }
-
-        .hidden {
-            display: none !important;
-        }
     </style>
+    ${headHtml}
 </head>
-<body>
+<body class="bg-surface text-text font-sans antialiased">
     ${bodyStartHtml}
-    <div class="poe-layout">
-        <header class="app-header" data-slot="app-shell">
-            <!-- Will be populated by renderAppShell -->
-        </header>
-        <main class="main-pane">
-            <header class="status-bar">
-                <div class="status-left">
-                    <span id="model-badge" class="model-badge">${options.defaultModel}</span>
-                    <span id="strategy-badge" class="strategy-badge">No Strategy</span>
-                </div>
-                <div id="model-selector" data-slot="model-selector"></div>
-            </header>
-            <section id="chat-container" class="chat-scroll">
-                <div id="messages">
+    <div class="flex h-screen flex-col overflow-hidden">
+        <header class="flex items-center justify-between border-b border-outline bg-surface px-5 py-4" data-slot="app-shell"></header>
+        <main class="relative flex flex-1 overflow-hidden bg-surface">
+            <section id="chat-container" class="flex flex-1 flex-col overflow-hidden">
+                <div id="messages" class="flex-1 overflow-y-auto px-6 py-6">
                     <div class="welcome-message">
                         <div class="welcome-hero">
                             <h2>Welcome to Poe Code</h2>
-                            <p>
-                                Orchestrate Poe models, strategies, and developer tools without leaving VS Code.
-                                Configure your agent once and reuse it across every session.
-                            </p>
+                            <p>Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
                         </div>
                         <div class="welcome-grid">
                             <article class="welcome-card" data-feature="strategies">
-                                <h3>Adaptive orchestration</h3>
-                                <p>Blend Claude, GPT, or custom bots with smart, mixed, or fixed rotation patterns.</p>
+                                <h3>Strategies</h3>
+                                <p>Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
                             </article>
                             <article class="welcome-card" data-feature="models">
-                                <h3>Fast model switching</h3>
-                                <p>Pin your favorite IDs, search any Poe model, or follow strategy recommendations.</p>
+                                <h3>Model library</h3>
+                                <p>Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
                             </article>
                             <article class="welcome-card" data-feature="tools">
-                                <h3>Tools that ship code</h3>
-                                <p>Trigger worktree, MCP, and repo utilities directly from the conversation.</p>
+                                <h3>Dev workflows</h3>
+                                <p>Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
                             </article>
                         </div>
                     </div>
                 </div>
-                <div id="thinking-indicator" class="thinking hidden">
-                    <span class="thinking-dot"></span>
-                    <span class="thinking-dot"></span>
-                    <span class="thinking-dot"></span>
-                    <span>Thinking...</span>
+                <div id="thinking-indicator" class="hidden px-6 pb-6 text-sm text-subtle">
+                    <div class="flex items-center gap-2 rounded-lg border border-dashed border-outline bg-surface-muted px-3 py-2">
+                        <span class="thinking-dot"></span>
+                        <span class="thinking-dot"></span>
+                        <span class="thinking-dot"></span>
+                        <span>Thinking...</span>
+                    </div>
                 </div>
-            </section>
-            <footer class="composer">
-                <textarea id="message-input" placeholder="Ask Poe…" rows="1"></textarea>
-                <div class="composer-actions">
-                    <button id="clear-button" type="button" class="composer-button">Clear</button>
-                    <button id="send-button" type="button" class="composer-button primary">Send</button>
-                </div>
-            </footer>
-            <section id="strategy-modal" class="strategy-modal hidden" aria-hidden="true">
-                <div class="strategy-surface" role="dialog" aria-modal="true" aria-labelledby="strategy-modal-title">
-                    <header class="strategy-header">
-                        <div>
-                            <h3 id="strategy-modal-title">Model strategies</h3>
-                            <p>Choose how Poe routes each request across your configured models.</p>
+                <footer class="composer border-t border-outline bg-surface px-6 py-4">
+                    <div class="flex w-full items-end gap-3">
+                        <textarea
+                            id="message-input"
+                            data-test="message-input"
+                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-lg border border-outline bg-surface-muted px-3 py-3 text-sm leading-6 text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                            placeholder="Ask Poe..."
+                            rows="1"
+                        ></textarea>
+                        <div class="flex items-center gap-2">
+                            <button
+                                id="clear-button"
+                                type="button"
+                                data-test="clear-button"
+                                class="rounded-md border border-outline px-3 py-2 text-xs font-medium text-subtle transition hover:bg-surface-muted hover:text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                            >
+                                Clear
+                            </button>
+                            <button
+                                id="send-button"
+                                type="button"
+                                data-test="send-button"
+                                class="rounded-md bg-button px-4 py-2 text-xs font-semibold text-button-foreground shadow focus:outline-none focus:ring-2 focus:ring-accent"
+                            >
+                                Send
+                            </button>
                         </div>
-                        <button type="button" class="composer-button strategy-close" data-action="strategy-close">
-                            Close
-                        </button>
-                    </header>
-                    <div class="strategy-toggle-row">
-                        <div class="strategy-toggle-label">
-                            <span>Enable orchestration</span>
-                            <span>Let Poe swap models automatically</span>
-                        </div>
-                        <button type="button" id="strategy-toggle" role="switch" aria-checked="false">
-                            <span class="strategy-thumb"></span>
-                        </button>
                     </div>
-                    <div class="strategy-options">
-                        <button type="button" class="strategy-option" data-strategy="smart" aria-pressed="false">
-                            <strong>🧠 Smart director</strong>
-                            <span>Evaluates the prompt and picks reasoning or coding heavy models on demand.</span>
-                        </button>
-                        <button type="button" class="strategy-option" data-strategy="mixed" aria-pressed="false">
-                            <strong>🔄 Mixed relay</strong>
-                            <span>Alternates between two top models for balanced creativity and accuracy.</span>
-                        </button>
-                        <button type="button" class="strategy-option" data-strategy="round-robin" aria-pressed="false">
-                            <strong>🔁 Round robin</strong>
-                            <span>Visits every configured model in order, great for multi-perspective runs.</span>
-                        </button>
-                        <button type="button" class="strategy-option" data-strategy="fixed" aria-pressed="false">
-                            <strong>📌 Fixed model</strong>
-                            <span>Stay on the currently selected model for consistent, predictable replies.</span>
-                        </button>
-                    </div>
-                </div>
+                </footer>
             </section>
-            <section id="settings-panel" class="settings-panel hidden">
-                <div class="settings-content">
-                    <header class="settings-header">
-                        <h3>Settings</h3>
-                        <button type="button" class="composer-button" data-action="settings-close">Close</button>
-                    </header>
-                    <div class="settings-section">
-                        <h4>Providers</h4>
-                        <div id="provider-settings" class="provider-list"></div>
-                    </div>
-                    <div class="settings-actions">
-                        <button type="button" class="composer-button" data-action="settings-open-mcp">
-                            Open MCP Configuration
-                        </button>
-                    </div>
+            <section id="chat-history" class="chat-history hidden" data-test="chat-history-panel">
+                <div class="chat-history-header" data-test="chat-history-header">
+                    <h3 class="text-sm font-semibold">Chat history</h3>
+                    <button
+                        type="button"
+                        data-action="history-close"
+                        data-test="chat-history-close"
+                        class="rounded-md border border-outline px-3 py-1 text-xs text-subtle hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                        Close
+                    </button>
                 </div>
-            </section>
-            <section id="chat-history" class="chat-history hidden">
-                <div class="chat-history-header">
-                    <h3>Chat History</h3>
-                    <button type="button" class="composer-button" data-action="history-close">Close</button>
-                </div>
-                <div class="chat-history-content">
-                    <div class="chat-history-empty">No chat history available yet.</div>
+                <div class="chat-history-content" data-test="chat-history-content">
+                    <div class="chat-history-empty" data-test="chat-history-empty">
+                        Start a conversation to see recent chats here.
+                    </div>
                 </div>
             </section>
             <div id="tool-notifications" class="tool-notifications"></div>
         </main>
     </div>
+    <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
     ${extraScripts}
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
-        const bootstrap = ${bootstrapPlaceholder};
+        const bootstrap = ${bootstrapSource};
         const app = bootstrap({
             document,
             appShellHtml: \`${escapedAppShell}\`,
-            modelSelectorHtml: \`${escapedModelSelector}\`,
             providerSettings: ${providerJson},
+            modelOptions: ${modelOptionsJson},
             defaultModel: ${JSON.stringify(options.defaultModel)},
             logoUrl: ${JSON.stringify(options.logoUri)},
             postMessage: (message) => vscode.postMessage(message)
@@ -1643,7 +1110,8 @@ ${code}
 </body>
 </html>`;
 
-    return html.replace(bootstrapPlaceholder, initializeWebviewApp.toString());
+
+    return html;
 }
 
 export function deactivate() {

@@ -23,7 +23,7 @@ const distPath = path.join(projectRoot, 'dist');
 
 // Dynamic imports of existing services
 let PoeChatService, DefaultToolExecutor, getAvailableTools;
-let renderMarkdown, renderDiffPreview, renderAppShell, renderModelSelector;
+let renderMarkdown, renderDiffPreview, renderAppShell;
 let loadProviderSettings;
 let getWebviewContent;
 
@@ -41,19 +41,16 @@ async function loadServices() {
         const markdownPath = path.join(__dirname, '..', 'out', 'webview', 'markdown.js');
         const diffPath = path.join(__dirname, '..', 'out', 'webview', 'diff-preview.js');
         const layoutPath = path.join(__dirname, '..', 'out', 'webview', 'layout.js');
-        const selectorPath = path.join(__dirname, '..', 'out', 'webview', 'model-selector.js');
         const settingsPath = path.join(__dirname, '..', 'out', 'config', 'provider-settings.js');
 
         const markdownModule = await import(markdownPath);
         const diffModule = await import(diffPath);
         const layoutModule = await import(layoutPath);
-        const selectorModule = await import(selectorPath);
         const settingsModule = await import(settingsPath);
 
         renderMarkdown = markdownModule.renderMarkdown;
         renderDiffPreview = diffModule.renderDiffPreview;
         renderAppShell = layoutModule.renderAppShell;
-        renderModelSelector = selectorModule.renderModelSelector;
         loadProviderSettings = settingsModule.loadProviderSettings;
 
         const vscodeStubPath = path.join(__dirname, 'stubs', 'vscode.js');
@@ -98,6 +95,7 @@ function createPreviewBridgeScript() {
     return `(function () {
   const STATUS_ID = "preview-connection-status";
   const STYLE_ID = "preview-connection-style";
+  window.__poePreviewConnected = false;
   const ensureStyle = () => {
     if (document.getElementById(STYLE_ID)) {
       return;
@@ -161,6 +159,7 @@ function createPreviewBridgeScript() {
     socket.addEventListener("open", () => {
       retries = 0;
       updateStatus("connected", "✓ Connected to server");
+      window.__poePreviewConnected = true;
     });
     socket.addEventListener("message", (event) => {
       try {
@@ -189,6 +188,62 @@ function createPreviewBridgeScript() {
 })();`;
 }
 
+const previewThemeStyles = `
+<style id="preview-vscode-theme">
+  :root {
+    --vscode-editor-background: #0f172a;
+    --vscode-editorWidget-background: #111c2f;
+    --vscode-panel-border: rgba(148, 163, 184, 0.2);
+    --vscode-editor-foreground: #e2e8f0;
+    --vscode-descriptionForeground: #94a3b8;
+    --vscode-focusBorder: #38bdf8;
+    --vscode-button-background: #2563eb;
+    --vscode-button-foreground: #f8fafc;
+    --vscode-button-hoverBackground: #1d4ed8;
+    --vscode-button-border: transparent;
+    --vscode-button-secondaryBackground: rgba(37, 99, 235, 0.16);
+    --vscode-button-secondaryForeground: #bfdbfe;
+    --vscode-badge-background: rgba(59, 130, 246, 0.16);
+    --vscode-badge-foreground: #bfdbfe;
+    --vscode-list-hoverBackground: rgba(148, 163, 184, 0.08);
+    --vscode-input-border: rgba(148, 163, 184, 0.24);
+    --vscode-input-background: rgba(15, 23, 42, 0.6);
+    --vscode-input-foreground: #f8fafc;
+    --vscode-editor-font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --vscode-gitDecoration-addedResourceForeground: #22c55e;
+    --vscode-errorForeground: #f87171;
+  }
+
+  ::selection {
+    background-color: rgba(37, 99, 235, 0.25);
+  }
+
+  body {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  #preview-connection-status {
+    font-family: inherit;
+  }
+</style>
+`;
+
+async function loadPreviewCss() {
+    const bundleDir = path.join(__dirname, 'public');
+    try {
+        return await fs.readFile(path.join(bundleDir, 'preview.css'), 'utf8');
+    } catch (error) {
+        console.error('❌ Preview CSS missing. Run "npm run build:webview" first.');
+        throw error;
+    }
+}
+
 async function renderPreviewPage() {
     const extensionRoot = path.join(__dirname, '..');
     const providerSettings = await loadProviderSettings(extensionRoot);
@@ -202,20 +257,21 @@ async function renderPreviewPage() {
         models: modelOptions,
         activeModel: defaultModel
     });
-    const modelSelectorHtml = renderModelSelector({
-        models: modelOptions,
-        selected: defaultModel
-    });
-    const html = getWebviewContent({
+    const styleSource = await loadPreviewCss();
+    const mockWebview = {
         cspSource: "'self'",
         asWebviewUri: (uri) => ({ toString: () => String(uri) })
-    } as any, {
+    };
+    const html = getWebviewContent(mockWebview, {
         logoUri,
         appShellHtml,
-        modelSelectorHtml,
+        modelOptions,
         providerSettings,
         defaultModel,
-        bodyStartHtml: '<div id="preview-connection-status" class="connection-status connection-status--connecting">Connecting to server...</div>',
+        useGlobalBootstrap: true,
+        allowScriptFromSelf: true,
+        headHtml: `${previewThemeStyles}\n<style>${styleSource}</style>\n<script src="/preview-assets/preview.js"></script>`,
+        bodyStartHtml: '<div id="preview-connection-status" data-test="connection-status" class="connection-status connection-status--connecting">Connecting to server...</div>',
         additionalScripts: [createPreviewBridgeScript()],
         additionalCspDirectives: ['connect-src ws: wss:']
     });
@@ -223,15 +279,73 @@ async function renderPreviewPage() {
 }
 
 // Main server setup
+class MockChatService {
+    constructor(defaultModel) {
+        this.model = defaultModel;
+        this.strategyEnabled = false;
+        this.strategyConfig = { type: "fixed" };
+        this.history = [];
+    }
+
+    getModel() {
+        return this.model;
+    }
+
+    setModel(model) {
+        if (typeof model === "string" && model.trim().length > 0) {
+            this.model = model.trim();
+        }
+    }
+
+    async sendMessage(text) {
+        const id = `mock-${Date.now()}`;
+        const content = `Mock response: ${text}`;
+        this.history.push({ id, text, content });
+        return { id, content };
+    }
+
+    clearHistory() {
+        this.history = [];
+    }
+
+    isStrategyEnabled() {
+        return this.strategyEnabled;
+    }
+
+    enableStrategy() {
+        this.strategyEnabled = true;
+    }
+
+    disableStrategy() {
+        this.strategyEnabled = false;
+    }
+
+    setStrategy(config) {
+        this.strategyEnabled = true;
+        this.strategyConfig = config ?? { type: "fixed" };
+    }
+
+    getStrategyInfo() {
+        if (!this.strategyEnabled) {
+            return "Strategy disabled";
+        }
+        const type = typeof this.strategyConfig?.type === "string" ? this.strategyConfig.type : "fixed";
+        return `Mock strategy (${type})`;
+    }
+}
+
 async function startServer() {
     await loadServices();
 
-    const credentials = await getCredentials();
-    if (!credentials) {
+    const allowNoCredentials = process.env.POE_PREVIEW_ALLOW_NO_CREDENTIALS === '1';
+    const fetchedCredentials = await getCredentials();
+    const shouldUseMock = allowNoCredentials || !fetchedCredentials;
+    if (!fetchedCredentials && !allowNoCredentials) {
         console.error('❌ Poe API key not configured');
         console.error('Run: npx poe-setup login --api-key YOUR_KEY');
         process.exit(1);
     }
+    const credentials = shouldUseMock ? null : fetchedCredentials;
 
     const app = express();
     const server = createServer(app);
@@ -250,8 +364,9 @@ async function startServer() {
         }
     });
 
-    // Serve preview directory files (index.html)
+    // Serve preview directory files
     app.use(express.static(__dirname));
+    app.use('/preview-assets', express.static(path.join(__dirname, 'public')));
 
     // Serve extension directory files directly (out/, poe-bw.svg, etc.)
     app.use(express.static(path.join(__dirname, '..')));
@@ -322,14 +437,16 @@ async function startServer() {
         };
 
         const defaultModel = 'Claude-Sonnet-4.5';
-        const chatService = new PoeChatService(
-            credentials.apiKey,
-            defaultModel,
-            toolExecutor,
-            toolCallback
-        );
+        const chatService = credentials
+            ? new PoeChatService(
+                credentials.apiKey,
+                defaultModel,
+                toolExecutor,
+                toolCallback
+            )
+            : new MockChatService(defaultModel);
 
-        const availableTools = getAvailableTools();
+        const availableTools = credentials ? getAvailableTools() : [];
 
         connections.set(connectionId, {
             ws,
@@ -366,11 +483,16 @@ async function startServer() {
         });
     });
 
+    const debugMessages = process.env.POE_PREVIEW_DEBUG_MESSAGES === '1';
+
     async function handleWebSocketMessage(connectionId, message) {
         const conn = connections.get(connectionId);
         if (!conn) return;
 
         const { ws, chatService, availableTools } = conn;
+        if (debugMessages) {
+            console.log('[preview] incoming message', JSON.stringify(message));
+        }
 
         switch (message.type) {
             case 'sendMessage': {
@@ -405,6 +527,9 @@ async function startServer() {
                         type: 'error',
                         text: error.message
                     }));
+                    if (debugMessages) {
+                        console.error('[preview] sendMessage error', error);
+                    }
                 } finally {
                     ws.send(JSON.stringify({ type: 'thinking', value: false }));
                 }
@@ -452,45 +577,6 @@ async function startServer() {
             res.json(providers);
         } catch (error) {
             res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Serve webview modules as browser-compatible bundle
-    app.get('/api/webview-bundle.js', async (req, res) => {
-        try {
-            const runtimePath = path.join(__dirname, '..', 'out', 'webview', 'runtime.js');
-            const layoutPath = path.join(__dirname, '..', 'out', 'webview', 'layout.js');
-            const selectorPath = path.join(__dirname, '..', 'out', 'webview', 'model-selector.js');
-
-            const runtime = await fs.readFile(runtimePath, 'utf-8');
-            const layout = await fs.readFile(layoutPath, 'utf-8');
-            const selector = await fs.readFile(selectorPath, 'utf-8');
-
-            // Create a browser-compatible bundle
-            const bundle = `
-// CommonJS shim for browser
-(function() {
-    const exports = {};
-    const module = { exports };
-    
-    // Runtime module
-    ${runtime}
-    window.initializeWebviewApp = exports.initializeWebviewApp;
-    
-    // Layout module
-    ${layout}
-    window.renderAppShell = exports.renderAppShell;
-    
-    // Model selector module
-    ${selector}
-    window.renderModelSelector = exports.renderModelSelector;
-})();
-            `;
-
-            res.setHeader('Content-Type', 'application/javascript');
-            res.send(bundle);
-        } catch (error) {
-            res.status(500).send(`console.error('Failed to load webview bundle:', ${JSON.stringify(error.message)})`);
         }
     });
 

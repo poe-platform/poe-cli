@@ -1,10 +1,12 @@
 import type { ProviderSetting } from "../config/provider-settings.js";
+import { PoeSettingsPanel, registerPoeSettingsPanel } from "./components/settings-panel.js";
+import type { StrategyKind } from "./components/settings-panel.js";
 
 interface InitializeOptions {
   document: Document;
   appShellHtml: string;
-  modelSelectorHtml: string;
   providerSettings: ProviderSetting[];
+  modelOptions: string[];
   defaultModel: string;
   logoUrl: string;
   postMessage: (message: unknown) => void;
@@ -22,10 +24,22 @@ export interface WebviewApp {
 export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const doc = options.document;
   const view = doc.defaultView ?? (globalThis as typeof globalThis & Window);
+  const hostRegistry = view?.customElements ?? null;
+  const globalRegistry = (globalThis as typeof globalThis & {
+    customElements?: CustomElementRegistry;
+  }).customElements;
+  registerPoeSettingsPanel(globalRegistry ?? null);
+  registerPoeSettingsPanel(hostRegistry ?? null);
+
+  const settingsPanelElement = doc.getElementById("settings-panel");
+  if (settingsPanelElement && hostRegistry?.get("poe-settings-panel")) {
+    try {
+      hostRegistry.upgrade(settingsPanelElement);
+    } catch {
+      // Ignore upgrade errors in non-browser environments.
+    }
+  }
   const appShellHost = doc.querySelector<HTMLElement>("[data-slot='app-shell']");
-  const modelSelectorHost = doc.querySelector<HTMLElement>(
-    "[data-slot='model-selector']"
-  );
   const chatContainer = doc.getElementById("chat-container") as
     | HTMLElement
     | null;
@@ -38,23 +52,11 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const thinkingIndicator = doc.getElementById("thinking-indicator") as
     | HTMLElement
     | null;
-  const modelBadge = doc.getElementById("model-badge") as HTMLElement | null;
-  const strategyBadge = doc.getElementById("strategy-badge") as HTMLElement | null;
   const toolNotifications = doc.getElementById("tool-notifications") as
     | HTMLElement
     | null;
   const composer = doc.querySelector(".composer") as HTMLElement | null;
-  const statusBar = doc.querySelector(".status-bar") as HTMLElement | null;
-  const settingsPanel = doc.getElementById("settings-panel") as HTMLElement | null;
-  const providerSettingsContainer = doc.getElementById(
-    "provider-settings"
-  ) as HTMLElement | null;
-  const settingsCloseButton = settingsPanel?.querySelector(
-    "[data-action='settings-close']"
-  ) as HTMLButtonElement | null;
-  const settingsOpenMcpButton = settingsPanel?.querySelector(
-    "[data-action='settings-open-mcp']"
-  ) as HTMLButtonElement | null;
+  const settingsPanel = doc.getElementById("settings-panel") as PoeSettingsPanel | null;
   const chatHistory = doc.getElementById("chat-history") as HTMLElement | null;
   const chatHistoryContent = chatHistory?.querySelector(
     ".chat-history-content"
@@ -66,26 +68,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   if (appShellHost) {
     appShellHost.innerHTML = options.appShellHtml;
   }
-  if (modelSelectorHost) {
-    modelSelectorHost.innerHTML = options.modelSelectorHtml;
-  }
-
-  const strategyModal = doc.getElementById("strategy-modal") as HTMLElement | null;
-  const strategyToggle = strategyModal?.querySelector("#strategy-toggle") as HTMLElement | null;
-  const strategyCloseButton = strategyModal?.querySelector(
-    "[data-action='strategy-close']"
-  ) as HTMLButtonElement | null;
-  const strategyOptions = Array.from(
-    strategyModal?.querySelectorAll<HTMLElement>(".strategy-option") ?? []
-  );
-  const strategyOverlay = strategyModal;
-
-  const modelInput = modelSelectorHost?.querySelector("input") as
-    | HTMLInputElement
-    | null;
-  const modelButtons = Array.from(
-    modelSelectorHost?.querySelectorAll<HTMLButtonElement>(".model-item") ?? []
-  );
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
@@ -97,54 +79,16 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   let activeModel = options.defaultModel;
   let settingsVisible = false;
   let historyVisible = false;
-  let strategyEnabled = false;
-  let currentStrategy = "fixed";
-
-  if (strategyBadge) {
-    strategyBadge.dataset.state = "disabled";
-  }
 
   function setActiveModel(model: string): void {
     if (!model.length) {
       return;
     }
     activeModel = model;
-
-    if (modelBadge) {
-      modelBadge.textContent = model;
+    if (settingsPanel) {
+      settingsPanel.activeModel = model;
     }
-
-    if (modelInput) {
-      modelInput.value = model;
-    }
-
-    modelButtons.forEach((button) => {
-      const buttonModel = button.dataset.model ?? button.textContent?.trim() ?? "";
-      button.classList.toggle("active", buttonModel === model);
-    });
-
-    highlightActiveProvider(model);
   }
-
-  if (modelInput) {
-    modelInput.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" && !keyboardEvent.shiftKey) {
-        keyboardEvent.preventDefault();
-        publishModel(modelInput.value);
-      }
-    });
-    modelInput.addEventListener("blur", () => publishModel(modelInput.value));
-  }
-
-  modelButtons.forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      const targetModel =
-        button.dataset.model ?? button.textContent?.trim() ?? "";
-      publishModel(targetModel);
-    });
-  });
 
   function publishModel(value: string): void {
     const trimmed = value.trim();
@@ -155,80 +99,21 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     options.postMessage({ type: "setModel", model: trimmed });
   }
 
-  function focusStrategyOption(): void {
-    if (!strategyModal) {
-      return;
+  function openSettingsPanel(): void {
+    if (settingsPanel) {
+      settingsPanel.providers = options.providerSettings;
+      settingsPanel.models = options.modelOptions;
+      settingsPanel.open = true;
     }
-    const preferred =
-      (strategyModal.querySelector(".strategy-option.active") as
-        | HTMLButtonElement
-        | null) ??
-      (strategyModal.querySelector(".strategy-option") as HTMLButtonElement | null);
-    preferred?.focus?.();
-  }
-
-  function setStrategyModalVisible(visible: boolean): void {
-    if (!strategyModal) {
-      return;
-    }
-    strategyModal.classList.toggle("hidden", !visible);
-    strategyModal.setAttribute("aria-hidden", visible ? "false" : "true");
-    if (visible) {
-      strategyModal.dataset.state = "open";
-      focusStrategyOption();
-    } else {
-      strategyModal.dataset.state = "closed";
-    }
-  }
-
-  function openStrategyConfigurator(event?: Event): void {
-    event?.preventDefault();
-    event?.stopPropagation();
-    setStrategyModalVisible(true);
+    settingsVisible = true;
     options.postMessage({ type: "getStrategyStatus" });
   }
 
-  function setStrategyEnabledState(
-    next: boolean,
-    control: { notify?: boolean } = {}
-  ): void {
-    strategyEnabled = next;
-    if (strategyToggle) {
-      strategyToggle.classList.toggle("active", next);
-      strategyToggle.setAttribute("aria-checked", next ? "true" : "false");
+  function hideSettingsPanel(): void {
+    if (settingsPanel) {
+      settingsPanel.open = false;
     }
-    if (strategyBadge) {
-      strategyBadge.dataset.state = next ? "enabled" : "disabled";
-    }
-    if (control.notify) {
-      options.postMessage({
-        type: "toggleStrategy",
-        enabled: next
-      });
-    }
-  }
-
-  function markActiveStrategy(type: string): void {
-    currentStrategy = type;
-    strategyOptions.forEach((option) => {
-      const match = option.dataset.strategy === type;
-      option.classList.toggle("active", match);
-      option.setAttribute("aria-pressed", match ? "true" : "false");
-    });
-  }
-
-  function dispatchStrategyConfig(type: string): void {
-    if (!type.length) {
-      return;
-    }
-    const payload: Record<string, unknown> = { type };
-    if (type === "fixed") {
-      payload.fixedModel = activeModel;
-    }
-    options.postMessage({
-      type: "setStrategy",
-      config: payload
-    });
+    settingsVisible = false;
   }
 
   if (sendButton) {
@@ -305,68 +190,38 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     });
   }
 
-  const strategyTriggers = Array.from(
-    doc.querySelectorAll<HTMLButtonElement>("[data-action='strategy-open']")
-  );
-  strategyTriggers.forEach((button) => {
-    button.addEventListener("click", openStrategyConfigurator);
-  });
+  if (settingsPanel) {
+    settingsPanel.providers = options.providerSettings;
+    settingsPanel.models = options.modelOptions;
+    settingsPanel.activeModel = activeModel;
 
-  if (strategyBadge) {
-    strategyBadge.addEventListener("click", () => {
-      openStrategyConfigurator();
-    });
-  }
-
-  if (strategyCloseButton) {
-    strategyCloseButton.addEventListener("click", () => {
-      setStrategyModalVisible(false);
-    });
-  }
-
-  if (strategyOverlay) {
-    strategyOverlay.addEventListener("click", (event) => {
-      if (event.target === strategyOverlay) {
-        setStrategyModalVisible(false);
-      }
-    });
-  }
-
-  if (strategyToggle) {
-    strategyToggle.addEventListener("click", () => {
-      setStrategyEnabledState(!strategyEnabled, { notify: true });
-    });
-  }
-
-  strategyOptions.forEach((option) => {
-    option.addEventListener("click", () => {
-      const type = option.dataset.strategy ?? "";
-      if (!type.length) {
-        return;
-      }
-      markActiveStrategy(type);
-      dispatchStrategyConfig(type);
-    });
-  });
-
-  if (strategyOptions.length > 0) {
-    markActiveStrategy(currentStrategy);
-  }
-
-  doc.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      setStrategyModalVisible(false);
-    }
-  });
-
-  if (settingsCloseButton) {
-    settingsCloseButton.addEventListener("click", () => {
+    settingsPanel.addEventListener("settings-close", () => {
       hideSettingsPanel();
     });
-  }
 
-  if (settingsOpenMcpButton) {
-    settingsOpenMcpButton.addEventListener("click", () => {
+    settingsPanel.addEventListener("model-change", (event) => {
+      const detail = (event as CustomEvent<{ model?: string }>).detail;
+      if (detail?.model) {
+        publishModel(detail.model);
+      }
+    });
+
+    settingsPanel.addEventListener("strategy-toggle", (event) => {
+      const detail = (event as CustomEvent<{ enabled?: boolean }>).detail;
+      options.postMessage({
+        type: "toggleStrategy",
+        enabled: Boolean(detail?.enabled),
+      });
+    });
+
+    settingsPanel.addEventListener("strategy-change", (event) => {
+      const detail = (event as CustomEvent<{ config?: unknown }>).detail;
+      if (detail?.config) {
+        options.postMessage({ type: "setStrategy", config: detail.config });
+      }
+    });
+
+    settingsPanel.addEventListener("open-mcp", () => {
       options.postMessage({ type: "openSettings" });
       hideSettingsPanel();
     });
@@ -418,6 +273,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
     const wrapper = doc.createElement("div");
     wrapper.className = `message-wrapper ${role}`;
+    wrapper.setAttribute("data-test", role === "assistant" ? "message-wrapper-assistant" : "message-wrapper-user");
 
     const header = doc.createElement("div");
     header.className = "message-header";
@@ -450,6 +306,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
     const container = doc.createElement("div");
     container.className = "message-wrapper diff";
+    container.setAttribute("data-test", "message-wrapper-diff");
     const content = doc.createElement("div");
     content.className = "message-content";
     content.innerHTML = html;
@@ -585,28 +442,20 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   }
 
   function updateStrategyBadge(info: string | null, enabled: boolean): void {
-    if (!strategyBadge) {
+    if (!settingsPanel) {
       return;
     }
-    setStrategyEnabledState(enabled);
+    settingsPanel.strategyEnabled = enabled;
     if (!enabled || !info || info === "Strategy disabled") {
-      strategyBadge.textContent = "No Strategy";
-      strategyBadge.style.opacity = "0.6";
+      settingsPanel.strategyInfo = "";
+      settingsPanel.strategyType = "fixed";
       return;
     }
-    const mapping: Record<string, string> = {
-      smart: "🧠 Smart Orchestrator",
-      mixed: "🔄 Mixed Rotation",
-      "round-robin": "🔁 Round Robin",
-      fixed: "📌 Fixed Model"
-    };
-    const key = deriveStrategyType(info);
-    markActiveStrategy(key);
-    strategyBadge.textContent = mapping[key] ?? info.split(":")[0] ?? info;
-    strategyBadge.style.opacity = "1";
+    settingsPanel.strategyInfo = info;
+    settingsPanel.strategyType = deriveStrategyType(info);
   }
 
-  function deriveStrategyType(info: string): string {
+  function deriveStrategyType(info: string): StrategyKind {
     const normalized = info.toLowerCase();
     if (normalized.includes("smart")) {
       return "smart";
@@ -684,9 +533,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     if (composer) {
       composer.classList.add("hidden");
     }
-    if (statusBar) {
-      statusBar.classList.add("hidden");
-    }
     if (chatHistory) {
       chatHistory.classList.remove("hidden");
     }
@@ -700,9 +546,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
     if (composer) {
       composer.classList.remove("hidden");
-    }
-    if (statusBar) {
-      statusBar.classList.remove("hidden");
     }
     if (chatHistory) {
       chatHistory.classList.add("hidden");
@@ -764,64 +607,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
   function showSettingsPanel(): void {
     settingsVisible = true;
-    if (settingsPanel) {
-      settingsPanel.classList.remove("hidden");
-    }
-    populateProviderSettings();
-  }
-
-  function hideSettingsPanel(): void {
-    settingsVisible = false;
-    if (settingsPanel) {
-      settingsPanel.classList.add("hidden");
-    }
-  }
-
-  function populateProviderSettings(): void {
-    if (!providerSettingsContainer) {
-      return;
-    }
-    providerSettingsContainer.innerHTML = "";
-
-    if (options.providerSettings.length === 0) {
-      const empty = doc.createElement("p");
-      empty.className = "provider-empty";
-      empty.textContent = "No provider configurations found.";
-      providerSettingsContainer.appendChild(empty);
-      return;
-    }
-
-    for (const provider of options.providerSettings) {
-      const item = doc.createElement("div");
-      item.className = "provider-item";
-      item.dataset.providerLabel = provider.label;
-
-      const label = doc.createElement("strong");
-      label.textContent = provider.label;
-
-      const detail = doc.createElement("span");
-      detail.textContent = provider.id;
-
-      item.appendChild(label);
-      item.appendChild(detail);
-      providerSettingsContainer.appendChild(item);
-    }
-
-    highlightActiveProvider(activeModel);
-  }
-
-  function highlightActiveProvider(model: string): void {
-    if (!providerSettingsContainer) {
-      return;
-    }
-    const items = providerSettingsContainer.querySelectorAll(".provider-item");
-    const hostWindow = doc.defaultView;
-    items.forEach((element) => {
-      if (hostWindow && element instanceof hostWindow.HTMLElement) {
-        const match = element.dataset.providerLabel === model;
-        element.classList.toggle("active", match);
-      }
-    });
+    openSettingsPanel();
   }
 
   setActiveModel(options.defaultModel);
