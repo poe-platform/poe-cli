@@ -7,6 +7,7 @@
 - [x] `help` is broken in interactive mode
 - [ ] can you roll own terminal markdown renderer and add support for that. For unsupported formatting, you can just render as plaintext. 
 - [x] spawn should support also poe-code (poe-cli agent)
+- [ ] key-up should rotate through history messages, like old school irc client
 
 ## vscode extension
 
@@ -17,6 +18,7 @@
 - [ ] @ to select files
 - [ ] use Tailwind for UI components
 - [ ] previous chat history should be working
+- [ ] key-up should rotate through history messages, like old school irc client
 
 ## issue-resolution-agent
 
