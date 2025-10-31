@@ -765,9 +765,9 @@ ${tailwindCss}
     ${bodyStartHtml}
     <div class="flex h-screen flex-col bg-surface">
         <header data-slot="app-shell"></header>
-        <div class="flex flex-1 overflow-hidden">
-            <section id="chat-container" class="flex flex-1 flex-col overflow-hidden">
-                <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
+        <main class="flex flex-1 overflow-hidden">
+            <section id="chat-container" class="relative flex flex-1 flex-col overflow-hidden">
+                <div id="messages" class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-6">
                     <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
                         <div class="space-y-2">
                             <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
@@ -797,6 +797,25 @@ ${tailwindCss}
                         <span>Thinking...</span>
                     </div>
                 </div>
+                <footer class="composer sticky bottom-0 border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
+                    <div class="flex w-full items-end gap-3">
+                        <textarea
+                            id="message-input"
+                            data-test="message-input"
+                            class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                            placeholder="Ask Poe..."
+                            rows="1"
+                        ></textarea>
+                        <button
+                            id="send-button"
+                            type="button"
+                            data-test="send-button"
+                            class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                            Send
+                        </button>
+                    </div>
+                </footer>
             </section>
             <section id="chat-history" class="chat-history hidden h-full flex-1 flex-col overflow-hidden border-l border-border bg-surface-raised shadow-xl" data-test="chat-history-panel">
                 <div class="chat-history-header flex items-center justify-between border-b border-border px-5 py-4" data-test="chat-history-header">
@@ -817,28 +836,11 @@ ${tailwindCss}
                 </div>
             </section>
             <section id="settings-view" class="hidden flex flex-1 overflow-y-auto bg-surface px-6 py-6" data-test="settings-view">
-                <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
+                <div class="mx-auto w-full max-w-3xl">
+                    <poe-settings-panel id="settings-panel" data-test="settings-panel"></poe-settings-panel>
+                </div>
             </section>
-        </div>
-        <footer class="composer border-t border-border bg-surface px-6 py-4">
-            <div class="flex w-full items-end gap-3">
-                <textarea
-                    id="message-input"
-                    data-test="message-input"
-                    class="min-h-[3.5rem] max-h-[14rem] flex-1 resize-none rounded-xl border border-border bg-surface px-3 py-3 text-sm leading-6 text-text placeholder:text-text-muted transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
-                    placeholder="Ask Poe..."
-                    rows="1"
-                ></textarea>
-                <button
-                    id="send-button"
-                    type="button"
-                    data-test="send-button"
-                    class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                    Send
-                </button>
-            </div>
-        </footer>
+        </main>
         <div id="tool-notifications" class="pointer-events-none fixed bottom-6 right-6 flex flex-col gap-3"></div>
     </div>
     ${extraScripts}

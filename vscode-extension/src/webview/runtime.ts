@@ -153,23 +153,26 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     options.postMessage({ type: "setModel", model: trimmed });
   }
 
-  function updateNavState(view: "chat" | "history" | "settings"): void {
-    const pairs: Array<[HTMLButtonElement | null, boolean]> = [
-      [navNewChat, view === "chat"],
-      [navHistory, view === "history"],
-      [navSettings, view === "settings"],
-    ];
-    for (const [button, isActive] of pairs) {
-      if (!button) continue;
-      button.setAttribute("aria-pressed", String(isActive));
-      if (isActive) {
-        button.classList.add("bg-surface", "text-text");
-        button.classList.remove("text-text-muted");
-      } else {
-        button.classList.remove("bg-surface", "text-text");
-        button.classList.add("text-text-muted");
-      }
+  function applyNavStyles(button: HTMLButtonElement | null, isActive: boolean, variant: "primary" | "secondary"): void {
+    if (!button) {
+      return;
     }
+    const activePrimary = ["bg-accent", "text-accent-fg", "shadow-md"];
+    const activeSecondary = ["bg-surface", "text-text", "shadow-sm"];
+    const inactive = ["text-text-muted"];
+    button.classList.remove(...activePrimary, ...activeSecondary, ...inactive);
+    button.setAttribute("aria-pressed", String(isActive));
+    if (isActive) {
+      button.classList.add(...(variant === "primary" ? activePrimary : activeSecondary));
+    } else {
+      button.classList.add(...inactive);
+    }
+  }
+
+  function updateNavState(view: "chat" | "history" | "settings"): void {
+    applyNavStyles(navNewChat, view === "chat", "primary");
+    applyNavStyles(navHistory, view === "history", "secondary");
+    applyNavStyles(navSettings, view === "settings", "secondary");
   }
 
   function setView(view: "chat" | "history" | "settings"): void {
@@ -686,6 +689,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   }
 
   setActiveModel(options.defaultModel);
+  setView("chat");
 
   return {
     handleMessage(rawMessage: any) {
