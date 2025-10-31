@@ -309,11 +309,25 @@ export class AgentTaskRegistry {
     }
     this.pendingDebounce.clear();
     this.completionCallbacks.length = 0;
-    this.progressCallbacks.length = 0;
-    this.tasks.clear();
-    this.taskOrder.length = 0;
-    this.completedQueue.length = 0;
-    this.completedSet.clear();
+      this.progressCallbacks.length = 0;
+      this.tasks.clear();
+      this.taskOrder.length = 0;
+      this.completedQueue.length = 0;
+      this.completedSet.clear();
+    }
+
+  async waitForAllTasks(): Promise<void> {
+    const running = this.getRunningTasks();
+    if (running.length === 0) {
+      return;
+    }
+    await Promise.all(
+      running.map((task) =>
+        this.waitForTask(task.id, () => {
+          // No-op progress handler for waiting callers
+        }).then(() => undefined)
+      )
+    );
   }
 
   private ensureDirectories(): void {

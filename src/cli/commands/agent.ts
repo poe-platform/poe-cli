@@ -70,7 +70,8 @@ export async function runAgentConversation(
     cwd: options.container.env.cwd,
     homeDir: options.container.env.homeDir,
     fs: options.container.fs,
-    logger: (message) => options.logger.info(message)
+    logger: (message) => options.logger.info(message),
+    awaitTasksOnDispose: true
   });
 
   try {
@@ -78,6 +79,16 @@ export async function runAgentConversation(
       session.setToolCallCallback((event) => logToolCallEvent(event, options.logger));
     }
     const response = await session.sendMessage(options.text);
+    if ("waitForAllTasks" in session && typeof session.waitForAllTasks === "function") {
+      await session.waitForAllTasks();
+    }
+    if ("drainCompletedTasks" in session && typeof session.drainCompletedTasks === "function") {
+      const completed = session.drainCompletedTasks();
+      for (const task of completed) {
+        const summary = task.result ?? task.error ?? "Task finished.";
+        options.logger.info(`Task ${task.id} finished (${task.toolName}): ${summary}`);
+      }
+    }
     const activeModel =
       "getModel" in session && session.getModel
         ? session.getModel()

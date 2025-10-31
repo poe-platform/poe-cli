@@ -690,6 +690,32 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
           }
           break;
         }
+        case "taskProgress": {
+          const update = message.update ?? {};
+          if (typeof update.message === "string" && update.message.length > 0) {
+            showToolNotification(`↻ ${update.message}`, "running");
+          }
+          break;
+        }
+        case "taskComplete": {
+          const task = message.task ?? {};
+          const summary =
+            typeof task.result === "string"
+              ? task.result
+              : typeof task.error === "string"
+              ? task.error
+              : "Task finished.";
+          const toolLabel =
+            typeof task.toolName === "string" && task.toolName.length > 0
+              ? task.toolName
+              : "Task";
+          const success = task.status === "completed";
+          showToolNotification(
+            `${success ? "✅" : "❌"} ${toolLabel}: ${summary}`,
+            success ? "success" : "error"
+          );
+          break;
+        }
         case "error": {
           toggleThinking(false);
           addError(String(message.text ?? "Unknown error"));

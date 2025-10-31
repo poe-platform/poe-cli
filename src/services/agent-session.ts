@@ -8,13 +8,18 @@ import {
   type ChatMessage,
   type ToolCallCallback
 } from "./chat.js";
-import { AgentTaskRegistry } from "./agent-task-registry.js";
-import type { FsLike } from "./agent-task-registry.js";
+import {
+  AgentTaskRegistry,
+  type AgentTask,
+  type FsLike
+} from "./agent-task-registry.js";
 
 export interface AgentSession {
   getModel(): string;
   setToolCallCallback(callback: ToolCallCallback): void;
   sendMessage(prompt: string): Promise<ChatMessage>;
+  waitForAllTasks(): Promise<void>;
+  drainCompletedTasks(): AgentTask[];
   dispose(): Promise<void>;
 }
 
@@ -25,6 +30,7 @@ export interface AgentSessionOptions {
   apiKey: string;
   model: string;
   logger: (message: string) => void;
+  awaitTasksOnDispose?: boolean;
 }
 
 export async function createAgentSession(
@@ -61,6 +67,7 @@ export async function createAgentSession(
       options.logger(`task:${event} ${JSON.stringify(payload ?? {})}`);
     }
   });
+  const awaitTasksOnDispose = options.awaitTasksOnDispose ?? false;
 
   const toolExecutor = new DefaultToolExecutor({
     fs: options.fs,
@@ -97,7 +104,18 @@ export async function createAgentSession(
       const tools = getAvailableTools(mcpManager);
       return chatService.sendMessage(prompt, tools);
     },
+    async waitForAllTasks() {
+      await taskRegistry.waitForAllTasks();
+    },
+    drainCompletedTasks() {
+      const completed = taskRegistry.getCompletedTasks();
+      taskRegistry.clearCompleted();
+      return completed;
+    },
     async dispose() {
+      if (awaitTasksOnDispose) {
+        await taskRegistry.waitForAllTasks();
+      }
       taskRegistry.dispose();
       await mcpManager.disconnectAll();
     }

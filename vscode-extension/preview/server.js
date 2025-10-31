@@ -11,7 +11,9 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import fs from 'fs/promises';
+import fsPromises from 'fs/promises';
+import * as fs from 'fs';
+import os from 'os';
 import Module from 'module';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,7 +24,7 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const distPath = path.join(projectRoot, 'dist');
 
 // Dynamic imports of existing services
-let PoeChatService, DefaultToolExecutor, getAvailableTools;
+let PoeChatService, DefaultToolExecutor, getAvailableTools, AgentTaskRegistry;
 let renderMarkdown, renderDiffPreview, renderAppShell;
 let loadProviderSettings;
 let getWebviewContent;
@@ -32,10 +34,12 @@ async function loadServices() {
         // Import chat and tools services
         const chatModule = await import(path.join(distPath, 'services', 'chat.js'));
         const toolsModule = await import(path.join(distPath, 'services', 'tools.js'));
+        const tasksModule = await import(path.join(distPath, 'services', 'agent-task-registry.js'));
 
         PoeChatService = chatModule.PoeChatService;
         DefaultToolExecutor = toolsModule.DefaultToolExecutor;
         getAvailableTools = toolsModule.getAvailableTools;
+        AgentTaskRegistry = tasksModule.AgentTaskRegistry;
 
         // Import webview utilities (compiled from TypeScript)
         const markdownPath = path.join(__dirname, '..', 'out', 'webview', 'markdown.js');
@@ -83,7 +87,7 @@ async function getCredentials() {
     const credentialsPath = path.join(homeDir, '.poe-setup', 'credentials.json');
 
     try {
-        const content = await fs.readFile(credentialsPath, 'utf-8');
+        const content = await fsPromises.readFile(credentialsPath, 'utf-8');
         const creds = JSON.parse(content);
         return creds.apiKey ? { apiKey: creds.apiKey } : null;
     } catch {
@@ -237,7 +241,7 @@ const previewThemeStyles = `
 async function loadPreviewCss() {
     const bundleDir = path.join(__dirname, 'public');
     try {
-        return await fs.readFile(path.join(bundleDir, 'preview.css'), 'utf8');
+        return await fsPromises.readFile(path.join(bundleDir, 'preview.css'), 'utf8');
     } catch (error) {
         console.error('❌ Preview CSS missing. Run "npm run build:webview" first.');
         throw error;
@@ -385,9 +389,9 @@ async function startServer() {
         // Create chat service for this connection
         const cwd = process.cwd();
         const fileSystem = {
-            readFile: (filePath, encoding) => fs.readFile(filePath, { encoding }),
-            writeFile: (filePath, content, options) => fs.writeFile(filePath, content, options),
-            readdir: (dirPath) => fs.readdir(dirPath),
+            readFile: (filePath, encoding) => fsPromises.readFile(filePath, { encoding }),
+            writeFile: (filePath, content, options) => fsPromises.writeFile(filePath, content, options),
+            readdir: (dirPath) => fsPromises.readdir(dirPath),
         };
 
         const emitDiffPreview = (details) => {
@@ -404,11 +408,45 @@ async function startServer() {
             }));
         };
 
+        const tasksDir = path.join(os.homedir(), '.poe-setup', 'tasks');
+        const logsDir = path.join(os.homedir(), '.poe-setup', 'logs', 'tasks');
+        const taskRegistry = AgentTaskRegistry
+            ? new AgentTaskRegistry({
+                fs,
+                tasksDir,
+                logsDir,
+                logger: (event, payload) => {
+                    console.log(`[preview] task:${event}`, payload ?? {});
+                }
+            })
+            : undefined;
+        if (taskRegistry) {
+            taskRegistry.onTaskProgress((taskId, update) => {
+                ws.send(JSON.stringify({
+                    type: 'taskProgress',
+                    taskId,
+                    update
+                }));
+            });
+            taskRegistry.onTaskComplete((task) => {
+                ws.send(JSON.stringify({
+                    type: 'taskComplete',
+                    task
+                }));
+                const summary = task.result ?? task.error ?? 'Task finished.';
+                console.log(`[preview] task complete ${task.id}: ${summary}`);
+            });
+        }
+
         const toolExecutor = new DefaultToolExecutor({
             fs: fileSystem,
             cwd,
             allowedPaths: [cwd],
-            onWriteFile: emitDiffPreview
+            onWriteFile: emitDiffPreview,
+            taskRegistry,
+            logger: (event, payload) => {
+                console.log(`[preview] tool:${event}`, payload ?? {});
+            }
         });
 
         const toolCallback = (event) => {
@@ -442,7 +480,9 @@ async function startServer() {
                 credentials.apiKey,
                 defaultModel,
                 toolExecutor,
-                toolCallback
+                toolCallback,
+                undefined,
+                taskRegistry ?? undefined
             )
             : new MockChatService(defaultModel);
 
@@ -452,7 +492,8 @@ async function startServer() {
             ws,
             chatService,
             toolExecutor,
-            availableTools
+            availableTools,
+            taskRegistry
         });
 
         // Send initial data
@@ -479,6 +520,8 @@ async function startServer() {
 
         ws.on('close', () => {
             console.log(`🔌 Client disconnected: ${connectionId}`);
+            const conn = connections.get(connectionId);
+            conn?.taskRegistry?.dispose?.();
             connections.delete(connectionId);
         });
     });

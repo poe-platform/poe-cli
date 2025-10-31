@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { renderAppShell } from './webview/layout.js';
 import { renderMarkdown } from './webview/markdown.js';
 import { renderDiffPreview } from './webview/diff-preview.js';
@@ -26,6 +27,7 @@ let chatRuntime:
         service: any;
         availableTools: any[];
         toolExecutor: any;
+        taskRegistry: any;
     }
     | null = null;
 let cachedCredentials: { apiKey: string } | null = null;
@@ -134,7 +136,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
 }
 
-async function loadModules(): Promise<{ chatModule: any; toolsModule: any; baseDir: string }> {
+async function loadModules(): Promise<{
+    chatModule: any;
+    toolsModule: any;
+    taskModule: any;
+    baseDir: string;
+}> {
     // Get the extension's directory
     const extensionPath = __dirname;
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -155,16 +162,18 @@ async function loadModules(): Promise<{ chatModule: any; toolsModule: any; baseD
     console.log('[Poe Code] Searching for modules in paths:');
     possibleBasePaths.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
 
-    let chatModule, toolsModule, foundBasePath;
+    let chatModule, toolsModule, taskModule, foundBasePath;
     for (const basePath of possibleBasePaths) {
         try {
             const chatPath = path.join(basePath, 'services', 'chat.js');
             const toolsPath = path.join(basePath, 'services', 'tools.js');
+            const taskPath = path.join(basePath, 'services', 'agent-task-registry.js');
 
-            if (fs.existsSync(chatPath) && fs.existsSync(toolsPath)) {
+            if (fs.existsSync(chatPath) && fs.existsSync(toolsPath) && fs.existsSync(taskPath)) {
                 console.log(`[Poe Code] Found modules at: ${basePath}`);
                 chatModule = await import(chatPath);
                 toolsModule = await import(toolsPath);
+                taskModule = await import(taskPath);
                 foundBasePath = basePath;
                 break;
             }
@@ -174,7 +183,7 @@ async function loadModules(): Promise<{ chatModule: any; toolsModule: any; baseD
         }
     }
 
-    if (!chatModule || !toolsModule) {
+    if (!chatModule || !toolsModule || !taskModule) {
         const buildInstructions = 'Please run "npm run build" in the poe-setup directory.';
         const pathsChecked = possibleBasePaths.map((p, i) => `\n  ${i + 1}. ${p}`).join('');
         throw new Error(
@@ -185,16 +194,17 @@ async function loadModules(): Promise<{ chatModule: any; toolsModule: any; baseD
     }
 
     console.log(`[Poe Code] Successfully loaded modules from ${foundBasePath}`);
-    return { chatModule, toolsModule, baseDir: foundBasePath || '' };
+    return { chatModule, toolsModule, taskModule, baseDir: foundBasePath || '' };
 }
 
 async function createChatRuntime(apiKey: string, model: string): Promise<{
     service: any;
     availableTools: any[];
     toolExecutor: any;
+    taskRegistry: any;
 }> {
     try {
-        const { chatModule, toolsModule } = await loadModules();
+        const { chatModule, toolsModule, taskModule } = await loadModules();
 
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         const cwd = workspaceFolder?.uri.fsPath || process.cwd();
@@ -224,12 +234,46 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
             });
         };
 
+        const homeDir = os.homedir();
+        const tasksDir = path.join(homeDir, '.poe-setup', 'tasks');
+        const logsDir = path.join(homeDir, '.poe-setup', 'logs', 'tasks');
+        const taskRegistry = new taskModule.AgentTaskRegistry({
+            fs,
+            tasksDir,
+            logsDir,
+            logger: (event: string, payload?: Record<string, unknown>) => {
+                console.log(`[Poe Code] task:${event}`, payload ?? {});
+            }
+        });
+        taskRegistry.onTaskProgress((taskId: string, update: any) => {
+            broadcastToWebviews({
+                type: 'taskProgress',
+                taskId,
+                update
+            });
+        });
+        taskRegistry.onTaskComplete((task: any) => {
+            broadcastToWebviews({
+                type: 'taskComplete',
+                task
+            });
+            const summary = task.result ?? task.error ?? 'Task finished.';
+            const icon = task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '⚠️';
+            void vscode.window.showInformationMessage(
+                `${icon} ${task.toolName ?? 'Task'}: ${summary}`
+            );
+        });
+
         // Create tool executor
         const toolExecutor = new toolsModule.DefaultToolExecutor({
             fs: fileSystem,
             cwd: cwd,
             allowedPaths: [cwd],
-            onWriteFile: emitDiffPreview
+            onWriteFile: emitDiffPreview,
+            taskRegistry,
+            logger: (event: string, payload?: Record<string, unknown>) => {
+                console.log(`[Poe Code] tool:${event}`, payload ?? {});
+            }
         });
 
         // Get available tools
@@ -266,9 +310,16 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
         };
 
         // Create chat service with tool executor and callback
-        const service = new chatModule.PoeChatService(apiKey, model, toolExecutor, toolCallback);
+        const service = new chatModule.PoeChatService(
+            apiKey,
+            model,
+            toolExecutor,
+            toolCallback,
+            undefined,
+            taskRegistry
+        );
 
-        return { service, availableTools, toolExecutor };
+        return { service, availableTools, toolExecutor, taskRegistry };
     } catch (error) {
         throw new Error(`Failed to initialize chat service: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1121,6 +1172,10 @@ export function deactivate() {
     if (currentPanel) {
         currentPanel.dispose();
     }
+    if (chatRuntime?.taskRegistry) {
+        chatRuntime.taskRegistry.dispose?.();
+    }
+    chatRuntime = null;
 }
 class PoeSidebarProvider implements vscode.WebviewViewProvider {
     private view: vscode.WebviewView | undefined;

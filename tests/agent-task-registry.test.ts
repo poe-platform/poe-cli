@@ -224,4 +224,21 @@ describe("AgentTaskRegistry", () => {
     expect(registry.size).toBeLessThanOrEqual(100);
     expect(ids.size).toBe(120);
   });
+
+  it("waits for all running tasks to complete", async () => {
+    const registry = createRegistry(() => 100);
+    const taskId = registry.registerTask({
+      toolName: "spawn_git_worktree",
+      args: {}
+    });
+
+    const waitPromise = registry.waitForAllTasks();
+    registry.updateTask(taskId, {
+      status: "completed",
+      result: "ok",
+      endTime: 200
+    });
+
+    await expect(waitPromise).resolves.toBeUndefined();
+  });
 });
