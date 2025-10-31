@@ -196,6 +196,24 @@ export class AgentTaskRegistry {
   }
 
   getRunningTasks(): AgentTask[] {
+    const running = this.getAllTasks().filter((task) => task.status === "running");
+    
+    // Check for zombie tasks (processes that are no longer alive)
+    for (const task of running) {
+      if (task.pid && !this.isProcessAlive(task.pid)) {
+        this.logger?.("zombie_task_detected", {
+          id: task.id,
+          pid: task.pid
+        });
+        this.updateTask(task.id, {
+          status: "failed",
+          error: "Process terminated unexpectedly (zombie task)",
+          endTime: this.now()
+        });
+      }
+    }
+    
+    // Return only tasks that are still actually running
     return this.getAllTasks().filter((task) => task.status === "running");
   }
 
@@ -598,5 +616,20 @@ export class AgentTaskRegistry {
 
   private isTerminal(status: AgentTaskStatus | undefined): boolean {
     return status === "completed" || status === "failed" || status === "killed";
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    try {
+      // Signal 0 doesn't kill the process, just checks if it exists
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      // ESRCH means process doesn't exist
+      if (error && typeof error === "object" && "code" in error && error.code === "ESRCH") {
+        return false;
+      }
+      // EPERM means process exists but we don't have permission (still alive)
+      return true;
+    }
   }
 }
