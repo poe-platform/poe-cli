@@ -6,22 +6,19 @@ function createDocument() {
   const window = new Window();
   const document = window.document;
   document.body.innerHTML = `
-    <div data-slot="app-shell">
-      <nav>
-        <button type="button" data-action="open-settings">Settings</button>
-        <button type="button" data-action="new-chat">New</button>
-        <button type="button" data-action="chat-history">History</button>
-      </nav>
-    </div>
+    <header data-slot="app-shell"></header>
     <div id="messages"></div>
     <textarea id="message-input"></textarea>
     <button id="send-button"></button>
+    <div class="composer"></div>
     <div id="thinking-indicator" class="hidden"></div>
     <div id="tool-notifications"></div>
-    <poe-settings-panel id="settings-panel"></poe-settings-panel>
     <div id="chat-history" class="hidden">
       <button data-action="history-close"></button>
       <div class="chat-history-content"></div>
+    </div>
+    <div id="settings-view" class="hidden">
+      <poe-settings-panel id="settings-panel"></poe-settings-panel>
     </div>
   `;
   return { document, window };

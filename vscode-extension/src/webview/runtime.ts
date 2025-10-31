@@ -56,6 +56,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     | null;
   const composer = doc.querySelector(".composer") as HTMLElement | null;
   const settingsPanel = doc.getElementById("settings-panel") as PoeSettingsPanel | null;
+  const settingsView = doc.getElementById("settings-view") as HTMLElement | null;
   const chatHistory = doc.getElementById("chat-history") as HTMLElement | null;
   const chatHistoryContent = chatHistory?.querySelector(
     ".chat-history-content"
@@ -67,6 +68,9 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   if (appShellHost) {
     appShellHost.innerHTML = options.appShellHtml;
   }
+  const navNewChat = appShellHost?.querySelector<HTMLButtonElement>("[data-action='new-chat']") ?? null;
+  const navHistory = appShellHost?.querySelector<HTMLButtonElement>("[data-action='chat-history']") ?? null;
+  const navSettings = appShellHost?.querySelector<HTMLButtonElement>("[data-action='open-settings']") ?? null;
 
   const welcomeSnapshot =
     messagesDiv?.innerHTML ??
@@ -76,8 +80,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const chatHistoryStore: Array<{id: string; title: string; preview: string; messages: any[]}> = [];
   const pendingToolMessages = new Map<string, HTMLElement[]>();
   let activeModel = options.defaultModel;
-  let settingsVisible = false;
-  let historyVisible = false;
+  let activeView: "chat" | "history" | "settings" = "chat";
 
   function joinClasses(...values: Array<string | null | undefined>): string {
     return values.filter(Boolean).join(" ");
@@ -150,22 +153,69 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     options.postMessage({ type: "setModel", model: trimmed });
   }
 
-  function openSettingsPanel(): void {
-    if (settingsPanel) {
-      settingsPanel.providers = options.providerSettings;
-      settingsPanel.models = options.modelOptions;
-      settingsPanel.open = true;
+  function updateNavState(view: "chat" | "history" | "settings"): void {
+    const pairs: Array<[HTMLButtonElement | null, boolean]> = [
+      [navNewChat, view === "chat"],
+      [navHistory, view === "history"],
+      [navSettings, view === "settings"],
+    ];
+    for (const [button, isActive] of pairs) {
+      if (!button) continue;
+      button.setAttribute("aria-pressed", String(isActive));
+      if (isActive) {
+        button.classList.add("bg-surface", "text-text");
+        button.classList.remove("text-text-muted");
+      } else {
+        button.classList.remove("bg-surface", "text-text");
+        button.classList.add("text-text-muted");
+      }
     }
-    settingsVisible = true;
-    options.postMessage({ type: "getStrategyStatus" });
   }
 
-  function hideSettingsPanel(): void {
-    if (settingsPanel) {
-      settingsPanel.open = false;
+  function setView(view: "chat" | "history" | "settings"): void {
+    if (activeView === view) {
+      updateNavState(view);
+      return;
     }
-    settingsVisible = false;
+    activeView = view;
+    const showChat = view === "chat";
+    const showHistory = view === "history";
+    const showSettings = view === "settings";
+
+    if (chatContainer) {
+      chatContainer.classList.toggle("hidden", !showChat);
+    }
+    if (composer) {
+      composer.classList.toggle("hidden", !showChat);
+    }
+    if (chatHistory) {
+      chatHistory.classList.toggle("hidden", !showHistory);
+    }
+    if (settingsView) {
+      settingsView.classList.toggle("hidden", !showSettings);
+    }
+
+    if (showHistory) {
+      renderChatHistory();
+    }
+
+    if (settingsPanel) {
+      if (showSettings) {
+        settingsPanel.providers = options.providerSettings;
+        settingsPanel.models = options.modelOptions;
+        settingsPanel.activeModel = activeModel;
+      }
+      settingsPanel.open = showSettings;
+    }
+
+    if (showSettings) {
+      options.postMessage({ type: "getStrategyStatus" });
+    }
+
+    updateNavState(view);
   }
+
+  updateNavState(activeView);
 
   if (sendButton) {
     sendButton.addEventListener("click", () => sendMessage());
@@ -223,13 +273,14 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         event.preventDefault();
         saveCurrentChatToHistory();
         options.postMessage({ type: "clearHistory" });
-        hideChatHistory();
+        resetHistory();
+        setView("chat");
       } else if (action === "open-settings") {
         event.preventDefault();
-        toggleSettingsPanel();
+        setView("settings");
       } else if (action === "chat-history") {
         event.preventDefault();
-        toggleChatHistory();
+        setView("history");
       }
     });
   }
@@ -240,7 +291,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     settingsPanel.activeModel = activeModel;
 
     settingsPanel.addEventListener("settings-close", () => {
-      hideSettingsPanel();
+      setView("chat");
     });
 
     settingsPanel.addEventListener("model-change", (event) => {
@@ -267,13 +318,13 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
     settingsPanel.addEventListener("open-mcp", () => {
       options.postMessage({ type: "openSettings" });
-      hideSettingsPanel();
+      setView("chat");
     });
   }
 
   if (historyCloseButton) {
     historyCloseButton.addEventListener("click", () => {
-      hideChatHistory();
+      setView("chat");
     });
   }
 
@@ -560,7 +611,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       messageInput.value = "";
     }
     pendingToolMessages.clear();
-    hideChatHistory();
+    setView("chat");
   }
 
   function saveCurrentChatToHistory(): void {
@@ -582,41 +633,6 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       preview: preview || "Empty chat",
       messages: Array.from(messages).map(m => m.outerHTML)
     });
-  }
-
-  function toggleChatHistory(): void {
-    if (historyVisible) {
-      hideChatHistory();
-    } else {
-      showChatHistory();
-    }
-  }
-
-  function showChatHistory(): void {
-    historyVisible = true;
-    if (chatContainer) {
-      chatContainer.classList.add("hidden");
-    }
-    if (composer) {
-      composer.classList.add("hidden");
-    }
-    if (chatHistory) {
-      chatHistory.classList.remove("hidden");
-    }
-    renderChatHistory();
-  }
-
-  function hideChatHistory(): void {
-    historyVisible = false;
-    if (chatContainer) {
-      chatContainer.classList.remove("hidden");
-    }
-    if (composer) {
-      composer.classList.remove("hidden");
-    }
-    if (chatHistory) {
-      chatHistory.classList.add("hidden");
-    }
   }
 
   function renderChatHistory(): void {
@@ -666,20 +682,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
 
     messagesDiv.innerHTML = chat.messages.join("");
-    hideChatHistory();
-  }
-
-  function toggleSettingsPanel(): void {
-    if (settingsVisible) {
-      hideSettingsPanel();
-    } else {
-      showSettingsPanel();
-    }
-  }
-
-  function showSettingsPanel(): void {
-    settingsVisible = true;
-    openSettingsPanel();
+    setView("chat");
   }
 
   setActiveModel(options.defaultModel);
