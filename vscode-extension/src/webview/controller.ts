@@ -24,6 +24,7 @@ interface CreateWebviewControllerOptions {
   webview: WebviewLike;
   renderMarkdown: (markdown: string) => string;
   availableTools: unknown[];
+  handleTasksCommand?: (args: string[]) => Promise<string>;
   openSettings?: () => Promise<void> | void;
   ui?: UiAdapter;
   onUserMessage?: (details: { id: string; text: string }) => void;
@@ -57,6 +58,61 @@ export function createWebviewController(
     };
   }
 
+  function splitArguments(input: string): string[] {
+    const trimmed = input.trimStart();
+    if (trimmed.length === 0) {
+      return [];
+    }
+    const result: string[] = [];
+    let current = "";
+    let quote: string | null = null;
+    for (const char of trimmed) {
+      if (quote) {
+        if (char === quote) {
+          quote = null;
+        } else {
+          current += char;
+        }
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        quote = char;
+        continue;
+      }
+      if (char === " " || char === "\t") {
+        if (current.length > 0) {
+          result.push(current);
+          current = "";
+        }
+        continue;
+      }
+      current += char;
+    }
+    if (current.length > 0) {
+      result.push(current);
+    }
+    if (quote && result.length > 0) {
+      const lastIndex = result.length - 1;
+      result[lastIndex] = `${result[lastIndex]}${quote}`;
+    }
+    return result;
+  }
+
+  async function handleSlashCommand(input: string): Promise<string | null> {
+    if (!input.startsWith("/")) {
+      return null;
+    }
+    if (input.startsWith("/tasks")) {
+      const handler = options.handleTasksCommand;
+      if (!handler) {
+        return "Tasks command is unavailable in this context.";
+      }
+      const args = splitArguments(input.slice("/tasks".length));
+      return handler(args);
+    }
+    return null;
+  }
+
   async function handleSendMessage(payload: any): Promise<void> {
     if (!payload || typeof payload.text !== "string") {
       return;
@@ -82,6 +138,21 @@ export function createWebviewController(
     options.onUserMessage?.({ id: messageId, text: trimmed });
 
     try {
+      const slashResult = await handleSlashCommand(trimmed);
+      if (typeof slashResult === "string") {
+        const responseId = `tasks-${Date.now()}`;
+        post({
+          type: "message",
+          role: "assistant",
+          id: responseId,
+          html: options.renderMarkdown(slashResult),
+          model: "Tasks",
+          strategyInfo: null,
+        });
+        options.onAssistantMessage?.({ id: responseId, text: slashResult });
+        return;
+      }
+
       const rawResponse = await options.chatService.sendMessage(trimmed, tools);
       const responseId =
         (rawResponse && typeof rawResponse.id === "string" && rawResponse.id) ||

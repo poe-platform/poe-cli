@@ -28,6 +28,7 @@ let chatRuntime:
         availableTools: any[];
         toolExecutor: any;
         taskRegistry: any;
+        handleTasksCommand: (args: string[]) => Promise<string>;
     }
     | null = null;
 let cachedCredentials: { apiKey: string } | null = null;
@@ -140,6 +141,7 @@ async function loadModules(): Promise<{
     chatModule: any;
     toolsModule: any;
     taskModule: any;
+    tasksModule: any;
     baseDir: string;
 }> {
     // Get the extension's directory
@@ -162,18 +164,25 @@ async function loadModules(): Promise<{
     console.log('[Poe Code] Searching for modules in paths:');
     possibleBasePaths.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
 
-    let chatModule, toolsModule, taskModule, foundBasePath;
+    let chatModule, toolsModule, taskModule, tasksModule, foundBasePath;
     for (const basePath of possibleBasePaths) {
         try {
             const chatPath = path.join(basePath, 'services', 'chat.js');
             const toolsPath = path.join(basePath, 'services', 'tools.js');
             const taskPath = path.join(basePath, 'services', 'agent-task-registry.js');
+            const tasksPath = path.join(basePath, 'cli', 'interactive-tasks.js');
 
-            if (fs.existsSync(chatPath) && fs.existsSync(toolsPath) && fs.existsSync(taskPath)) {
+            if (
+                fs.existsSync(chatPath) &&
+                fs.existsSync(toolsPath) &&
+                fs.existsSync(taskPath) &&
+                fs.existsSync(tasksPath)
+            ) {
                 console.log(`[Poe Code] Found modules at: ${basePath}`);
                 chatModule = await import(chatPath);
                 toolsModule = await import(toolsPath);
                 taskModule = await import(taskPath);
+                tasksModule = await import(tasksPath);
                 foundBasePath = basePath;
                 break;
             }
@@ -183,7 +192,7 @@ async function loadModules(): Promise<{
         }
     }
 
-    if (!chatModule || !toolsModule || !taskModule) {
+    if (!chatModule || !toolsModule || !taskModule || !tasksModule) {
         const buildInstructions = 'Please run "npm run build" in the poe-setup directory.';
         const pathsChecked = possibleBasePaths.map((p, i) => `\n  ${i + 1}. ${p}`).join('');
         throw new Error(
@@ -194,7 +203,7 @@ async function loadModules(): Promise<{
     }
 
     console.log(`[Poe Code] Successfully loaded modules from ${foundBasePath}`);
-    return { chatModule, toolsModule, taskModule, baseDir: foundBasePath || '' };
+    return { chatModule, toolsModule, taskModule, tasksModule, baseDir: foundBasePath || '' };
 }
 
 async function createChatRuntime(apiKey: string, model: string): Promise<{
@@ -202,9 +211,10 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
     availableTools: any[];
     toolExecutor: any;
     taskRegistry: any;
+    handleTasksCommand: (args: string[]) => Promise<string>;
 }> {
     try {
-        const { chatModule, toolsModule, taskModule } = await loadModules();
+        const { chatModule, toolsModule, taskModule, tasksModule } = await loadModules();
 
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         const cwd = workspaceFolder?.uri.fsPath || process.cwd();
@@ -276,6 +286,10 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
             }
         });
 
+        if (typeof tasksModule?.handleTasksCommand !== 'function') {
+            throw new Error('Failed to load tasks command handler.');
+        }
+
         // Get available tools
         const availableTools = toolsModule.getAvailableTools();
         console.log(`[Poe Code] Loaded ${availableTools.length} tools`);
@@ -309,6 +323,14 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
             }
         };
 
+        const handleTasksCommand = async (args: string[]) => {
+            return tasksModule.handleTasksCommand(args, {
+                registry: taskRegistry,
+                fs,
+                now: Date.now
+            });
+        };
+
         // Create chat service with tool executor and callback
         const service = new chatModule.PoeChatService(
             apiKey,
@@ -319,7 +341,7 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
             taskRegistry
         );
 
-        return { service, availableTools, toolExecutor, taskRegistry };
+        return { service, availableTools, toolExecutor, taskRegistry, handleTasksCommand };
     } catch (error) {
         throw new Error(`Failed to initialize chat service: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -383,6 +405,7 @@ async function attachPoeWebview(
         webview,
         renderMarkdown,
         availableTools: runtime.availableTools,
+        handleTasksCommand: runtime.handleTasksCommand,
         openSettings: async () => {
             await vscode.commands.executeCommand('poe-code.settings.openMcp');
         },
@@ -758,7 +781,22 @@ ${code}
     <style id="poe-tailwind">
 ${tailwindCss}
     </style>
-    <style id="poe-webview-styles"></style>
+    <style id="poe-webview-styles">
+.welcome-grid {
+    display: grid;
+    gap: 1rem;
+}
+@media (min-width: 640px) {
+    .welcome-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (min-width: 1024px) {
+    .welcome-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+    </style>
     ${headHtml}
 </head>
 <body class="m-0 bg-surface text-text antialiased">
@@ -783,7 +821,7 @@ ${tailwindCss}
                                 <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
                                 <p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
                             </div>
-                            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div class="welcome-grid">
                                 <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="strategies">
                                     <h3 class="text-sm font-semibold text-text">Strategies</h3>
                                     <p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
