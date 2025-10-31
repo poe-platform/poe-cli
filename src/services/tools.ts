@@ -301,6 +301,20 @@ export class DefaultToolExecutor implements ToolExecutor {
           logs: this.taskRegistry.getLogsDirectory()
         }
       });
+      
+      // Build human-readable command
+      const commandParts = [request.toolName];
+      if (request.args.agent) {
+        commandParts.push(`--agent=${request.args.agent}`);
+      }
+      if (request.args.prompt) {
+        commandParts.push(`--prompt="${request.args.prompt}"`);
+      }
+      if (Array.isArray(request.args.agentArgs) && request.args.agentArgs.length > 0) {
+        commandParts.push(...request.args.agentArgs.map(String));
+      }
+      const commandString = commandParts.join(" ");
+      
       try {
         const child = spawn(process.execPath, [runnerPath, "--payload", payload], {
           cwd: request.context.cwd,
@@ -310,6 +324,8 @@ export class DefaultToolExecutor implements ToolExecutor {
             ...process.env
           }
         });
+        
+        // Register error handler BEFORE unref to catch early errors
         child.once("error", (error) => {
           const message = error instanceof Error ? error.message : String(error);
           this.eventLogger("task_spawn_failed", {
@@ -318,19 +334,35 @@ export class DefaultToolExecutor implements ToolExecutor {
           });
           this.taskRegistry?.updateTask(request.taskId, {
             status: "failed",
-            error: message,
+            error: `Process error: ${message}`,
             endTime: this.now()
           });
         });
+        
         child.unref();
+        
         if (typeof child.pid === "number") {
-          this.taskRegistry.updateTask(request.taskId, { pid: child.pid });
+          this.taskRegistry.updateTask(request.taskId, {
+            pid: child.pid,
+            command: commandString
+          });
+          this.eventLogger("task_spawned", {
+            id: request.taskId,
+            tool: request.toolName,
+            pid: child.pid,
+            command: commandString
+          });
+        } else {
+          // No PID means spawn failed
+          this.eventLogger("task_spawn_no_pid", {
+            id: request.taskId
+          });
+          this.taskRegistry.updateTask(request.taskId, {
+            status: "failed",
+            error: "Failed to spawn process (no PID)",
+            endTime: this.now()
+          });
         }
-        this.eventLogger("task_spawned", {
-          id: request.taskId,
-          tool: request.toolName,
-          pid: child.pid ?? null
-        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.eventLogger("task_spawn_error", {
@@ -339,7 +371,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         });
         this.taskRegistry.updateTask(request.taskId, {
           status: "failed",
-          error: message,
+          error: `Spawn error: ${message}`,
           endTime: this.now()
         });
       }

@@ -15,6 +15,8 @@ export interface AgentTask {
   logFile: string;
   progressFile: string;
   pid?: number;
+  command?: string;
+  worktreePath?: string;
 }
 
 export interface ProgressUpdate {
@@ -122,6 +124,7 @@ export class AgentTaskRegistry {
 
     this.ensureDirectories();
     this.bootstrapFromDisk();
+    // Start watching AFTER loading existing tasks to avoid race conditions
     this.startWatching();
   }
 
