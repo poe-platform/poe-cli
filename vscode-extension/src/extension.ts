@@ -767,34 +767,36 @@ ${tailwindCss}
         <header data-slot="app-shell"></header>
         <main class="flex flex-1 flex-col">
             <div class="flex min-h-0 flex-1 overflow-hidden">
-            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[auto_1fr_auto] overflow-hidden">
-                <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
-                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
-                        <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.4s;"></span>
-                        <span>Thinking...</span>
-                    </div>
-                </div>
-                <div id="messages" class="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
-                    <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
-                        <div class="space-y-2">
-                            <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
-                            <p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
+            <section id="chat-container" class="grid h-full min-h-0 flex-1 grid-rows-[1fr_auto] overflow-hidden">
+                <div class="flex min-h-0 flex-col overflow-y-auto">
+                    <div id="thinking-indicator" class="hidden px-6 pb-4 text-sm text-text-muted">
+                        <div class="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-raised px-4 py-2 shadow-sm">
+                            <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80"></span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.2s;"></span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-text-muted motion-safe:animate-pulse opacity-80" style="animation-delay: 0.4s;"></span>
+                            <span>Thinking...</span>
                         </div>
-                        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="strategies">
-                                <h3 class="text-sm font-semibold text-text">Strategies</h3>
-                                <p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
-                            </article>
-                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="models">
-                                <h3 class="text-sm font-semibold text-text">Model library</h3>
-                                <p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
-                            </article>
-                            <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="tools">
-                                <h3 class="text-sm font-semibold text-text">Dev workflows</h3>
-                                <p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
-                            </article>
+                    </div>
+                    <div id="messages" class="flex flex-col gap-4 px-6 pb-6 pt-6">
+                        <div class="welcome-message flex flex-col gap-6 rounded-2xl border border-border bg-surface-raised p-6 shadow-panel">
+                            <div class="space-y-2">
+                                <h2 class="text-lg font-semibold text-text">Welcome to Poe Code</h2>
+                                <p class="text-sm leading-6 text-text-muted">Configure your favorite Poe models, choose a strategy, and start shipping code faster.</p>
+                            </div>
+                            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="strategies">
+                                    <h3 class="text-sm font-semibold text-text">Strategies</h3>
+                                    <p class="text-xs leading-5 text-text-muted">Enable smart, mixed, or fixed routing in settings. Switch context on the fly.</p>
+                                </article>
+                                <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="models">
+                                    <h3 class="text-sm font-semibold text-text">Model library</h3>
+                                    <p class="text-xs leading-5 text-text-muted">Pin providers, set custom IDs, or let Poe recommend models for each request.</p>
+                                </article>
+                                <article class="welcome-card rounded-2xl border border-border bg-surface p-4 transition hover:bg-surface-raised" data-feature="tools">
+                                    <h3 class="text-sm font-semibold text-text">Dev workflows</h3>
+                                    <p class="text-xs leading-5 text-text-muted">Trigger tools, diff previews, and MCP actions without duplicating templates.</p>
+                                </article>
+                            </div>
                         </div>
                     </div>
                 </div>
