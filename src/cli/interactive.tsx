@@ -3,6 +3,7 @@ import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import path from "node:path";
 import { findLastUserIndex } from "@poe/shared-utils";
+import { renderMarkdown } from "./markdown-renderer.js";
 
 const SPINNER_FRAMES = ["|", "/", "-", "\\"];
 
@@ -330,7 +331,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
                 {msg.role === "assistant" && (
                   <Box flexDirection="column">
                     <Text color="blue">{msg.model || "Assistant"}:</Text>
-                    <Text>{msg.content}</Text>
+                    <Text>{renderMarkdown(msg.content)}</Text>
                   </Box>
                 )}
               </Box>
