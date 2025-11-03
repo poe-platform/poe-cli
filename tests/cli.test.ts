@@ -1740,7 +1740,8 @@ beforeEach(() => {
       prompts: prompt,
       env: { cwd, homeDir },
       logger: () => {},
-      commandRunner
+      commandRunner,
+      suppressCommanderOutput: true
     });
 
     await expect(

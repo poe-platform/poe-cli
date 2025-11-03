@@ -46,6 +46,7 @@ export interface CliDependencies {
   };
   logger?: LoggerFn;
   exitOverride?: boolean;
+  suppressCommanderOutput?: boolean;
   httpClient?: HttpClient;
   commandRunner?: CommandRunner;
   chatServiceFactory?: ChatServiceFactory;
