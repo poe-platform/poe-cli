@@ -40,8 +40,13 @@ describe("claude-code service", () => {
           theme: "dark",
           env: {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
             CUSTOM: "value"
-          }
+          },
+          model: "Claude-Sonnet-4.5",
+          customField: "should-remain"
         },
         null,
         2
@@ -62,7 +67,8 @@ describe("claude-code service", () => {
       theme: "dark",
       env: {
         CUSTOM: "value"
-      }
+      },
+      customField: "should-remain"
     });
     await expect(fs.readFile(keyHelperPath, "utf8")).rejects.toThrow();
   });
@@ -80,8 +86,12 @@ describe("claude-code service", () => {
         {
           apiKeyHelper: keyHelperPath,
           env: {
-            ANTHROPIC_BASE_URL: "https://api.poe.com"
-          }
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+          },
+          model: "Claude-Sonnet-4.5"
         },
         null,
         2
@@ -115,7 +125,8 @@ describe("claude-code service", () => {
       apiKey,
       settingsPath,
       keyHelperPath,
-      credentialsPath
+      credentialsPath,
+      defaultModel: "Claude-Sonnet-4.5"
     });
 
     const content = await fs.readFile(settingsPath, "utf8");
@@ -123,8 +134,12 @@ describe("claude-code service", () => {
     expect(parsed).toEqual({
       apiKeyHelper: keyHelperPath,
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
     const script = await fs.readFile(keyHelperPath, "utf8");
     expect(script).toBe(
@@ -159,7 +174,8 @@ describe("claude-code service", () => {
       apiKey,
       settingsPath,
       keyHelperPath,
-      credentialsPath
+      credentialsPath,
+      defaultModel: "Claude-Sonnet-4.5"
     });
 
     const content = await fs.readFile(settingsPath, "utf8");
@@ -169,8 +185,12 @@ describe("claude-code service", () => {
       theme: "dark",
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
         CUSTOM: "value"
-      }
+      },
+      model: "Claude-Sonnet-4.5"
     });
     const script = await fs.readFile(keyHelperPath, "utf8");
     expect(script).toBe(
@@ -179,6 +199,25 @@ describe("claude-code service", () => {
         'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
       ].join("\n")
     );
+  });
+
+  it("creates settings with custom defaultModel value", async () => {
+    await claudeService.configureClaudeCode({
+      fs,
+      apiKey,
+      settingsPath,
+      keyHelperPath,
+      credentialsPath,
+      defaultModel: "Claude-Haiku-4.5"
+    });
+
+    const content = await fs.readFile(settingsPath, "utf8");
+    const parsed = JSON.parse(content);
+    expect(parsed.model).toBe("Claude-Haiku-4.5");
+    // Environment variables remain the same (not dynamically changed)
+    expect(parsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("Claude-Haiku-4.5");
+    expect(parsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("Claude-Sonnet-4.5");
+    expect(parsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("Claude-Opus-4.1");
   });
 
   it("spawns the claude CLI with the provided prompt and args", async () => {

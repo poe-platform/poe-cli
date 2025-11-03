@@ -25,6 +25,7 @@ export interface OptionResolvers {
     value: string | undefined,
     defaultModel: string
   ): Promise<string>;
+  resolveClaudeModel(value: string | undefined): Promise<string>;
   resolveReasoning(
     value: string | undefined,
     defaultValue: string
@@ -110,6 +111,21 @@ export function createOptionResolvers(
       fallback: defaultModel
     });
 
+  const resolveClaudeModel = async (
+    value: string | undefined
+  ): Promise<string> => {
+    if (value != null) {
+      return value;
+    }
+    const descriptor = init.promptLibrary.claudeModel();
+    const response = await init.prompts(descriptor);
+    const result = response[descriptor.name];
+    if (typeof result !== "string" || result.trim() === "") {
+      throw new Error(`Missing value for "${descriptor.name}".`);
+    }
+    return result;
+  };
+
   const resolveReasoning = async (
     value: string | undefined,
     defaultValue: string
@@ -133,6 +149,7 @@ export function createOptionResolvers(
   return {
     ensure,
     resolveModel,
+    resolveClaudeModel,
     resolveReasoning,
     resolveConfigName,
     resolveApiKey,

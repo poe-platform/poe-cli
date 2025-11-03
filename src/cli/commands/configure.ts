@@ -14,7 +14,8 @@ import {
   DEFAULT_REASONING,
   DEFAULT_ROO_BASE_URL,
   DEFAULT_ROO_CONFIG_NAME,
-  DEFAULT_ROO_MODEL
+  DEFAULT_ROO_MODEL,
+  DEFAULT_CLAUDE_MODEL
 } from "../constants.js";
 
 export interface ConfigureCommandOptions {
@@ -128,8 +129,12 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
+      const defaultModel = await container.options.resolveClaudeModel(
+        options.model
+      );
       return {
         apiKey,
+        defaultModel,
         mutationHooks
       };
     }
