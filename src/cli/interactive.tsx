@@ -4,9 +4,14 @@ import TextInput from "ink-text-input";
 import path from "node:path";
 import { findLastUserIndex } from "@poe/shared-utils";
 
+const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
 interface InteractiveCliProps {
   onExit: () => void;
-  onCommand: (input: string) => Promise<string>;
+  onCommand: (
+    input: string,
+    options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
+  ) => Promise<string>;
   onSetToolCallHandler?: (handler: (toolName: string, args: Record<string, unknown>, result?: string, error?: string) => void) => void;
   cwd: string;
   fs: { readdir: (path: string) => Promise<string[]>; stat: (path: string) => Promise<{ isDirectory: () => boolean }> };
@@ -42,14 +47,35 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     }
   ]);
   const [input, setInput] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isResponding, setIsResponding] = useState(false);
+  const [partialResponse, setPartialResponse] = useState<string | null>(null);
+  const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [toolCalls, setToolCalls] = useState<ToolCallDisplay[]>([]);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [filePickerFiles, setFilePickerFiles] = useState<string[]>([]);
   const [filePickerIndex, setFilePickerIndex] = useState(0);
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const abortControllerRef = React.useRef<AbortController | null>(null);
   const lastUserIndex = React.useMemo(() => findLastUserIndex(messages), [messages]);
+
+  useEffect(() => {
+    if (!isResponding) {
+      setSpinnerFrame(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setSpinnerFrame((frame) => (frame + 1) % SPINNER_FRAMES.length);
+    }, 120);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isResponding]);
+
+  const trimmedPreview = (partialResponse ?? "").trim();
+  const displayPreview = trimmedPreview.length > 0
+    ? `${trimmedPreview.slice(0, 80)}${trimmedPreview.length > 80 ? "..." : ""}`
+    : "Waiting for assistant...";
 
   // Set up tool call handler
   React.useEffect(() => {
@@ -132,6 +158,11 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   };
 
   useInput((inputChar, key) => {
+    if (isResponding && key.ctrl && inputChar === "x") {
+      abortControllerRef.current?.abort();
+      return;
+    }
+
     if ((key.ctrl && inputChar === "c") || (key.ctrl && inputChar === "d")) {
       exit();
       onExit();
@@ -202,7 +233,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   };
 
   const handleSubmit = async (value: string) => {
-    if (!value.trim() || isProcessing) return;
+    if (!value.trim() || isResponding) return;
 
     // Don't submit if file picker is open - the useInput handler will handle selection
     if (showFilePicker) {
@@ -225,10 +256,16 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       return;
     }
 
-    setIsProcessing(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsResponding(true);
+    setPartialResponse(null);
 
     try {
-      const response = await onCommand(trimmedInput);
+      const response = await onCommand(trimmedInput, {
+        signal: controller.signal,
+        onChunk: (chunk) => setPartialResponse(chunk)
+      });
 
       // Parse model name from response if present
       let content = response;
@@ -241,16 +278,29 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       }
 
       setMessages((prev) => [...prev, { role: "assistant", content, model }]);
+      setPartialResponse(null);
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Error: ${error instanceof Error ? error.message : String(error)}`
-        }
-      ]);
+      if (error instanceof Error && error.name === "AbortError") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Response stopped."
+          }
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `Error: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]);
+      }
     } finally {
-      setIsProcessing(false);
+      abortControllerRef.current = null;
+      setIsResponding(false);
+      setPartialResponse(null);
       // Don't clear tool calls - keep them visible so user can see what happened
     }
   };
@@ -318,9 +368,13 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       </Box>
 
       {/* Processing indicator */}
-      {isProcessing && toolCalls.length === 0 && (
-        <Box marginBottom={1}>
-          <Text color="yellow">Processing...</Text>
+      {isResponding && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Box>
+            <Text color="yellow">{SPINNER_FRAMES[spinnerFrame]} </Text>
+            <Text color="yellow">{displayPreview}</Text>
+          </Box>
+          <Text color="cyan">Press Ctrl+X to stop</Text>
         </Box>
       )}
 
@@ -352,7 +406,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       )}
 
       {/* Input prompt */}
-      {!isProcessing && (
+      {!isResponding && (
         <Box>
           <Text color="green">&gt; </Text>
           <TextInput

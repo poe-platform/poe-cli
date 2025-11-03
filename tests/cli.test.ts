@@ -33,6 +33,7 @@ interface ChatFactoryCall {
     cwd: string;
     homeDir: string;
   };
+  signal?: AbortSignal | null;
 }
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
@@ -164,7 +165,11 @@ function createChatServiceStub(response: {
     return {
       setToolCallCallback: vi.fn(),
       getModel: () => model,
-      async sendMessage(prompt: string) {
+      async sendMessage(
+        prompt: string,
+        _tools?: unknown[],
+        params?: { signal?: AbortSignal }
+      ) {
         calls.push({
           prompt,
           options: {
@@ -172,7 +177,8 @@ function createChatServiceStub(response: {
             model: options.model,
             cwd: options.cwd,
             homeDir: options.homeDir
-          }
+          },
+          signal: params?.signal ?? null
         });
         return { role: "assistant", content: response.content };
       },
@@ -1648,17 +1654,16 @@ beforeEach(() => {
     ]);
 
     expect(chatStub.factory).toHaveBeenCalledTimes(1);
-    expect(chatStub.calls).toEqual([
-      {
-        prompt: "Review the latest logs",
-        options: {
-          apiKey: "sk-agent",
-          model: "Claude-Sonnet-4.5",
-          cwd,
-          homeDir
-        }
+    expect(chatStub.calls).toHaveLength(1);
+    expect(chatStub.calls[0]).toMatchObject({
+      prompt: "Review the latest logs",
+      options: {
+        apiKey: "sk-agent",
+        model: "Claude-Sonnet-4.5",
+        cwd,
+        homeDir
       }
-    ]);
+    });
     expect(logs).toContain(
       "Agent response (gpt-5): Completed the task."
     );

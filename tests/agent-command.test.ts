@@ -54,7 +54,8 @@ describe("runAgentConversation", () => {
       apiKey: "sk"
     });
 
-    expect(sendMessage).toHaveBeenCalledWith("Do the thing");
+    const [promptArg] = sendMessage.mock.calls[0] ?? [];
+    expect(promptArg).toBe("Do the thing");
     expect(waitForAllTasks).toHaveBeenCalledTimes(1);
     expect(drainCompletedTasks).toHaveBeenCalledTimes(1);
     expect(logger.info).toHaveBeenCalledWith(

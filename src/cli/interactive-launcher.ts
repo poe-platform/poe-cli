@@ -106,7 +106,10 @@ export async function launchInteractiveMode(
     toolCallHandler = handler;
   };
 
-  const handleCommand = async (input: string): Promise<string> => {
+  const handleCommand = async (
+    input: string,
+    commandOptions?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
+  ): Promise<string> => {
     const trimmedInput = input.trim();
 
     // Check for slash commands
@@ -388,11 +391,20 @@ Example:
             }
 
             const tools = getAvailableTools(mcpManager);
-            const response = await chatService.sendMessage(processedInput, tools);
+            const response = await chatService.sendMessage(processedInput, tools, {
+              signal: commandOptions?.signal,
+              onChunk: commandOptions?.onChunk
+            });
             // Add model info to response
             const modelName = chatService.getModel();
-            return `[Model: ${modelName}]\n\n${response.content || "No response from model"}`;
+            const finalContent = response.content || "No response from model";
+            const output = `[Model: ${modelName}]\n\n${finalContent}`;
+            commandOptions?.onChunk?.(finalContent);
+            return output;
           } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+              throw error;
+            }
             throw new Error(
               `Chat error: ${error instanceof Error ? error.message : String(error)}`
             );

@@ -80,4 +80,30 @@ describe("PoeChatService task injection", () => {
     );
     expect(registry.clearCompleted).toHaveBeenCalledTimes(1);
   });
+
+  it("propagates abort signals to the Poe API request", async () => {
+    const toolExecutor: ToolExecutor = {
+      executeTool: vi.fn()
+    };
+    const chat = new PoeChatService(apiKey, model, toolExecutor);
+    const controller = new AbortController();
+    const abortError = new Error("Aborted");
+    abortError.name = "AbortError";
+
+    fetchMock.mockImplementationOnce(async (_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      expect(signal).toBe(controller.signal);
+      return await new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => reject(abortError));
+      });
+    });
+
+    const promise = chat.sendMessage("Stop please", undefined, {
+      signal: controller.signal
+    });
+
+    controller.abort();
+
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

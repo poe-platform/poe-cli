@@ -181,7 +181,8 @@ export class PoeChatService {
 
   async sendMessage(
     userMessage: string,
-    tools?: Tool[]
+    tools?: Tool[],
+    options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
   ): Promise<ChatMessage> {
     this.injectCompletedTasks();
     // Add user message to history
@@ -201,7 +202,7 @@ export class PoeChatService {
     const maxAttempts = 100;
 
     while (attempts < maxAttempts) {
-      const response = await this.makeApiRequest(tools);
+      const response = await this.makeApiRequest(tools, options?.signal);
 
       const assistantMessage = response.choices[0].message;
       this.conversationHistory.push(assistantMessage);
@@ -277,6 +278,9 @@ export class PoeChatService {
       }
 
       // No more tool calls, return the final message
+      if (assistantMessage.content && assistantMessage.content.length > 0) {
+        options?.onChunk?.(assistantMessage.content);
+      }
       return assistantMessage;
     }
 
@@ -351,7 +355,8 @@ export class PoeChatService {
   }
 
   private async makeApiRequest(
-    tools?: Tool[]
+    tools?: Tool[],
+    signal?: AbortSignal
   ): Promise<ChatCompletionResponse> {
     const request: ChatCompletionRequest = {
       model: this.currentModel,
@@ -369,7 +374,8 @@ export class PoeChatService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`
       },
-      body: JSON.stringify(request)
+      body: JSON.stringify(request),
+      signal
     });
 
     if (!response.ok) {

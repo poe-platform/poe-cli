@@ -17,7 +17,10 @@ import {
 export interface AgentSession {
   getModel(): string;
   setToolCallCallback(callback: ToolCallCallback): void;
-  sendMessage(prompt: string): Promise<ChatMessage>;
+  sendMessage(
+    prompt: string,
+    options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
+  ): Promise<ChatMessage>;
   waitForAllTasks(): Promise<void>;
   drainCompletedTasks(): AgentTask[];
   dispose(): Promise<void>;
@@ -100,9 +103,12 @@ export async function createAgentSession(
       toolCallback = callback;
       chatService.setToolCallCallback(callback);
     },
-    async sendMessage(prompt: string) {
+    async sendMessage(
+      prompt: string,
+      options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
+    ) {
       const tools = getAvailableTools(mcpManager);
-      return chatService.sendMessage(prompt, tools);
+      return chatService.sendMessage(prompt, tools, options);
     },
     async waitForAllTasks() {
       await taskRegistry.waitForAllTasks();
