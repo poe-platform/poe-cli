@@ -31,5 +31,29 @@ describe("ChatState", () => {
 
     expect(state.lastResponseAt).toBeInstanceOf(Date);
   });
-});
 
+  it("tracks when the assistant is responding", () => {
+    const state = new ChatState();
+    expect(state.isAssistantResponding).toBe(false);
+
+    state.append({
+      id: "1",
+      role: "user",
+      content: "Hello"
+    });
+    expect(state.isAssistantResponding).toBe(true);
+
+    state.append({
+      id: "2",
+      role: "assistant",
+      content: "Hi there"
+    });
+    expect(state.isAssistantResponding).toBe(false);
+
+    state.setAssistantResponding(true);
+    expect(state.isAssistantResponding).toBe(true);
+
+    state.clear();
+    expect(state.isAssistantResponding).toBe(false);
+  });
+});
