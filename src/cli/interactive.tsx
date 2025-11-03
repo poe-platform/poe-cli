@@ -4,6 +4,7 @@ import TextInput from "ink-text-input";
 import path from "node:path";
 import { findLastUserIndex } from "@poe/shared-utils";
 import { renderMarkdown } from "./markdown-renderer.js";
+import { evaluateFilePickerAction } from "./file-picker-state.js";
 
 const SPINNER_FRAMES = ["|", "/", "-", "\\"];
 
@@ -239,22 +240,31 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const handleInputChange = (value: string) => {
     setInput(value);
 
-    // Check if @ was just typed
-    if (value.endsWith("@") && !showFilePicker) {
-      setShowFilePicker(true);
-      setInputBeforeAt(value.slice(0, -1));
-      setFileSearchQuery("");
-    } else if (showFilePicker) {
-      // Update search query if in file picker mode
-      const atIndex = value.lastIndexOf("@");
-      if (atIndex !== -1) {
-        setFileSearchQuery(value.slice(atIndex + 1));
-      } else {
-        // @ was deleted, exit file picker
-        setShowFilePicker(false);
-        setFileSearchQuery("");
-      }
+    const action = evaluateFilePickerAction({
+      value,
+      isOpen: showFilePicker
+    });
+
+    if (!action) {
+      return;
     }
+
+    if (action.kind === "open") {
+      setShowFilePicker(true);
+      setInputBeforeAt(action.prefix);
+      setFileSearchQuery("");
+      setFilePickerIndex(0);
+      return;
+    }
+
+    if (action.kind === "search") {
+      setShowFilePicker(true);
+      setFileSearchQuery(action.query);
+      return;
+    }
+
+    setShowFilePicker(false);
+    setFileSearchQuery("");
   };
 
   const handleSubmit = async (value: string) => {
