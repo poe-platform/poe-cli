@@ -91,9 +91,8 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const abortControllerRef = React.useRef<AbortController | null>(null);
-  const pendingSelectionRef = React.useRef<{ base: string; previousOffset: number } | null>(null);
+  const pendingSelectionRef = React.useRef<{ base: string } | null>(null);
   const lastKeyRef = React.useRef<{ input: string; key: InputKey } | null>(null);
-  const previousCursorOffsetRef = React.useRef<number | null>(null);
   const lastUserIndex = React.useMemo(() => findLastUserIndex(messages), [messages]);
 
   const updateInput = useCallback(
@@ -243,7 +242,6 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         setFileSearchQuery("");
       }
       pendingSelectionRef.current = null;
-      previousCursorOffsetRef.current = null;
       lastKeyRef.current = null;
       return;
     }
@@ -262,10 +260,8 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         const insertedValue = `${inputBeforeAt}@${selectedFile} `;
         updateInput(insertedValue, { resetCursor: true });
         pendingSelectionRef.current = {
-          base: insertedValue,
-          previousOffset: previousCursorOffsetRef.current ?? insertedValue.length
+          base: insertedValue
         };
-        previousCursorOffsetRef.current = null;
         lastKeyRef.current = null;
         setShowFilePicker(false);
         setFileSearchQuery("");
@@ -276,7 +272,6 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         setFileSearchQuery("");
         updateInput(inputBeforeAt);
         pendingSelectionRef.current = null;
-        previousCursorOffsetRef.current = null;
         lastKeyRef.current = null;
         return;
       }
@@ -290,7 +285,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     const pending = pendingSelectionRef.current;
     if (pending) {
       const lastKey = lastKeyRef.current;
-      const appendedStart = Math.min(pending.previousOffset, incoming.length);
+      const appendedStart = Math.min(pending.base.length, incoming.length);
 
       if (lastKey?.key.backspace) {
         nextValue = pending.base.slice(0, Math.max(0, pending.base.length - 1));
@@ -314,9 +309,6 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     });
 
     if (!action) {
-      if (showFilePicker) {
-        previousCursorOffsetRef.current = nextValue.length;
-      }
       return;
     }
 
@@ -325,20 +317,17 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       setInputBeforeAt(action.prefix);
       setFileSearchQuery("");
       setFilePickerIndex(0);
-      previousCursorOffsetRef.current = nextValue.length;
       return;
     }
 
     if (action.kind === "search") {
       setShowFilePicker(true);
       setFileSearchQuery(action.query);
-      previousCursorOffsetRef.current = nextValue.length;
       return;
     }
 
     setShowFilePicker(false);
     setFileSearchQuery("");
-    previousCursorOffsetRef.current = null;
   };
 
   const handleSubmit = async (value: string) => {
@@ -358,7 +347,6 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     setMessages((prev) => [...prev, { role: "user", content: trimmedInput }]);
     updateInput("");
     pendingSelectionRef.current = null;
-    previousCursorOffsetRef.current = null;
     lastKeyRef.current = null;
 
     // Check for exit command

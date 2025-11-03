@@ -96,6 +96,13 @@ async function expectInputToContain(
   );
 }
 
+async function typeSequence(stdin: { write: (chunk: string) => void }, sequence: string): Promise<void> {
+  for (const char of sequence) {
+    stdin.write(char);
+    await flushEffects();
+  }
+}
+
 describe("Interactive CLI file picker behaviour", () => {
   let fileSystem: TestFs;
   const cwd = "/workspace";
@@ -113,6 +120,7 @@ describe("Interactive CLI file picker behaviour", () => {
     volume.mkdirSync(cwd, { recursive: true });
     volume.writeFileSync(`${cwd}/alpha.txt`, "");
     volume.writeFileSync(`${cwd}/beta.txt`, "");
+    volume.writeFileSync(`${cwd}/ROADMAP.md`, "");
   });
 
   it("reopens the picker when typing a second mention after selecting the first", async () => {
@@ -159,6 +167,42 @@ describe("Interactive CLI file picker behaviour", () => {
       "@beta.txt @"
     );
     expect(sanitizedAfterSecondMention).toContain("@beta.txt @");
+
+    instance.unmount();
+  });
+
+  it("keeps the mention intact when the query contains spaces before selection", async () => {
+    const onExit = vi.fn();
+    const onCommand = vi.fn(async () => "");
+
+    const element = React.createElement(InteractiveCli, {
+      onExit,
+      onCommand,
+      cwd,
+      fs: fileSystem
+    });
+
+    const instance = render(element);
+    const { stdin, lastFrame } = instance;
+
+    stdin.write("@");
+    await flushEffects();
+    await expectFrameToContain(
+      lastFrame,
+      "Select a file (↑/↓ to navigate, Enter to select, Esc to cancel):"
+    );
+
+    await typeSequence(stdin, " ROAD");
+    await expectPickerToShowOnly(lastFrame, "ROADMAP.md", ["alpha.txt", "beta.txt"]);
+
+    stdin.write("\r");
+    const afterSelection = await expectInputToContain(lastFrame, "@ROADMAP.md ");
+    expect(afterSelection).toContain("@ROADMAP.md ");
+
+    await typeSequence(stdin, "con");
+    const finalInput = await expectInputToContain(lastFrame, "@ROADMAP.md con");
+    expect(finalInput).toContain("@ROADMAP.md con");
+    expect(finalInput).not.toContain("AP.md ");
 
     instance.unmount();
   });
