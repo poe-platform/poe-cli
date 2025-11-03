@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import path from "node:path";
@@ -16,6 +16,7 @@ interface InteractiveCliProps {
   onSetToolCallHandler?: (handler: (toolName: string, args: Record<string, unknown>, result?: string, error?: string) => void) => void;
   cwd: string;
   fs: { readdir: (path: string) => Promise<string[]>; stat: (path: string) => Promise<{ isDirectory: () => boolean }> };
+  logError?: (error: Error, context: Record<string, unknown>) => void;
 }
 
 interface Message {
@@ -38,9 +39,22 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   onCommand,
   onSetToolCallHandler,
   cwd,
-  fs
+  fs,
+  logError
 }) => {
   const { exit } = useApp();
+  const reportError = useCallback(
+    (err: unknown, context: Record<string, unknown>) => {
+      const failure =
+        err instanceof Error ? err : new Error(String(err));
+      if (logError) {
+        logError(failure, context);
+      } else {
+        console.error(context.operation ?? "Interactive error", failure);
+      }
+    },
+    [logError]
+  );
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "system",
@@ -121,7 +135,11 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
           setFilePickerFiles(filtered.slice(0, 50)); // Limit to 50 files
           setFilePickerIndex(0);
         } catch (error) {
-          console.error("Failed to load files:", error);
+          reportError(error, {
+            operation: "load file picker entries",
+            cwd,
+            query: fileSearchQuery
+          });
           setFilePickerFiles([]);
         }
       };
@@ -148,12 +166,18 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
           } else {
             files.push(relativePath);
           }
-        } catch {
-          // Skip files we can't stat
+        } catch (error) {
+          reportError(error, {
+            operation: "stat file for picker",
+            path: fullPath
+          });
         }
       }
-    } catch {
-      // Skip directories we can't read
+    } catch (error) {
+      reportError(error, {
+        operation: "read directory for picker",
+        path: dir
+      });
     }
     return files;
   };

@@ -1,9 +1,11 @@
 import React from "react";
 import { render } from "ink";
-import { InteractiveCli } from "./interactive.js";
-import type { CliDependencies } from "./program.js";
 import path from "node:path";
 import * as nodeFs from "node:fs";
+import { InteractiveCli } from "./interactive.js";
+import type { CliDependencies } from "./program.js";
+import { ErrorLogger } from "./error-logger.js";
+import { resolveFileMentions } from "./file-mentions.js";
 import {
   deleteCredentials,
   loadCredentials,
@@ -21,6 +23,12 @@ export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
   const { fs: fileSystem, env } = dependencies;
+  const logDir = path.join(env.homeDir, ".poe-setup", "logs");
+  const errorLogger = new ErrorLogger({
+    fs: nodeFs as any,
+    logDir,
+    logToStderr: true
+  });
   const credentialsPath = resolveCredentialsPath(env.homeDir);
 
   // Initialize MCP manager
@@ -30,7 +38,19 @@ export async function launchInteractiveMode(
   try {
     await mcpManager.connectAll();
   } catch (error) {
-    console.error("Failed to connect to some MCP servers:", error);
+    const failure =
+      error instanceof Error ? error : new Error(String(error));
+    errorLogger.logErrorWithStackTrace(
+      failure,
+      "interactive mcp connect",
+      {
+        component: "interactive",
+        operation: "connect mcp servers"
+      }
+    );
+    dependencies.logger?.(
+      `interactive:mcp connect failed ${failure.message}`
+    );
   }
 
   // Initialize chat service
@@ -364,51 +384,38 @@ Example:
 
     // If chat service is initialized, treat this as a chat message
     if (chatService) {
-          try {
-            // Process @file mentions
-            let processedInput = trimmedInput;
-            const filePattern = /@([^\s]+)/g;
-            const matches = [...trimmedInput.matchAll(filePattern)];
+      try {
+        const mentionResult = await resolveFileMentions({
+          input: trimmedInput,
+          cwd: env.cwd,
+          readFile: (filePath, encoding) =>
+            fileSystem.readFile(filePath, encoding),
+          errorLogger
+        });
+        const processedInput = mentionResult.processedInput;
 
-            if (matches.length > 0) {
-              // Read all mentioned files
-              const fileContents: string[] = [];
-              for (const match of matches) {
-                const filePath = match[1];
-                try {
-                  const absolutePath = path.isAbsolute(filePath)
-                    ? filePath
-                    : path.join(env.cwd, filePath);
-              const content = await fileSystem.readFile(absolutePath, "utf8");
-                  fileContents.push(`\n\n--- Content of ${filePath} ---\n${content}\n--- End of ${filePath} ---`);
-                } catch (error) {
-                  fileContents.push(`\n\n[Error reading ${filePath}: ${error instanceof Error ? error.message : String(error)}]`);
-                }
-              }
-
-              // Append file contents to the message
-              processedInput = trimmedInput.replace(filePattern, "").trim() + fileContents.join("");
-            }
-
-            const tools = getAvailableTools(mcpManager);
-            const response = await chatService.sendMessage(processedInput, tools, {
-              signal: commandOptions?.signal,
-              onChunk: commandOptions?.onChunk
-            });
-            // Add model info to response
-            const modelName = chatService.getModel();
-            const finalContent = response.content || "No response from model";
-            const output = `[Model: ${modelName}]\n\n${finalContent}`;
-            commandOptions?.onChunk?.(finalContent);
-            return output;
-          } catch (error) {
-            if (error instanceof Error && error.name === "AbortError") {
-              throw error;
-            }
-            throw new Error(
-              `Chat error: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
+        const tools = getAvailableTools(mcpManager);
+        const response = await chatService.sendMessage(processedInput, tools, {
+          signal: commandOptions?.signal,
+          onChunk: commandOptions?.onChunk
+        });
+        const modelName = chatService.getModel();
+        const finalContent = response.content || "No response from model";
+        const output = `[Model: ${modelName}]\n\n${finalContent}`;
+        commandOptions?.onChunk?.(finalContent);
+        return output;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw error;
+        }
+        const failure =
+          error instanceof Error ? error : new Error(String(error));
+        errorLogger.logErrorWithStackTrace(failure, "interactive chat", {
+          component: "interactive",
+          operation: "send message"
+        });
+        throw new Error(`Chat error: ${failure.message}`);
+      }
     } else {
       return `Please login first with: /login <api-key>\n\nType '/help' for a list of commands.`;
     }
@@ -429,6 +436,12 @@ Example:
       fs: {
         readdir: (path: string) => fileSystem.readdir(path),
         stat: (path: string) => fileSystem.stat(path)
+      },
+      logError: (error, context) => {
+        errorLogger.logErrorWithStackTrace(error, "interactive ui", {
+          component: "interactive",
+          ...context
+        });
       }
     })
   );
