@@ -26,6 +26,10 @@ export function createProgram(dependencies: CliDependencies): Command {
     applyExitOverride(program);
   }
 
+  if (dependencies.suppressCommanderOutput) {
+    suppressCommanderOutput(program);
+  }
+
   return program;
 }
 
@@ -60,5 +64,15 @@ function applyExitOverride(command: Command): void {
   command.exitOverride();
   for (const child of command.commands) {
     applyExitOverride(child);
+  }
+}
+
+function suppressCommanderOutput(command: Command): void {
+  command.configureOutput({
+    writeOut: () => {},
+    writeErr: () => {}
+  });
+  for (const child of command.commands) {
+    suppressCommanderOutput(child);
   }
 }

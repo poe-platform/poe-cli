@@ -231,7 +231,8 @@ beforeEach(() => {
   it("prompts to select a service when configure is invoked without target", async () => {
     const promptStub = createPromptStub({
       serviceSelection: 1,
-      apiKey: "prompted-key"
+      apiKey: "prompted-key",
+      model: "Claude-Sonnet-4.5"
     });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
@@ -264,8 +265,12 @@ beforeEach(() => {
     expect(parsed).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
     const helper = await fs.readFile(
       path.join(homeDir, ".claude", "anthropic_key.sh"),
@@ -503,7 +508,7 @@ beforeEach(() => {
   });
 
   it("renders unified diff output for dry-run updates", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
@@ -561,7 +566,7 @@ beforeEach(() => {
   });
 
   it("reports mutation outcomes during claude-code dry runs", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
@@ -582,8 +587,12 @@ beforeEach(() => {
         {
           apiKeyHelper: helperPath,
           env: {
-            ANTHROPIC_BASE_URL: "https://api.poe.com"
-          }
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+          },
+          model: "Claude-Sonnet-4.5"
         },
         null,
         2
@@ -628,7 +637,7 @@ beforeEach(() => {
   });
 
   it("uses command-style verbose logs for claude-code mutations", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
@@ -649,8 +658,12 @@ beforeEach(() => {
         {
           apiKeyHelper: helperPath,
           env: {
-            ANTHROPIC_BASE_URL: "https://api.poe.com"
-          }
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+          },
+          model: "Claude-Sonnet-4.5"
         },
         null,
         2
@@ -717,7 +730,7 @@ beforeEach(() => {
   });
 
   it("prompts for missing api key when configuring claude-code", async () => {
-    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const promptStub = createPromptStub({ apiKey: "prompted-key", model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
@@ -737,8 +750,12 @@ beforeEach(() => {
     expect(parsedSettings).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
     const helper = await fs.readFile(
       path.join(homeDir, ".claude", "anthropic_key.sh"),
@@ -807,7 +824,7 @@ beforeEach(() => {
   });
 
   it("fails when the claude check does not emit the expected marker", async () => {
-    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const promptStub = createPromptStub({ apiKey: "prompted-key", model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub({ claudeStdout: "nope" });
     const program = createProgram({
       fs,
@@ -841,7 +858,7 @@ beforeEach(() => {
   });
 
   it("is idempotent when configuring claude-code", async () => {
-    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const promptStub = createPromptStub({ apiKey: "prompted-key", model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
@@ -924,7 +941,7 @@ beforeEach(() => {
   });
 
   it("stores prompted api key during configure", async () => {
-    const responses: Record<string, unknown> = { apiKey: "prompted-key" };
+    const responses: Record<string, unknown> = { apiKey: "prompted-key", model: "Claude-Sonnet-4.5" };
     const promptStub = createPromptStub(responses);
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
@@ -943,7 +960,7 @@ beforeEach(() => {
   });
 
   it("stores api key provided via option", async () => {
-    const { prompt } = createPromptStub({});
+    const { prompt } = createPromptStub({ model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
       fs,
@@ -968,7 +985,7 @@ beforeEach(() => {
   });
 
   it("stores api key via login and reuses it for configure", async () => {
-    const responses: Record<string, unknown> = { apiKey: "stored-key" };
+    const responses: Record<string, unknown> = { apiKey: "stored-key", model: "Claude-Sonnet-4.5" };
     const promptStub = createPromptStub(responses);
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
@@ -1003,8 +1020,12 @@ beforeEach(() => {
     expect(parsedSettings).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
   });
 
@@ -1058,7 +1079,7 @@ beforeEach(() => {
   });
 
   it("prompts again after logout removes stored api key", async () => {
-    const responses: Record<string, unknown> = { apiKey: "initial-key" };
+    const responses: Record<string, unknown> = { apiKey: "initial-key", model: "Claude-Sonnet-4.5" };
     const promptStub = createPromptStub(responses);
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
@@ -1088,8 +1109,12 @@ beforeEach(() => {
     expect(parsed).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
 
     const apiKeyPrompts = promptStub.calls.filter(
@@ -1099,7 +1124,7 @@ beforeEach(() => {
   });
 
   it("writes claude settings json with env configuration", async () => {
-    const responses: Record<string, unknown> = { apiKey: "claude-key" };
+    const responses: Record<string, unknown> = { apiKey: "claude-key", model: "Claude-Sonnet-4.5" };
     const promptStub = createPromptStub(responses);
     const commandRunnerStub = createCommandRunnerStub();
     const program = createProgram({
@@ -1119,8 +1144,12 @@ beforeEach(() => {
     expect(parsed).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
   });
 
@@ -1248,7 +1277,7 @@ beforeEach(() => {
   });
 
   it("logs actions while configuring claude-code when verbose", async () => {
-    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const promptStub = createPromptStub({ apiKey: "prompted-key", model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
@@ -1285,7 +1314,7 @@ beforeEach(() => {
   });
 
   it("does not log detailed actions when configuring claude-code without verbose", async () => {
-    const promptStub = createPromptStub({ apiKey: "prompted-key" });
+    const promptStub = createPromptStub({ apiKey: "prompted-key", model: "Claude-Sonnet-4.5" });
     const commandRunnerStub = createCommandRunnerStub();
     const logs: string[] = [];
     const program = createProgram({
@@ -1644,7 +1673,7 @@ beforeEach(() => {
   });
 
   it("installs missing dependencies before configuring claude-code", async () => {
-    const { prompt } = createPromptStub({ apiKey: "sk-install" });
+    const { prompt } = createPromptStub({ apiKey: "sk-install", model: "Claude-Sonnet-4.5" });
     const logs: string[] = [];
     let hasClaudeCli = false;
     const commandCalls: CommandCall[] = [];
@@ -1721,8 +1750,12 @@ beforeEach(() => {
     expect(settings).toEqual({
       apiKeyHelper: path.join(homeDir, ".claude", "anthropic_key.sh"),
       env: {
-        ANTHROPIC_BASE_URL: "https://api.poe.com"
-      }
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
     });
   });
 
@@ -1740,7 +1773,8 @@ beforeEach(() => {
       prompts: prompt,
       env: { cwd, homeDir },
       logger: () => {},
-      commandRunner
+      commandRunner,
+      suppressCommanderOutput: true
     });
 
     await expect(

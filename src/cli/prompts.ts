@@ -2,13 +2,15 @@ export interface PromptDescriptor<TName extends string = string> {
   readonly name: TName;
   readonly message: string;
   readonly type?: string;
-  readonly initial?: string;
+  readonly initial?: string | number;
+  readonly choices?: Array<{ title: string; value: string }>;
 }
 
 export interface PromptLibrary {
   apiKey(): PromptDescriptor<"apiKey">;
   loginApiKey(): PromptDescriptor<"apiKey">;
   model(defaultModel: string): PromptDescriptor<"model">;
+  claudeModel(): PromptDescriptor<"model">;
   reasoningEffort(
     defaultValue: string
   ): PromptDescriptor<"reasoningEffort">;
@@ -41,6 +43,18 @@ export function createPromptLibrary(): PromptLibrary {
         message: "Model",
         type: "text",
         initial: defaultModel
+      }),
+    claudeModel: () =>
+      describe({
+        name: "model",
+        message: "Default Model",
+        type: "select",
+        initial: 1,
+        choices: [
+          { title: "Claude-Haiku-4.5", value: "Claude-Haiku-4.5" },
+          { title: "Claude-Sonnet-4.5", value: "Claude-Sonnet-4.5" },
+          { title: "Claude-Opus-4.1", value: "Claude-Opus-4.1" }
+        ]
       }),
     reasoningEffort: (defaultValue: string) =>
       describe({

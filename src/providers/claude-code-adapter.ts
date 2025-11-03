@@ -16,6 +16,7 @@ export interface ClaudeCodePaths extends Record<string, string> {
 
 export interface ClaudeCodeConfigureOptions {
   apiKey: string;
+  defaultModel: string;
   mutationHooks?: ServiceMutationHooks;
 }
 
@@ -61,7 +62,8 @@ export const claudeCodeAdapter: ProviderAdapter<
         apiKey: options.apiKey,
         settingsPath: context.paths.settingsPath,
         keyHelperPath: context.paths.keyHelperPath,
-        credentialsPath: context.paths.credentialsPath
+        credentialsPath: context.paths.credentialsPath,
+        defaultModel: options.defaultModel
       },
       options.mutationHooks ? { hooks: options.mutationHooks } : undefined
     );
