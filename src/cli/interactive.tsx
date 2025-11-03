@@ -35,6 +35,23 @@ interface ToolCallDisplay {
   completed: boolean;
 }
 
+interface InputKey {
+  upArrow: boolean;
+  downArrow: boolean;
+  leftArrow: boolean;
+  rightArrow: boolean;
+  pageDown: boolean;
+  pageUp: boolean;
+  return: boolean;
+  escape: boolean;
+  ctrl: boolean;
+  shift: boolean;
+  tab: boolean;
+  backspace: boolean;
+  delete: boolean;
+  meta: boolean;
+}
+
 export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   onExit,
   onCommand,
@@ -63,6 +80,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     }
   ]);
   const [input, setInput] = useState("");
+  const [inputRenderVersion, setInputRenderVersion] = useState(0);
   const [isResponding, setIsResponding] = useState(false);
   const [partialResponse, setPartialResponse] = useState<string | null>(null);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
@@ -73,7 +91,20 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const pendingSelectionRef = React.useRef<{ base: string; previousOffset: number } | null>(null);
+  const lastKeyRef = React.useRef<{ input: string; key: InputKey } | null>(null);
+  const previousCursorOffsetRef = React.useRef<number | null>(null);
   const lastUserIndex = React.useMemo(() => findLastUserIndex(messages), [messages]);
+
+  const updateInput = useCallback(
+    (nextValue: string, options?: { resetCursor?: boolean }) => {
+      setInput(nextValue);
+      if (options?.resetCursor) {
+        setInputRenderVersion((version) => version + 1);
+      }
+    },
+    [setInput, setInputRenderVersion]
+  );
 
   useEffect(() => {
     if (!isResponding) {
@@ -183,7 +214,9 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     return files;
   };
 
-  useInput((inputChar, key) => {
+  useInput((inputChar: string, key: InputKey) => {
+    lastKeyRef.current = { input: inputChar, key };
+
     if (isResponding && key.ctrl && inputChar === "x") {
       abortControllerRef.current?.abort();
       return;
@@ -204,11 +237,14 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
     // Ctrl+K: Delete from cursor to end (clear input)
     if (key.ctrl && inputChar === "k") {
-      setInput("");
+      updateInput("");
       if (showFilePicker) {
         setShowFilePicker(false);
         setFileSearchQuery("");
       }
+      pendingSelectionRef.current = null;
+      previousCursorOffsetRef.current = null;
+      lastKeyRef.current = null;
       return;
     }
 
@@ -223,7 +259,14 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       } else if (key.return && filePickerFiles.length > 0) {
         // Select file
         const selectedFile = filePickerFiles[filePickerIndex];
-        setInput(`${inputBeforeAt}@${selectedFile} `);
+        const insertedValue = `${inputBeforeAt}@${selectedFile} `;
+        updateInput(insertedValue, { resetCursor: true });
+        pendingSelectionRef.current = {
+          base: insertedValue,
+          previousOffset: previousCursorOffsetRef.current ?? insertedValue.length
+        };
+        previousCursorOffsetRef.current = null;
+        lastKeyRef.current = null;
         setShowFilePicker(false);
         setFileSearchQuery("");
         return;
@@ -231,21 +274,49 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         // Cancel file picker
         setShowFilePicker(false);
         setFileSearchQuery("");
-        setInput(inputBeforeAt);
+        updateInput(inputBeforeAt);
+        pendingSelectionRef.current = null;
+        previousCursorOffsetRef.current = null;
+        lastKeyRef.current = null;
         return;
       }
     }
   });
 
-  const handleInputChange = (value: string) => {
-    setInput(value);
+  const handleInputChange = (incoming: string) => {
+    let nextValue = incoming;
+    let shouldResetCursor = false;
+
+    const pending = pendingSelectionRef.current;
+    if (pending) {
+      const lastKey = lastKeyRef.current;
+      const appendedStart = Math.min(pending.previousOffset, incoming.length);
+
+      if (lastKey?.key.backspace) {
+        nextValue = pending.base.slice(0, Math.max(0, pending.base.length - 1));
+      } else if (lastKey?.key.delete) {
+        nextValue = pending.base;
+      } else {
+        const appended = incoming.slice(appendedStart) || lastKey?.input || "";
+        nextValue = `${pending.base}${appended}`;
+      }
+
+      pendingSelectionRef.current = null;
+      shouldResetCursor = true;
+      lastKeyRef.current = null;
+    }
+
+    updateInput(nextValue, shouldResetCursor ? { resetCursor: true } : undefined);
 
     const action = evaluateFilePickerAction({
-      value,
+      value: nextValue,
       isOpen: showFilePicker
     });
 
     if (!action) {
+      if (showFilePicker) {
+        previousCursorOffsetRef.current = nextValue.length;
+      }
       return;
     }
 
@@ -254,17 +325,20 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       setInputBeforeAt(action.prefix);
       setFileSearchQuery("");
       setFilePickerIndex(0);
+      previousCursorOffsetRef.current = nextValue.length;
       return;
     }
 
     if (action.kind === "search") {
       setShowFilePicker(true);
       setFileSearchQuery(action.query);
+      previousCursorOffsetRef.current = nextValue.length;
       return;
     }
 
     setShowFilePicker(false);
     setFileSearchQuery("");
+    previousCursorOffsetRef.current = null;
   };
 
   const handleSubmit = async (value: string) => {
@@ -282,7 +356,10 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
     // Add user message
     setMessages((prev) => [...prev, { role: "user", content: trimmedInput }]);
-    setInput("");
+    updateInput("");
+    pendingSelectionRef.current = null;
+    previousCursorOffsetRef.current = null;
+    lastKeyRef.current = null;
 
     // Check for exit command
     if (trimmedInput.toLowerCase() === "exit" || trimmedInput.toLowerCase() === "quit") {
@@ -445,6 +522,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         <Box>
           <Text color="green">&gt; </Text>
           <TextInput
+            key={inputRenderVersion}
             value={input}
             onChange={handleInputChange}
             onSubmit={handleSubmit}
