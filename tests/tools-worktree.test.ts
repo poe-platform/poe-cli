@@ -77,7 +77,7 @@ describe("worktree tool", () => {
     vol.mkdirSync("/repo", { recursive: true });
   });
 
-  it("registers an async task and starts the background runner", async () => {
+  it("executes synchronously by default even when async infrastructure is available", async () => {
     const { DefaultToolExecutor } = await import("../src/services/tools.js");
     const registerTask = vi.fn(() => "task_1");
     const getTask = vi.fn(() => ({
@@ -116,12 +116,69 @@ describe("worktree tool", () => {
       agentArgs: ["--verbose"]
     });
 
-    expect(registerTask).toHaveBeenCalledWith({
+    expect(background).not.toHaveBeenCalled();
+    expect(registerTask).not.toHaveBeenCalled();
+    expect(spawnGitWorktreeMock).toHaveBeenCalledTimes(1);
+    const invocation = spawnGitWorktreeMock.mock.calls[0][0];
+    expect(invocation.agent).toBe("codex");
+    expect(invocation.prompt).toBe("Implement feature");
+    expect(invocation.agentArgs).toEqual(["--verbose"]);
+    expect(typeof invocation.runAgent).toBe("function");
+    expect(result).toContain("Worktree workflow completed.");
+    expect(spawnCodexMock).toHaveBeenCalledWith({
+      prompt: "Implement feature",
+      args: ["--verbose"],
+      runCommand: expect.any(Function)
+    });
+  });
+
+  it("registers an async task and starts the background runner when async option is true", async () => {
+    const { DefaultToolExecutor } = await import("../src/services/tools.js");
+    const registerTask = vi.fn(() => "task_1");
+    const getTask = vi.fn(() => ({
+      id: "task_1",
       toolName: "spawn_git_worktree",
       args: {
         agent: "codex",
         prompt: "Implement feature",
         agentArgs: ["--verbose"]
+      },
+      status: "running",
+      startTime: 1,
+      logFile: "/logs/task_1.log",
+      progressFile: "/tasks/task_1.progress.jsonl"
+    }));
+    const background = vi.fn();
+
+    const executor = new DefaultToolExecutor({
+      fs,
+      cwd: "/repo",
+      taskRegistry: {
+        registerTask,
+        getTask,
+        updateTask: vi.fn(),
+        onTaskComplete: vi.fn(),
+        onTaskProgress: vi.fn(),
+        getCompletedTasks: () => [],
+        clearCompleted: vi.fn()
+      } as unknown as any,
+      spawnBackgroundTask: background
+    });
+
+    const result = await executor.executeTool("spawn_git_worktree", {
+      agent: "codex",
+      prompt: "Implement feature",
+      agentArgs: ["--verbose"],
+      async: true
+    });
+
+    expect(registerTask).toHaveBeenCalledWith({
+      toolName: "spawn_git_worktree",
+      args: {
+        agent: "codex",
+        prompt: "Implement feature",
+        agentArgs: ["--verbose"],
+        async: true
       }
     });
     expect(background).toHaveBeenCalledWith({
@@ -130,7 +187,8 @@ describe("worktree tool", () => {
       args: {
         agent: "codex",
         prompt: "Implement feature",
-        agentArgs: ["--verbose"]
+        agentArgs: ["--verbose"],
+        async: true
       },
       context: {
         cwd: "/repo"

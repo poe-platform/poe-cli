@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import path from "node:path";
+import { findLastUserIndex } from "@poe/shared-utils";
 
 interface InteractiveCliProps {
   onExit: () => void;
@@ -37,7 +38,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "system",
-      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType 'help' for available commands.\nType '/model' to view or switch models.\nType '/strategy' to configure model selection strategies.\nOr just start chatting - the model can use tools to help you!"
+      content: "Welcome to Poe Code\n\nAn interactive CLI for chatting with AI models using the Poe API.\n\nType '/help' for available commands.\nType '/model' to view or switch models.\nType '/strategy' to configure model selection strategies.\nOr just start chatting - the model can use tools to help you!"
     }
   ]);
   const [input, setInput] = useState("");
@@ -48,6 +49,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [filePickerIndex, setFilePickerIndex] = useState(0);
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const lastUserIndex = React.useMemo(() => findLastUserIndex(messages), [messages]);
 
   // Set up tool call handler
   React.useEffect(() => {
@@ -257,60 +259,63 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     <Box flexDirection="column" padding={1}>
       {/* Message history */}
       <Box flexDirection="column" marginBottom={1}>
-        {messages.map((msg, idx) => (
-          <Box key={`msg-${idx}-${msg.role}`} flexDirection="column" marginBottom={1}>
-            {msg.role === "system" && (
-              <Box flexDirection="column">
-                <Text bold color="cyan">
-                  {msg.content}
-                </Text>
+        {messages.map((msg, idx) => {
+          const isLatestUser = msg.role === "user" && idx === lastUserIndex;
+          return (
+            <React.Fragment key={`msg-${idx}-${msg.role}`}>
+              <Box flexDirection="column" marginBottom={1}>
+                {msg.role === "system" && (
+                  <Box flexDirection="column">
+                    <Text bold color="cyan">
+                      {msg.content}
+                    </Text>
+                  </Box>
+                )}
+                {msg.role === "user" && (
+                  <Box flexDirection="column">
+                    <Text color="green">You:</Text>
+                    <Text>{msg.content}</Text>
+                  </Box>
+                )}
+                {msg.role === "assistant" && (
+                  <Box flexDirection="column">
+                    <Text color="blue">{msg.model || "Assistant"}:</Text>
+                    <Text>{msg.content}</Text>
+                  </Box>
+                )}
               </Box>
-            )}
-            {msg.role === "user" && (
-              <Box flexDirection="column">
-                <Text color="green">You:</Text>
-                <Text>{msg.content}</Text>
-              </Box>
-            )}
-            {msg.role === "assistant" && (
-              <Box flexDirection="column">
-                <Text color="blue">{msg.model || "Assistant"}:</Text>
-                <Text>{msg.content}</Text>
-              </Box>
-            )}
-          </Box>
-        ))}
-      </Box>
-
-      {/* Tool calls display */}
-      {toolCalls.length > 0 && (
-        <Box flexDirection="column" marginBottom={1}>
-          {toolCalls.map((toolCall) => (
-            <Box key={toolCall.id} flexDirection="column" marginY={0}>
-              <Box>
-                <Text color="cyan">⏺ Tool Call: </Text>
-                <Text color="cyan" bold>
-                  {toolCall.toolName}
-                </Text>
-              </Box>
-              <Box marginLeft={2} flexDirection="column">
-                <Text color="gray">Arguments:</Text>
-                <Text color="yellow">{JSON.stringify(toolCall.args, null, 2)}</Text>
-              </Box>
-              {toolCall.completed && (
-                <Box marginLeft={2} flexDirection="column" marginTop={1}>
-                  <Text color="gray">{toolCall.error ? "Error:" : "Result:"}</Text>
-                  {toolCall.error ? (
-                    <Text color="red">{toolCall.error}</Text>
-                  ) : (
-                    <Text color="green">{toolCall.result || "Done"}</Text>
-                  )}
+              {isLatestUser && toolCalls.length > 0 && (
+                <Box flexDirection="column" marginBottom={1}>
+                  {toolCalls.map((toolCall) => (
+                    <Box key={toolCall.id} flexDirection="column" marginY={0}>
+                      <Box>
+                        <Text color="cyan">⏺ Tool Call: </Text>
+                        <Text color="cyan" bold>
+                          {toolCall.toolName}
+                        </Text>
+                      </Box>
+                      <Box marginLeft={2} flexDirection="column">
+                        <Text color="gray">Arguments:</Text>
+                        <Text color="yellow">{JSON.stringify(toolCall.args, null, 2)}</Text>
+                      </Box>
+                      {toolCall.completed && (
+                        <Box marginLeft={2} flexDirection="column" marginTop={1}>
+                          <Text color="gray">{toolCall.error ? "Error:" : "Result:"}</Text>
+                          {toolCall.error ? (
+                            <Text color="red">{toolCall.error}</Text>
+                          ) : (
+                            <Text color="green">{toolCall.result || "Done"}</Text>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  ))}
                 </Box>
               )}
-            </Box>
-          ))}
-        </Box>
-      )}
+            </React.Fragment>
+          );
+        })}
+      </Box>
 
       {/* Processing indicator */}
       {isProcessing && toolCalls.length === 0 && (

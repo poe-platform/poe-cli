@@ -45,7 +45,8 @@
     "lit": "^3.3.1",
     "prompts": "^2.4.2",
     "react": "^19.2.0",
-    "simple-git": "^3.25.0"
+    "simple-git": "^3.25.0",
+    "@poe/shared-utils": "file:./shared"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.2",
