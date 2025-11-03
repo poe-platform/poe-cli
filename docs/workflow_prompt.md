@@ -1,5 +1,9 @@
 # Workflow
 
+- Do not ask me for input, keep running
+- Each feature should have own plan
+- Operate in 1, 2, 3 and 1, 2, 3, each iteration implements featuers. commit changes after each iteration
+
 ## 1 Plan - claude-code
 
 - Spawn sync agent to create a plan

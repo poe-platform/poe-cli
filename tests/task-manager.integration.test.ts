@@ -4,6 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import * as nodeFs from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import type { FSWatcher } from "node:fs";
 import { createCliContainer } from "../src/cli/container.js";
 import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
 import type {
@@ -58,11 +60,26 @@ async function setupEnvironment(options?: {
 
   const tasksDir = path.join(homeDir, ".poe-setup", "tasks");
   const logsDir = path.join(homeDir, ".poe-setup", "logs", "tasks");
+  const createWatcher = (): FSWatcher => {
+    const emitter = new EventEmitter();
+    const watcher = emitter as unknown as FSWatcher & {
+      close(): void;
+      ref(): FSWatcher;
+      unref(): FSWatcher;
+    };
+    watcher.close = () => {
+      emitter.removeAllListeners();
+    };
+    watcher.ref = () => watcher;
+    watcher.unref = () => watcher;
+    return watcher;
+  };
   const taskRegistry = new AgentTaskRegistry({
     fs: nodeFs as unknown as FsLike,
     tasksDir,
     logsDir,
-    logger: () => {}
+    logger: () => {},
+    watchFactory: () => createWatcher()
   });
 
   const defaultRunner: CommandRunner = vi.fn(async (command, args) => ({
