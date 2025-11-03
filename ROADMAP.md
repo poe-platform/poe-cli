@@ -1,6 +1,12 @@
 <!-- Must keep this document up to date -->
 # Roadmap
 
+## chat experience (vscode and preview + cli)
+
+- [ ] Receiving message / response should be blocking. 
+    - It should support streaming or when not streaming, show nice loading indicator
+    - The send message button should replace with stop button
+
 ## cli
 
 - [x] add another alias `poe-code` for interactive CLI
@@ -9,7 +15,7 @@
 - [x] spawn should support also poe-code (poe-cli agent)
 - [ ] key-up should rotate through history messages, like old school irc client
 
-## vscode extension
+## vscode extension (and preview)
 
 - [ ] tool calling visual @improvements
     - format arguments nicer, not just json dump
@@ -19,6 +25,7 @@
 - [ ] use Tailwind for UI components
 - [ ] previous chat history should be working
 - [ ] key-up should rotate through history messages, like old school irc client
+- [ ] The spacing in preview is missing. Add some spacing so it doesn't look to chunked together.
 
 ## issue-resolution-agent
 
