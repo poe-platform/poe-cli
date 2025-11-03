@@ -23,4 +23,21 @@ describe("ChatState", () => {
     expect(state.messages).toEqual([]);
     expect(state.lastResponseAt).toBeNull();
   });
+
+  it("exposes responding state for UI controls", () => {
+    const state = new ChatState();
+    expect(state.isAssistantResponding).toBe(false);
+
+    state.append({ id: "u-1", role: "user", content: "Ping" });
+    expect(state.isAssistantResponding).toBe(true);
+
+    state.append({ id: "a-1", role: "assistant", content: "Pong" });
+    expect(state.isAssistantResponding).toBe(false);
+
+    state.setAssistantResponding(true);
+    expect(state.isAssistantResponding).toBe(true);
+
+    state.clear();
+    expect(state.isAssistantResponding).toBe(false);
+  });
 });

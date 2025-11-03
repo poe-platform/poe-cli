@@ -429,6 +429,9 @@ async function attachPoeWebview(
         },
         onClearHistory: () => {
             chatState.clear();
+        },
+        onRespondingChange: (active) => {
+            chatState.setAssistantResponding(active);
         }
     });
 
@@ -854,6 +857,14 @@ ${tailwindCss}
                             class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
                             Send
+                        </button>
+                        <button
+                            id="stop-button"
+                            type="button"
+                            data-test="stop-button"
+                            class="hidden rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                            Stop
                         </button>
                     </div>
                 </footer>

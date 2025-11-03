@@ -190,6 +190,34 @@ describe("initializeWebviewApp", () => {
     expect(panel.open).toBe(true);
   });
 
+  it("disables the composer and shows stop while responding", () => {
+    const sendButton = document.getElementById("send-button") as HTMLButtonElement;
+    const stopButton = document.getElementById("stop-button") as HTMLButtonElement;
+    const messageInput = document.getElementById("message-input") as HTMLTextAreaElement;
+
+    expect(stopButton.classList.contains("hidden")).toBe(true);
+
+    app.handleMessage({ type: "responding", value: true });
+
+    expect(messageInput.disabled).toBe(true);
+    expect(sendButton.classList.contains("hidden")).toBe(true);
+    expect(stopButton.classList.contains("hidden")).toBe(false);
+
+    app.handleMessage({ type: "responding", value: false });
+
+    expect(messageInput.disabled).toBe(false);
+    expect(sendButton.classList.contains("hidden")).toBe(false);
+    expect(stopButton.classList.contains("hidden")).toBe(true);
+  });
+
+  it("sends a stop request when stop is clicked", () => {
+    const stopButton = document.getElementById("stop-button") as HTMLButtonElement;
+    app.handleMessage({ type: "responding", value: true });
+    stopButton.click();
+
+    expect(postMessage).toHaveBeenCalledWith({ type: "stopResponse" });
+  });
+
   it("opens MCP configuration from the settings panel", async () => {
     const panel = await openSettings(document);
     postMessage.mockClear();

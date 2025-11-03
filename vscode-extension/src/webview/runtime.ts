@@ -49,6 +49,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     | HTMLTextAreaElement
     | null;
   const sendButton = doc.getElementById("send-button") as HTMLButtonElement | null;
+  const stopButton = doc.getElementById("stop-button") as HTMLButtonElement | null;
   const thinkingIndicator = doc.getElementById("thinking-indicator") as
     | HTMLElement
     | null;
@@ -84,6 +85,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   const conversationTimeline: TimelineEntry[] = [];
   let activeModel = options.defaultModel;
   let activeView: "chat" | "history" | "settings" = "chat";
+  let assistantResponding = false;
 
   function joinClasses(...values: Array<string | null | undefined>): string {
     return values.filter(Boolean).join(" ");
@@ -187,6 +189,23 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     }
   }
 
+  function setResponding(active: boolean): void {
+    assistantResponding = active;
+    if (messageInput) {
+      messageInput.disabled = active;
+    }
+    if (sendButton) {
+      sendButton.classList.toggle("hidden", active);
+    }
+    if (stopButton) {
+      stopButton.classList.toggle("hidden", !active);
+      stopButton.disabled = !active;
+    }
+    if (composer) {
+      composer.classList.toggle("responding", active);
+    }
+  }
+
   function publishModel(value: string): void {
     const trimmed = value.trim();
     if (!trimmed.length) {
@@ -267,6 +286,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     sendButton.addEventListener("click", () => sendMessage());
   }
 
+  if (stopButton) {
+    stopButton.addEventListener("click", () => {
+      if (!assistantResponding) {
+        return;
+      }
+      options.postMessage({ type: "stopResponse" });
+    });
+  }
+
   if (messageInput) {
     messageInput.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
@@ -290,13 +318,14 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   }
 
   function sendMessage(): void {
-    if (!messageInput) {
+    if (!messageInput || assistantResponding) {
       return;
     }
     const text = messageInput.value.trim();
     if (!text.length) {
       return;
     }
+    setResponding(true);
     options.postMessage({
       type: "sendMessage",
       id: `m-${Date.now()}`,
@@ -767,8 +796,15 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
           toggleThinking(Boolean(message.value));
           break;
         }
+        case "responding": {
+          setResponding(Boolean(message.value));
+          break;
+        }
         case "message": {
           toggleThinking(false);
+          if (message.role === "assistant") {
+            setResponding(false);
+          }
           const role = message.role === "assistant" ? "assistant" : "user";
           const html = typeof message.html === "string" ? message.html : "";
           addMessageHtml(html, role, message.model);
@@ -778,6 +814,11 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
           if (message.strategyInfo) {
             updateStrategyBadge(String(message.strategyInfo), true);
           }
+          break;
+        }
+        case "responseStopped": {
+          setResponding(false);
+          addMessageHtml("<p><em>Response stopped.</em></p>", "assistant");
           break;
         }
         case "historyCleared": {

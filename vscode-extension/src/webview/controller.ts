@@ -1,6 +1,10 @@
 export interface ChatService {
   getModel(): string;
-  sendMessage(text: string, tools: unknown[]): Promise<any>;
+  sendMessage(
+    text: string,
+    tools: unknown[],
+    options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
+  ): Promise<any>;
   clearHistory(): void;
   isStrategyEnabled(): boolean;
   getStrategyInfo(): string;
@@ -30,6 +34,7 @@ interface CreateWebviewControllerOptions {
   onUserMessage?: (details: { id: string; text: string }) => void;
   onAssistantMessage?: (details: { id: string; text: string }) => void;
   onClearHistory?: () => void;
+  onRespondingChange?: (active: boolean) => void;
 }
 
 export interface WebviewController {
@@ -42,6 +47,7 @@ export function createWebviewController(
   options: CreateWebviewControllerOptions
 ): WebviewController {
   let tools = [...options.availableTools];
+  let activeAbortController: AbortController | null = null;
 
   function post(message: unknown): void {
     options.webview.postMessage(message);
@@ -127,6 +133,10 @@ export function createWebviewController(
         ? payload.id
         : `m-${Date.now()}`;
 
+    const abortController = new AbortController();
+    activeAbortController = abortController;
+    options.onRespondingChange?.(true);
+    post({ type: "responding", value: true });
     post({ type: "thinking", value: true });
     post({
       type: "message",
@@ -153,7 +163,9 @@ export function createWebviewController(
         return;
       }
 
-      const rawResponse = await options.chatService.sendMessage(trimmed, tools);
+      const rawResponse = await options.chatService.sendMessage(trimmed, tools, {
+        signal: abortController.signal,
+      });
       const responseId =
         (rawResponse && typeof rawResponse.id === "string" && rawResponse.id) ||
         `assistant-${Date.now()}`;
@@ -176,6 +188,10 @@ export function createWebviewController(
       });
       options.onAssistantMessage?.({ id: responseId, text: content });
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        post({ type: "responseStopped" });
+        return;
+      }
       const text =
         error instanceof Error ? error.message : String(error ?? "Unknown");
       post({
@@ -184,7 +200,10 @@ export function createWebviewController(
       });
       options.ui?.error(text);
     } finally {
+      activeAbortController = null;
       post({ type: "thinking", value: false });
+      post({ type: "responding", value: false });
+      options.onRespondingChange?.(false);
     }
   }
 
@@ -192,6 +211,14 @@ export function createWebviewController(
     options.chatService.clearHistory();
     post({ type: "historyCleared" });
     options.onClearHistory?.();
+  }
+
+  async function handleStopResponse(): Promise<void> {
+    const controller = activeAbortController;
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    controller.abort();
   }
 
   async function handleGetStrategy(): Promise<void> {
@@ -268,6 +295,9 @@ export function createWebviewController(
         break;
       case "clearHistory":
         await handleClearHistory();
+        break;
+      case "stopResponse":
+        await handleStopResponse();
         break;
       case "getStrategyStatus":
         await handleGetStrategy();
