@@ -1,4 +1,5 @@
 import type { HttpClient } from "./http.js";
+import { ApiError } from "./errors.js";
 
 export interface VerifyApiKeyOptions {
   apiKey: string;
@@ -15,54 +16,133 @@ export interface PoeApiClient {
   query(options: QueryOptions): Promise<string>;
 }
 
+const POE_API_ENDPOINT = "https://api.poe.com/v1/chat/completions";
+
 export function createPoeApiClient(client: HttpClient): PoeApiClient {
   const verify = async (options: VerifyApiKeyOptions): Promise<void> => {
-    const response = await client("https://api.poe.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`
-      },
-      body: JSON.stringify({
-        model: "EchoBot",
-        messages: [{ role: "user", content: "Ping" }]
-      })
-    });
+    const requestBody = {
+      model: "EchoBot",
+      messages: [{ role: "user", content: "Ping" }]
+    };
 
-    if (!response.ok) {
-      throw new Error(`Poe API test failed (status ${response.status}).`);
-    }
+    let response;
+    let responseBody;
 
-    const payload = await response.json();
-    const echoed = extractMessageContent(payload);
-    if (echoed !== "Ping") {
-      throw new Error("Poe API test failed: unexpected response payload.");
+    try {
+      response = await client(POE_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      responseBody = await response.json();
+
+      if (!response.ok) {
+        throw new ApiError("Poe API test failed", {
+          httpStatus: response.status,
+          endpoint: POE_API_ENDPOINT,
+          context: {
+            operation: "verify API key",
+            requestBody,
+            responseBody
+          }
+        });
+      }
+
+      const echoed = extractMessageContent(responseBody);
+      if (echoed !== "Ping") {
+        throw new ApiError("Poe API test failed: unexpected response payload", {
+          httpStatus: response.status,
+          endpoint: POE_API_ENDPOINT,
+          context: {
+            operation: "verify API key",
+            expected: "Ping",
+            received: echoed,
+            responseBody
+          }
+        });
+      }
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      // Network or other errors
+      throw new ApiError(`Failed to connect to Poe API: ${String(error)}`, {
+        endpoint: POE_API_ENDPOINT,
+        context: {
+          operation: "verify API key",
+          requestBody,
+          originalError: String(error)
+        }
+      });
     }
   };
 
   const query = async (options: QueryOptions): Promise<string> => {
-    const response = await client("https://api.poe.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`
-      },
-      body: JSON.stringify({
-        model: options.model,
-        messages: [{ role: "user", content: options.prompt }]
-      })
-    });
+    const requestBody = {
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt }]
+    };
 
-    if (!response.ok) {
-      throw new Error(`Poe API query failed (status ${response.status}).`);
-    }
+    let response;
+    let responseBody;
 
-    const payload = await response.json();
-    const content = extractMessageContent(payload);
-    if (!content) {
-      throw new Error("Poe API query failed: missing response content.");
+    try {
+      response = await client(POE_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      responseBody = await response.json();
+
+      if (!response.ok) {
+        throw new ApiError("Poe API query failed", {
+          httpStatus: response.status,
+          endpoint: POE_API_ENDPOINT,
+          context: {
+            operation: "query",
+            model: options.model,
+            requestBody,
+            responseBody
+          }
+        });
+      }
+
+      const content = extractMessageContent(responseBody);
+      if (!content) {
+        throw new ApiError("Poe API query failed: missing response content", {
+          httpStatus: response.status,
+          endpoint: POE_API_ENDPOINT,
+          context: {
+            operation: "query",
+            model: options.model,
+            responseBody
+          }
+        });
+      }
+      return content;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      // Network or other errors
+      throw new ApiError(`Failed to connect to Poe API: ${String(error)}`, {
+        endpoint: POE_API_ENDPOINT,
+        context: {
+          operation: "query",
+          model: options.model,
+          requestBody,
+          originalError: String(error)
+        }
+      });
     }
-    return content;
   };
 
   return { verify, query };

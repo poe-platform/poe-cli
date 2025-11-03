@@ -1,3 +1,4 @@
+import * as nodeFsSync from "node:fs";
 import type { FileSystem } from "../utils/file-system.js";
 import {
   loadCredentials,
@@ -22,6 +23,7 @@ import {
   type LoggerFactory,
   type ScopedLogger
 } from "./logger.js";
+import { ErrorLogger } from "./error-logger.js";
 import { createTelemetryClient } from "./telemetry.js";
 import { createPoeApiClient, type PoeApiClient } from "./api-client.js";
 import { createDefaultCommandRunner } from "./command-runner.js";
@@ -58,6 +60,7 @@ export interface CliContainer {
   readonly prompts: PromptFn;
   readonly promptLibrary: ReturnType<typeof createPromptLibrary>;
   readonly loggerFactory: LoggerFactory;
+  readonly errorLogger: ErrorLogger;
   readonly options: OptionResolvers;
   readonly contextFactory: CommandContextFactory;
   readonly registry: ReturnType<typeof createServiceRegistry>;
@@ -83,6 +86,16 @@ export function createCliContainer(
   const loggerFactory = createLoggerFactory(
     dependencies.logger ?? ((message) => console.log(message))
   );
+
+  // Create error logger - use node:fs for sync operations
+  const errorLogger = new ErrorLogger({
+    fs: nodeFsSync as any,
+    logDir: environment.logDir,
+    logToStderr: true
+  });
+
+  // Attach error logger to logger factory
+  loggerFactory.setErrorLogger(errorLogger);
 
   const contextFactory = createCommandContextFactory({
     fs: dependencies.fs
@@ -155,6 +168,7 @@ export function createCliContainer(
     prompts: dependencies.prompts,
     promptLibrary,
     loggerFactory,
+    errorLogger,
     options,
     contextFactory,
     registry,

@@ -12,6 +12,7 @@ export interface CliEnvironment {
   readonly homeDir: string;
   readonly platform: NodeJS.Platform;
   readonly credentialsPath: string;
+  readonly logDir: string;
   readonly variables: Record<string, string | undefined>;
   resolveHomePath: (...segments: string[]) => string;
   getVariable: (name: string) => string | undefined;
@@ -21,6 +22,7 @@ export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
   const platform = init.platform ?? process.platform;
   const variables = init.variables ?? process.env;
   const credentialsPath = resolveCredentialsPath(init.homeDir);
+  const logDir = resolveLogDir(init.homeDir);
 
   const resolveHomePath = (...segments: string[]): string =>
     path.join(init.homeDir, ...segments);
@@ -32,6 +34,7 @@ export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
     homeDir: init.homeDir,
     platform,
     credentialsPath,
+    logDir,
     variables,
     resolveHomePath,
     getVariable
@@ -40,4 +43,8 @@ export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
 
 export function resolveCredentialsPath(homeDir: string): string {
   return path.join(homeDir, ".poe-setup", "credentials.json");
+}
+
+export function resolveLogDir(homeDir: string): string {
+  return path.join(homeDir, ".poe-setup", "logs");
 }

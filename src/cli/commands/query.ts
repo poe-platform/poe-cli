@@ -37,17 +37,28 @@ export function registerQueryCommand(
         return;
       }
 
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
+      try {
+        const apiKey = await container.options.resolveApiKey({
+          value: options.apiKey,
+          dryRun: flags.dryRun
+        });
 
-      const content = await container.poeApiClient.query({
-        apiKey,
-        model,
-        prompt: text
-      });
+        const content = await container.poeApiClient.query({
+          apiKey,
+          model,
+          prompt: text
+        });
 
-      logger.info(`${model}: ${content}`);
+        logger.info(`${model}: ${content}`);
+      } catch (error) {
+        if (error instanceof Error) {
+          logger.logException(error, "query command", {
+            operation: "query model",
+            model,
+            promptLength: text.length
+          });
+        }
+        throw error;
+      }
     });
 }

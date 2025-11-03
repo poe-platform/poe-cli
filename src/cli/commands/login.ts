@@ -5,6 +5,7 @@ import {
   resolveCommandFlags
 } from "./shared.js";
 import { saveCredentials } from "../../services/credentials.js";
+import { ValidationError, FileSystemError } from "../errors.js";
 
 export interface LoginCommandOptions {
   apiKey?: string;
@@ -26,19 +27,29 @@ export function registerLoginCommand(
         "login"
       );
 
-      const apiKey = await resolveApiKeyInput(container, options);
-      const normalized = container.options.normalizeApiKey(apiKey);
+      try {
+        const apiKey = await resolveApiKeyInput(container, options);
+        const normalized = container.options.normalizeApiKey(apiKey);
 
-      await saveCredentials({
-        fs: resources.context.fs,
-        filePath: container.env.credentialsPath,
-        apiKey: normalized
-      });
+        await saveCredentials({
+          fs: resources.context.fs,
+          filePath: container.env.credentialsPath,
+          apiKey: normalized
+        });
 
-      resources.context.complete({
-        success: `Poe API key stored at ${container.env.credentialsPath}.`,
-        dry: `Dry run: would store Poe API key at ${container.env.credentialsPath}.`
-      });
+        resources.context.complete({
+          success: `Poe API key stored at ${container.env.credentialsPath}.`,
+          dry: `Dry run: would store Poe API key at ${container.env.credentialsPath}.`
+        });
+      } catch (error) {
+        if (error instanceof Error) {
+          resources.logger.logException(error, "login command", {
+            operation: "save credentials",
+            credentialsPath: container.env.credentialsPath
+          });
+        }
+        throw error;
+      }
     });
 }
 
@@ -53,7 +64,10 @@ async function resolveApiKeyInput(
   const response = await container.prompts(descriptor);
   const result = response[descriptor.name];
   if (!result || typeof result !== "string") {
-    throw new Error("POE API key is required.");
+    throw new ValidationError("POE API key is required.", {
+      operation: "login",
+      field: "apiKey"
+    });
   }
   return result;
 }
