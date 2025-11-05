@@ -11,8 +11,8 @@ export function registerConfigureAgentsCommand(
   configureCommand
     .command("agents")
     .description("Enable or disable agents for the worktree tool.")
-    .action(async function () {
-      const flags = resolveCommandFlags(this as Command);
+    .action(async function (this: Command) {
+      const flags = resolveCommandFlags(this);
       const logger = container.loggerFactory.create({
         scope: "configure:agents",
         dryRun: flags.dryRun,
@@ -89,4 +89,3 @@ export function registerConfigureAgentsCommand(
       logger.info("Updated agent configuration.");
     });
 }
-
