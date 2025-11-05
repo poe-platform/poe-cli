@@ -28,7 +28,8 @@
     "poe-code": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "shared"
   ],
   "engines": {
     "node": ">=18"
