@@ -248,13 +248,31 @@ describe("initializeWebviewApp", () => {
     expect(entry.textContent).toContain("write_file");
     expect(entry.classList.contains("running")).toBe(true);
 
+    const details = entry.querySelector("details");
+    expect(details).toBeTruthy();
+    expect(details?.open).toBe(false);
+
+    const summary = details?.querySelector("summary");
+    expect(summary?.textContent?.toLowerCase()).toContain("details");
+
+    const argKey = entry.querySelector(".message-tool-args dt");
+    expect(argKey?.textContent).toBe("path");
+
+    const argValue = entry.querySelector(".message-tool-args dd");
+    expect(argValue?.textContent).toContain("index.ts");
+
     app.handleMessage({
       type: "toolExecuted",
       toolName: "write_file",
-      success: true
+      success: true,
+      result: { bytesWritten: 32 }
     });
 
     expect(entry.classList.contains("success")).toBe(true);
     expect(entry.textContent).toContain("completed");
+
+    const responseBlock = entry.querySelector(".message-tool-response");
+    expect(responseBlock?.textContent).toContain("bytesWritten");
+    expect(responseBlock?.textContent).toContain("32");
   });
 });
