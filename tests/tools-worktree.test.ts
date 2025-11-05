@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import type { FileSystem } from "../src/utils/file-system.js";
+import { AgentConfigManager } from "../src/services/agent-config-manager.js";
+import { createDefaultAgentRegistry } from "../src/services/agent-registry.js";
 
-const spawnGitWorktreeMock = vi.fn();
-const spawnCodexMock = vi.fn(async () => ({
-  exitCode: 0,
-  stdout: "",
-  stderr: ""
-}));
+const spawnGitWorktreeMock = vi.hoisted(() => vi.fn());
+const spawnCodexMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    exitCode: 0,
+    stdout: "",
+    stderr: ""
+  }))
+);
 
 vi.mock("../src/commands/spawn-worktree.js", () => ({
   spawnGitWorktree: spawnGitWorktreeMock
@@ -56,8 +60,10 @@ vi.mock("simple-git", () => ({
 describe("worktree tool", () => {
   let fs: FileSystem;
   let vol: Volume;
+  let agentConfigManager: AgentConfigManager;
+  const homeDir = "/home/user";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     spawnGitWorktreeMock.mockImplementation(async (options) => {
       await options.runAgent({
         agent: options.agent,
@@ -75,6 +81,14 @@ describe("worktree tool", () => {
     const memfs = createFsFromVolume(vol);
     fs = memfs.promises as unknown as FileSystem;
     vol.mkdirSync("/repo", { recursive: true });
+    vol.mkdirSync(homeDir, { recursive: true });
+    const registry = createDefaultAgentRegistry();
+    agentConfigManager = new AgentConfigManager({
+      fs,
+      homeDir,
+      registry
+    });
+    await agentConfigManager.loadConfig();
   });
 
   it("executes synchronously by default even when async infrastructure is available", async () => {
@@ -95,6 +109,7 @@ describe("worktree tool", () => {
     }));
     const background = vi.fn();
 
+    const registry = createDefaultAgentRegistry();
     const executor = new DefaultToolExecutor({
       fs,
       cwd: "/repo",
@@ -107,7 +122,10 @@ describe("worktree tool", () => {
         getCompletedTasks: () => [],
         clearCompleted: vi.fn()
       } as unknown as any,
-      spawnBackgroundTask: background
+      spawnBackgroundTask: background,
+      agentRegistry: registry,
+      agentConfigManager,
+      homeDir
     });
 
     const result = await executor.executeTool("spawn_git_worktree", {
@@ -150,6 +168,7 @@ describe("worktree tool", () => {
     }));
     const background = vi.fn();
 
+    const registry = createDefaultAgentRegistry();
     const executor = new DefaultToolExecutor({
       fs,
       cwd: "/repo",
@@ -162,7 +181,10 @@ describe("worktree tool", () => {
         getCompletedTasks: () => [],
         clearCompleted: vi.fn()
       } as unknown as any,
-      spawnBackgroundTask: background
+      spawnBackgroundTask: background,
+      agentRegistry: registry,
+      agentConfigManager,
+      homeDir
     });
 
     const result = await executor.executeTool("spawn_git_worktree", {
