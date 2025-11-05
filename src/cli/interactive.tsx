@@ -90,6 +90,14 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [filePickerIndex, setFilePickerIndex] = useState(0);
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [isBrowsingHistory, setIsBrowsingHistory] = useState(false);
+  const historyRef = React.useRef<string[]>([]);
+  const isBrowsingHistoryRef = React.useRef(false);
+  const fileSearchQueryRef = React.useRef("");
+  const filePickerFilesRef = React.useRef<string[]>([]);
+  const filePickerIndexRef = React.useRef(0);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const pendingSelectionRef = React.useRef<{ base: string } | null>(null);
   const lastKeyRef = React.useRef<{ input: string; key: InputKey } | null>(null);
@@ -154,28 +162,54 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     }
   }, [onSetToolCallHandler]);
 
+  useEffect(() => {
+    fileSearchQueryRef.current = fileSearchQuery.trim();
+  }, [fileSearchQuery]);
+
   // Load files for picker when @ is typed
   useEffect(() => {
-    if (showFilePicker) {
-      const loadFiles = async () => {
-        try {
-          const files = await getFilesRecursive(cwd, "");
-          const filtered = fileSearchQuery
-            ? files.filter(f => f.toLowerCase().includes(fileSearchQuery.toLowerCase()))
-            : files;
-          setFilePickerFiles(filtered.slice(0, 50)); // Limit to 50 files
-          setFilePickerIndex(0);
-        } catch (error) {
-          reportError(error, {
-            operation: "load file picker entries",
-            cwd,
-            query: fileSearchQuery
-          });
-          setFilePickerFiles([]);
-        }
-      };
-      void loadFiles();
+    if (!showFilePicker) {
+      return;
     }
+
+    let cancelled = false;
+    const currentQuery = fileSearchQueryRef.current;
+
+    const loadFiles = async () => {
+      try {
+        const files = await getFilesRecursive(cwd, "");
+        const filtered = currentQuery
+          ? files.filter((file) =>
+              file.toLowerCase().includes(currentQuery.toLowerCase())
+            )
+          : files;
+        if (cancelled || fileSearchQueryRef.current !== currentQuery) {
+          return;
+        }
+        const limited = filtered.slice(0, 50);
+        filePickerFilesRef.current = limited;
+        filePickerIndexRef.current = 0;
+        setFilePickerFiles(limited);
+        setFilePickerIndex(0);
+      } catch (error) {
+        if (cancelled || fileSearchQueryRef.current !== currentQuery) {
+          return;
+        }
+        reportError(error, {
+          operation: "load file picker entries",
+          cwd,
+          query: currentQuery
+        });
+        filePickerFilesRef.current = [];
+        setFilePickerFiles([]);
+      }
+    };
+
+    void loadFiles();
+
+    return () => {
+      cancelled = true;
+    };
   }, [showFilePicker, fileSearchQuery, cwd]);
 
   const getFilesRecursive = async (dir: string, prefix: string): Promise<string[]> => {
@@ -248,23 +282,31 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
     // Handle file picker navigation
     if (showFilePicker) {
-      if (key.upArrow && filePickerIndex > 0) {
-        setFilePickerIndex(filePickerIndex - 1);
+      const currentIndex = filePickerIndexRef.current;
+      const currentFiles = filePickerFilesRef.current;
+
+      if (key.upArrow && currentIndex > 0) {
+        const newIndex = currentIndex - 1;
+        filePickerIndexRef.current = newIndex;
+        setFilePickerIndex(newIndex);
         return;
-      } else if (key.downArrow && filePickerIndex < filePickerFiles.length - 1) {
-        setFilePickerIndex(filePickerIndex + 1);
+      } else if (key.downArrow && currentIndex < currentFiles.length - 1) {
+        const newIndex = currentIndex + 1;
+        filePickerIndexRef.current = newIndex;
+        setFilePickerIndex(newIndex);
         return;
-      } else if (key.return && filePickerFiles.length > 0) {
+      } else if (key.return && currentFiles.length > 0) {
         // Select file
-        const selectedFile = filePickerFiles[filePickerIndex];
+        const selectedFile = currentFiles[currentIndex];
         const insertedValue = `${inputBeforeAt}@${selectedFile} `;
+        setShowFilePicker(false);
+        setFileSearchQuery("");
+        // Force TextInput to re-render with new value by resetting cursor
         updateInput(insertedValue, { resetCursor: true });
         pendingSelectionRef.current = {
           base: insertedValue
         };
         lastKeyRef.current = null;
-        setShowFilePicker(false);
-        setFileSearchQuery("");
         return;
       } else if (key.escape) {
         // Cancel file picker
@@ -273,6 +315,56 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
         updateInput(inputBeforeAt);
         pendingSelectionRef.current = null;
         lastKeyRef.current = null;
+        return;
+      }
+    }
+
+    // Handle history navigation (only when file picker is not open)
+    if (!showFilePicker && !isResponding) {
+      if (key.upArrow) {
+        const currentHistory = historyRef.current;
+        if (currentHistory.length > 0) {
+          const newIndex = isBrowsingHistoryRef.current
+            ? Math.max(0, historyIndex - 1)
+            : currentHistory.length - 1;
+          setHistoryIndex(newIndex);
+          setIsBrowsingHistory(true);
+          isBrowsingHistoryRef.current = true;
+          updateInput(currentHistory[newIndex]);
+        }
+        return;
+      } else if (key.downArrow && isBrowsingHistoryRef.current) {
+        const currentHistory = historyRef.current;
+
+        // Check if history index is valid
+        if (historyIndex < 0 || historyIndex >= currentHistory.length) {
+          setIsBrowsingHistory(false);
+          isBrowsingHistoryRef.current = false;
+          setHistoryIndex(-1);
+          return;
+        }
+
+        const currentHistoryValue = currentHistory[historyIndex];
+
+        // If input has been manually edited, stop browsing
+        if (input !== currentHistoryValue) {
+          setIsBrowsingHistory(false);
+          isBrowsingHistoryRef.current = false;
+          setHistoryIndex(-1);
+          return;
+        }
+
+        if (historyIndex < currentHistory.length - 1) {
+          const newIndex = historyIndex + 1;
+          setHistoryIndex(newIndex);
+          updateInput(currentHistory[newIndex]);
+        } else {
+          // Reached the end, clear input
+          setHistoryIndex(-1);
+          setIsBrowsingHistory(false);
+          isBrowsingHistoryRef.current = false;
+          updateInput("");
+        }
         return;
       }
     }
@@ -299,6 +391,16 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
       pendingSelectionRef.current = null;
       shouldResetCursor = true;
       lastKeyRef.current = null;
+    }
+
+    // If user manually edits while browsing history, stop browsing
+    if (isBrowsingHistoryRef.current && !showFilePicker) {
+      const currentHistoryValue = historyRef.current[historyIndex];
+      if (incoming !== currentHistoryValue) {
+        setIsBrowsingHistory(false);
+        isBrowsingHistoryRef.current = false;
+        setHistoryIndex(-1);
+      }
     }
 
     updateInput(nextValue, shouldResetCursor ? { resetCursor: true } : undefined);
@@ -345,7 +447,19 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
 
     // Add user message
     setMessages((prev) => [...prev, { role: "user", content: trimmedInput }]);
+
+    // Add to history (only non-blank messages)
+    if (trimmedInput) {
+      const newHistory = [...historyRef.current, trimmedInput];
+      historyRef.current = newHistory;
+      setHistory(newHistory);
+    }
+
+    // Reset input and history browsing state
     updateInput("");
+    setHistoryIndex(-1);
+    setIsBrowsingHistory(false);
+    isBrowsingHistoryRef.current = false;
     pendingSelectionRef.current = null;
     lastKeyRef.current = null;
 

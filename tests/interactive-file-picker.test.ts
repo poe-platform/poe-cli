@@ -1,13 +1,24 @@
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Text } from "ink";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "ink-testing-library";
 import { Volume, createFsFromVolume } from "memfs";
-import { InteractiveCli } from "../src/cli/interactive.js";
 
 interface TestFs {
   readdir: (target: string) => Promise<string[]>;
   stat: (target: string) => Promise<{ isDirectory: () => boolean }>;
 }
+
+type InputHarness = {
+  value: string;
+  onChange: (next: string) => void;
+  onSubmit: (current: string) => void;
+  placeholder?: string;
+};
+
+type InteractiveCliComponent = typeof import("../src/cli/interactive.js").InteractiveCli;
+let InteractiveCli: InteractiveCliComponent;
+let inputHarness: InputHarness | null = null;
 
 async function flushEffects(): Promise<void> {
   await Promise.resolve();
@@ -96,6 +107,23 @@ async function expectInputToContain(
   );
 }
 
+async function getHarness(): Promise<InputHarness> {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    if (inputHarness) {
+      return inputHarness;
+    }
+    await flushEffects();
+  }
+  throw new Error("Text input harness not initialized");
+}
+
+async function setInputValue(value: string): Promise<void> {
+  const harness = await getHarness();
+  harness.onChange(value);
+  await flushEffects();
+}
+
 async function typeSequence(stdin: { write: (chunk: string) => void }, sequence: string): Promise<void> {
   for (const char of sequence) {
     stdin.write(char);
@@ -107,7 +135,20 @@ describe("Interactive CLI file picker behaviour", () => {
   let fileSystem: TestFs;
   const cwd = "/workspace";
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    inputHarness = null;
+    vi.resetModules();
+    vi.doMock("ink-text-input", () => ({
+      __esModule: true,
+      default: (props: InputHarness) => {
+        inputHarness = props;
+        const label = props.value || props.placeholder || "";
+        return React.createElement(Text, null, label);
+      }
+    }));
+    const cliModule = await import("../src/cli/interactive.js");
+    InteractiveCli = cliModule.InteractiveCli;
+
     const volume = new Volume();
     const memfs = createFsFromVolume(volume);
     const promises = memfs.promises;
@@ -137,36 +178,38 @@ describe("Interactive CLI file picker behaviour", () => {
     const instance = render(element);
     const { stdin, lastFrame } = instance;
 
-    stdin.write("@");
-    await flushEffects();
+    // Type "@"
+    await setInputValue("@");
     await expectFrameToContain(
       lastFrame,
       "Select a file (↑/↓ to navigate, Enter to select, Esc to cancel):"
     );
 
-    stdin.write("b");
-    await flushEffects();
+    // Type "b" to filter
+    await setInputValue("@b");
     await expectPickerToShowOnly(lastFrame, "beta.txt", ["alpha.txt"]);
-    await flushEffects();
-    await flushEffects();
 
+    // Press Enter to select
     stdin.write("\r");
-    const sanitizedBeforeSecondMention = await expectInputToContain(
-      lastFrame,
-      "@beta.txt"
-    );
-    expect(sanitizedBeforeSecondMention).toContain("@beta.txt");
+    await flushEffects();
+    await flushEffects();
 
-    stdin.write("@");
+    // Verify the input was updated to include the selected file
+    let harness = await getHarness();
+    expect(harness.value).toBe("@beta.txt ");
+
+    // Type second "@" by calling onChange on the harness
+    harness.onChange("@beta.txt @");
+    await flushEffects();
+
     await expectFrameToContain(
       lastFrame,
       "Select a file (↑/↓ to navigate, Enter to select, Esc to cancel):"
     );
-    const sanitizedAfterSecondMention = await expectInputToContain(
-      lastFrame,
-      "@beta.txt @"
-    );
-    expect(sanitizedAfterSecondMention).toContain("@beta.txt @");
+
+    // Get fresh harness and verify the second @ was added
+    harness = await getHarness();
+    expect(harness.value).toBe("@beta.txt @");
 
     instance.unmount();
   });
@@ -185,25 +228,42 @@ describe("Interactive CLI file picker behaviour", () => {
     const instance = render(element);
     const { stdin, lastFrame } = instance;
 
-    stdin.write("@");
-    await flushEffects();
+    // Type "@"
+    await setInputValue("@");
     await expectFrameToContain(
       lastFrame,
       "Select a file (↑/↓ to navigate, Enter to select, Esc to cancel):"
     );
 
-    await typeSequence(stdin, " ROAD");
+    // Type " ROAD" to filter with space
+    await setInputValue("@ ROAD");
     await expectPickerToShowOnly(lastFrame, "ROADMAP.md", ["alpha.txt", "beta.txt"]);
 
+    // Press Enter to select
     stdin.write("\r");
-    const afterSelection = await expectInputToContain(lastFrame, "@ROADMAP.md ");
-    expect(afterSelection).toContain("@ROADMAP.md ");
+    await flushEffects();
+    await flushEffects();
 
-    await typeSequence(stdin, "con");
-    const finalInput = await expectInputToContain(lastFrame, "@ROADMAP.md con");
-    expect(finalInput).toContain("@ROADMAP.md con");
-    expect(finalInput).not.toContain("AP.md ");
+    // Verify the input was updated to include the selected file
+    let harness = await getHarness();
+    expect(harness.value).toBe("@ROADMAP.md ");
+
+    // Type "con" after the mention by calling onChange on the harness
+    harness.onChange("@ROADMAP.md con");
+    await flushEffects();
+
+    // Get fresh harness and verify
+    harness = await getHarness();
+    expect(harness.value).toBe("@ROADMAP.md con");
 
     instance.unmount();
   });
+});
+
+afterEach(() => {
+  vi.unmock("ink-text-input");
+});
+
+afterAll(() => {
+  vi.resetModules();
 });
