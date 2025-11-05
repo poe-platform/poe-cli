@@ -285,6 +285,44 @@ beforeEach(() => {
     expect(helper).toBe(CLAUDE_HELPER_CONTENT);
   });
 
+  it("updates agent configuration via configure agents", async () => {
+    const promptStub = createPromptStub({
+      agents: ["claude-code", "poe-code"]
+    });
+    const commandRunnerStub = createCommandRunnerStub();
+    const logs: string[] = [];
+    const program = createProgram({
+      fs,
+      prompts: promptStub.prompt,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      },
+      commandRunner: commandRunnerStub.runner
+    });
+
+    await program.parseAsync(["node", "cli", "configure", "agents"]);
+
+    const configPath = path.join(
+      homeDir,
+      ".poe-setup",
+      "agent-config.json"
+    );
+    const stored = JSON.parse(await fs.readFile(configPath, "utf8"));
+    const enabledIds = stored.agents
+      .filter((entry: { enabled: boolean }) => entry.enabled)
+      .map((entry: { id: string }) => entry.id);
+
+    expect(enabledIds).toEqual(["claude-code", "poe-code"]);
+    expect(commandRunnerStub.calls.some((call) => call.command === "claude")).toBe(true);
+    expect(
+      logs.some((line) =>
+        line.includes("claude-code") &&
+        (line.includes("installed") || line.includes("available"))
+      )
+    ).toBe(true);
+  });
+
   it("does not register publish-placeholder command", () => {
     const { prompt } = createPromptStub({});
     const program = createProgram({

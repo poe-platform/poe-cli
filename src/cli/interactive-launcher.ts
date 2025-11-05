@@ -13,6 +13,8 @@ import {
 } from "../services/credentials.js";
 import { PoeChatService } from "../services/chat.js";
 import { DefaultToolExecutor, getAvailableTools } from "../services/tools.js";
+import { AgentConfigManager } from "../services/agent-config-manager.js";
+import { createDefaultAgentRegistry } from "../services/agent-registry.js";
 import { McpManager } from "../services/mcp-manager.js";
 import { resolveCredentialsPath } from "./environment.js";
 import { AgentTaskRegistry } from "../services/agent-task-registry.js";
@@ -96,7 +98,30 @@ export async function launchInteractiveMode(
     }
   });
 
+  const agentRegistry = createDefaultAgentRegistry();
+  const agentConfigManager = new AgentConfigManager({
+    fs: fileSystem,
+    homeDir: env.homeDir,
+    registry: agentRegistry
+  });
+  let agentConfigLoaded = false;
+  const ensureAgentConfigLoaded = async () => {
+    if (agentConfigLoaded) {
+      return;
+    }
+    try {
+      await agentConfigManager.loadConfig();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      dependencies.logger?.(`interactive:agent-config load failed ${message}`);
+    } finally {
+      agentConfigLoaded = true;
+    }
+  };
+
   async function initializeChatService(apiKeyValue: string): Promise<string> {
+    await ensureAgentConfigLoaded();
     const toolExecutor = new DefaultToolExecutor({
       fs: fileSystem,
       cwd: env.cwd,
@@ -105,7 +130,10 @@ export async function launchInteractiveMode(
       taskRegistry,
       logger: (event, payload) => {
         dependencies.logger?.(`tool:${event} ${JSON.stringify(payload ?? {})}`);
-      }
+      },
+      agentRegistry,
+      agentConfigManager,
+      homeDir: env.homeDir
     });
     chatService = new PoeChatService(
       apiKeyValue,
@@ -261,7 +289,12 @@ export async function launchInteractiveMode(
       }
 
       if (slashCommand === "tools") {
-        const tools = getAvailableTools(mcpManager);
+        await ensureAgentConfigLoaded();
+        const tools = await getAvailableTools({
+          agentRegistry,
+          agentConfigManager,
+          mcpManager
+        });
         const builtInTools = tools.filter((t) => !t.function.name.startsWith("mcp__"));
         const mcpTools = tools.filter((t) => t.function.name.startsWith("mcp__"));
 
@@ -394,7 +427,12 @@ Example:
         });
         const processedInput = mentionResult.processedInput;
 
-        const tools = getAvailableTools(mcpManager);
+        await ensureAgentConfigLoaded();
+        const tools = await getAvailableTools({
+          agentRegistry,
+          agentConfigManager,
+          mcpManager
+        });
         const response = await chatService.sendMessage(processedInput, tools, {
           signal: commandOptions?.signal,
           onChunk: commandOptions?.onChunk

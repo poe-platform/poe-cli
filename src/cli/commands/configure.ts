@@ -17,6 +17,7 @@ import {
   DEFAULT_ROO_MODEL,
   DEFAULT_CLAUDE_MODEL
 } from "../constants.js";
+import { registerConfigureAgentsCommand } from "./configure-agents.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -30,7 +31,7 @@ export function registerConfigureCommand(
   program: Command,
   container: CliContainer
 ): void {
-  program
+  const configureCommand = program
     .command("configure")
     .description("Configure developer tooling for Poe API.")
     .argument(
@@ -50,6 +51,8 @@ export function registerConfigureCommand(
       );
       await executeConfigure(program, container, resolved, options);
     });
+
+  registerConfigureAgentsCommand(configureCommand, container);
 }
 
 export async function executeConfigure(

@@ -5,13 +5,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { McpManager } from "./mcp-manager.js";
 import { spawnGitWorktree } from "../commands/spawn-worktree.js";
-import { spawnCodex } from "./codex.js";
 import { spawnClaudeCode } from "./claude-code.js";
-import { spawnOpenCode } from "./opencode.js";
 import { simpleGit as createSimpleGit } from "simple-git";
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import type { AgentTaskRegistry } from "./agent-task-registry.js";
 import { tokenizeCommandLine } from "../utils/command-line.js";
+import {
+  AgentRegistry,
+  createDefaultAgentRegistry,
+  LEGACY_DEFAULT_AGENTS,
+  type AgentAdapter
+} from "./agent-registry.js";
+import { AgentConfigManager } from "./agent-config-manager.js";
 
 interface BackgroundTaskRequest {
   taskId: string;
@@ -25,7 +30,7 @@ interface BackgroundTaskRequest {
 type BackgroundTaskSpawner = (request: BackgroundTaskRequest) => Promise<void> | void;
 
 interface ParsedWorktreeArgs {
-  agent: "codex" | "claude-code" | "opencode";
+  agent: string;
   prompt: string;
   agentArgs: string[];
   branch?: string;
@@ -47,6 +52,9 @@ export interface ToolExecutorDependencies {
   spawnBackgroundTask?: BackgroundTaskSpawner;
   logger?: (event: string, payload?: Record<string, unknown>) => void;
   now?: () => number;
+  agentRegistry?: AgentRegistry;
+  agentConfigManager?: AgentConfigManager;
+  homeDir?: string;
 }
 
 export class DefaultToolExecutor implements ToolExecutor {
@@ -59,6 +67,9 @@ export class DefaultToolExecutor implements ToolExecutor {
   private spawnTask?: BackgroundTaskSpawner;
   private eventLogger: (event: string, payload?: Record<string, unknown>) => void;
   private now: () => number;
+  private agentRegistry: AgentRegistry;
+  private agentConfigManager?: AgentConfigManager;
+  private homeDir?: string;
 
   constructor(dependencies: ToolExecutorDependencies) {
     this.fs = dependencies.fs;
@@ -72,6 +83,10 @@ export class DefaultToolExecutor implements ToolExecutor {
     this.spawnTask =
       dependencies.spawnBackgroundTask ??
       (this.taskRegistry ? this.createBackgroundSpawner() : undefined);
+    this.agentRegistry =
+      dependencies.agentRegistry ?? createDefaultAgentRegistry();
+    this.agentConfigManager = dependencies.agentConfigManager;
+    this.homeDir = dependencies.homeDir;
   }
 
   async executeTool(
@@ -395,6 +410,7 @@ export class DefaultToolExecutor implements ToolExecutor {
     args: Record<string, unknown>
   ): Promise<string> {
     const parsed = this.parseWorktreeArgs(args);
+    const adapter = await this.resolveAgent(parsed.agent);
     const serializableArgs: Record<string, unknown> = {
       agent: parsed.agent,
       prompt: parsed.prompt,
@@ -428,7 +444,7 @@ export class DefaultToolExecutor implements ToolExecutor {
       return `Started background task ${taskId}`;
     }
 
-    return await this.executeWorktreeSynchronously(parsed);
+    return await this.executeWorktreeSynchronously(parsed, adapter);
   }
 
   private createBackgroundSpawner(): BackgroundTaskSpawner {
@@ -460,41 +476,67 @@ export class DefaultToolExecutor implements ToolExecutor {
         args: request.args,
         cwd: request.context.cwd,
         tasksDir: this.taskRegistry.getTasksDirectory(),
-        logsDir: this.taskRegistry.getLogsDirectory()
+        logsDir: this.taskRegistry.getLogsDirectory(),
+        agentConfigPath: this.agentConfigManager?.getConfigPath() ?? null,
+        homeDir: this.homeDir ?? null
       });
       
       const inlineScript = `
         import { spawnGitWorktree } from './commands/spawn-worktree.js';
-        import { spawnCodex } from './services/codex.js';
-        import { spawnClaudeCode } from './services/claude-code.js';
-        import { spawnOpenCode } from './services/opencode.js';
+        import { createDefaultAgentRegistry } from './services/agent-registry.js';
+        import { AgentConfigManager } from './services/agent-config-manager.js';
         import { AgentTaskRegistry } from './services/agent-task-registry.js';
         import { TaskLogger } from './services/task-logger.js';
         import { simpleGit } from 'simple-git';
         import { spawn } from 'node:child_process';
         import * as fs from 'node:fs';
         import path from 'node:path';
-        
+
         const data = ${taskData};
         const fsLike = fs;
-        
-        const registry = new AgentTaskRegistry({
+
+        const taskRegistry = new AgentTaskRegistry({
           fs: fsLike,
           tasksDir: data.tasksDir,
           logsDir: data.logsDir
         });
-        
+
         const logger = new TaskLogger({
           fs: fsLike,
           filePath: path.join(data.logsDir, data.taskId + '.log'),
           now: () => new Date()
         });
-        
+
         const progressFile = path.join(data.tasksDir, data.taskId + '.progress.jsonl');
         const writeProgress = (update) => {
           fs.appendFileSync(progressFile, JSON.stringify(update) + '\\n');
         };
-        
+
+        const agentRegistry = createDefaultAgentRegistry();
+        let agentConfigManager = null;
+        if (data.agentConfigPath && data.homeDir) {
+          agentConfigManager = new AgentConfigManager({
+            fs: fs.promises,
+            homeDir: data.homeDir,
+            registry: agentRegistry
+          });
+          await agentConfigManager.loadConfig();
+        }
+
+        async function resolveAgent(adapterId) {
+          const adapter = agentRegistry.get(adapterId);
+          if (!adapter) {
+            throw new Error('Unsupported agent "' + adapterId + '".');
+          }
+          if (agentConfigManager) {
+            const enabled = await agentConfigManager.getEnabledAgents();
+            if (!enabled.some((entry) => entry.id === adapterId)) {
+              throw new Error('Agent "' + adapterId + '" is disabled in configuration.');
+            }
+          }
+          return adapter;
+        }
+
         async function runCommand(cmd, args, cwd) {
           return new Promise((resolve) => {
             const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -504,25 +546,33 @@ export class DefaultToolExecutor implements ToolExecutor {
             child.on('close', (code) => resolve({ stdout, stderr, exitCode: code || 0 }));
           });
         }
-        
+
+        let agentAdapter;
+
         async function runAgent(details) {
-          if (details.agent === 'codex') {
-            return await spawnCodex({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+          if (!agentAdapter) {
+            agentAdapter = await resolveAgent(details.agent);
           }
-          if (details.agent === 'claude-code') {
-            return await spawnClaudeCode({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+          if (details.agent !== data.args.agent) {
+            throw new Error('Mismatched agent "' + details.agent + '" (expected "' + data.args.agent + '").');
           }
-          return await spawnOpenCode({ prompt: details.prompt, args: details.args, runCommand: (c, a) => runCommand(c, a, details.cwd) });
+          return await agentAdapter.spawn({
+            prompt: details.prompt,
+            args: details.args,
+            runCommand: (c, a) => runCommand(c, a, details.cwd)
+          });
         }
-        
+
         (async () => {
           try {
             logger.info('Starting ' + data.toolName);
             writeProgress({ type: 'progress', message: 'Starting ' + data.toolName, timestamp: Date.now() });
-            
+
+            agentAdapter = await resolveAgent(data.args.agent);
+
             const git = simpleGit({ baseDir: data.cwd });
             const branch = data.args.branch || (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
-            
+
             await spawnGitWorktree({
               agent: data.args.agent,
               prompt: data.args.prompt,
@@ -535,19 +585,19 @@ export class DefaultToolExecutor implements ToolExecutor {
                 writeProgress({ type: 'progress', message: msg, timestamp: Date.now() });
               }
             });
-            
+
             const result = 'Worktree workflow completed successfully';
-            registry.updateTask(data.taskId, { status: 'completed', result, endTime: Date.now() });
+            taskRegistry.updateTask(data.taskId, { status: 'completed', result, endTime: Date.now() });
             writeProgress({ type: 'complete', result, timestamp: Date.now() });
             logger.info('Task completed');
           } catch (error) {
-            const message = error.message || String(error);
-            registry.updateTask(data.taskId, { status: 'failed', error: message, endTime: Date.now() });
+            const message = error?.message || String(error);
+            taskRegistry.updateTask(data.taskId, { status: 'failed', error: message, endTime: Date.now() });
             writeProgress({ type: 'error', error: message, timestamp: Date.now() });
             logger.error('Task failed: ' + message);
             process.exit(1);
           } finally {
-            registry.dispose();
+            taskRegistry.dispose();
           }
         })();
       `.trim();
@@ -677,7 +727,8 @@ export class DefaultToolExecutor implements ToolExecutor {
   }
 
   private async executeWorktreeSynchronously(
-    input: ParsedWorktreeArgs
+    input: ParsedWorktreeArgs,
+    adapter: AgentAdapter
   ): Promise<string> {
     const git = createSimpleGit({ baseDir: this.cwd });
     const branch = input.branch
@@ -702,21 +753,7 @@ export class DefaultToolExecutor implements ToolExecutor {
           `Mismatched agent "${details.agent}" (expected "${input.agent}").`
         );
       }
-      if (input.agent === "codex") {
-        return await spawnCodex({
-          prompt: details.prompt,
-          args: details.args,
-          runCommand: runner
-        });
-      }
-      if (input.agent === "claude-code") {
-        return await spawnClaudeCode({
-          prompt: details.prompt,
-          args: details.args,
-          runCommand: runner
-        });
-      }
-      return await spawnOpenCode({
+      return await adapter.spawn({
         prompt: details.prompt,
         args: details.args,
         runCommand: runner
@@ -742,13 +779,26 @@ export class DefaultToolExecutor implements ToolExecutor {
     return logs.join("\n");
   }
 
+  private async resolveAgent(agentId: string): Promise<AgentAdapter> {
+    const adapter = this.agentRegistry.get(agentId);
+    if (!adapter) {
+      throw new Error(`Unsupported agent "${agentId}".`);
+    }
+    if (this.agentConfigManager) {
+      const enabled = await this.agentConfigManager.getEnabledAgents();
+      if (!enabled.some((entry) => entry.id === agentId)) {
+        throw new Error(`Agent "${agentId}" is disabled in configuration.`);
+      }
+    } else if (!LEGACY_DEFAULT_AGENTS.some((legacy) => legacy === agentId)) {
+      throw new Error(`Unsupported agent "${agentId}".`);
+    }
+    return adapter;
+  }
+
   private parseWorktreeArgs(args: Record<string, unknown>): ParsedWorktreeArgs {
     const agentValue = args.agent;
     if (typeof agentValue !== "string" || agentValue.length === 0) {
       throw new Error("Missing required parameter: agent");
-    }
-    if (agentValue !== "codex" && agentValue !== "claude-code" && agentValue !== "opencode") {
-      throw new Error(`Unsupported agent "${agentValue}".`);
     }
 
     const promptValue = args.prompt;
@@ -862,7 +912,33 @@ function runCommandInCwd(
   });
 }
 
-export function getAvailableTools(mcpManager?: McpManager): Tool[] {
+export interface GetAvailableToolsOptions {
+  agentRegistry?: AgentRegistry;
+  agentConfigManager?: AgentConfigManager;
+  mcpManager?: McpManager;
+}
+
+export async function getAvailableTools(
+  options: GetAvailableToolsOptions = {}
+): Promise<Tool[]> {
+  const registry = options.agentRegistry ?? createDefaultAgentRegistry();
+  let enabledAgents = registry
+    .list()
+    .filter((adapter) => adapter.defaultEnabled ?? LEGACY_DEFAULT_AGENTS.some((legacy) => legacy === adapter.id))
+    .map((adapter) => ({ id: adapter.id }));
+
+  if (options.agentConfigManager) {
+    enabledAgents = await options.agentConfigManager.getEnabledAgents();
+  }
+
+  const enabledIds = enabledAgents.map((entry) => entry.id);
+  const fallbackIds = registry.list().map((adapter) => adapter.id);
+  const enumValues = enabledIds.length > 0 ? enabledIds : fallbackIds;
+  const agentDescription =
+    enumValues.length > 0
+      ? `Agent identifier (${enumValues.join(" | ")}).`
+      : "Agent identifier.";
+
   const builtInTools: Tool[] = [
     {
       type: "function",
@@ -945,8 +1021,8 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
           properties: {
             agent: {
               type: "string",
-              description: "Agent identifier to launch (claude-code | codex | opencode).",
-              enum: ["claude-code", "codex", "opencode"]
+              description: agentDescription,
+              enum: enumValues
             },
             prompt: {
               type: "string",
@@ -989,8 +1065,8 @@ export function getAvailableTools(mcpManager?: McpManager): Tool[] {
   ];
 
   // Add MCP tools if manager is provided
-  if (mcpManager) {
-    const mcpTools = mcpManager.getAllTools();
+  if (options.mcpManager) {
+    const mcpTools = options.mcpManager.getAllTools();
     return [...builtInTools, ...mcpTools];
   }
 

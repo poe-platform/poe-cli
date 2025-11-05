@@ -13,6 +13,8 @@ import {
   type AgentTask,
   type FsLike
 } from "./agent-task-registry.js";
+import { AgentConfigManager } from "./agent-config-manager.js";
+import { createDefaultAgentRegistry } from "./agent-registry.js";
 
 export interface AgentSession {
   getModel(): string;
@@ -72,6 +74,20 @@ export async function createAgentSession(
   });
   const awaitTasksOnDispose = options.awaitTasksOnDispose ?? false;
 
+  const agentRegistry = createDefaultAgentRegistry();
+  const agentConfigManager = new AgentConfigManager({
+    fs: options.fs,
+    homeDir: options.homeDir,
+    registry: agentRegistry
+  });
+  try {
+    await agentConfigManager.loadConfig();
+  } catch (error) {
+    options.logger(
+      `Failed to load agent configuration: ${formatError(error)}`
+    );
+  }
+
   const toolExecutor = new DefaultToolExecutor({
     fs: options.fs,
     cwd: options.cwd,
@@ -80,7 +96,10 @@ export async function createAgentSession(
     taskRegistry,
     onWriteFile: async ({ relativePath }) => {
       options.logger(`Tool write_file -> ${relativePath}`);
-    }
+    },
+    agentRegistry,
+    agentConfigManager,
+    homeDir: options.homeDir
   });
 
   let toolCallback: ToolCallCallback | undefined;
@@ -107,7 +126,11 @@ export async function createAgentSession(
       prompt: string,
       options?: { signal?: AbortSignal; onChunk?: (chunk: string) => void }
     ) {
-      const tools = getAvailableTools(mcpManager);
+      const tools = await getAvailableTools({
+        agentRegistry,
+        agentConfigManager,
+        mcpManager
+      });
       return chatService.sendMessage(prompt, tools, options);
     },
     async waitForAllTasks() {
