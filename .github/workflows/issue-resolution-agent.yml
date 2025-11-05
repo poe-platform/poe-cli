@@ -7,9 +7,10 @@ on:
 jobs:
   resolve:
     name: Resolve Issue With Agent
-    if: github.event.action == 'labeled' &&
-      contains(fromJson('["claude-code","codex","opencode"]'),
-      github.event.label.name)
+    if: |-
+      github.event.action == 'labeled' &&
+            contains(fromJson('["claude-code","codex","opencode","poe-code"]'),
+            github.event.label.name)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -36,32 +37,7 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABEL_NAME: ${{ github.event.label.name }}
-        run: >
-          node <<'NODE'
-            const fs = require("node:fs");
-            const label = process.env.LABEL_NAME;
-            const issue = process.env.ISSUE_NUMBER;
-            const providers = {
-              "claude-code": { service: "claude-code", model: "Claude-Sonnet-4.5" },
-              codex: { service: "codex", model: "Claude-Sonnet-4.5" },
-              "open-code": { service: "opencode", model: "Claude-Sonnet-4.5" },
-              opencode: { service: "opencode", model: "Claude-Sonnet-4.5" }
-            };
-            const selected = providers[label];
-            if (!selected) {
-              process.stderr.write(`Unsupported provider label: ${label}\n`);
-              process.exit(1);
-            }
-            const branch = `agent/${selected.service}/issue-${issue}`;
-            const outputs = [
-              `service=${selected.service}`,
-              `model=${selected.model}`,
-              `branch=${branch}`,
-              `pr_label=agent:${selected.service}`,
-              `exclude_reviewer=${selected.service}`
-            ].join("\n");
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs}\n`);
-          NODE
+        run: node scripts/workflows/determine-provider.cjs
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
@@ -69,14 +45,14 @@ jobs:
       - name: Configure provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
-        run: |
+        run: |-
           SERVICE="${{ steps.provider.outputs.service }}"
           case "$SERVICE" in
-            claude-code|opencode)
+            claude-code|codex|opencode)
               poe-setup configure "$SERVICE"
               ;;
-            codex)
-              poe-setup configure "$SERVICE"
+            "poe-cli agent")
+              poe-setup configure "poe-cli agent"
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
@@ -126,3 +102,36 @@ jobs:
           commit-message: "chore: resolve issue #${{ github.event.issue.number }}"
           labels: ${{ steps.provider.outputs.pr_label }}
           delete-branch: true
+        id: create-pull-request
+      - name: Run PR checks
+        id: pr_checks
+        if: steps.create-pull-request.outputs.pull-request-number != ''
+        continue-on-error: true
+        run: npm ci && npm run build && npm test
+      - name: Post check results
+        if: steps.create-pull-request.outputs.pull-request-number != '' &&
+          steps.pr_checks.conclusion != ''
+        uses: actions/github-script@v7
+        env:
+          CHECK_CONCLUSION: ${{ steps.pr_checks.conclusion }}
+          PULL_REQUEST_NUMBER: ${{ steps.create-pull-request.outputs.pull-request-number }}
+        with:
+          script: |-
+            const conclusion = process.env.CHECK_CONCLUSION;
+            const rawNumber = process.env.PULL_REQUEST_NUMBER;
+            const prNumber = Number.parseInt(rawNumber ?? "", 10);
+            if (!Number.isInteger(prNumber)) {
+              return;
+            }
+            const passed = conclusion === "success";
+            const body = passed ? '✅ Checks passed' : '❌ Checks failed';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body
+            });
+      - name: Fail workflow when checks fail
+        if: steps.create-pull-request.outputs.pull-request-number != '' &&
+          steps.pr_checks.conclusion == 'failure'
+        run: exit 1
