@@ -91,6 +91,29 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     return values.filter(Boolean).join(" ");
   }
 
+  function formatStructuredValue(value: unknown): string {
+    if (value === null) {
+      return "null";
+    }
+    if (value === undefined) {
+      return "undefined";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
   function appendTimelineEntry(entry: TimelineEntry): void {
     conversationTimeline.push(entry);
   }
@@ -165,6 +188,8 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     toolStatusError: "text-error",
     toolArgs:
       "message-tool-args rounded-xl bg-surface-raised px-3 py-2 text-xs font-mono text-text",
+    toolResponse:
+      "message-tool-response rounded-xl bg-surface-raised px-3 py-2 text-xs font-mono text-text",
     toolError: "message-tool-error text-xs text-error",
     toolNotification:
       "tool-notification pointer-events-auto rounded-xl border border-border bg-surface-raised px-4 py-2 text-sm font-medium text-text shadow-md transition-opacity duration-200",
@@ -566,16 +591,25 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     content.appendChild(statusLine);
 
     if (details.args && typeof details.args === "object") {
-      try {
-        const formatted = JSON.stringify(details.args, null, 2);
-        if (formatted) {
-          const argsBlock = doc.createElement("pre");
-          argsBlock.className = uiClasses.toolArgs;
-          argsBlock.textContent = formatted;
-          content.appendChild(argsBlock);
+      const entries = Object.entries(details.args as Record<string, unknown>);
+      if (entries.length > 0) {
+        const argsDetails = doc.createElement("details");
+        argsDetails.open = false;
+        const summary = doc.createElement("summary");
+        summary.textContent = "Details";
+        argsDetails.appendChild(summary);
+        const list = doc.createElement("dl");
+        list.className = uiClasses.toolArgs;
+        for (const [key, rawValue] of entries) {
+          const term = doc.createElement("dt");
+          term.textContent = key;
+          const desc = doc.createElement("dd");
+          desc.textContent = formatStructuredValue(rawValue);
+          list.appendChild(term);
+          list.appendChild(desc);
         }
-      } catch {
-        // Ignore serialization failures.
+        argsDetails.appendChild(list);
+        content.appendChild(argsDetails);
       }
     }
 
@@ -610,6 +644,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     toolName: string;
     success: boolean;
     error?: string;
+    result?: unknown;
   }): void {
     const entry = consumeToolMessage(details.toolName);
     if (!entry) {
@@ -642,6 +677,22 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
       errorLine.className = uiClasses.toolError;
       errorLine.textContent = details.error;
       entry.querySelector(".message-content")?.appendChild(errorLine);
+    }
+
+    if (details.result !== undefined) {
+      const contentArea = entry.querySelector(".message-content");
+      if (contentArea) {
+        const responseDetails = doc.createElement("details");
+        responseDetails.open = false;
+        const summary = doc.createElement("summary");
+        summary.textContent = "Response";
+        responseDetails.appendChild(summary);
+        const responseBlock = doc.createElement("pre");
+        responseBlock.className = uiClasses.toolResponse;
+        responseBlock.textContent = formatStructuredValue(details.result);
+        responseDetails.appendChild(responseBlock);
+        contentArea.appendChild(responseDetails);
+      }
     }
 
     if (messagesDiv) {
@@ -864,6 +915,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
             completeToolMessage({
               toolName: message.toolName,
               success: Boolean(message.success),
+              result: message.result,
               error:
                 typeof message.error === "string" && message.error.length > 0
                   ? message.error
