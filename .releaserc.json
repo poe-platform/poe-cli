@@ -35,8 +35,7 @@
             "type": "test",
             "release": false
           }
-        ],
-        "preset": "conventionalcommits"
+        ]
       }
     ],
     "@semantic-release/release-notes-generator",
