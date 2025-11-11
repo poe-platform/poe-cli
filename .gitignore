@@ -18,3 +18,5 @@ test-*/
 # Local act secrets
 .github/workflows/local/.secrets
 .secrets
+# macOS metadata
+.DS_Store
