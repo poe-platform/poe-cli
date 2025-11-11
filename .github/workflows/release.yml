@@ -5,14 +5,17 @@ on:
       - main
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
   id-token: write
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -20,17 +23,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - name: Configure git
-        run: |-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Bump version
-        run: 'npm version patch -m "chore: release %s"'
-      - name: Push changes and tags
-        run: git push --follow-tags
+      - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npx semantic-release
