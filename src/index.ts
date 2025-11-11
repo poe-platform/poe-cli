@@ -15,7 +15,7 @@ const fsAdapter = nodeFs as unknown as FileSystem;
 
 async function main(): Promise<void> {
   const homeDir = homedir();
-  const logDir = join(homeDir, ".poe-setup", "logs");
+  const logDir = join(homeDir, ".poe-code", "logs");
 
   // Create global error logger for bootstrapping errors
   const errorLogger = new ErrorLogger({

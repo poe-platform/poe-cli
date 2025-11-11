@@ -35,7 +35,7 @@ export class AgentConfigManager {
     this.fs = init.fs;
     this.registry = init.registry;
     this.homeDir = init.homeDir;
-    this.configPath = path.join(this.homeDir, ".poe-setup", "agent-config.json");
+    this.configPath = path.join(this.homeDir, ".poe-code", "agent-config.json");
   }
 
   getConfigPath(): string {

@@ -3,7 +3,7 @@
 ## Overview
 
 This feature can be implemented as both:
-1. **CLI command:** `poe-setup spawn-git-worktree <agent> <prompt> [agentArgs...]`
+1. **CLI command:** `poe-code spawn-git-worktree <agent> <prompt> [agentArgs...]`
 2. **Agent tool:** Can be added to [`src/services/tools.ts`](src/services/tools.ts:227) following the existing pattern
 
 **Architecture Compatibility:** ✅ The existing tool system in [`DefaultToolExecutor`](src/services/tools.ts:20) fully supports adding this as a tool by:

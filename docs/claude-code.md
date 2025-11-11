@@ -23,7 +23,7 @@ Create ~/.claude/anthropic_key.sh:
 
 ```
 #!/bin/bash
-node -e "console.log(require(require('os').homedir() + '/.poe-setup/credentials.json').apiKey)"
+node -e "console.log(require(require('os').homedir() + '/.poe-code/credentials.json').apiKey)"
 ```
 
 This credentials.json path is defined in one place in code via `resolveCredentialsPath(homeDir)` and exposed as `environment.credentialsPath`.

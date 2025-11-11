@@ -20,7 +20,7 @@ const providers = new Map([
   ['codex', { service: 'codex', model: 'Claude-Sonnet-4.5' }],
   ['open-code', { service: 'opencode', model: 'Claude-Sonnet-4.5' }],
   ['opencode', { service: 'opencode', model: 'Claude-Sonnet-4.5' }],
-  ['poe-code', { service: 'poe-cli agent', model: 'Claude-Sonnet-4.5' }]
+  ['poe-code', { service: 'poe-code agent', model: 'Claude-Sonnet-4.5' }]
 ]);
 
 const provider = providers.get(label);

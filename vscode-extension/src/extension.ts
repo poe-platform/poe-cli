@@ -90,9 +90,9 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
 
-    // Register a command to check if poe-setup is configured
+    // Register a command to check if poe-code is configured
     const checkSetupCommand = vscode.commands.registerCommand('poe-code.checkSetup', async () => {
-        const isConfigured = await isPoeSetupConfigured();
+        const isConfigured = await isPoeCodeConfigured();
         if (!isConfigured) {
             const action = await vscode.window.showWarningMessage(
                 'Poe API key not configured. Would you like to configure it now?',
@@ -106,7 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
                     placeHolder: 'Your Poe API key from poe.com'
                 });
                 if (apiKey) {
-                    await configurePoeSetup(apiKey);
+                    await configurePoeCode(apiKey);
                 }
             }
         } else {
@@ -158,7 +158,7 @@ async function loadModules(): Promise<{
         // From workspace root
         path.join(workspacePath, 'dist'),
         // Absolute path based on home directory
-        path.join(process.env.HOME || process.env.USERPROFILE || '', 'DEV', 'poe-setup', 'dist')
+        path.join(process.env.HOME || process.env.USERPROFILE || '', 'DEV', 'poe-code', 'dist')
     ];
 
     console.log('[Poe Code] Searching for modules in paths:');
@@ -193,7 +193,7 @@ async function loadModules(): Promise<{
     }
 
     if (!chatModule || !toolsModule || !taskModule || !tasksModule) {
-        const buildInstructions = 'Please run "npm run build" in the poe-setup directory.';
+        const buildInstructions = 'Please run "npm run build" in the poe-code directory.';
         const pathsChecked = possibleBasePaths.map((p, i) => `\n  ${i + 1}. ${p}`).join('');
         throw new Error(
             `Could not load Poe modules.\n\n` +
@@ -245,8 +245,8 @@ async function createChatRuntime(apiKey: string, model: string): Promise<{
         };
 
         const homeDir = os.homedir();
-        const tasksDir = path.join(homeDir, '.poe-setup', 'tasks');
-        const logsDir = path.join(homeDir, '.poe-setup', 'logs', 'tasks');
+        const tasksDir = path.join(homeDir, '.poe-code', 'tasks');
+        const logsDir = path.join(homeDir, '.poe-code', 'logs', 'tasks');
         const taskRegistry = new taskModule.AgentTaskRegistry({
             fs,
             tasksDir,
@@ -494,8 +494,8 @@ async function openPoeTerminal() {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     const cwd = workspaceFolder?.uri.fsPath || process.cwd();
 
-    // Check if poe-setup is configured
-    const isConfigured = await isPoeSetupConfigured();
+    // Check if poe-code is configured
+    const isConfigured = await isPoeCodeConfigured();
     if (!isConfigured) {
         const action = await vscode.window.showWarningMessage(
             'Poe API key not configured. Configure now?',
@@ -509,7 +509,7 @@ async function openPoeTerminal() {
                 placeHolder: 'Get your API key from poe.com'
             });
             if (apiKey) {
-                await configurePoeSetup(apiKey);
+                await configurePoeCode(apiKey);
             } else {
                 return; // User cancelled
             }
@@ -518,10 +518,10 @@ async function openPoeTerminal() {
         }
     }
 
-    // Try to find local poe-setup dist/index.js
-    let command = 'npx poe-setup interactive';
+    // Try to find local poe-code dist/index.js
+    let command = 'npx poe-code interactive';
 
-    // Check if we're in the poe-setup directory
+    // Check if we're in the poe-code directory
     const localDist = path.join(cwd, 'dist', 'index.js');
     if (fs.existsSync(localDist)) {
         command = 'node dist/index.js interactive';
@@ -565,7 +565,7 @@ async function openPoeTerminal() {
 
 async function getPoeCredentials(): Promise<{ apiKey: string } | null> {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const credentialsPath = path.join(homeDir, '.poe-setup', 'credentials.json');
+    const credentialsPath = path.join(homeDir, '.poe-code', 'credentials.json');
 
     try {
         await fs.promises.access(credentialsPath, fs.constants.F_OK);
@@ -577,19 +577,19 @@ async function getPoeCredentials(): Promise<{ apiKey: string } | null> {
     }
 }
 
-async function isPoeSetupConfigured(): Promise<boolean> {
+async function isPoeCodeConfigured(): Promise<boolean> {
     const creds = await getPoeCredentials();
     return !!creds;
 }
 
-async function configurePoeSetup(apiKey: string): Promise<void> {
+async function configurePoeCode(apiKey: string): Promise<void> {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const poeSetupDir = path.join(homeDir, '.poe-setup');
-    const credentialsPath = path.join(poeSetupDir, 'credentials.json');
+    const poeCodeDir = path.join(homeDir, '.poe-code');
+    const credentialsPath = path.join(poeCodeDir, 'credentials.json');
 
     try {
         // Create directory if it doesn't exist
-        await fs.promises.mkdir(poeSetupDir, { recursive: true });
+        await fs.promises.mkdir(poeCodeDir, { recursive: true });
 
         // Write credentials
         await fs.promises.writeFile(
@@ -631,7 +631,7 @@ async function ensurePoeCredentials(): Promise<{ apiKey: string } | null> {
     if (!apiKey) {
         return null;
     }
-    await configurePoeSetup(apiKey);
+    await configurePoeCode(apiKey);
     cachedCredentials = { apiKey };
     return cachedCredentials;
 }

@@ -18,9 +18,9 @@ describe("entrypoint module", () => {
 
   it("detects invocation through symlinked path", () => {
     const moduleUrl = "file:///app/dist/index.js";
-    const argv = ["node", "/usr/bin/poe-setup"];
+    const argv = ["node", "/usr/bin/poe-code"];
     const resolver = (value: string) =>
-      value === "/usr/bin/poe-setup" ? "/app/dist/index.js" : value;
+      value === "/usr/bin/poe-code" ? "/app/dist/index.js" : value;
     expect(isCliInvocation(argv, moduleUrl, resolver)).toBe(true);
   });
 });

@@ -62,7 +62,7 @@ jobs:
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
-        run: npx poe-setup login --api-key "${POE_API_KEY}"
+        run: npx poe-code login --api-key "${POE_API_KEY}"
       - name: Configure reviewer provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
@@ -70,13 +70,13 @@ jobs:
           SERVICE="${{ steps.reviewer.outputs.service }}"
           case "$SERVICE" in
             claude-code|opencode)
-              npx poe-setup configure "$SERVICE" --api-key "${POE_API_KEY}" --install
+              npx poe-code configure "$SERVICE" --api-key "${POE_API_KEY}" --install
               ;;
             roo-code)
-              npx poe-setup configure "$SERVICE" --api-key "${POE_API_KEY}"
+              npx poe-code configure "$SERVICE" --api-key "${POE_API_KEY}"
               ;;
             codex)
-              npx poe-setup configure "$SERVICE"
+              npx poe-code configure "$SERVICE"
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
@@ -106,7 +106,7 @@ jobs:
             process.stdout.write(notes.join("\n\n"));
           NODE
           )
-          npx poe-setup agent "$PROMPT" | tee review-summary.txt
+          npx poe-code agent "$PROMPT" | tee review-summary.txt
       - name: Submit review comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

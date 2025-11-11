@@ -151,7 +151,7 @@ function createInstallCommandRunner(options: {
 
 const CLAUDE_HELPER_LINES = [
   "#!/bin/bash",
-  'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+  'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
 ];
 const CLAUDE_HELPER_CONTENT = CLAUDE_HELPER_LINES.join("\n");
 
@@ -202,7 +202,7 @@ beforeEach(() => {
   vi.mocked(launchInteractiveMode).mockReset();
 });
 
-  it("exposes poe-setup as the command name", () => {
+  it("exposes poe-code as the command name", () => {
     const { prompt } = createPromptStub({});
     const program = createProgram({
       fs,
@@ -211,7 +211,7 @@ beforeEach(() => {
       logger: () => {}
     });
 
-    expect(program.name()).toBe("poe-setup");
+    expect(program.name()).toBe("poe-code");
   });
 
   it("launches interactive mode when no command is provided", async () => {
@@ -305,7 +305,7 @@ beforeEach(() => {
 
     const configPath = path.join(
       homeDir,
-      ".poe-setup",
+      ".poe-code",
       "agent-config.json"
     );
     const stored = JSON.parse(await fs.readFile(configPath, "utf8"));
@@ -995,7 +995,7 @@ beforeEach(() => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ".poe-code", "credentials.json");
 
     await program.parseAsync(["node", "cli", "configure", "claude-code"]);
 
@@ -1013,7 +1013,7 @@ beforeEach(() => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ".poe-code", "credentials.json");
 
     await program.parseAsync([
       "node",
@@ -1042,7 +1042,7 @@ beforeEach(() => {
       },
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ".poe-code", "credentials.json");
 
     await program.parseAsync(["node", "cli", "login"]);
 
@@ -1101,7 +1101,7 @@ beforeEach(() => {
         logs.push(message);
       }
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ".poe-code", "credentials.json");
 
     await program.parseAsync([
       "node",
@@ -1133,7 +1133,7 @@ beforeEach(() => {
       logger: () => {},
       commandRunner: commandRunnerStub.runner
     });
-    const credentialsPath = path.join(homeDir, ".poe-setup", "credentials.json");
+    const credentialsPath = path.join(homeDir, ".poe-code", "credentials.json");
 
     await program.parseAsync(["node", "cli", "login"]);
     await expect(fs.readFile(credentialsPath, "utf8")).resolves.toBeTruthy();
@@ -1708,7 +1708,7 @@ beforeEach(() => {
 
     const credentialsPath = path.join(
       homeDir,
-      ".poe-setup",
+      ".poe-code",
       "credentials.json"
     );
     const stored = JSON.parse(await fs.readFile(credentialsPath, "utf8"));

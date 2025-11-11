@@ -12,7 +12,7 @@
 - [x] add another alias `poe-code` for interactive CLI
 - [x] `help` is broken in interactive mode
 - [x] can you roll own terminal markdown renderer and add support for that. For unsupported formatting, you can just render as plaintext. 
-- [x] spawn should support also poe-code (poe-cli agent)
+- [x] spawn should support also poe-code (poe-code agent)
 - [ ] key-up should rotate through history messages, like old school irc client
 
 ## vscode extension (and preview)
@@ -30,7 +30,7 @@
 ## issue-resolution-agent
 
 - [ ] It should run pr checks, and currently doesn't
-- [ ] support tag `poe-code` aliased to agent `poe-cli agent`
+- [ ] support tag `poe-code` aliased to agent `poe-code agent`
 
 ## Poe Agent
 - [ ] Ability to spawn any supported sub-agents (including new worktrees)

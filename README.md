@@ -1,13 +1,13 @@
-# poe-setup
+# poe-code
 
 > Fast CLI to wire your local dev tools to the Poe API
 
 ## Quick Start
 
 ```bash
-npm i -g poe-setup
-poe-cli login
-poe-cli configure claude-code
+npm i -g poe-code
+poe-code login
+poe-code configure claude-code
 ```
 
 ## Features
@@ -20,7 +20,7 @@ poe-cli configure claude-code
 ## Installation
 
 ```bash
-npm i -g poe-setup
+npm i -g poe-code
 ```
 
 ## Usage
@@ -28,37 +28,37 @@ npm i -g poe-setup
 ### Authentication
 
 ```bash
-poe-cli login
+poe-code login
 ```
 
 ### Configure Coding Agents
 
 ```bash
 # Claude Code
-poe-cli configure claude-code
+poe-code configure claude-code
 
 # Codex
-poe-cli configure codex
+poe-code configure codex
 
 # OpenCode
-poe-cli configure opencode
+poe-code configure opencode
 ```
 
 ### Interactive Mode
 
 ```bash
-poe-cli
+poe-code
 ```
 
 ### Non-Interactive Mode
 
 ```bash
-poe-cli agent "Recommend me Python web framework"
+poe-code agent "Recommend me Python web framework"
 ```
 
 ### Spawn Async Agents
 
 ```bash
-poe-cli spawn claude-code "What is the best web framework?"
-poe-cli spawn-git-worktree claude-code "Build me a random fun game"
+poe-code spawn claude-code "What is the best web framework?"
+poe-code spawn-git-worktree claude-code "Build me a random fun game"
 ```

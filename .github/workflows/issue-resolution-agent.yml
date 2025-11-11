@@ -41,7 +41,7 @@ jobs:
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
-        run: poe-setup login --api-key "${POE_API_KEY}"
+        run: poe-code login --api-key "${POE_API_KEY}"
       - name: Configure provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
@@ -49,10 +49,10 @@ jobs:
           SERVICE="${{ steps.provider.outputs.service }}"
           case "$SERVICE" in
             claude-code|codex|opencode)
-              poe-setup configure "$SERVICE"
+              poe-code configure "$SERVICE"
               ;;
-            "poe-cli agent")
-              poe-setup configure "poe-cli agent"
+            "poe-code agent")
+              poe-code configure "poe-code agent"
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
@@ -61,8 +61,8 @@ jobs:
           esac
       - name: Configure git author
         run: |
-          git config user.name "poe-setup-bot"
-          git config user.email "bot@poe-setup.invalid"
+          git config user.name "poe-code-bot"
+          git config user.email "bot@poe-code.invalid"
       - name: Run issue resolver agent
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -84,7 +84,7 @@ jobs:
             process.stdout.write(lines.join("\n\n"));
           NODE
             )
-          poe-setup spawn "$SERVICE" "$PROMPT"
+          poe-code spawn "$SERVICE" "$PROMPT"
       - name: Generate pull request metadata
         id: pr_metadata
         env:

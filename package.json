@@ -1,7 +1,7 @@
 {
-  "name": "poe-setup",
-  "version": "0.1.27",
-  "description": "CLI tool to configure Poe API for various development tools.",
+  "name": "poe-code",
+  "version": "0.1.26",
+  "description": "CLI tool to configure Poe API for developer workflows.",
   "type": "module",
   "scripts": {
     "build": "npm run build:webview && tsc -p tsconfig.build.json && node scripts/copy-templates.mjs",
@@ -23,8 +23,6 @@
     "test:e2e": "playwright test"
   },
   "bin": {
-    "poe-setup": "dist/index.js",
-    "poe-cli": "dist/index.js",
     "poe-code": "dist/index.js"
   },
   "files": [
@@ -81,6 +79,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/poe-platform/poe-cli.git"
+    "url": "https://github.com/poe-platform/poe-code.git"
   }
 }

@@ -13,6 +13,5 @@ export async function spawnPoeCode(
   options: SpawnPoeCodeOptions
 ): Promise<CommandRunnerResult> {
   const args = ["agent", options.prompt, ...(options.args ?? [])];
-  return await options.runCommand("poe-setup", args);
+  return await options.runCommand("poe-code", args);
 }
-

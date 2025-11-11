@@ -72,7 +72,7 @@ When you first click the Poe Code icon, the extension will check if you have con
 
 Alternatively, configure manually via terminal:
 ```bash
-npx poe-setup login --api-key YOUR_KEY
+npx poe-code login --api-key YOUR_KEY
 ```
 
 ### Launching Poe Code
@@ -83,7 +83,7 @@ Three ways to launch:
 2. **Status bar**: Click the "Poe Code" item in the bottom-right status bar
 3. **Command Palette**: `Ctrl+Shift+P` / `Cmd+Shift+P` → "Poe Code: Open Terminal"
 
-A new terminal opens running `npx poe-setup interactive` and you can start chatting immediately!
+A new terminal opens running `npx poe-code interactive` and you can start chatting immediately!
 
 ### Key Features in the Terminal
 
@@ -163,11 +163,11 @@ If you see API key errors:
 1. Use the "Poe Code: Check Setup" command
 2. Or manually configure:
    ```bash
-   npx poe-setup login --api-key YOUR_KEY
+  npx poe-code login --api-key YOUR_KEY
    ```
 3. Test your connection:
    ```bash
-   npx poe-setup test
+  npx poe-code test
    ```
 
 ### MCP servers not working
@@ -237,15 +237,15 @@ vscode-extension/
 
 ### Adding Features
 
-The extension is intentionally simple - it launches a terminal running `npx poe-setup interactive`. All chat functionality, tool calling, and MCP support is handled by the `poe-setup` CLI itself.
+The extension is intentionally simple - it launches a terminal running `npx poe-code interactive`. All chat functionality, tool calling, and MCP support is handled by the `poe-code` CLI itself.
 
 To add new features:
 - For terminal/UI improvements: Edit `extension.ts`
-- For chat/AI features: Edit the main `poe-setup` CLI in `../src/`
+- For chat/AI features: Edit the main `poe-code` CLI in `../src/`
 
 ## See Also
 
-- [Main README](../README.md) - poe-setup CLI documentation
+- [Main README](../README.md) - poe-code CLI documentation
 - [NICK.md](../NICK.md) - Beginner-friendly guide
 - [MCP.md](../MCP.md) - Model Context Protocol integration
 - [DEVELOPMENT.md](../DEVELOPMENT.md) - Contributing guide

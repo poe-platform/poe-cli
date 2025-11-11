@@ -134,7 +134,7 @@ Query PostgreSQL databases.
 
 MCP server configurations are stored in:
 ```
-~/.poe-setup/mcp-servers.json
+~/.poe-code/mcp-servers.json
 ```
 
 Servers auto-connect when you start interactive mode.

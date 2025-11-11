@@ -31,7 +31,7 @@ describe("openMcpSettings", () => {
     });
 
     expect(openTextDocument).toHaveBeenCalledWith({
-      fsPath: "/Users/tester/.poe-setup/mcp.json",
+      fsPath: "/Users/tester/.poe-code/mcp.json",
     });
     expect(showTextDocument).toHaveBeenCalledWith({ uri: { fsPath: "doc" } });
   });

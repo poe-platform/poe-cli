@@ -7,7 +7,7 @@
   "icon": "poe-logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/poe-setup"
+    "url": "https://github.com/poe-platform/poe-code"
   },
   "engines": {
     "vscode": "^1.80.0"

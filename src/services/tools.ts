@@ -275,7 +275,7 @@ export class DefaultToolExecutor implements ToolExecutor {
     if (result.exitCode !== 0) {
       if (this.isNotFoundError(result)) {
         throw new Error(
-          "Claude Code CLI is not installed or not available in the PATH. Run `poe-cli configure claude-code` to install it."
+          "Claude Code CLI is not installed or not available in the PATH. Run `poe-code configure claude-code` to install it."
         );
       }
       const detail = this.formatProcessOutput(result);

@@ -84,7 +84,7 @@ async function loadServices() {
 // Load credentials
 async function getCredentials() {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const credentialsPath = path.join(homeDir, '.poe-setup', 'credentials.json');
+    const credentialsPath = path.join(homeDir, '.poe-code', 'credentials.json');
 
     try {
         const content = await fsPromises.readFile(credentialsPath, 'utf-8');
@@ -346,7 +346,7 @@ async function startServer() {
     const shouldUseMock = allowNoCredentials || !fetchedCredentials;
     if (!fetchedCredentials && !allowNoCredentials) {
         console.error('❌ Poe API key not configured');
-        console.error('Run: npx poe-setup login --api-key YOUR_KEY');
+        console.error('Run: npx poe-code login --api-key YOUR_KEY');
         process.exit(1);
     }
     const credentials = shouldUseMock ? null : fetchedCredentials;
@@ -408,8 +408,8 @@ async function startServer() {
             }));
         };
 
-        const tasksDir = path.join(os.homedir(), '.poe-setup', 'tasks');
-        const logsDir = path.join(os.homedir(), '.poe-setup', 'logs', 'tasks');
+        const tasksDir = path.join(os.homedir(), '.poe-code', 'tasks');
+        const logsDir = path.join(os.homedir(), '.poe-code', 'logs', 'tasks');
         const taskRegistry = AgentTaskRegistry
             ? new AgentTaskRegistry({
                 fs,

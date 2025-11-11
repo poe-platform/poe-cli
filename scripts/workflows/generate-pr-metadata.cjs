@@ -76,7 +76,7 @@ function main() {
 
   const prompt = segments.join("\n\n");
 
-  const result = spawnSync("poe-setup", ["spawn", service, prompt], {
+  const result = spawnSync("poe-code", ["spawn", service, prompt], {
     encoding: "utf8"
   });
 
@@ -86,7 +86,7 @@ function main() {
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || "").trim();
     const suffix = detail ? `: ${detail}` : "";
-    throw new Error(`poe-setup exited with ${result.status}${suffix}`);
+    throw new Error(`poe-code exited with ${result.status}${suffix}`);
   }
 
   const metadata = parseMetadata((result.stdout || "").trim());

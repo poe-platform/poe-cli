@@ -7,7 +7,7 @@ mount_target="${COLIMA_RUNNER_MOUNT:-/workspace}"
 image="${COLIMA_RUNNER_IMAGE:-node:latest}"
 profile="${COLIMA_PROFILE:-default}"
 docker_args_env="${COLIMA_DOCKER_ARGS:-}"
-credentials_path_default="${HOME}/.poe-setup/credentials.json"
+credentials_path_default="${HOME}/.poe-code/credentials.json"
 credentials_path_raw="${COLIMA_CREDENTIALS_PATH:-${credentials_path_default}}"
 credentials_path="${credentials_path_raw/#\~/${HOME}}"
 credentials_available=false
@@ -18,9 +18,9 @@ if [ -f "${credentials_path}" ]; then
   credentials_dir="$(dirname "${credentials_path}")"
 fi
 
-credentials_mount_default="/root/.poe-setup"
+credentials_mount_default="/root/.poe-code"
 if [ "${credentials_available}" != true ]; then
-  credentials_mount_default="${mount_target}/.poe-setup"
+  credentials_mount_default="${mount_target}/.poe-code"
 fi
 credentials_mount="${COLIMA_CREDENTIALS_MOUNT:-${credentials_mount_default}}"
 
@@ -59,7 +59,7 @@ if [ "${colima_running}" != true ]; then
   colima "${colima_args[@]}"
 fi
 
-docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}" -v "poe-setup-node-modules:${mount_target}/node_modules" -w "${mount_target}")
+docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}" -v "poe-code-node-modules:${mount_target}/node_modules" -w "${mount_target}")
 
 if [ "${#credentials_volume[@]}" -gt 0 ]; then
   docker_run_common+=("${credentials_volume[@]}")

@@ -30,7 +30,7 @@
 
 **Problem:** Only `claude-code`, `codex`, `opencode` labels trigger agent
 
-**Solution:** Add `poe-code` → `poe-cli agent` mapping
+**Solution:** Add `poe-code` → `poe-code agent` mapping
 
 **Changes:**
 - Update label filter (line 11)
@@ -40,17 +40,17 @@ contains(fromJson('["claude-code","codex","opencode","poe-code"]'), ...)
 
 - Add provider mapping (line 44-49)
 ```js
-"poe-code": { service: "poe-cli agent", model: "Claude-Sonnet-4.5" }
+"poe-code": { service: "poe-code agent", model: "Claude-Sonnet-4.5" }
 ```
 
 - Add configure case (line 74-85)
 ```bash
-"poe-cli agent")
-  poe-setup configure "poe-cli agent"
+"poe-code agent")
+  poe-code configure "poe-code agent"
   ;;
 ```
 
-**Note:** `poe-setup spawn` already handles service names with spaces (line 111)
+**Note:** `poe-code spawn` already handles service names with spaces (line 111)
 
 ## Testing
 - Create test issue with `poe-code` label → verify PR created

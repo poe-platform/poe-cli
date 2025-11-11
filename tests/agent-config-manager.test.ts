@@ -23,7 +23,7 @@ describe("AgentConfigManager", () => {
 
     const config = await manager.loadConfig();
 
-    const filePath = `${homeDir}/.poe-setup/agent-config.json`;
+    const filePath = `${homeDir}/.poe-code/agent-config.json`;
     const written = JSON.parse(vol.readFileSync(filePath, "utf8"));
 
     expect(config.agents).toEqual(written.agents);
@@ -58,7 +58,7 @@ describe("AgentConfigManager", () => {
     expect(enabled.map((entry) => entry.id)).toContain("poe-code");
 
     const stored = JSON.parse(
-      vol.readFileSync(`${homeDir}/.poe-setup/agent-config.json`, "utf8")
+      vol.readFileSync(`${homeDir}/.poe-code/agent-config.json`, "utf8")
     );
     const record = stored.agents.find(
       (entry: { id: string }) => entry.id === "poe-code"
@@ -68,8 +68,8 @@ describe("AgentConfigManager", () => {
 
   it("adds missing registry agents to existing configuration", async () => {
     const registry = createDefaultAgentRegistry();
-    const filePath = `${homeDir}/.poe-setup/agent-config.json`;
-    vol.mkdirSync(`${homeDir}/.poe-setup`, { recursive: true });
+    const filePath = `${homeDir}/.poe-code/agent-config.json`;
+    vol.mkdirSync(`${homeDir}/.poe-code`, { recursive: true });
     vol.writeFileSync(
       filePath,
       JSON.stringify(
@@ -97,4 +97,3 @@ describe("AgentConfigManager", () => {
     ]);
   });
 });
-

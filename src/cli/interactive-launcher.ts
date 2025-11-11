@@ -25,7 +25,7 @@ export async function launchInteractiveMode(
   dependencies: CliDependencies
 ): Promise<void> {
   const { fs: fileSystem, env } = dependencies;
-  const logDir = path.join(env.homeDir, ".poe-setup", "logs");
+  const logDir = path.join(env.homeDir, ".poe-code", "logs");
   const errorLogger = new ErrorLogger({
     fs: nodeFs as any,
     logDir,
@@ -86,8 +86,8 @@ export async function launchInteractiveMode(
     }
   };
 
-  const tasksDir = path.join(env.homeDir, ".poe-setup", "tasks");
-  const logsDir = path.join(env.homeDir, ".poe-setup", "logs", "tasks");
+  const tasksDir = path.join(env.homeDir, ".poe-code", "tasks");
+  const logsDir = path.join(env.homeDir, ".poe-code", "logs", "tasks");
   const fsLike = nodeFs as unknown as FsLike;
   const taskRegistry = new AgentTaskRegistry({
     fs: fsLike,

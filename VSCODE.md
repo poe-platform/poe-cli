@@ -19,7 +19,7 @@ The Poe Code extension adds a terminal icon to your editor toolbar. Click it to 
 
 - Node.js 18 or higher
 - VS Code 1.80.0 or higher
-- Poe API key (configure with `npx poe-setup login`)
+- Poe API key (configure with `npx poe-code login`)
 
 ## Installation
 
@@ -71,7 +71,7 @@ Alternatively, open the command palette (`Cmd/Ctrl+Shift+P`) and execute
 
 1. Open any file in VS Code
 2. Click the terminal icon (📟) in the top-right editor toolbar
-3. A new terminal opens running `npx poe-setup interactive`
+3. A new terminal opens running `npx poe-code interactive`
 4. Start chatting with AI!
 
 ### First-time Setup
@@ -79,7 +79,7 @@ Alternatively, open the command palette (`Cmd/Ctrl+Shift+P`) and execute
 If you haven't configured your Poe API key yet:
 
 ```bash
-npx poe-setup login --api-key YOUR_KEY
+npx poe-code login --api-key YOUR_KEY
 ```
 
 ### Key Features in the Terminal
@@ -143,12 +143,12 @@ node --version  # Should be 18 or higher
 
 Configure your API key if you haven't already:
 ```bash
-npx poe-setup login --api-key YOUR_KEY
+npx poe-code login --api-key YOUR_KEY
 ```
 
 Test your connection:
 ```bash
-npx poe-setup test
+npx poe-code test
 ```
 
 ### MCP servers not working
@@ -170,7 +170,7 @@ To modify the extension:
 
 ## See Also
 
-- [README.md](./README.md) - Main poe-setup documentation
+- [README.md](./README.md) - Main poe-code documentation
 - [MCP.md](./MCP.md) - Model Context Protocol integration guide
 - [DEVELOPMENT.md](./DEVELOPMENT.md) - Contributor setup and testing
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture overview

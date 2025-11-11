@@ -58,8 +58,8 @@ async function setupEnvironment(options?: {
   await mkdir(homeDir, { recursive: true });
   await mkdir(cwd, { recursive: true });
 
-  const tasksDir = path.join(homeDir, ".poe-setup", "tasks");
-  const logsDir = path.join(homeDir, ".poe-setup", "logs", "tasks");
+  const tasksDir = path.join(homeDir, ".poe-code", "tasks");
+  const logsDir = path.join(homeDir, ".poe-code", "logs", "tasks");
   const createWatcher = (): FSWatcher => {
     const emitter = new EventEmitter();
     const watcher = emitter as unknown as FSWatcher & {

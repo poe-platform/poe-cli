@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 const openTextDocument = vi.fn(async () => ({
-  uri: { fsPath: "/home/user/.poe-setup/mcp.json" }
+  uri: { fsPath: "/home/user/.poe-code/mcp.json" }
 }));
 const showTextDocument = vi.fn(async () => {});
 
@@ -29,9 +29,8 @@ describe("openMcpSettings", () => {
     });
 
     expect(openTextDocument).toHaveBeenCalledWith({
-      fsPath: "/home/user/.poe-setup/mcp.json"
+      fsPath: "/home/user/.poe-code/mcp.json"
     });
     expect(showTextDocument).toHaveBeenCalled();
   });
 });
-

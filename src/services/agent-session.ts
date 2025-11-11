@@ -61,8 +61,8 @@ export async function createAgentSession(
   const cwdContext = `\n\nIMPORTANT: You are working in the directory: ${options.cwd}\nWhen accessing files, use paths relative to this directory.`;
   systemPrompt = systemPrompt ? `${systemPrompt}${cwdContext}` : cwdContext;
 
-  const tasksDir = path.join(options.homeDir, ".poe-setup", "tasks");
-  const logsDir = path.join(options.homeDir, ".poe-setup", "logs", "tasks");
+  const tasksDir = path.join(options.homeDir, ".poe-code", "tasks");
+  const logsDir = path.join(options.homeDir, ".poe-code", "logs", "tasks");
   const nativeFs = fs as unknown as FsLike;
   const taskRegistry = new AgentTaskRegistry({
     fs: nativeFs,

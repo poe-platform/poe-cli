@@ -39,8 +39,8 @@ function createWatchHarness(): WatchHarness {
 }
 
 describe("AgentTaskRegistry", () => {
-  const tasksDir = "/home/.poe-setup/tasks";
-  const logsDir = "/home/.poe-setup/logs/tasks";
+  const tasksDir = "/home/.poe-code/tasks";
+  const logsDir = "/home/.poe-code/logs/tasks";
   let vol: Volume;
   let fs: typeof import("node:fs");
   let watchHarness: WatchHarness;

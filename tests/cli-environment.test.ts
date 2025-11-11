@@ -5,11 +5,11 @@ describe("CliEnvironment", () => {
   const cwd = "/workspace";
   const homeDir = "/home/user";
 
-  it("computes a shared credentials path inside the poe setup folder", () => {
+  it("computes a shared credentials path inside the poe-code folder", () => {
     const environment = createCliEnvironment({ cwd, homeDir });
 
     expect(environment.credentialsPath).toBe(
-      "/home/user/.poe-setup/credentials.json"
+      "/home/user/.poe-code/credentials.json"
     );
   });
 

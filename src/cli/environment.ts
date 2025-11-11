@@ -42,9 +42,9 @@ export function createCliEnvironment(init: CliEnvironmentInit): CliEnvironment {
 }
 
 export function resolveCredentialsPath(homeDir: string): string {
-  return path.join(homeDir, ".poe-setup", "credentials.json");
+  return path.join(homeDir, ".poe-code", "credentials.json");
 }
 
 export function resolveLogDir(homeDir: string): string {
-  return path.join(homeDir, ".poe-setup", "logs");
+  return path.join(homeDir, ".poe-code", "logs");
 }

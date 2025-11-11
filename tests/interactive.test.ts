@@ -100,7 +100,7 @@ describe("Interactive command executor", () => {
 
     const credentialsPath = path.join(
       homeDir,
-      ".poe-setup",
+      ".poe-code",
       "credentials.json"
     );
     const stored = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
@@ -114,6 +114,6 @@ describe("Interactive command executor", () => {
     expect(parsed).toBeTruthy();
 
     const output = await executor.execute(parsed!);
-    expect(output).toContain("Usage: poe-setup");
+    expect(output).toContain("Usage: poe-code");
   });
 });

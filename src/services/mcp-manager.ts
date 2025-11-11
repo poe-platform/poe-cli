@@ -14,7 +14,7 @@ export class McpManager {
 
   constructor(fs: FileSystem, homeDir: string) {
     this.fs = fs;
-    this.configPath = path.join(homeDir, ".poe-setup", "mcp-servers.json");
+    this.configPath = path.join(homeDir, ".poe-code", "mcp-servers.json");
   }
 
   async loadConfig(): Promise<McpManagerConfig> {

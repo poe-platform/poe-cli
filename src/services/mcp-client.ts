@@ -103,7 +103,7 @@ export class McpClient extends EventEmitter {
         tools: {}
       },
       clientInfo: {
-        name: "poe-setup",
+        name: "poe-code",
         version: "0.1.0"
       }
     });

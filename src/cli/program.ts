@@ -36,8 +36,8 @@ export function createProgram(dependencies: CliDependencies): Command {
 function bootstrapProgram(container: CliContainer): Command {
   const program = new Command();
   program
-    .name("poe-setup")
-    .description("CLI tool to configure Poe API for various development tools.")
+    .name("poe-code")
+    .description("CLI tool to configure Poe API for developer workflows.")
     .option("--dry-run", "Simulate commands without writing changes.")
     .option("--verbose", "Enable verbose logging.");
 

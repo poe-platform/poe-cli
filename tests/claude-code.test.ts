@@ -17,7 +17,7 @@ describe("claude-code service", () => {
   const home = "/home/user";
   const settingsPath = path.join(home, ".claude", "settings.json");
   const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
-  const credentialsPath = path.join(home, ".poe-setup", "credentials.json");
+  const credentialsPath = path.join(home, ".poe-code", "credentials.json");
   const apiKey = "sk-test";
 
   beforeEach(async () => {
@@ -145,7 +145,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
       ].join("\n")
     );
   });
@@ -196,7 +196,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-setup/credentials.json\').apiKey)"'
+        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
       ].join("\n")
     );
   });

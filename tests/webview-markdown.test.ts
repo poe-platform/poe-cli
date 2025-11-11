@@ -15,7 +15,7 @@ describe("renderMarkdown", () => {
   });
 
   it("renders inline code blocks", () => {
-    const html = renderMarkdown("Use `poe-setup` to configure.");
-    expect(html).toContain("<code>poe-setup</code>");
+    const html = renderMarkdown("Use `poe-code` to configure.");
+    expect(html).toContain("<code>poe-code</code>");
   });
 });

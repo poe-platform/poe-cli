@@ -6,8 +6,8 @@ import { handleTasksCommand } from "../src/cli/interactive-tasks.js";
 describe("/tasks command handler", () => {
   let vol: Volume;
   let fs: typeof import("node:fs");
-  const tasksDir = "/home/.poe-setup/tasks";
-  const logsDir = "/home/.poe-setup/logs/tasks";
+  const tasksDir = "/home/.poe-code/tasks";
+  const logsDir = "/home/.poe-code/logs/tasks";
 
   const task: AgentTask = {
     id: "task_1",

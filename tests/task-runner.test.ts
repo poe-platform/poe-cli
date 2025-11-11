@@ -6,8 +6,8 @@ import type { AgentTask } from "../src/services/agent-task-registry.js";
 describe("Background task runner", () => {
   let vol: Volume;
   let fs: typeof import("node:fs");
-  const tasksDir = "/home/.poe-setup/tasks";
-  const logsDir = "/home/.poe-setup/logs/tasks";
+  const tasksDir = "/home/.poe-code/tasks";
+  const logsDir = "/home/.poe-code/logs/tasks";
 
   beforeEach(() => {
     vol = new Volume();

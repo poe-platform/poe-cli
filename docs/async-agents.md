@@ -91,7 +91,7 @@ Assistant: [Streaming live updates...]
    - LLM processes both user message and task results together
 
 4. **Session Persistence**:
-   - Tasks stored in `~/.poe-setup/tasks/<id>.json`
+   - Tasks stored in `~/.poe-code/tasks/<id>.json`
    - Survive CLI restarts
    - Registry loads persisted tasks on init
    - Completed tasks auto-injected when user returns
@@ -187,9 +187,9 @@ Tasks run as **detached child processes** with their own process group. This mea
 
 Since tasks run as separate processes, communication happens through file system watching:
 
-1. **Task State**: `~/.poe-setup/tasks/<task-id>.json` (updated by child process)
-2. **Progress Updates**: `~/.poe-setup/tasks/<task-id>.progress.jsonl` (streamed updates)
-3. **Logs**: `~/.poe-setup/logs/tasks/<task-id>.log` (written by child process)
+1. **Task State**: `~/.poe-code/tasks/<task-id>.json` (updated by child process)
+2. **Progress Updates**: `~/.poe-code/tasks/<task-id>.progress.jsonl` (streamed updates)
+3. **Logs**: `~/.poe-code/logs/tasks/<task-id>.log` (written by child process)
 4. **File Watcher**: Parent watches task directory for changes using `fs.watch()`
 
 When a task updates:
@@ -216,7 +216,7 @@ Users can view live progress:
 
 ## Task Storage
 
-Tasks are persisted to: `~/.poe-setup/tasks/<task-id>.json`
+Tasks are persisted to: `~/.poe-code/tasks/<task-id>.json`
 
 This allows tasks to survive across sessions and be queried later.
 
@@ -230,13 +230,13 @@ Example task file:
   "startTime": 1706652000000,
   "endTime": 1706652035000,
   "result": "Worktree created and merged successfully",
-  "logFile": "~/.poe-setup/logs/tasks/task_123.log"
+  "logFile": "~/.poe-code/logs/tasks/task_123.log"
 }
 ```
 
 ## Task Logging
 
-Tasks write logs to: `~/.poe-setup/logs/tasks/<task-id>.log`
+Tasks write logs to: `~/.poe-code/logs/tasks/<task-id>.log`
 
 **Log Rotation**:
 - Max log size: 10MB per file
@@ -254,7 +254,7 @@ Format:
 
 **Automatic Task Cleanup**:
 - Completed tasks auto-archived after 24 hours (runs on registry init)
-- Archived to: `~/.poe-setup/tasks/archive/<task-id>.json`
+- Archived to: `~/.poe-code/tasks/archive/<task-id>.json`
 - Archives auto-deleted after 30 days
 - Cleanup runs automatically on each registry initialization
 
@@ -423,7 +423,7 @@ class AgentTaskRegistry {
   
   private async cleanupOldLogs(): Promise<void> {
     const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days
-    const logsDir = path.join(os.homedir(), '.poe-setup/logs/tasks');
+    const logsDir = path.join(os.homedir(), '.poe-code/logs/tasks');
     
     if (!fs.existsSync(logsDir)) return;
     
@@ -531,7 +531,7 @@ class DefaultToolExecutor {
 
 // task-runner.js - Standalone script for running tasks
 async function runTask(taskId: string, toolName: string, args: Record<string, unknown>) {
-  const tasksDir = path.join(os.homedir(), '.poe-setup/tasks');
+  const tasksDir = path.join(os.homedir(), '.poe-code/tasks');
   const registry = new AgentTaskRegistry(tasksDir);
   const logger = createTaskLogger(taskId);
   const progressFile = path.join(tasksDir, `${taskId}.progress.jsonl`);

@@ -26,7 +26,7 @@ The main error logging component that handles writing errors to files.
 - Stack trace capture
 - Dual output (file + stderr)
 
-**Location:** `~/.poe-setup/logs/errors.log`
+**Location:** `~/.poe-code/logs/errors.log`
 
 **Usage:**
 ```typescript
@@ -103,7 +103,7 @@ Authentication and credential errors.
 
 ```typescript
 throw new AuthenticationError("Invalid credentials", {
-  credentialsPath: "~/.poe-setup/credentials.json"
+  credentialsPath: "~/.poe-code/credentials.json"
 });
 ```
 
@@ -289,13 +289,13 @@ Logs automatically rotate when they exceed the maximum size:
 
 ```bash
 # View recent errors
-tail -f ~/.poe-setup/logs/errors.log
+tail -f ~/.poe-code/logs/errors.log
 
 # Search for specific errors
-grep "ApiError" ~/.poe-setup/logs/errors.log
+grep "ApiError" ~/.poe-code/logs/errors.log
 
 # View full stack traces
-cat ~/.poe-setup/logs/errors.log | less
+cat ~/.poe-code/logs/errors.log | less
 ```
 
 ### Adding Context

@@ -214,7 +214,7 @@ export class ModelStrategyFactory {
  * Manager for persisting and loading strategy configuration
  */
 export class StrategyConfigManager {
-  private static CONFIG_DIR = path.join(os.homedir(), ".poe-setup");
+  private static CONFIG_DIR = path.join(os.homedir(), ".poe-code");
   private static CONFIG_FILE = path.join(
     StrategyConfigManager.CONFIG_DIR,
     "strategy-config.json"

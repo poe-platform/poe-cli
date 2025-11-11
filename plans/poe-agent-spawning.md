@@ -5,7 +5,7 @@
 **Existing Implementation:**
 - `spawn_git_worktree` tool hardcodes 3 agents: `claude-code`, `codex`, `opencode`
 - Tool definitions in `getAvailableTools()` use static enum: `["claude-code", "codex", "opencode"]`
-- MCP tools dynamically loaded from `~/.poe-setup/mcp-servers.json` via McpManager
+- MCP tools dynamically loaded from `~/.poe-code/mcp-servers.json` via McpManager
 - No config file for managing available sub-agents
 
 **Key Files:**
@@ -17,7 +17,7 @@
 ## Plan
 
 ### 1. Configuration File
-**Location:** `~/.poe-setup/agent-config.json`
+**Location:** `~/.poe-code/agent-config.json`
 
 **Schema:**
 ```typescript
@@ -56,13 +56,13 @@ description: `Agent identifier (${enabledAgentIds.join(' | ')})`
 
 ### 3. Configure Utility Enhancement
 
-**Add Command:** `poe-setup configure agents`
+**Add Command:** `poe-code configure agents`
 
 **Features:**
 - Interactive menu to enable/disable agents
 - Validate agent spawn functions exist
 - Auto-detect installed agents
-- Save to `~/.poe-setup/agent-config.json`
+- Save to `~/.poe-code/agent-config.json`
 
 **Pseudocode:**
 ```typescript

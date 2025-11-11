@@ -52,7 +52,7 @@ toggleButton(send -> stop)
 - Report check results in agent output
 
 ### Tag alias support
-- Map `poe-code` tag to `poe-cli agent`
+- Map `poe-code` tag to `poe-code agent`
 - Update tag resolution logic
 
 ## Poe Agent Core

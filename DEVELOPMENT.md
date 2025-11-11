@@ -7,10 +7,10 @@ changes should follow TDD, SOLID, YAGNI, and KISS as outlined in `AGENTS.md`.
 
 ```bash
 git clone <your-fork-url>
-cd poe-setup-scripts
+cd poe-code
 npm install
 npm run build
-npm link    # optional: exposes `poe-setup` from the local dist build
+npm link    # optional: exposes `poe-code` from the local dist build
 ```
 
 - Use `npm run build` before `npm link` so the CLI points at the compiled
@@ -37,7 +37,7 @@ npm test            # execute the Vitest suite (required before committing)
 - Keep documentation in sync with behaviour changes (README, command help, and
   templates).
 - Builds output to `dist/`; the published package exposes `dist/index.js` as the
-  `poe-setup` binary.
+  `poe-code` binary.
 
 ## VS Code Extension Workflow
 
