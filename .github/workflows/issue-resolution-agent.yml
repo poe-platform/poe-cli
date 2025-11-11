@@ -49,10 +49,10 @@ jobs:
           SERVICE="${{ steps.provider.outputs.service }}"
           case "$SERVICE" in
             claude-code|codex|opencode)
-              poe-code configure "$SERVICE"
+              poe-code configure "$SERVICE" --yes
               ;;
             "poe-code agent")
-              poe-code configure "poe-code agent"
+              poe-code configure "poe-code agent" --yes
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
