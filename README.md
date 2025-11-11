@@ -1,13 +1,11 @@
 # poe-code
 
-> Fast CLI to wire your local dev tools to the Poe API
+> Wire your local dev tools to the Poe API in seconds
 
 ## Quick Start
 
 ```bash
-npm i -g poe-code
-poe-code login
-poe-code configure claude-code
+npx poe-code configure claude-code
 ```
 
 ## Features
@@ -15,7 +13,6 @@ poe-code configure claude-code
 - 🚀 **90-second setup** for coding agents with Poe API
 - 🤖 **Multiple agents** - Claude Code, Codex, OpenCode
 - 💬 **Interactive mode** for conversational workflows
-- ⚡ **Async spawning** with git worktree support
 
 ## Installation
 
