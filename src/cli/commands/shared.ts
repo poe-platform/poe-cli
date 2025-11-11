@@ -19,6 +19,7 @@ import type { PrerequisitePhase } from "../../utils/prerequisites.js";
 export interface CommandFlags {
   dryRun: boolean;
   verbose: boolean;
+  assumeYes: boolean;
 }
 
 export interface ExecutionResources {
@@ -32,7 +33,8 @@ export function resolveCommandFlags(program: Command): CommandFlags {
   const opts = program.optsWithGlobals();
   return {
     dryRun: Boolean(opts.dryRun),
-    verbose: Boolean(opts.verbose)
+    verbose: Boolean(opts.verbose),
+    assumeYes: Boolean(opts.yes)
   };
 }
 

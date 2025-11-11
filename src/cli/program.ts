@@ -38,6 +38,7 @@ function bootstrapProgram(container: CliContainer): Command {
   program
     .name("poe-code")
     .description("CLI tool to configure Poe API for developer workflows.")
+    .option("-y, --yes", "Accept defaults without prompting.")
     .option("--dry-run", "Simulate commands without writing changes.")
     .option("--verbose", "Enable verbose logging.");
 

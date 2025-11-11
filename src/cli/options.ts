@@ -17,6 +17,12 @@ export interface ResolveApiKeyInput {
   dryRun: boolean;
 }
 
+export interface ResolveClaudeModelInput {
+  value?: string;
+  assumeDefault?: boolean;
+  defaultValue: string;
+}
+
 export interface OptionResolvers {
   ensure<TName extends string>(
     input: EnsureOptionInput<TName>
@@ -25,7 +31,7 @@ export interface OptionResolvers {
     value: string | undefined,
     defaultModel: string
   ): Promise<string>;
-  resolveClaudeModel(value: string | undefined): Promise<string>;
+  resolveClaudeModel(input: ResolveClaudeModelInput): Promise<string>;
   resolveReasoning(
     value: string | undefined,
     defaultValue: string
@@ -111,11 +117,16 @@ export function createOptionResolvers(
       fallback: defaultModel
     });
 
-  const resolveClaudeModel = async (
-    value: string | undefined
-  ): Promise<string> => {
+  const resolveClaudeModel = async ({
+    value,
+    assumeDefault,
+    defaultValue
+  }: ResolveClaudeModelInput): Promise<string> => {
     if (value != null) {
       return value;
+    }
+    if (assumeDefault) {
+      return defaultValue;
     }
     const descriptor = init.promptLibrary.claudeModel();
     const response = await init.prompts(descriptor);

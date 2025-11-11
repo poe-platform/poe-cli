@@ -3,6 +3,7 @@ import type { CliContainer } from "../container.js";
 import {
   buildProviderContext,
   createExecutionResources,
+  type CommandFlags,
   type ExecutionResources,
   registerProviderPrerequisites,
   resolveCommandFlags,
@@ -116,7 +117,7 @@ export async function executeConfigure(
 interface ConfigurePayloadInit {
   service: string;
   container: CliContainer;
-  flags: { dryRun: boolean };
+  flags: CommandFlags;
   options: ConfigureCommandOptions;
   resources: ExecutionResources;
 }
@@ -132,9 +133,11 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
-      const defaultModel = await container.options.resolveClaudeModel(
-        options.model
-      );
+      const defaultModel = await container.options.resolveClaudeModel({
+        value: options.model,
+        defaultValue: DEFAULT_CLAUDE_MODEL,
+        assumeDefault: flags.assumeYes
+      });
       return {
         apiKey,
         defaultModel,
