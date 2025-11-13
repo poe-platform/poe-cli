@@ -161,12 +161,12 @@ describe("initializeWebviewApp", () => {
       type: "strategyStatus",
       enabled: true,
       info: "smart: rotates models",
-      currentModel: "GPT-5",
+      currentModel: "GPT-5.1",
     });
 
     expect(settingsPanel.strategyEnabled).toBe(true);
     expect(settingsPanel.strategyInfo).toContain("smart");
     expect(settingsPanel.strategyType).toBe("smart");
-    expect(settingsPanel.activeModel).toBe("GPT-5");
+    expect(settingsPanel.activeModel).toBe("GPT-5.1");
   });
 });

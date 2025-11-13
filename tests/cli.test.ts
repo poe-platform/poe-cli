@@ -391,8 +391,8 @@ beforeEach(() => {
             "Claude-Sonnet-4.5": {
               name: "Claude Sonnet 4.5"
             },
-            "GPT-5-Codex": {
-              name: "GPT-5-Codex"
+            "GPT-5.1-Codex": {
+              name: "GPT-5.1-Codex"
             }
           }
         }
@@ -1976,7 +1976,7 @@ beforeEach(() => {
       "Explain the prompt",
       "--",
       "--model",
-      "GPT-5",
+      "GPT-5.1",
       "--api-key",
       "sk-explicit"
     ]);
@@ -1984,12 +1984,12 @@ beforeEach(() => {
     expect(chatFactory).toHaveBeenCalledWith(
       expect.objectContaining({
         apiKey: "sk-explicit",
-        model: "GPT-5",
+        model: "GPT-5.1",
         cwd,
         homeDir
       })
     );
-    expect(logs.some((line) => line.includes("Poe Code response (GPT-5): Poe output"))).toBe(true);
+    expect(logs.some((line) => line.includes("Poe Code response (GPT-5.1): Poe output"))).toBe(true);
   });
 
   it("fails when spawn command exits with error", async () => {

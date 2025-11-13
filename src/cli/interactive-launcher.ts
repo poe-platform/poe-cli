@@ -207,7 +207,7 @@ export async function launchInteractiveMode(
       if (slashCommand === "model") {
         if (slashArgs.length === 0) {
           const currentModel = chatService?.getModel() || "Not connected";
-          return `Current model: ${currentModel}\n\nAvailable models:\n- Claude-Sonnet-4.5\n- GPT-5\n- GPT-4o\n- Claude-3.5-Sonnet\n\nUsage: /model <model-name>`;
+          return `Current model: ${currentModel}\n\nAvailable models:\n- Claude-Sonnet-4.5\n- GPT-5.1\n- GPT-4o\n- Claude-3.5-Sonnet\n\nUsage: /model <model-name>`;
         }
 
         const newModel = slashArgs.join(" ");
@@ -227,7 +227,7 @@ export async function launchInteractiveMode(
         if (slashArgs.length === 0) {
           const strategyInfo = chatService.getStrategyInfo();
           const isEnabled = chatService.isStrategyEnabled();
-          return `Current strategy: ${strategyInfo}\nStatus: ${isEnabled ? "Enabled" : "Disabled"}\n\nAvailable strategies:\n- mixed - Alternate between GPT-5 and Claude-Sonnet-4.5\n- smart - Intelligently select based on task type\n- fixed - Always use the same model\n- round-robin - Cycle through all available models\n\nUsage:\n  /strategy mixed\n  /strategy smart\n  /strategy fixed <model-name>\n  /strategy round-robin [model1,model2,...]\n  /strategy enable\n  /strategy disable`;
+          return `Current strategy: ${strategyInfo}\nStatus: ${isEnabled ? "Enabled" : "Disabled"}\n\nAvailable strategies:\n- mixed - Alternate between GPT-5.1 and Claude-Sonnet-4.5\n- smart - Intelligently select based on task type\n- fixed - Always use the same model\n- round-robin - Cycle through all available models\n\nUsage:\n  /strategy mixed\n  /strategy smart\n  /strategy fixed <model-name>\n  /strategy round-robin [model1,model2,...]\n  /strategy enable\n  /strategy disable`;
         }
 
         const strategyType = slashArgs[0].toLowerCase();
@@ -244,7 +244,7 @@ export async function launchInteractiveMode(
 
         if (strategyType === "mixed") {
           chatService.setStrategy({ type: "mixed" });
-          return "Strategy set to: mixed (alternating between GPT-5 and Claude-Sonnet-4.5)";
+          return "Strategy set to: mixed (alternating between GPT-5.1 and Claude-Sonnet-4.5)";
         }
 
         if (strategyType === "smart") {

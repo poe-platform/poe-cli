@@ -7,10 +7,10 @@ import * as os from "os";
  */
 export const AVAILABLE_MODELS = [
   "Claude-Sonnet-4.5",
-  "GPT-5",
+  "GPT-5.1",
   "GPT-4o",
   "Claude-3.5-Sonnet",
-  "GPT-5-Codex",
+  "GPT-5.1-Codex",
 ] as const;
 
 export type ModelIdentifier = (typeof AVAILABLE_MODELS)[number];
@@ -49,11 +49,11 @@ export interface ModelContext {
 }
 
 /**
- * Mixed strategy: alternates between GPT-5 and Claude-Sonnet-4.5
+ * Mixed strategy: alternates between GPT-5.1 and Claude-Sonnet-4.5
  */
 export class MixedStrategy implements ModelStrategy {
   private currentIndex = 0;
-  private models: ModelIdentifier[] = ["GPT-5", "Claude-Sonnet-4.5"];
+  private models: ModelIdentifier[] = ["GPT-5.1", "Claude-Sonnet-4.5"];
 
   getNextModel(): ModelIdentifier {
     const model = this.models[this.currentIndex];
@@ -66,7 +66,7 @@ export class MixedStrategy implements ModelStrategy {
   }
 
   getDescription(): string {
-    return "Alternates between GPT-5 and Claude-Sonnet-4.5 on each call";
+    return "Alternates between GPT-5.1 and Claude-Sonnet-4.5 on each call";
   }
 
   reset(): void {
@@ -87,10 +87,10 @@ export class SmartStrategy implements ModelStrategy {
 
     // Smart selection based on context
     if (context.messageType === "code" || context.messageType === "reasoning") {
-      // Use GPT-5 for complex coding and reasoning tasks
+      // Use GPT-5.1 for complex coding and reasoning tasks
       if (context.complexity === "complex") {
-        this.lastModel = "GPT-5";
-        return "GPT-5";
+        this.lastModel = "GPT-5.1";
+        return "GPT-5.1";
       }
       // Use Claude for medium complexity code
       this.lastModel = "Claude-Sonnet-4.5";
@@ -202,7 +202,7 @@ export class ModelStrategyFactory {
     description: string;
   }> {
     return [
-      { type: "mixed", description: "Alternate between GPT-5 and Claude-Sonnet-4.5" },
+      { type: "mixed", description: "Alternate between GPT-5.1 and Claude-Sonnet-4.5" },
       { type: "smart", description: "Intelligently select based on task type" },
       { type: "fixed", description: "Always use the same model" },
       { type: "round-robin", description: "Cycle through all available models" },
