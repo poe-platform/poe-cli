@@ -51,8 +51,8 @@ describe("opencode service", () => {
             "Claude-Sonnet-4.5": {
               name: "Claude Sonnet 4.5"
             },
-            "GPT-5-Codex": {
-              name: "GPT-5-Codex"
+            "GPT-5.1-Codex": {
+              name: "GPT-5.1-Codex"
             }
           }
         }

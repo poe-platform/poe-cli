@@ -5,7 +5,7 @@ describe("renderAppShell", () => {
   it("renders compact header with right-aligned actions", () => {
     const html = renderAppShell({
       logoUrl: "vscode-resource:/logo.svg",
-      models: ["Claude-Sonnet-4.5", "GPT-5"],
+      models: ["Claude-Sonnet-4.5", "GPT-5.1"],
       activeModel: "Claude-Sonnet-4.5"
     });
     expect(html).toContain('data-action="new-chat"');

@@ -91,7 +91,7 @@ A new terminal opens running `npx poe-code interactive` and you can start chatti
 - **File mentions**: Type `@` to open a file picker and select files to reference
 - **Tool calling**: The AI can automatically read files, run commands, and more
 - **MCP tools**: Add external tools with `/mcp add <name> <command>`
-- **Model switching**: Change models with `/model GPT-5` or `/model Claude-Sonnet-4.5`
+- **Model switching**: Change models with `/model GPT-5.1` or `/model Claude-Sonnet-4.5`
 - **View tools**: See all available tools with `/tools`
 - **Clear history**: Start fresh with `/clear`
 

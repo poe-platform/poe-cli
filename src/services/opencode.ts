@@ -40,8 +40,8 @@ const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
         "Claude-Sonnet-4.5": {
           name: "Claude Sonnet 4.5"
         },
-        "GPT-5-Codex": {
-          name: "GPT-5-Codex"
+        "GPT-5.1-Codex": {
+          name: "GPT-5.1-Codex"
         }
       }
     }

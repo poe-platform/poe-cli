@@ -4,7 +4,7 @@ import { renderModelSelector } from "../vscode-extension/src/webview/model-selec
 describe("renderModelSelector", () => {
   it("renders searchable select with custom value support", () => {
     const html = renderModelSelector({
-      models: ["Claude-Sonnet-4.5", "GPT-5"],
+      models: ["Claude-Sonnet-4.5", "GPT-5.1"],
       selected: "Claude-Sonnet-4.5"
     });
 
