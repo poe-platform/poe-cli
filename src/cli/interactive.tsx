@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import path from "node:path";
-import { findLastUserIndex } from "@poe/shared-utils";
+import { findLastUserIndex } from "../../shared/conversation-layout.js";
 import { renderMarkdown } from "./markdown-renderer.js";
 import { evaluateFilePickerAction } from "./file-picker-state.js";
 
