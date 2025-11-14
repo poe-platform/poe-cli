@@ -1,7 +1,7 @@
 import type { ProviderSetting } from "../config/provider-settings.js";
 import { PoeSettingsPanel, registerPoeSettingsPanel } from "./components/settings-panel.js";
 import type { StrategyKind } from "./components/settings-panel.js";
-import { findLastUserIndex, type ConversationEntry } from "@poe/shared-utils";
+import { findLastUserIndex, type ConversationEntry } from "../../../shared/conversation-layout.js";
 
 interface InitializeOptions {
   document: Document;

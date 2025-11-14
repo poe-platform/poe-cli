@@ -34,7 +34,6 @@
   },
   "dependencies": {
     "@iarna/toml": "^3.0.0",
-    "@poe/shared-utils": "file:./shared",
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
     "diff": "^5.2.0",
