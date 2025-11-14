@@ -20,6 +20,8 @@ npx poe-code configure claude-code
 npm i -g poe-code
 ```
 
+> Node.js 20.11.1 or newer is required.
+
 ## Usage
 
 ### Authentication
