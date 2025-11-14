@@ -30,7 +30,7 @@
     "shared"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@iarna/toml": "^3.0.0",
