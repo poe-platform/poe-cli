@@ -1,0 +1,117 @@
+name: Poe Code
+on:
+  issues:
+    types:
+      - assigned
+  workflow_dispatch: null
+jobs:
+  resolve:
+    name: Resolve Assigned Issue
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      NODE_VERSION: "20"
+      POE_API_TOKEN: ${{ secrets.POE_API_TOKEN || secrets.POE_API_KEY }}
+    steps:
+      - name: Verify Poe API token
+        run: |-
+          if [ -z "${POE_API_TOKEN}" ]; then
+            echo "::error::POE_API_TOKEN (or POE_API_KEY) secret is required"
+            exit 1
+          fi
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build CLI
+        run: npm run build
+      - name: Install CLI globally
+        run: npm install -g .
+      - name: Select agent service
+        id: select_service
+        env:
+          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+        run: node scripts/workflows/select-service.cjs
+      - name: Announce Poe Code bot
+        uses: actions/github-script@v7
+        env:
+          SERVICE: ${{ steps.select_service.outputs.service }}
+          SERVICES: ${{ steps.select_service.outputs.services }}
+          MENU_LABEL: ${{ steps.select_service.outputs.menu_label }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LOGO_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/beta/vscode-extension/poe-logo.png
+        with:
+          script: |-
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const selectedService = process.env.SERVICE;
+            if (!issueNumber || !selectedService) {
+              return;
+            }
+            const services = (process.env.SERVICES ?? "")
+              .split(",")
+              .filter(Boolean);
+            const labelList = services
+              .map((name, index) => {
+                const marker = index === 0 ? " *(default)*" : "";
+                return `- \`agent:${name}\`${marker}`;
+              })
+              .join("\n");
+            const note =
+              process.env.MENU_LABEL === "true"
+                ? "\n\nAdd an `agent:<service>` label to switch agents."
+                : "";
+            const body = [
+              `![Poe Code](${process.env.LOGO_URL})`,
+              "",
+              `Poe Code bot selected \`${selectedService}\`.`,
+              labelList ? `\nAvailable agents:\n${labelList}` : "",
+              note
+            ]
+              .filter(Boolean)
+              .join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body
+            });
+      - name: Cache Poe API token
+        run: poe-code login --api-key "${POE_API_TOKEN}"
+      - name: Install provider tooling
+        env:
+          SERVICE: ${{ steps.select_service.outputs.service }}
+        run: poe-code install "$SERVICE" --yes
+      - name: Configure provider
+        env:
+          SERVICE: ${{ steps.select_service.outputs.service }}
+        run: poe-code configure "$SERVICE" --yes
+      - name: Run issue resolver agent
+        env:
+          SERVICE: ${{ steps.select_service.outputs.service }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |-
+          PROMPT=$(node <<'NODE'
+            const number = process.env.ISSUE_NUMBER;
+            const title = process.env.ISSUE_TITLE ?? "";
+            const body = process.env.ISSUE_BODY ?? "";
+            const lines = [
+              `You are resolving GitHub issue #${number}: ${title}.`,
+              "Implement the required changes and commit them."
+            ];
+            if (body.trim()) {
+              lines.push("Issue details:\n" + body);
+            }
+            process.stdout.write(lines.join("\n\n"));
+          NODE
+          )
+          poe-code spawn "$SERVICE" "$PROMPT"

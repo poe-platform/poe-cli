@@ -75,4 +75,4 @@ Agent labels used by workflows are generated via:
 npm run labels:generate
 ```
 
-See the generated definitions in `docs/LABELS.md`.
+See the generated definitions in `docs/LABELS.md`. Assigned issues trigger the `Poe Code` GitHub workflow, which uses these labels to pick an agent automatically.
