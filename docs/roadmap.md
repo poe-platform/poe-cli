@@ -8,6 +8,10 @@ Most of the time, users don't want to install, but the installation is super use
 - [ ] the configure should not have a check for install at all, it should just execute
 - [ ] update the github workflows
 
+## Issue resolution triggers
+
+- [ ] Change the triggers for issue resolver e.g. claude-code to agent:claude-code
+
 ## Generated labels
 
 - [ ] add npm task to generate labels
