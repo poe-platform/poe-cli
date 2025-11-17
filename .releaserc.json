@@ -8,6 +8,10 @@
       {
         "releaseRules": [
           {
+            "breaking": true,
+            "release": "major"
+          },
+          {
             "type": "feat",
             "release": "patch"
           },
