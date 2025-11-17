@@ -202,7 +202,7 @@ async function createConfigurePayload(
   }
 }
 
-async function resolveServiceArgument(
+export async function resolveServiceArgument(
   program: Command,
   container: CliContainer,
   provided?: string

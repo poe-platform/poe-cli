@@ -4,7 +4,11 @@ import {
   type CliContainer,
   type CliDependencies
 } from "./container.js";
-import { registerConfigureCommand } from "./commands/configure.js";
+import {
+  registerConfigureCommand,
+  resolveServiceArgument,
+  executeConfigure
+} from "./commands/configure.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -31,6 +35,11 @@ function bootstrapProgram(container: CliContainer): Command {
     .option("--verbose", "Enable verbose logging.");
 
   registerConfigureCommand(program, container);
+
+  program.action(async () => {
+    const service = await resolveServiceArgument(program, container);
+    await executeConfigure(program, container, service, {});
+  });
 
   return program;
 }
