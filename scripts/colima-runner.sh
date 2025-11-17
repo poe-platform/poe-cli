@@ -10,18 +10,10 @@ docker_args_env="${COLIMA_DOCKER_ARGS:-}"
 credentials_path_default="${HOME}/.poe-code/credentials.json"
 credentials_path_raw="${COLIMA_CREDENTIALS_PATH:-${credentials_path_default}}"
 credentials_path="${credentials_path_raw/#\~/${HOME}}"
-credentials_available=false
-credentials_dir=""
-
-if [ -f "${credentials_path}" ]; then
-  credentials_available=true
-  credentials_dir="$(dirname "${credentials_path}")"
-fi
-
+credentials_dir_host="$(dirname "${credentials_path}")"
+mkdir -p "${credentials_dir_host}"
+mkdir -p "${credentials_dir_host}/logs"
 credentials_mount_default="/root/.poe-code"
-if [ "${credentials_available}" != true ]; then
-  credentials_mount_default="${mount_target}/.poe-code"
-fi
 credentials_mount="${COLIMA_CREDENTIALS_MOUNT:-${credentials_mount_default}}"
 
 docker_args_list=()
@@ -40,15 +32,11 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-colima_args=(start --profile "${profile}" --mount "${repo_root}:${mount_target}")
-credentials_volume=()
-
-if [ "${credentials_available}" = true ]; then
-  colima_args+=(--mount "${credentials_dir}:${credentials_dir}")
-  credentials_volume=(-v "${credentials_dir}:${credentials_mount}:ro")
-else
-  echo "Warning: credentials file not found at ${credentials_path}; skipping credentials bind mount." >&2
+colima_args=(start --profile "${profile}" --mount "${repo_root}:${mount_target}:w")
+if [ "${credentials_dir_host}" != "${repo_root}" ]; then
+  colima_args+=(--mount "${credentials_dir_host}:${credentials_dir_host}")
 fi
+credentials_volume=(-v "${credentials_dir_host}:${credentials_mount}:rw")
 
 colima_running=false
 if colima status --profile "${profile}" >/dev/null 2>&1; then
@@ -59,7 +47,7 @@ if [ "${colima_running}" != true ]; then
   colima "${colima_args[@]}"
 fi
 
-docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}" -v "poe-code-node-modules:${mount_target}/node_modules" -w "${mount_target}")
+docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}:rw" -w "${mount_target}")
 
 if [ "${#credentials_volume[@]}" -gt 0 ]; then
   docker_run_common+=("${credentials_volume[@]}")
@@ -75,7 +63,18 @@ if [ $# -eq 0 ]; then
 fi
 
 custom_commands=("$@")
-container_commands=("npm ci" "npm run build" "npm install -g .")
+container_commands=(
+  "workspace_dir=\"${mount_target}\""
+  "build_dir=\$(mktemp -d)"
+  "cleanup_build_dir() { rm -rf \"\${build_dir}\"; }"
+  "trap cleanup_build_dir EXIT"
+  "tar -C \"\${workspace_dir}\" --exclude=node_modules --exclude=.git -cf - . | tar -C \"\${build_dir}\" -xf -"
+  "cd \"\${build_dir}\""
+  "npm ci"
+  "npm run build"
+  "npm install -g ."
+  "cd \"\${workspace_dir}\""
+)
 container_commands+=("${custom_commands[@]}")
 
 command_string="set -e"
