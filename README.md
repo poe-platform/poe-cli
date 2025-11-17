@@ -22,6 +22,19 @@ npm i -g poe-code
 poe-code login
 ```
 
+### Install Coding CLIs
+
+```bash
+# Claude Code
+poe-code install claude-code
+
+# Codex
+poe-code install codex
+
+# OpenCode
+poe-code install opencode
+```
+
 ### Configure Coding CLIs
 
 ```bash

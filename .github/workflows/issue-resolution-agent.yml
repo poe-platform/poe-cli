@@ -42,6 +42,21 @@ jobs:
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
         run: poe-code login --api-key "${POE_API_KEY}"
+      - name: Install provider tooling
+        run: |-
+          SERVICE="${{ steps.provider.outputs.service }}"
+          case "$SERVICE" in
+            claude-code|codex|opencode)
+              poe-code install "$SERVICE" --yes
+              ;;
+            "poe-code agent")
+              echo "Skipping install for $SERVICE"
+              ;;
+            *)
+              echo "::error::Unsupported provider $SERVICE"
+              exit 1
+              ;;
+          esac
       - name: Configure provider
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}

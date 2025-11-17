@@ -5,10 +5,8 @@ import {
   createExecutionResources,
   type CommandFlags,
   type ExecutionResources,
-  registerProviderPrerequisites,
   resolveCommandFlags,
-  resolveServiceAdapter,
-  runPrerequisites
+  resolveServiceAdapter
 } from "./shared.js";
 import {
   DEFAULT_MODEL,
@@ -78,17 +76,6 @@ export async function executeConfigure(
     resources
   );
 
-  registerProviderPrerequisites(adapter, resources);
-
-  await container.registry.invoke(service, "install", async (entry) => {
-    if (!entry.install) {
-      return;
-    }
-    await entry.install(providerContext);
-  });
-
-  await runPrerequisites(adapter, resources, "before");
-
   const payload = await createConfigurePayload({
     service,
     container,
@@ -103,8 +90,6 @@ export async function executeConfigure(
     }
     await entry.configure(providerContext, payload);
   });
-
-  await runPrerequisites(adapter, resources, "after");
 
   const dryMessage =
     service === "claude-code"

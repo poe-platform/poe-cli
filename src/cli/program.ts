@@ -11,6 +11,7 @@ import {
 } from "./commands/configure.js";
 import { registerSpawnCommand } from "./commands/spawn.js";
 import { registerLoginCommand } from "./commands/login.js";
+import { registerInstallCommand } from "./commands/install.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -36,6 +37,7 @@ function bootstrapProgram(container: CliContainer): Command {
     .option("--dry-run", "Simulate commands without writing changes.")
     .option("--verbose", "Enable verbose logging.");
 
+  registerInstallCommand(program, container);
   registerConfigureCommand(program, container);
   registerSpawnCommand(program, container);
   registerLoginCommand(program, container);
