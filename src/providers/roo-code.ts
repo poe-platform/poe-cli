@@ -276,6 +276,7 @@ export const rooCodeAdapter: ProviderAdapter<
 > = {
   name: "roo-code",
   label: "Roo Code",
+  disabled: true,
   supportsSpawn: false,
   resolvePaths(env) {
     const settingsPath = resolveVsCodeSettingsPath(

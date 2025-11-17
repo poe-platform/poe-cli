@@ -28,6 +28,7 @@ export interface ProviderAdapter<
   name: string;
   label: string;
   branding?: ProviderBranding;
+  disabled?: boolean;
   supportsSpawn?: boolean;
   resolvePaths(env: CliEnvironment): TPaths;
   registerPrerequisites?: (

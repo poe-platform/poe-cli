@@ -264,13 +264,13 @@ describe("spawn command", () => {
     const { container } = createContainerWithDependencies();
     const program = new Command();
     registerSpawnCommand(program, container, {
-      extraServices: ["poe-code", "roo-code"]
+      extraServices: ["poe-code", "beta-agent"]
     });
 
     const spawnCommand = program.commands.find((cmd) => cmd.name() === "spawn");
     expect(spawnCommand).toBeDefined();
     const help = spawnCommand?.helpInformation() ?? "";
     expect(help).toContain("poe-code");
-    expect(help).toContain("roo-code");
+    expect(help).toContain("beta-agent");
   });
 });

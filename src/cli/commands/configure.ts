@@ -36,7 +36,7 @@ export function registerConfigureCommand(
     .description("Configure developer tooling for Poe API.")
     .argument(
       "[service]",
-      "Service to configure (claude-code | codex | opencode | roo-code)"
+      "Service to configure (claude-code | codex | opencode)"
     )
     .option("--api-key <key>", "Poe API key")
     .option("--model <model>", "Model identifier")

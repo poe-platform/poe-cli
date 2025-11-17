@@ -19,7 +19,7 @@ export function registerInstallCommand(
     .description("Install tooling for a configured service.")
     .argument(
       "[service]",
-      "Service to install (claude-code | codex | opencode | roo-code)"
+      "Service to install (claude-code | codex | opencode)"
     )
     .action(async (service: string | undefined) => {
       const resolved = await resolveServiceArgument(

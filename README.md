@@ -47,8 +47,6 @@ poe-code configure codex
 # OpenCode
 poe-code configure opencode
 
-# Roo Code
-poe-code configure roo-code
 ```
 
 ### Spawn a coding agent

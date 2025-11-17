@@ -135,7 +135,9 @@ export function createCliContainer(
     telemetry: createTelemetryClient(telemetryLogger)
   });
 
-  const providers = getDefaultProviders();
+  const providers = getDefaultProviders().filter(
+    (adapter) => !adapter.disabled
+  );
   for (const adapter of providers) {
     registry.register(adapter);
   }
