@@ -68,3 +68,13 @@ poe-code spawn claude-code "Explain this error message"
 
 Looking for the interactive agent or VSCode extension?
 Those experimental features now live in [`beta/`](beta/README.md) under the `poe-code-beta` package.
+
+## Automation Labels
+
+Agent labels used by workflows are generated via:
+
+```bash
+npm run labels:generate
+```
+
+See the generated definitions in `docs/LABELS.md`.
