@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 import { setTemplateLoader } from "../src/utils/templates.js";
 import { templateFixtures } from "./template-fixtures.js";
 
+process.env.FORCE_COLOR = process.env.FORCE_COLOR ?? "1";
+
 beforeAll(() => {
   setTemplateLoader(async (relativePath) => {
     const template = templateFixtures.get(relativePath);

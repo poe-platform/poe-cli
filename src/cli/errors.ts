@@ -160,6 +160,15 @@ export class ServiceError extends CliError {
 }
 
 /**
+ * Graceful cancellation triggered by the user (Ctrl+C, escape, etc.)
+ */
+export class OperationCancelledError extends CliError {
+  constructor(message = "Operation cancelled.") {
+    super(message, undefined, { isUserError: true });
+  }
+}
+
+/**
  * Helper to determine if an error should be shown to users
  */
 export function isUserFacingError(error: unknown): boolean {

@@ -18,6 +18,8 @@ import {
   DEFAULT_ROO_MODEL,
   DEFAULT_CLAUDE_MODEL
 } from "../constants.js";
+import { renderServiceMenu } from "../ui/service-menu.js";
+import { createMenuTheme } from "../ui/theme.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -220,10 +222,9 @@ export async function resolveServiceArgument(
     verbose: flags.verbose,
     scope: "configure"
   });
-  services.forEach((entry, index) => {
-    logger.info(`${index + 1}) ${entry.name}`);
-  });
-  logger.info("Enter number that you want to configure:");
+  const menuTheme = createMenuTheme(container.env);
+  const menuLines = renderServiceMenu(services, { theme: menuTheme });
+  menuLines.forEach((line) => logger.info(line));
   const descriptor = container.promptLibrary.serviceSelection();
   const response = await container.prompts(descriptor);
   const selection = response[descriptor.name];

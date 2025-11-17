@@ -3,6 +3,15 @@ import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 
+export interface ProviderColorSet {
+  light?: string;
+  dark?: string;
+}
+
+export interface ProviderBranding {
+  colors?: ProviderColorSet;
+}
+
 export interface ProviderContext<TPaths = Record<string, string>> {
   env: CliEnvironment;
   paths: TPaths;
@@ -18,6 +27,7 @@ export interface ProviderAdapter<
 > {
   name: string;
   label: string;
+  branding?: ProviderBranding;
   supportsSpawn?: boolean;
   resolvePaths(env: CliEnvironment): TPaths;
   registerPrerequisites?: (

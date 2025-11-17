@@ -1,0 +1,50 @@
+import { describe, it, expect } from "vitest";
+import { renderServiceMenu } from "../src/cli/ui/service-menu.js";
+import type { MenuTheme } from "../src/cli/ui/theme.js";
+import type { ProviderAdapter } from "../src/cli/service-registry.js";
+
+function createAdapter(
+  name: string,
+  label: string,
+  branding?: ProviderAdapter["branding"]
+): ProviderAdapter {
+  return {
+    name,
+    label,
+    resolvePaths: () => ({}),
+    branding
+  } as ProviderAdapter;
+}
+
+const theme: MenuTheme = {
+  name: "dark",
+  palette: {
+    header: (text) => `H:${text}`,
+    divider: (text) => `D:${text}`,
+    prompt: (text) => `P:${text}`,
+    number: (value) => `N${value}`,
+    providerFallback: (label) => label
+  }
+};
+
+describe("renderServiceMenu", () => {
+  it("renders using the provided theme", () => {
+    const services = [
+      createAdapter("claude-code", "Claude Code"),
+      createAdapter("codex", "Codex", {
+        colors: { dark: "#5bc0ff", light: "#0053a6" }
+      })
+    ];
+
+    const lines = renderServiceMenu(services, { theme });
+
+    expect(lines[0]).toContain("D:");
+    expect(lines[1]).toContain("H:");
+    expect(lines[2]).toContain("D:");
+    expect(lines[3]).toBe("P:Pick a service to configure:");
+    expect(lines[4]).toBe("N1 Claude Code");
+    expect(lines[4]).not.toContain("\u001b[");
+    expect(lines[5]).toContain("\u001b[");
+    expect(lines[5]).toContain("Codex");
+  });
+});

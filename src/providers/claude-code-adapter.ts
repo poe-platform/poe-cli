@@ -37,6 +37,12 @@ export const claudeCodeAdapter: ProviderAdapter<
 > = {
   name: "claude-code",
   label: "Claude Code",
+  branding: {
+    colors: {
+      dark: "#C15F3C",
+      light: "#C15F3C"
+    }
+  },
   supportsSpawn: true,
   resolvePaths(env) {
     return {

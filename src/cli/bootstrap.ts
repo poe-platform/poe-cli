@@ -4,12 +4,13 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
-import prompts from "prompts";
+import promptsLibrary from "prompts";
 import type { Command } from "commander";
 import type { FileSystem } from "../utils/file-system.js";
 import { ErrorLogger } from "./error-logger.js";
 import { CliError } from "./errors.js";
 import type { CliDependencies } from "./program.js";
+import { createPromptRunner } from "./prompt-runner.js";
 
 const fsAdapter = nodeFs as unknown as FileSystem;
 
@@ -19,6 +20,7 @@ export function createCliMain(
   return async function runCli(): Promise<void> {
     const homeDir = homedir();
     const logDir = join(homeDir, ".poe-code", "logs");
+    const promptRunner = createPromptRunner(promptsLibrary);
 
     // Create global error logger for bootstrapping errors
     const errorLogger = new ErrorLogger({
@@ -29,12 +31,7 @@ export function createCliMain(
 
     const program = programFactory({
       fs: fsAdapter,
-      prompts: (questions) =>
-        prompts(questions as any, {
-          onCancel: () => {
-            throw new Error("Operation cancelled.");
-          }
-        }) as Promise<Record<string, unknown>>,
+      prompts: promptRunner,
       env: {
         cwd: process.cwd(),
         homeDir,

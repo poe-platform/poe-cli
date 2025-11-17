@@ -35,6 +35,12 @@ export const openCodeAdapter: ProviderAdapter<
 > = {
   name: "opencode",
   label: "OpenCode CLI",
+  branding: {
+    colors: {
+      dark: "#4A4F55",
+      light: "#2F3338"
+    }
+  },
   supportsSpawn: true,
   resolvePaths(env) {
     return {

@@ -40,6 +40,12 @@ export const codexAdapter: ProviderAdapter<
 > = {
   name: "codex",
   label: "Codex",
+  branding: {
+    colors: {
+      dark: "#D5D9DF",
+      light: "#7A7F86"
+    }
+  },
   supportsSpawn: true,
   resolvePaths(env) {
     return {
