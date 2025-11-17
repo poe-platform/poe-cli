@@ -9,8 +9,7 @@ jobs:
     name: Resolve Issue With Agent
     if: |-
       github.event.action == 'labeled' &&
-            contains(fromJson('["claude-code","codex","opencode","poe-code"]'),
-            github.event.label.name)
+            startsWith(github.event.label.name, 'agent:')
     runs-on: ubuntu-latest
     permissions:
       contents: write
