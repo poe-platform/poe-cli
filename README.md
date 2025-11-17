@@ -45,19 +45,11 @@ poe-code configure opencode
 poe-code configure roo-code
 ```
 
-### Spawn a One-Off Task
-
-Run a single prompt through a configured service:
+### Spawn a coding agent
 
 ```bash
 # Claude Code
 poe-code spawn claude-code "Explain this error message"
-
-# Codex
-poe-code spawn codex "Summarize the latest changes"
-
-# OpenCode
-poe-code spawn opencode "List all TODO comments"
 ```
 
 ### Optional Flags
