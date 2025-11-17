@@ -5,7 +5,7 @@ import {
   resolveCommandFlags
 } from "./shared.js";
 import { saveCredentials } from "../../services/credentials.js";
-import { ValidationError, FileSystemError } from "../errors.js";
+import { ValidationError } from "../errors.js";
 
 export interface LoginCommandOptions {
   apiKey?: string;
@@ -28,8 +28,8 @@ export function registerLoginCommand(
       );
 
       try {
-        const apiKey = await resolveApiKeyInput(container, options);
-        const normalized = container.options.normalizeApiKey(apiKey);
+        const input = await resolveApiKeyInput(container, options);
+        const normalized = container.options.normalizeApiKey(input);
 
         await saveCredentials({
           fs: resources.context.fs,
@@ -44,7 +44,7 @@ export function registerLoginCommand(
       } catch (error) {
         if (error instanceof Error) {
           resources.logger.logException(error, "login command", {
-            operation: "save credentials",
+            operation: "login",
             credentialsPath: container.env.credentialsPath
           });
         }
@@ -60,14 +60,17 @@ async function resolveApiKeyInput(
   if (options.apiKey) {
     return options.apiKey;
   }
+
   const descriptor = container.promptLibrary.loginApiKey();
   const response = await container.prompts(descriptor);
-  const result = response[descriptor.name];
-  if (!result || typeof result !== "string") {
+  const value = response[descriptor.name];
+
+  if (typeof value !== "string" || value.trim() === "") {
     throw new ValidationError("POE API key is required.", {
       operation: "login",
       field: "apiKey"
     });
   }
-  return result;
+
+  return value;
 }

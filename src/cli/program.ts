@@ -10,6 +10,7 @@ import {
   executeConfigure
 } from "./commands/configure.js";
 import { registerSpawnCommand } from "./commands/spawn.js";
+import { registerLoginCommand } from "./commands/login.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -37,6 +38,7 @@ function bootstrapProgram(container: CliContainer): Command {
 
   registerConfigureCommand(program, container);
   registerSpawnCommand(program, container);
+  registerLoginCommand(program, container);
 
   program.action(async () => {
     const service = await resolveServiceArgument(program, container);

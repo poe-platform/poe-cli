@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import type { FSWatcher } from "node:fs";
 import { createCliContainer } from "../src/cli/container.js";
-import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
+import { registerSpawnCommand } from "poe-code/dist/cli/commands/spawn.js";
 import type {
   ProviderAdapter,
   ProviderContext

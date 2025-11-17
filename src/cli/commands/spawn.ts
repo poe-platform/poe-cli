@@ -10,21 +10,42 @@ import {
 } from "./shared.js";
 import type { CommandRunnerResult } from "../../utils/prerequisites.js";
 
-export interface SpawnCommandOptions {
+export interface CustomSpawnHandlerContext {
+  container: CliContainer;
+  service: string;
   prompt: string;
   args: string[];
+  flags: CommandFlags;
+  resources: ExecutionResources;
+}
+
+export type CustomSpawnHandler = (
+  context: CustomSpawnHandlerContext
+) => Promise<void>;
+
+export interface RegisterSpawnCommandOptions {
+  handlers?: Record<string, CustomSpawnHandler>;
+  extraServices?: string[];
 }
 
 export function registerSpawnCommand(
   program: Command,
-  container: CliContainer
+  container: CliContainer,
+  options: RegisterSpawnCommandOptions = {}
 ): void {
+  const defaultServices = ["claude-code", "codex", "opencode"];
+  const serviceList =
+    options.extraServices && options.extraServices.length > 0
+      ? [...defaultServices, ...options.extraServices]
+      : defaultServices;
+  const serviceDescription = `Service to spawn (${serviceList.join(" | ")})`;
+
   program
     .command("spawn")
     .description("Run a single prompt through a configured service CLI.")
     .argument(
       "<service>",
-      "Service to spawn (claude-code | codex | opencode)"
+      serviceDescription
     )
     .argument("<prompt>", "Prompt text to send")
     .argument(
@@ -38,6 +59,19 @@ export function registerSpawnCommand(
         flags,
         `spawn:${service}`
       );
+
+      const customHandler = options.handlers?.[service];
+      if (customHandler) {
+        await customHandler({
+          container,
+          service,
+          prompt: promptText,
+          args: agentArgs,
+          flags,
+          resources
+        });
+        return;
+      }
 
       const adapter = resolveServiceAdapter(container, service);
       if (!adapter.supportsSpawn) {

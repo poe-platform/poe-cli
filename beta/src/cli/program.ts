@@ -8,15 +8,18 @@ import { registerRootHandler } from "./commands/root.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerConfigureCommand } from "./commands/configure.js";
 import { registerConfigureAgentsCommand } from "./commands/configure-agents.js";
-import { registerLoginCommand } from "./commands/login.js";
+import { registerLoginCommand } from "poe-code/dist/cli/commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
 import { registerTestCommand } from "./commands/test.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerAgentCommand } from "./commands/agent.js";
-import { registerSpawnCommand } from "./commands/spawn.js";
+import {
+  registerSpawnCommand
+} from "poe-code/dist/cli/commands/spawn.js";
 import { registerPrerequisitesCommand } from "./commands/prerequisites.js";
 import { registerRemoveCommand } from "./commands/remove.js";
 import { registerInteractiveCommand } from "./commands/interactive.js";
+import { createPoeCodeSpawnHandler } from "./spawn-handlers.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -51,7 +54,12 @@ function bootstrapProgram(container: CliContainer): Command {
   registerTestCommand(program, container);
   registerQueryCommand(program, container);
   registerAgentCommand(program, container);
-  registerSpawnCommand(program, container);
+  registerSpawnCommand(program, container, {
+    handlers: {
+      "poe-code": createPoeCodeSpawnHandler()
+    },
+    extraServices: ["poe-code"]
+  });
   registerPrerequisitesCommand(program, container);
   registerRemoveCommand(program, container);
   registerInteractiveCommand(program, container);
