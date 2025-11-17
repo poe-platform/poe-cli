@@ -2,22 +2,22 @@ import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import {
   configureClaudeCode as baseConfigureClaudeCode,
   installClaudeCode as baseInstallClaudeCode,
-  registerClaudePrerequisites as baseRegisterClaudePrerequisites,
+  registerClaudeCodePrerequisites as baseRegisterClaudeCodePrerequisites,
   removeClaudeCode as baseRemoveClaudeCode
-} from "poe-code/dist/services/claude-code.js";
+} from "poe-code/dist/providers/claude-code.js";
 import type {
   ConfigureClaudeCodeOptions,
   InstallClaudeCodeOptions,
   RemoveClaudeCodeOptions,
   SpawnClaudeCodeOptions
-} from "poe-code/dist/services/claude-code.js";
+} from "poe-code/dist/providers/claude-code.js";
 
 export type {
   ConfigureClaudeCodeOptions,
   InstallClaudeCodeOptions,
   RemoveClaudeCodeOptions,
   SpawnClaudeCodeOptions
-} from "poe-code/dist/services/claude-code.js";
+} from "poe-code/dist/providers/claude-code.js";
 
 export function configureClaudeCode(
   options: ConfigureClaudeCodeOptions
@@ -32,9 +32,9 @@ export function installClaudeCode(
 }
 
 export function registerClaudePrerequisites(
-  manager: Parameters<typeof baseRegisterClaudePrerequisites>[0]
+  manager: Parameters<typeof baseRegisterClaudeCodePrerequisites>[0]
 ): void {
-  baseRegisterClaudePrerequisites(manager);
+  baseRegisterClaudeCodePrerequisites(manager);
 }
 
 export function removeClaudeCode(

@@ -5,18 +5,18 @@ import {
   installCodex as baseInstallCodex,
   registerCodexPrerequisites as baseRegisterCodexPrerequisites,
   removeCodex as baseRemoveCodex
-} from "poe-code/dist/services/codex.js";
+} from "poe-code/dist/providers/codex.js";
 import type {
   ConfigureCodexOptions,
   RemoveCodexOptions,
   SpawnCodexOptions
-} from "poe-code/dist/services/codex.js";
+} from "poe-code/dist/providers/codex.js";
 
 export type {
   ConfigureCodexOptions,
   RemoveCodexOptions,
   SpawnCodexOptions
-} from "poe-code/dist/services/codex.js";
+} from "poe-code/dist/providers/codex.js";
 
 export function configureCodex(
   options: ConfigureCodexOptions
@@ -46,7 +46,8 @@ export function spawnCodex(
 }
 
 export function buildCodexExecArgs(
-  options: Parameters<typeof baseBuildCodexExecArgs>[0]
+  prompt: Parameters<typeof baseBuildCodexExecArgs>[0],
+  extraArgs?: Parameters<typeof baseBuildCodexExecArgs>[1]
 ): string[] {
-  return baseBuildCodexExecArgs(options);
+  return baseBuildCodexExecArgs(prompt, extraArgs);
 }

@@ -9,10 +9,11 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import { createProgram } from "../src/cli/program.js";
 import { launchInteractiveMode } from "../src/cli/interactive-launcher.js";
-import type { CommandRunner } from "../src/utils/prerequisites.js";
-import * as claudeService from "../src/services/claude-code.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult
+} from "../src/utils/prerequisites.js";
 import * as codexService from "../src/services/codex.js";
-import * as opencodeService from "../src/services/opencode.js";
 
 interface PromptCall {
   name: string;
@@ -89,6 +90,17 @@ function createCommandRunnerStub(options?: {
   return { runner, calls };
 }
 
+function createSpawnCommandRunner(
+  result: CommandRunnerResult = { stdout: "", stderr: "", exitCode: 0 }
+): { runner: CommandRunner; calls: CommandCall[] } {
+  const calls: CommandCall[] = [];
+  const runner: CommandRunner = async (command, args) => {
+    calls.push({ command, args });
+    return { ...result };
+  };
+  return { runner, calls };
+}
+
 function createInstallCommandRunner(options: {
   binary: string;
   installCommand: string;
@@ -147,6 +159,10 @@ function createInstallCommandRunner(options: {
   }) as unknown as CommandRunner;
 
   return { runner, calls };
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
 }
 
 const CLAUDE_HELPER_LINES = [
@@ -255,12 +271,15 @@ beforeEach(() => {
     await program.parseAsync(["node", "cli", "configure"]);
 
     expect(vi.mocked(launchInteractiveMode)).not.toHaveBeenCalled();
-    expect(logs).toContain("1) claude-code");
-    expect(logs).toContain("2) codex");
-    expect(logs).toContain("3) opencode");
-    expect(logs).toContain("4) roo-code");
+    const strippedLogs = logs.map(stripAnsi);
+    expect(strippedLogs).toContain("[1] Claude Code");
+    expect(strippedLogs).toContain("[2] Codex");
+    expect(strippedLogs).toContain("[3] OpenCode CLI");
+    expect(strippedLogs).toContain("[4] Roo Code");
     expect(
-      logs.find((line) => line.startsWith("Enter number that you want to configure"))
+      strippedLogs.find((line) =>
+        line.includes("Pick a service to configure")
+      )
     ).toBeTruthy();
 
     const settings = await fs.readFile(
@@ -1834,17 +1853,16 @@ beforeEach(() => {
   it("spawns a claude-code agent with additional arguments", async () => {
     const { prompt } = createPromptStub({});
     const logs: string[] = [];
-    const spawnSpy = vi
-      .spyOn(claudeService, "spawnClaudeCode")
-      .mockResolvedValue({
-        stdout: "Agent output\n",
-        stderr: "",
-        exitCode: 0
-      });
+    const { runner, calls } = createSpawnCommandRunner({
+      stdout: "Agent output\n",
+      stderr: "",
+      exitCode: 0
+    });
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
+      commandRunner: runner,
       logger: (message) => {
         logs.push(message);
       }
@@ -1861,19 +1879,30 @@ beforeEach(() => {
       "text"
     ]);
 
-    expect(spawnSpy).toHaveBeenCalledWith({
-      prompt: "Explain the change",
-      args: ["--output-format", "text"],
-      runCommand: expect.any(Function)
-    });
+    expect(calls).toEqual([
+      {
+        command: "claude",
+        args: [
+          "-p",
+          "Explain the change",
+          "--allowedTools",
+          "Bash,Read",
+          "--permission-mode",
+          "acceptEdits",
+          "--output-format",
+          "text",
+          "--output-format",
+          "text"
+        ]
+      }
+    ]);
     expect(logs).toContain("Agent output");
-    spawnSpy.mockRestore();
   });
 
   it("spawns a codex agent", async () => {
     const { prompt } = createPromptStub({});
     const logs: string[] = [];
-    const spawnSpy = vi.spyOn(codexService, "spawnCodex").mockResolvedValue({
+    const { runner, calls } = createSpawnCommandRunner({
       stdout: "Codex output\n",
       stderr: "",
       exitCode: 0
@@ -1882,6 +1911,7 @@ beforeEach(() => {
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
+      commandRunner: runner,
       logger: (message) => {
         logs.push(message);
       }
@@ -1898,29 +1928,34 @@ beforeEach(() => {
       "json"
     ]);
 
-    expect(spawnSpy).toHaveBeenCalledWith({
-      prompt: "Summarize the diff",
-      args: ["--output", "json"],
-      runCommand: expect.any(Function)
-    });
+    expect(calls).toEqual([
+      {
+        command: "codex",
+        args: [
+          "exec",
+          "Summarize the diff",
+          "--full-auto",
+          "--output",
+          "json"
+        ]
+      }
+    ]);
     expect(logs).toContain("Codex output");
-    spawnSpy.mockRestore();
   });
 
   it("spawns an opencode agent", async () => {
     const { prompt } = createPromptStub({});
     const logs: string[] = [];
-    const spawnSpy = vi
-      .spyOn(opencodeService, "spawnOpenCode")
-      .mockResolvedValue({
-        stdout: "OpenCode output\n",
-        stderr: "",
-        exitCode: 0
-      });
+    const { runner, calls } = createSpawnCommandRunner({
+      stdout: "OpenCode output\n",
+      stderr: "",
+      exitCode: 0
+    });
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
+      commandRunner: runner,
       logger: (message) => {
         logs.push(message);
       }
@@ -1937,13 +1972,13 @@ beforeEach(() => {
       "markdown"
     ]);
 
-    expect(spawnSpy).toHaveBeenCalledWith({
-      prompt: "List files",
-      args: ["--format", "markdown"],
-      runCommand: expect.any(Function)
-    });
+    expect(calls).toEqual([
+      {
+        command: "opencode",
+        args: ["run", "List files", "--format", "markdown"]
+      }
+    ]);
     expect(logs).toContain("OpenCode output");
-    spawnSpy.mockRestore();
   });
 
   it("spawns a poe-code agent using the built-in agent command", async () => {
@@ -1994,17 +2029,16 @@ beforeEach(() => {
 
   it("fails when spawn command exits with error", async () => {
     const { prompt } = createPromptStub({});
-    const spawnSpy = vi
-      .spyOn(claudeService, "spawnClaudeCode")
-      .mockResolvedValue({
-        stdout: "",
-        stderr: "spawn failed",
-        exitCode: 1
-      });
+    const { runner } = createSpawnCommandRunner({
+      stdout: "",
+      stderr: "spawn failed",
+      exitCode: 1
+    });
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
+      commandRunner: runner,
       logger: () => {}
     });
 
@@ -2017,23 +2051,21 @@ beforeEach(() => {
         "Explain the change"
       ])
     ).rejects.toThrow(/spawn failed/i);
-    spawnSpy.mockRestore();
   });
 
   it("skips execution during dry run spawn", async () => {
     const { prompt } = createPromptStub({});
     const logs: string[] = [];
-    const spawnSpy = vi
-      .spyOn(claudeService, "spawnClaudeCode")
-      .mockResolvedValue({
-        stdout: "Agent output\n",
-        stderr: "",
-        exitCode: 0
-      });
+    const { runner, calls } = createSpawnCommandRunner({
+      stdout: "Agent output\n",
+      stderr: "",
+      exitCode: 0
+    });
     const program = createProgram({
       fs,
       prompts: prompt,
       env: { cwd, homeDir },
+      commandRunner: runner,
       logger: (message) => {
         logs.push(message);
       }
@@ -2048,13 +2080,12 @@ beforeEach(() => {
       "Dry run prompt"
     ]);
 
-    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
     expect(
       logs.find((line) =>
         line.includes('Dry run: would spawn Claude Code with prompt "Dry run prompt"')
       )
     ).toBeTruthy();
-    spawnSpy.mockRestore();
   });
 
   it("rejects spawn for services without spawn support", async () => {

@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { ProviderAdapter } from "../cli/service-registry.js";
+import type { ServiceMutationHooks } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
 import type {
@@ -20,12 +22,12 @@ import {
   runServiceRemove,
   type ServiceManifest,
   type ServiceRunOptions
-} from "./service-manifest.js";
+} from "../services/service-manifest.js";
 import {
   runServiceInstall,
   type InstallContext,
   type ServiceInstallDefinition
-} from "./service-install.js";
+} from "../services/service-install.js";
 
 const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
   $schema: "https://opencode.ai/config.json",
@@ -58,23 +60,23 @@ const OPEN_CODE_AUTH_SHAPE: JsonObject = {
   poe: true
 };
 
-export interface ConfigureOpenCodeOptions {
-  fs: FileSystem;
+export interface OpenCodePaths extends Record<string, string> {
   configPath: string;
   authPath: string;
+}
+
+export interface OpenCodeConfigureOptions {
   apiKey: string;
+  mutationHooks?: ServiceMutationHooks;
 }
 
-export interface RemoveOpenCodeOptions {
-  fs: FileSystem;
-  configPath: string;
-  authPath: string;
+export interface OpenCodeRemoveOptions {
+  mutationHooks?: ServiceMutationHooks;
 }
 
-export interface SpawnOpenCodeOptions {
+export interface OpenCodeSpawnOptions {
   prompt: string;
-  args?: string[];
-  runCommand: CommandRunner;
+  args: string[];
 }
 
 const OPEN_CODE_MANIFEST: ServiceManifest<
@@ -146,6 +148,25 @@ const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   postChecks: [createOpenCodeVersionCheck()],
   successMessage: "Installed OpenCode CLI via npm."
 };
+
+export interface ConfigureOpenCodeOptions {
+  fs: FileSystem;
+  configPath: string;
+  authPath: string;
+  apiKey: string;
+}
+
+export interface RemoveOpenCodeOptions {
+  fs: FileSystem;
+  configPath: string;
+  authPath: string;
+}
+
+export interface SpawnOpenCodeOptions {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+}
 
 export async function configureOpenCode(
   options: ConfigureOpenCodeOptions,
@@ -248,3 +269,64 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
     }
   };
 }
+
+export const openCodeAdapter: ProviderAdapter<
+  OpenCodePaths,
+  OpenCodeConfigureOptions,
+  OpenCodeRemoveOptions,
+  OpenCodeSpawnOptions
+> = {
+  name: "opencode",
+  label: "OpenCode CLI",
+  branding: {
+    colors: {
+      dark: "#4A4F55",
+      light: "#2F3338"
+    }
+  },
+  supportsSpawn: true,
+  resolvePaths(env) {
+    return {
+      configPath: env.resolveHomePath(".config", "opencode", "config.json"),
+      authPath: env.resolveHomePath(".local", "share", "opencode", "auth.json")
+    };
+  },
+  registerPrerequisites(manager) {
+    registerOpenCodePrerequisites(manager);
+  },
+  async install(context) {
+    await installOpenCode({
+      isDryRun: context.logger.context.dryRun,
+      runCommand: context.command.runCommand,
+      logger: (message) => context.logger.info(message)
+    });
+  },
+  async configure(context, options) {
+    await configureOpenCode(
+      {
+        fs: context.command.fs,
+        configPath: context.paths.configPath,
+        authPath: context.paths.authPath,
+        apiKey: options.apiKey
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async remove(context, options) {
+    return await removeOpenCode(
+      {
+        fs: context.command.fs,
+        configPath: context.paths.configPath,
+        authPath: context.paths.authPath
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async spawn(context, options) {
+    return await spawnOpenCode({
+      prompt: options.prompt,
+      args: options.args,
+      runCommand: context.command.runCommand
+    });
+  }
+};

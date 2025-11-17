@@ -13,6 +13,7 @@ import { registerLogoutCommand } from "./commands/logout.js";
 import { registerTestCommand } from "./commands/test.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerAgentCommand } from "./commands/agent.js";
+import { registerSpawnCommand } from "./commands/spawn.js";
 import { registerPrerequisitesCommand } from "./commands/prerequisites.js";
 import { registerRemoveCommand } from "./commands/remove.js";
 import { registerInteractiveCommand } from "./commands/interactive.js";
@@ -50,6 +51,7 @@ function bootstrapProgram(container: CliContainer): Command {
   registerTestCommand(program, container);
   registerQueryCommand(program, container);
   registerAgentCommand(program, container);
+  registerSpawnCommand(program, container);
   registerPrerequisitesCommand(program, container);
   registerRemoveCommand(program, container);
   registerInteractiveCommand(program, container);

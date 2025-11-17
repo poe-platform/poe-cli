@@ -4,18 +4,18 @@ import {
   installOpenCode as baseInstallOpenCode,
   registerOpenCodePrerequisites as baseRegisterOpenCodePrerequisites,
   removeOpenCode as baseRemoveOpenCode
-} from "poe-code/dist/services/opencode.js";
+} from "poe-code/dist/providers/opencode.js";
 import type {
   ConfigureOpenCodeOptions,
   RemoveOpenCodeOptions,
   SpawnOpenCodeOptions
-} from "poe-code/dist/services/opencode.js";
+} from "poe-code/dist/providers/opencode.js";
 
 export type {
   ConfigureOpenCodeOptions,
   RemoveOpenCodeOptions,
   SpawnOpenCodeOptions
-} from "poe-code/dist/services/opencode.js";
+} from "poe-code/dist/providers/opencode.js";
 
 export function configureOpenCode(
   options: ConfigureOpenCodeOptions

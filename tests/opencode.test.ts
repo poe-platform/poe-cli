@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
-import * as opencodeService from "../src/services/opencode.js";
+import * as opencodeService from "../src/providers/opencode.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {

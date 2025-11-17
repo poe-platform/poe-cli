@@ -9,13 +9,13 @@ import type {
 } from "poe-code/dist/cli/service-registry.js";
 import type {
   ClaudeCodeSpawnOptions
-} from "poe-code/dist/providers/claude-code-adapter.js";
+} from "poe-code/dist/providers/claude-code.js";
 import type {
   CodexSpawnOptions
-} from "poe-code/dist/providers/codex-adapter.js";
+} from "poe-code/dist/providers/codex.js";
 import type {
   OpenCodeSpawnOptions
-} from "poe-code/dist/providers/opencode-adapter.js";
+} from "poe-code/dist/providers/opencode.js";
 import { createPoeApiClient, type PoeApiClient } from "../cli/api-client.js";
 import type {
   ChatServiceFactory,

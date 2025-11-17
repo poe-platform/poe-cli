@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { ProviderAdapter } from "../cli/service-registry.js";
+import type { ServiceMutationHooks } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
@@ -17,7 +19,7 @@ import {
   runServiceRemove,
   type ServiceManifest,
   type ServiceRunOptions
-} from "./service-manifest.js";
+} from "../services/service-manifest.js";
 import {
   parseTomlDocument,
   serializeTomlDocument,
@@ -29,27 +31,27 @@ import {
   runServiceInstall,
   type InstallContext,
   type ServiceInstallDefinition
-} from "./service-install.js";
+} from "../services/service-install.js";
 import { renderTemplate } from "../utils/templates.js";
 
-export interface ConfigureCodexOptions {
-  fs: FileSystem;
+export interface CodexPaths extends Record<string, string> {
   configPath: string;
+}
+
+export interface CodexConfigureOptions {
   apiKey: string;
   model: string;
   reasoningEffort: string;
-  timestamp?: () => string;
+  mutationHooks?: ServiceMutationHooks;
 }
 
-export interface RemoveCodexOptions {
-  fs: FileSystem;
-  configPath: string;
+export interface CodexRemoveOptions {
+  mutationHooks?: ServiceMutationHooks;
 }
 
-export interface SpawnCodexOptions {
+export interface CodexSpawnOptions {
   prompt: string;
-  args?: string[];
-  runCommand: CommandRunner;
+  args: string[];
 }
 
 const CODEX_PROVIDER_ID = "poe";
@@ -160,6 +162,26 @@ const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Codex CLI via npm."
 };
 
+export interface ConfigureCodexOptions {
+  fs: FileSystem;
+  configPath: string;
+  apiKey: string;
+  model: string;
+  reasoningEffort: string;
+  timestamp?: () => string;
+}
+
+export interface RemoveCodexOptions {
+  fs: FileSystem;
+  configPath: string;
+}
+
+export interface SpawnCodexOptions {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+}
+
 function stripCodexConfiguration(
   document: TomlTable
 ): { changed: boolean; empty: boolean } {
@@ -251,6 +273,15 @@ export async function configureCodex(
   );
 }
 
+const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
+
+export function buildCodexExecArgs(
+  prompt: string,
+  extraArgs: string[] = []
+): string[] {
+  return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
+}
+
 export async function spawnCodex(
   options: SpawnCodexOptions
 ): Promise<CommandRunnerResult> {
@@ -282,15 +313,6 @@ export function registerCodexPrerequisites(
   prerequisites: PrerequisiteManager
 ): void {
   prerequisites.registerAfter(createCodexCliHealthCheck());
-}
-
-const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
-
-export function buildCodexExecArgs(
-  prompt: string,
-  extraArgs: string[] = []
-): string[] {
-  return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
 function createCodexBinaryCheck(): PrerequisiteDefinition {
@@ -347,3 +369,63 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
     }
   };
 }
+
+export const codexAdapter: ProviderAdapter<
+  CodexPaths,
+  CodexConfigureOptions,
+  CodexRemoveOptions,
+  CodexSpawnOptions
+> = {
+  name: "codex",
+  label: "Codex",
+  branding: {
+    colors: {
+      dark: "#D5D9DF",
+      light: "#7A7F86"
+    }
+  },
+  supportsSpawn: true,
+  resolvePaths(env) {
+    return {
+      configPath: env.resolveHomePath(".codex", "config.toml")
+    };
+  },
+  registerPrerequisites(manager) {
+    registerCodexPrerequisites(manager);
+  },
+  async install(context) {
+    await installCodex({
+      isDryRun: context.logger.context.dryRun,
+      runCommand: context.command.runCommand,
+      logger: (message) => context.logger.info(message)
+    });
+  },
+  async configure(context, options) {
+    await configureCodex(
+      {
+        fs: context.command.fs,
+        configPath: context.paths.configPath,
+        apiKey: options.apiKey,
+        model: options.model,
+        reasoningEffort: options.reasoningEffort
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async remove(context, options) {
+    return await removeCodex(
+      {
+        fs: context.command.fs,
+        configPath: context.paths.configPath
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async spawn(context, options) {
+    return await spawnCodex({
+      prompt: options.prompt,
+      args: options.args,
+      runCommand: context.command.runCommand
+    });
+  }
+};

@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { ProviderAdapter } from "../cli/service-registry.js";
+import type { ServiceMutationHooks } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
@@ -17,18 +19,38 @@ import {
   type ServiceManifest,
   type ServiceRunOptions,
   type ServiceMutation
-} from "./service-manifest.js";
+} from "../services/service-manifest.js";
 import {
   runServiceInstall,
   type InstallContext,
   type ServiceInstallDefinition
-} from "./service-install.js";
+} from "../services/service-install.js";
 import {
   CLAUDE_MODEL_OPUS,
   CLAUDE_MODEL_SONNET,
-  CLAUDE_MODEL_HAIKU,
-  DEFAULT_CLAUDE_MODEL
+  CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
+
+export interface ClaudeCodePaths extends Record<string, string> {
+  settingsPath: string;
+  keyHelperPath: string;
+  credentialsPath: string;
+}
+
+export interface ClaudeCodeConfigureOptions {
+  apiKey: string;
+  defaultModel: string;
+  mutationHooks?: ServiceMutationHooks;
+}
+
+export interface ClaudeCodeRemoveOptions {
+  mutationHooks?: ServiceMutationHooks;
+}
+
+export interface ClaudeCodeSpawnOptions {
+  prompt: string;
+  args: string[];
+}
 
 const KEY_HELPER_TEMPLATE_ID = "claude-code/anthropic_key.sh.hbs";
 const KEY_HELPER_MODE = 0o700;
@@ -127,6 +149,8 @@ export interface SpawnClaudeCodeOptions {
   args?: string[];
   runCommand: CommandRunner;
 }
+
+export type InstallClaudeCodeOptions = InstallContext;
 
 function createChmodMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
   return {
@@ -246,3 +270,67 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
     }
   };
 }
+
+export const claudeCodeAdapter: ProviderAdapter<
+  ClaudeCodePaths,
+  ClaudeCodeConfigureOptions,
+  ClaudeCodeRemoveOptions,
+  ClaudeCodeSpawnOptions
+> = {
+  name: "claude-code",
+  label: "Claude Code",
+  branding: {
+    colors: {
+      dark: "#C15F3C",
+      light: "#C15F3C"
+    }
+  },
+  supportsSpawn: true,
+  resolvePaths(env) {
+    return {
+      settingsPath: env.resolveHomePath(".claude", "settings.json"),
+      keyHelperPath: env.resolveHomePath(".claude", "anthropic_key.sh"),
+      credentialsPath: env.credentialsPath
+    };
+  },
+  registerPrerequisites(manager) {
+    registerClaudeCodePrerequisites(manager);
+  },
+  async install(context) {
+    await installClaudeCode({
+      isDryRun: context.logger.context.dryRun,
+      runCommand: context.command.runCommand,
+      logger: (message) => context.logger.info(message)
+    });
+  },
+  async configure(context, options) {
+    await configureClaudeCode(
+      {
+        fs: context.command.fs,
+        apiKey: options.apiKey,
+        settingsPath: context.paths.settingsPath,
+        keyHelperPath: context.paths.keyHelperPath,
+        credentialsPath: context.paths.credentialsPath,
+        defaultModel: options.defaultModel
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async remove(context, options) {
+    return await removeClaudeCode(
+      {
+        fs: context.command.fs,
+        settingsPath: context.paths.settingsPath,
+        keyHelperPath: context.paths.keyHelperPath
+      },
+      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
+    );
+  },
+  async spawn(context, options) {
+    return await spawnClaudeCode({
+      prompt: options.prompt,
+      args: options.args,
+      runCommand: context.command.runCommand
+    });
+  }
+};
