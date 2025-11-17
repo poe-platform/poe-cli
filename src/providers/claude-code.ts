@@ -30,6 +30,7 @@ import {
   CLAUDE_MODEL_SONNET,
   CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
+import { isJsonObject } from "../utils/json.js";
 
 export interface ClaudeCodePaths extends Record<string, string> {
   settingsPath: string;
@@ -54,6 +55,7 @@ export interface ClaudeCodeSpawnOptions {
 
 const KEY_HELPER_TEMPLATE_ID = "claude-code/anthropic_key.sh.hbs";
 const KEY_HELPER_MODE = 0o700;
+const EMPTY_JSON_DOCUMENT = `${JSON.stringify({}, null, 2)}\n`;
 
 const CLAUDE_ENV_SHAPE = {
   apiKeyHelper: true,
@@ -89,6 +91,7 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
       label: "Write API key helper script"
     }),
     createChmodMutation(),
+    recoverInvalidSettingsMutation(),
     jsonMergeMutation({
       target: ({ options }) => options.settingsPath,
       label: "Merge Claude settings",
@@ -175,6 +178,39 @@ function removeKeyHelperMutation(): ServiceMutation<RemoveClaudeCodeOptions> {
     target: ({ options }) => options.keyHelperPath,
     label: "Remove API key helper script"
   };
+}
+
+function recoverInvalidSettingsMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
+  return {
+    kind: "transformFile",
+    target: ({ options }) => options.settingsPath,
+    label: "Recover invalid Claude settings",
+    async transform({ content, context }) {
+      if (content == null || isJsonDocument(content)) {
+        return { content, changed: false };
+      }
+      const backupPath = createInvalidBackupPath(context.options.settingsPath);
+      await context.fs.writeFile(backupPath, content, { encoding: "utf8" });
+      return {
+        content: EMPTY_JSON_DOCUMENT,
+        changed: true
+      };
+    }
+  };
+}
+
+function isJsonDocument(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content);
+    return isJsonObject(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function createInvalidBackupPath(settingsPath: string): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${settingsPath}.invalid-${timestamp}.json`;
 }
 
 function toSingleQuotedLiteral(targetPath: string): string {

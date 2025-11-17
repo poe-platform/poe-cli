@@ -201,6 +201,50 @@ describe("claude-code service", () => {
     );
   });
 
+  it("recovers when settings json contains invalid content", async () => {
+    const dir = path.dirname(settingsPath);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(settingsPath, "test\n", { encoding: "utf8" });
+
+    await claudeService.configureClaudeCode({
+      fs,
+      apiKey,
+      settingsPath,
+      keyHelperPath,
+      credentialsPath,
+      defaultModel: "Claude-Sonnet-4.5"
+    });
+
+    const files = await fs.readdir(dir);
+    const backupName = files.find((name) =>
+      name.startsWith("settings.json.invalid-")
+    );
+    expect(backupName).toBeDefined();
+    const backupPath = path.join(dir, backupName as string);
+    const backupContent = await fs.readFile(backupPath, "utf8");
+    expect(backupContent).toBe("test\n");
+
+    const settings = await fs.readFile(settingsPath, "utf8");
+    const parsed = JSON.parse(settings);
+    expect(parsed).toEqual({
+      apiKeyHelper: keyHelperPath,
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+      },
+      model: "Claude-Sonnet-4.5"
+    });
+    const script = await fs.readFile(keyHelperPath, "utf8");
+    expect(script).toBe(
+      [
+        "#!/bin/bash",
+        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+      ].join("\n")
+    );
+  });
+
   it("creates settings with custom defaultModel value", async () => {
     await claudeService.configureClaudeCode({
       fs,
