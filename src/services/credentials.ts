@@ -25,11 +25,7 @@ export async function loadCredentials(
   const { fs, filePath } = options;
   try {
     const raw = await fs.readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as { apiKey?: unknown };
-    if (typeof parsed.apiKey === "string" && parsed.apiKey.length > 0) {
-      return parsed.apiKey;
-    }
-    return null;
+    return await parseCredentialsContent(fs, filePath, raw);
   } catch (error) {
     if (isNotFound(error)) {
       return null;
@@ -61,3 +57,42 @@ function isNotFound(error: unknown): boolean {
     (error as { code?: string }).code === "ENOENT"
   );
 }
+
+async function parseCredentialsContent(
+  fs: FileSystem,
+  filePath: string,
+  raw: string
+): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(raw) as { apiKey?: unknown };
+    if (typeof parsed.apiKey === "string" && parsed.apiKey.length > 0) {
+      return parsed.apiKey;
+    }
+    return null;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      await recoverInvalidCredentials(fs, filePath, raw);
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function recoverInvalidCredentials(
+  fs: FileSystem,
+  filePath: string,
+  content: string
+): Promise<void> {
+  const backupPath = createInvalidBackupPath(filePath);
+  await fs.writeFile(backupPath, content, { encoding: "utf8" });
+  await fs.writeFile(filePath, EMPTY_DOCUMENT, { encoding: "utf8" });
+}
+
+function createInvalidBackupPath(filePath: string): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  return path.join(dir, `${base}.invalid-${timestamp}.json`);
+}
+
+const EMPTY_DOCUMENT = `${JSON.stringify({}, null, 2)}\n`;
