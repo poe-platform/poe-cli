@@ -8,13 +8,6 @@
 npx poe-code configure claude-code
 ```
 
-## Features
-
-- ⚙️ **Single CLI** to provision Claude Code, Codex, OpenCode, and Roo Code.
-- 🧩 **Provider-aware adapters** that install binaries, render config templates, and manage prerequisites.
-- 🧪 **Dry-run mode** showing every file mutation before it happens.
-- 🛠️ **Composable registries** so new providers can be added without touching the CLI core.
-
 ## Installation
 
 ```bash
