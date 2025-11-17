@@ -15,8 +15,6 @@ import { registerQueryCommand } from "./commands/query.js";
 import { registerAgentCommand } from "./commands/agent.js";
 import { registerPrerequisitesCommand } from "./commands/prerequisites.js";
 import { registerRemoveCommand } from "./commands/remove.js";
-import { registerSpawnCommand } from "./commands/spawn.js";
-import { registerSpawnWorktreeCommand } from "./commands/spawn-worktree.js";
 import { registerInteractiveCommand } from "./commands/interactive.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
@@ -54,8 +52,6 @@ function bootstrapProgram(container: CliContainer): Command {
   registerAgentCommand(program, container);
   registerPrerequisitesCommand(program, container);
   registerRemoveCommand(program, container);
-  registerSpawnCommand(program, container);
-  registerSpawnWorktreeCommand(program, container);
   registerInteractiveCommand(program, container);
 
   return program;

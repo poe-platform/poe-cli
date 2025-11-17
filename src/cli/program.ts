@@ -9,6 +9,7 @@ import {
   resolveServiceArgument,
   executeConfigure
 } from "./commands/configure.js";
+import { registerSpawnCommand } from "./commands/spawn.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -35,6 +36,7 @@ function bootstrapProgram(container: CliContainer): Command {
     .option("--verbose", "Enable verbose logging.");
 
   registerConfigureCommand(program, container);
+  registerSpawnCommand(program, container);
 
   program.action(async () => {
     const service = await resolveServiceArgument(program, container);
