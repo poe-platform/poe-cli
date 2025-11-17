@@ -25,9 +25,6 @@ poe-code-beta
 
 # Non-interactive agent run
 poe-code-beta agent "Summarize the latest diff"
-
-# Spawn a configured CLI in a one-off task
-poe-code-beta spawn claude-code "List the steps as bullets"
 ```
 
 The beta CLI reuses the stable `poe-code` adapters for configuration while keeping
@@ -35,7 +32,7 @@ all agent-only commands, state, prompts, and docs inside `beta/`.
 
 ## Folder Guide
 
-- `src/cli` – beta-only commands (`agent`, `interactive`, `spawn`, etc.).
+- `src/cli` – beta-only commands (`agent`, `interactive`, etc.).
 - `src/services` – agent runtime (session manager, tools, MCP bridge).
 - `vscode-extension` – sidebar provider, preview app, and integration tests.
 - `docs/` – SYSTEM_PROMPT, architecture notes, MCP instructions, roadmap.

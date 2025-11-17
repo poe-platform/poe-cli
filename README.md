@@ -45,6 +45,21 @@ poe-code configure opencode
 poe-code configure roo-code
 ```
 
+### Spawn a One-Off Task
+
+Run a single prompt through a configured service:
+
+```bash
+# Claude Code
+poe-code spawn claude-code "Explain this error message"
+
+# Codex
+poe-code spawn codex "Summarize the latest changes"
+
+# OpenCode
+poe-code spawn opencode "List all TODO comments"
+```
+
 ### Optional Flags
 
 - `--dry-run` – show every mutation without touching disk.
@@ -53,5 +68,5 @@ poe-code configure roo-code
 
 ## Beta Workspace
 
-Looking for the interactive agent, VSCode extension, or spawn workflows?  
+Looking for the interactive agent or VSCode extension?
 Those experimental features now live in [`beta/`](beta/README.md) under the `poe-code-beta` package.
