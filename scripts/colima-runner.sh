@@ -15,6 +15,9 @@ mkdir -p "${credentials_dir_host}"
 mkdir -p "${credentials_dir_host}/logs"
 credentials_mount_default="/root/.poe-code"
 credentials_mount="${COLIMA_CREDENTIALS_MOUNT:-${credentials_mount_default}}"
+export_logs="${COLIMA_RUNNER_EXPORT_LOGS:-1}"
+log_export_dir_host="${COLIMA_RUNNER_LOG_EXPORT_DIR:-${repo_root}/.colima-logs}"
+log_export_mount="${COLIMA_RUNNER_LOG_EXPORT_MOUNT:-/log-export}"
 
 docker_args_list=()
 if [ -n "${docker_args_env}" ]; then
@@ -37,6 +40,12 @@ if [ "${credentials_dir_host}" != "${repo_root}" ]; then
   colima_args+=(--mount "${credentials_dir_host}:${credentials_dir_host}")
 fi
 credentials_volume=(-v "${credentials_dir_host}:${credentials_mount}:rw")
+log_export_volume=()
+
+if [ "${export_logs}" = "1" ]; then
+  mkdir -p "${log_export_dir_host}"
+  log_export_volume=(-v "${log_export_dir_host}:${log_export_mount}:rw")
+fi
 
 colima_running=false
 if colima status --profile "${profile}" >/dev/null 2>&1; then
@@ -51,6 +60,10 @@ docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}:rw" -w "
 
 if [ "${#credentials_volume[@]}" -gt 0 ]; then
   docker_run_common+=("${credentials_volume[@]}")
+fi
+
+if [ "${#log_export_volume[@]}" -gt 0 ]; then
+  docker_run_common+=("${log_export_volume[@]}")
 fi
 
 if [ "${#docker_args_list[@]}" -gt 0 ]; then
@@ -76,6 +89,13 @@ container_commands=(
   "cd \"\${workspace_dir}\""
 )
 container_commands+=("${custom_commands[@]}")
+
+if [ "${export_logs}" = "1" ]; then
+  container_commands+=(
+    "mkdir -p \"${log_export_mount}\""
+    "cp -a /root/.poe-code/logs/. \"${log_export_mount}/\" || true"
+  )
+fi
 
 command_string="set -e"
 for cmd in "${container_commands[@]}"; do
