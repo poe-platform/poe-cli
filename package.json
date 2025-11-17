@@ -3,31 +3,30 @@
   "version": "1.2.0",
   "description": "CLI tool to configure Poe API for developer workflows.",
   "type": "module",
+  "workspaces": [
+    "beta"
+  ],
   "scripts": {
-    "build": "npm run build:webview && tsc -p tsconfig.build.json && node scripts/copy-templates.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-templates.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "npm run test:root && npm run test --prefix vscode-extension",
+    "test": "npm run test:root",
+    "test:beta": "npm run test --workspace beta",
     "test:root": "vitest run",
     "lint": "npm run lint:eslint && npm run lint:types && npm run lint:workflows",
     "lint:workflows": "(command -v actionlint > /dev/null || bash scripts/setup-actionlint.sh) && (command -v actionlint > /dev/null && actionlint || ./actionlint)",
     "lint:eslint": "eslint . --ext ts",
-    "lint:types": "tsc -p tsconfig.build.json --noEmit && npm run typecheck --prefix vscode-extension",
+    "lint:types": "tsc -p tsconfig.build.json --noEmit",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "watch": "tsx watch src/index.ts",
-    "extension:build": "npm run compile --prefix vscode-extension",
-    "extension:watch": "npm run watch --prefix vscode-extension",
-    "extension:preview": "npm run build && npm run extension:build && cd vscode-extension/preview && npm install && npm run dev",
-    "build:webview": "webpack --config webpack.webview.config.cjs",
-    "test:e2e": "playwright test"
+    "watch": "tsx watch src/index.ts"
   },
   "bin": {
-    "poe-code": "dist/index.js"
+    "poe-code": "dist/index.js",
+    "poe-code-configure": "dist/index.js"
   },
   "files": [
-    "dist",
-    "shared"
+    "dist"
   ],
   "engines": {
     "node": ">=18"
@@ -38,46 +37,26 @@
     "commander": "^11.1.0",
     "diff": "^5.2.0",
     "handlebars": "^4.7.8",
-    "ink": "^6.4.0",
-    "ink-select-input": "^6.2.0",
-    "ink-text-input": "^6.0.0",
-    "lit": "^3.3.1",
-    "prompts": "^2.4.2",
-    "react": "^19.2.0",
-    "simple-git": "^3.25.0"
+    "prompts": "^2.4.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.47.2",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^11.0.6",
     "@semantic-release/npm": "^12.0.2",
     "@types/diff": "^7.0.2",
     "@types/node": "^20.12.7",
     "@types/prompts": "^2.4.9",
-    "@types/react": "^19.2.2",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
-    "@vscode/test-electron": "^2.5.2",
-    "autoprefixer": "^10.4.20",
-    "css-loader": "^7.1.2",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^9.1.0",
-    "happy-dom": "^20.0.10",
-    "ink-testing-library": "^4.0.0",
-    "jsdom": "^27.0.1",
     "memfs": "^4.7.3",
-    "mini-css-extract-plugin": "^2.9.1",
-    "postcss-loader": "^8.1.1",
     "prettier": "^3.3.3",
     "semantic-release": "^24.2.9",
-    "tailwindcss": "^3.4.18",
-    "ts-loader": "^9.5.1",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5",
     "typescript-eslint": "^8.46.2",
     "vitest": "^1.6.1",
-    "webpack": "^5.96.1",
-    "webpack-cli": "^5.1.4",
     "yaml": "^2.6.0"
   },
   "repository": {

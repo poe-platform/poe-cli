@@ -1,6 +1,6 @@
 # poe-code
 
-> Wire your local dev tools to the Poe API in seconds
+> Configure local developer tooling to use the Poe API.
 
 ## Quick Start
 
@@ -10,9 +10,10 @@ npx poe-code configure claude-code
 
 ## Features
 
-- 🚀 **90-second setup** for coding agents with Poe API
-- 🤖 **Multiple agents** - Claude Code, Codex, OpenCode
-- 💬 **Interactive mode** for conversational workflows
+- ⚙️ **Single CLI** to provision Claude Code, Codex, OpenCode, and Roo Code.
+- 🧩 **Provider-aware adapters** that install binaries, render config templates, and manage prerequisites.
+- 🧪 **Dry-run mode** showing every file mutation before it happens.
+- 🛠️ **Composable registries** so new providers can be added without touching the CLI core.
 
 ## Installation
 
@@ -22,13 +23,13 @@ npm i -g poe-code
 
 ## Usage
 
-### Authentication
+### Authenticate Once
 
 ```bash
 poe-code login
 ```
 
-### Configure Coding Agents
+### Configure Coding CLIs
 
 ```bash
 # Claude Code
@@ -39,23 +40,18 @@ poe-code configure codex
 
 # OpenCode
 poe-code configure opencode
+
+# Roo Code
+poe-code configure roo-code
 ```
 
-### Interactive Mode
+### Optional Flags
 
-```bash
-poe-code
-```
+- `--dry-run` – show every mutation without touching disk.
+- `--verbose` – print shell commands as they run.
+- `--yes` – accept defaults for prompts.
 
-### Non-Interactive Mode
+## Beta Workspace
 
-```bash
-poe-code agent "Recommend me Python web framework"
-```
-
-### Spawn Async Agents
-
-```bash
-poe-code spawn claude-code "What is the best web framework?"
-poe-code spawn-git-worktree claude-code "Build me a random fun game"
-```
+Looking for the interactive agent, VSCode extension, or spawn workflows?  
+Those experimental features now live in [`beta/`](beta/README.md) under the `poe-code-beta` package.

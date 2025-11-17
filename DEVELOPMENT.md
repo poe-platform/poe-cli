@@ -39,27 +39,11 @@ npm test            # execute the Vitest suite (required before committing)
 - Builds output to `dist/`; the published package exposes `dist/index.js` as the
   `poe-code` binary.
 
-## VS Code Extension Workflow
+## Beta Workspace
 
-Use these commands when working on the bundled VS Code extension:
-
-```bash
-npm run build:extension     # one-off TypeScript compile into vscode-extension/out
-npm run watch:extension     # keep the extension build up-to-date while editing
-```
-
-- Within `vscode-extension/` you can run `npm install` and `npm run watch` for a
-  standalone workflow.
-- Install the extension build in VS Code without packaging by running:
-
-  ```bash
-  code --extensionDevelopmentPath=vscode-extension
-  ```
-
-  or via the command palette: `Developer: Install Extension from Location...`
-  and choose the `vscode-extension` directory.
-- After code changes, use `Developer: Reload Window` (or `Developer: Restart
-  Extension Host`) to pick up the latest build.
+Experimental agent features, the VSCode extension, and the preview webview now
+live in [`beta/`](beta/README.md). Run `npm install` inside that directory and
+use the scripts defined in `beta/package.json` when working on those packages.
 
 ## Testing
 

@@ -18,7 +18,6 @@ import {
   DEFAULT_ROO_MODEL,
   DEFAULT_CLAUDE_MODEL
 } from "../constants.js";
-import { registerConfigureAgentsCommand } from "./configure-agents.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -31,7 +30,7 @@ export interface ConfigureCommandOptions {
 export function registerConfigureCommand(
   program: Command,
   container: CliContainer
-): void {
+): Command {
   const configureCommand = program
     .command("configure")
     .description("Configure developer tooling for Poe API.")
@@ -44,16 +43,18 @@ export function registerConfigureCommand(
     .option("--reasoning-effort <level>", "Reasoning effort level")
     .option("--config-name <name>", "Configuration profile name")
     .option("--base-url <url>", "API base URL")
-    .action(async (service: string | undefined, options: ConfigureCommandOptions) => {
-      const resolved = await resolveServiceArgument(
-        program,
-        container,
-        service
-      );
-      await executeConfigure(program, container, resolved, options);
-    });
+    .action(
+      async (service: string | undefined, options: ConfigureCommandOptions) => {
+        const resolved = await resolveServiceArgument(
+          program,
+          container,
+          service
+        );
+        await executeConfigure(program, container, resolved, options);
+      }
+    );
 
-  registerConfigureAgentsCommand(configureCommand, container);
+  return configureCommand;
 }
 
 export async function executeConfigure(

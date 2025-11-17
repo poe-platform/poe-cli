@@ -25,17 +25,11 @@ import {
 } from "./logger.js";
 import { ErrorLogger } from "./error-logger.js";
 import { createTelemetryClient } from "./telemetry.js";
-import { createPoeApiClient, type PoeApiClient } from "./api-client.js";
 import { createDefaultCommandRunner } from "./command-runner.js";
 import type { PromptFn, LoggerFn } from "./types.js";
 import type { HttpClient } from "./http.js";
 import type { CommandRunner } from "../utils/prerequisites.js";
 import { getDefaultProviders } from "../providers/index.js";
-import type {
-  ChatServiceFactory,
-  ChatServiceFactoryOptions,
-  AgentSession
-} from "./chat.js";
 
 export interface CliDependencies {
   fs: FileSystem;
@@ -51,7 +45,6 @@ export interface CliDependencies {
   suppressCommanderOutput?: boolean;
   httpClient?: HttpClient;
   commandRunner?: CommandRunner;
-  chatServiceFactory?: ChatServiceFactory;
 }
 
 export interface CliContainer {
@@ -65,9 +58,7 @@ export interface CliContainer {
   readonly contextFactory: CommandContextFactory;
   readonly registry: ReturnType<typeof createServiceRegistry>;
   readonly httpClient: HttpClient;
-  readonly poeApiClient: PoeApiClient;
   readonly commandRunner: CommandRunner;
-  readonly chatServiceFactory: ChatServiceFactory;
   readonly telemetryLogger: ScopedLogger;
   readonly providers: ProviderAdapter[];
   readonly dependencies: CliDependencies;
@@ -115,19 +106,6 @@ export function createCliContainer(
   const commandRunner =
     dependencies.commandRunner ?? createDefaultCommandRunner();
 
-  const chatServiceFactory: ChatServiceFactory =
-    dependencies.chatServiceFactory ??
-    (async (options) => {
-      const { createAgentSession } = (await import(
-        "../services/agent-session.js"
-      )) as {
-        createAgentSession: (
-          input: ChatServiceFactoryOptions
-        ) => Promise<AgentSession>;
-      };
-      return await createAgentSession(options);
-    });
-
   const promptLibrary = createPromptLibrary();
 
   const options = createOptionResolvers({
@@ -173,9 +151,7 @@ export function createCliContainer(
     contextFactory,
     registry,
     httpClient,
-    poeApiClient: createPoeApiClient(httpClient),
     commandRunner,
-    chatServiceFactory,
     telemetryLogger,
     providers,
     dependencies

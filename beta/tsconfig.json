@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "types": ["vitest/globals"],
+    "paths": {
+      "poe-code/dist/*": ["../dist/*"]
+    }
+  },
+  "include": ["src", "tests", "vitest.config.ts"],
+  "exclude": ["dist"]
+}

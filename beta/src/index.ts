@@ -1,6 +1,6 @@
 #!/usr/bin/env node
+import { createCliMain, isCliInvocation } from "poe-code/dist/cli/bootstrap.js";
 import { createProgram } from "./cli/program.js";
-import { createCliMain, isCliInvocation } from "./cli/bootstrap.js";
 
 const main = createCliMain(createProgram);
 

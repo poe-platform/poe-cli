@@ -1,5 +1,14 @@
 import path from "node:path";
-import type { FsLike } from "../services/agent-task-registry.js";
+
+type SyncFileSystem = {
+  appendFileSync(file: string, data: string): void;
+  existsSync(path: string): boolean;
+  mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  renameSync(oldPath: string, newPath: string): void;
+  statSync(path: string): { size: number };
+  unlinkSync(path: string): void;
+  writeFileSync(path: string, data: string, options?: { encoding?: BufferEncoding }): void;
+};
 
 export interface ErrorContext {
   operation?: string;
@@ -20,7 +29,7 @@ export interface ErrorLogEntry {
 }
 
 export interface ErrorLoggerOptions {
-  fs: FsLike;
+  fs: SyncFileSystem;
   logDir: string;
   logToStderr?: boolean;
   maxSize?: number;
@@ -32,7 +41,7 @@ const DEFAULT_MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const DEFAULT_MAX_BACKUPS = 5;
 
 export class ErrorLogger {
-  private readonly fs: FsLike;
+  private readonly fs: SyncFileSystem;
   private readonly logFilePath: string;
   private readonly logToStderr: boolean;
   private readonly maxSize: number;
