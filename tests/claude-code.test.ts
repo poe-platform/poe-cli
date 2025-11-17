@@ -43,6 +43,7 @@ describe("claude-code service", () => {
             ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
             ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
             ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+            ANTHROPIC_VERTEX: "true",
             CUSTOM: "value"
           },
           model: "Claude-Sonnet-4.5",
@@ -89,7 +90,8 @@ describe("claude-code service", () => {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
             ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
             ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+            ANTHROPIC_VERTEX: "true"
           },
           model: "Claude-Sonnet-4.5"
         },
@@ -137,7 +139,8 @@ describe("claude-code service", () => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -188,6 +191,7 @@ describe("claude-code service", () => {
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
         ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true",
         CUSTOM: "value"
       },
       model: "Claude-Sonnet-4.5"
@@ -218,6 +222,7 @@ describe("claude-code service", () => {
     expect(parsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("Claude-Haiku-4.5");
     expect(parsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("Claude-Sonnet-4.5");
     expect(parsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("Claude-Opus-4.1");
+    expect(parsed.env.ANTHROPIC_VERTEX).toBe("true");
   });
 
   it("spawns the claude CLI with the provided prompt and args", async () => {

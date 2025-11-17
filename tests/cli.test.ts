@@ -274,7 +274,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -634,7 +635,8 @@ beforeEach(() => {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
             ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
             ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+            ANTHROPIC_VERTEX: "true"
           },
           model: "Claude-Sonnet-4.5"
         },
@@ -705,7 +707,8 @@ beforeEach(() => {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
             ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
             ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+            ANTHROPIC_VERTEX: "true"
           },
           model: "Claude-Sonnet-4.5"
         },
@@ -797,7 +800,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -1067,7 +1071,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -1156,7 +1161,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -1191,7 +1197,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });
@@ -1796,7 +1803,8 @@ beforeEach(() => {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_VERTEX: "true"
       },
       model: "Claude-Sonnet-4.5"
     });

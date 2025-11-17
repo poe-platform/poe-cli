@@ -39,7 +39,8 @@ const CLAUDE_ENV_SHAPE = {
     ANTHROPIC_BASE_URL: true,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
     ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: true
+    ANTHROPIC_DEFAULT_OPUS_MODEL: true,
+    ANTHROPIC_VERTEX: true
   },
   model: true
 } as const;
@@ -76,7 +77,8 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
           ANTHROPIC_BASE_URL: "https://api.poe.com",
           ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
           ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
-          ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
+          ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS,
+          ANTHROPIC_VERTEX: "true"
         },
         model: options.defaultModel
       })
