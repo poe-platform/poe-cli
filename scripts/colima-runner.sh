@@ -52,11 +52,19 @@ if colima status --profile "${profile}" >/dev/null 2>&1; then
   colima_running=true
 fi
 
+if [ "${colima_running}" = true ]; then
+  if ! colima ssh --profile "${profile}" "test -f '${mount_target}/package.json' || test -f '${mount_target}/package-lock.json'" >/dev/null 2>&1; then
+    echo "Colima profile '${profile}' is running without the required mount. Restarting profile to apply ${repo_root}."
+    colima stop --profile "${profile}"
+    colima_running=false
+  fi
+fi
+
 if [ "${colima_running}" != true ]; then
   colima "${colima_args[@]}"
 fi
 
-docker_run_common=(docker run --rm -it -v "${repo_root}:${mount_target}:rw" -w "${mount_target}")
+docker_run_common=(docker run --rm -it -v "${mount_target}:${mount_target}:rw" -w "${mount_target}")
 
 if [ "${#credentials_volume[@]}" -gt 0 ]; then
   docker_run_common+=("${credentials_volume[@]}")
