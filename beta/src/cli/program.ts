@@ -17,7 +17,7 @@ import {
   registerSpawnCommand
 } from "poe-code/dist/cli/commands/spawn.js";
 import { registerPrerequisitesCommand } from "./commands/prerequisites.js";
-import { registerRemoveCommand } from "./commands/remove.js";
+import { registerRemoveCommand } from "poe-code/dist/cli/commands/remove.js";
 import { registerInteractiveCommand } from "./commands/interactive.js";
 import { createPoeCodeSpawnHandler } from "./spawn-handlers.js";
 
