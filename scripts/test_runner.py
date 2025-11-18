@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -39,11 +40,17 @@ def colima_runner_path() -> Path:
 
 def run_commands() -> None:
   runner = str(colima_runner_path())
+  env = os.environ.copy()
+  docker_args = env.get("COLIMA_DOCKER_ARGS", "")
+  extra_arg = "-e POE_CODE_STDERR_LOGS=1"
+  if "POE_CODE_STDERR_LOGS" not in docker_args:
+    docker_args = f"{docker_args} {extra_arg}".strip()
+  env["COLIMA_DOCKER_ARGS"] = docker_args
   for index, commands in enumerate(COMMAND_GROUPS, start=1):
     print(f"\n=== Command group {index} ===", flush=True)
     for command in commands:
       print(f"\n>>> {command}", flush=True)
-      subprocess.run([runner, command], check=True)
+      subprocess.run([runner, command], check=True, env=env)
 
 
 def main() -> int:

@@ -329,6 +329,57 @@ describe("claude-code service", () => {
     });
   });
 
+  it("includes stdout and stderr when the Claude health check command fails", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "FAIL_STDOUT\n",
+      stderr: "FAIL_STDERR\n",
+      exitCode: 1
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    claudeService.registerClaudeCodePrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain("stdout:\nFAIL_STDOUT\n");
+    expect(caught?.message).toContain("stderr:\nFAIL_STDERR\n");
+  });
+
+  it("includes stdout and stderr when the Claude health check output is unexpected", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "WRONG\n",
+      stderr: "WARN\n",
+      exitCode: 0
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    claudeService.registerClaudeCodePrerequisites(manager);
+
+    let caught: Error | undefined;
+    try {
+      await manager.run("after");
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain('expected "CLAUDE_CODE_OK" but received "WRONG"');
+    expect(caught?.message).toContain("stdout:\nWRONG\n");
+    expect(caught?.message).toContain("stderr:\nWARN\n");
+  });
+
   it("falls back to Windows path lookup when which is unavailable", async () => {
     const captured: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {

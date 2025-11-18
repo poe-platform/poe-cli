@@ -23,10 +23,14 @@ export function createCliMain(
     const promptRunner = createPromptRunner(promptsLibrary);
 
     // Create global error logger for bootstrapping errors
+    const shouldLogToStderr =
+      process.env.POE_CODE_STDERR_LOGS === "1" ||
+      process.env.POE_CODE_STDERR_LOGS === "true";
+
     const errorLogger = new ErrorLogger({
       fs: nodeFsSync as any,
       logDir,
-      logToStderr: false // Only log to file at this level
+      logToStderr: shouldLogToStderr
     });
 
     const program = programFactory({

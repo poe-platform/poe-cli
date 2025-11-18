@@ -47,6 +47,7 @@ export class ErrorLogger {
   private readonly maxSize: number;
   private readonly maxBackups: number;
   private readonly now: () => Date;
+  private fileLoggingAvailable: boolean;
 
   constructor(options: ErrorLoggerOptions) {
     this.fs = options.fs;
@@ -56,7 +57,7 @@ export class ErrorLogger {
     this.maxBackups = options.maxBackups ?? DEFAULT_MAX_BACKUPS;
     this.now = options.now ?? (() => new Date());
 
-    this.ensureLogDirectory();
+    this.fileLoggingAvailable = this.ensureLogDirectory();
   }
 
   logError(error: Error | string, context?: ErrorContext): void {
@@ -119,15 +120,19 @@ export class ErrorLogger {
   }
 
   private writeEntry(entry: ErrorLogEntry): void {
+    if (!this.fileLoggingAvailable) {
+      this.writeToStderr(entry, true);
+      return;
+    }
+
     this.rotateIfNeeded();
 
     const formattedEntry = this.formatEntry(entry);
     try {
       this.fs.appendFileSync(this.logFilePath, formattedEntry + "\n");
-    } catch (writeError) {
-      // Fallback to stderr if file write fails
-      console.error("Failed to write to error log file:", writeError);
-      this.writeToStderr(entry);
+    } catch {
+      this.fileLoggingAvailable = false;
+      this.writeToStderr(entry, true);
     }
   }
 
@@ -145,12 +150,20 @@ export class ErrorLogger {
     return parts.join("\n");
   }
 
-  private writeToStderr(entry: ErrorLogEntry): void {
+  private writeToStderr(entry: ErrorLogEntry, force = false): void {
+    if (!this.logToStderr && !force) {
+      return;
+    }
+
     const formatted = this.formatEntry(entry);
     console.error(formatted);
   }
 
   private rotateIfNeeded(): void {
+    if (!this.fileLoggingAvailable) {
+      return;
+    }
+
     try {
       if (!this.fs.existsSync(this.logFilePath)) {
         return;
@@ -198,7 +211,7 @@ export class ErrorLogger {
     return `${this.logFilePath}.${index}`;
   }
 
-  private ensureLogDirectory(): void {
+  private ensureLogDirectory(): boolean {
     const directory = path.dirname(this.logFilePath);
     try {
       if (!this.fs.existsSync(directory)) {
@@ -207,10 +220,13 @@ export class ErrorLogger {
       if (!this.fs.existsSync(this.logFilePath)) {
         this.fs.writeFileSync(this.logFilePath, "", { encoding: "utf8" });
       }
+
+      return true;
     } catch (error) {
       // Silently fail during directory creation - this is expected in test environments
       // where the log directory path may not exist. The logger will still function,
       // just without file logging capability.
+      return false;
     }
   }
 }

@@ -37,7 +37,7 @@ fi
 
 colima_args=(start --profile "${profile}" --mount "${repo_root}:${mount_target}:w")
 if [ "${credentials_dir_host}" != "${repo_root}" ]; then
-  colima_args+=(--mount "${credentials_dir_host}:${credentials_dir_host}")
+  colima_args+=(--mount "${credentials_dir_host}:${credentials_dir_host}:w")
 fi
 credentials_volume=(-v "${credentials_dir_host}:${credentials_mount}:rw")
 log_export_volume=()

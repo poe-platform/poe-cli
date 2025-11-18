@@ -8,7 +8,10 @@ import type {
   PrerequisiteDefinition,
   PrerequisiteManager
 } from "../utils/prerequisites.js";
-import { createBinaryExistsCheck } from "../utils/prerequisites.js";
+import {
+  createBinaryExistsCheck,
+  formatCommandRunnerResult
+} from "../utils/prerequisites.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -293,14 +296,22 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
         runCommand
       });
       if (result.exitCode !== 0) {
+        const detail = formatCommandRunnerResult(result);
         throw new Error(
-          `Claude CLI health check failed with exit code ${result.exitCode}.`
+          [
+            `Claude CLI health check failed with exit code ${result.exitCode}.`,
+            detail
+          ].join("\n")
         );
       }
       const output = result.stdout.trim();
       if (output !== "CLAUDE_CODE_OK") {
+        const detail = formatCommandRunnerResult(result);
         throw new Error(
-          `Claude CLI health check failed: expected "CLAUDE_CODE_OK" but received "${output}".`
+          [
+            `Claude CLI health check failed: expected "CLAUDE_CODE_OK" but received "${output}".`,
+            detail
+          ].join("\n")
         );
       }
     }

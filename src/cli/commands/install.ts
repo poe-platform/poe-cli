@@ -3,10 +3,8 @@ import type { CliContainer } from "../container.js";
 import {
   buildProviderContext,
   createExecutionResources,
-  registerProviderPrerequisites,
   resolveCommandFlags,
-  resolveServiceAdapter,
-  runPrerequisites
+  resolveServiceAdapter
 } from "./shared.js";
 import { resolveServiceArgument } from "./configure.js";
 
@@ -49,18 +47,12 @@ export async function executeInstall(
     resources
   );
 
-  registerProviderPrerequisites(adapter, resources);
-
-  await runPrerequisites(adapter, resources, "before");
-
   await container.registry.invoke(service, "install", async (entry) => {
     if (!entry.install) {
       throw new Error(`Service "${service}" does not support install.`);
     }
     await entry.install(providerContext);
   });
-
-  await runPrerequisites(adapter, resources, "after");
 
   const dryMessage =
     service === "claude-code"

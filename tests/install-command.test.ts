@@ -27,7 +27,7 @@ function createBaseProgram(): Command {
 }
 
 describe("install command", () => {
-  it("installs a registered provider and runs prerequisites", async () => {
+  it("installs a registered provider without running prerequisites", async () => {
     const fs = createMemFs();
     const logs: string[] = [];
     const container = createCliContainer({
@@ -46,14 +46,8 @@ describe("install command", () => {
       resolvePaths() {
         return {};
       },
-      registerPrerequisites(manager) {
-        manager.registerAfter({
-          id: "after-check",
-          description: "after check",
-          async run() {
-            callOrder.push("after");
-          }
-        });
+      registerPrerequisites() {
+        callOrder.push("register-prerequisites");
       },
       async install() {
         callOrder.push("install");
@@ -72,7 +66,7 @@ describe("install command", () => {
       "test-service"
     ]);
 
-    expect(callOrder).toEqual(["install", "after"]);
+    expect(callOrder).toEqual(["install"]);
     expect(logs.some((line) => line.includes("Installed Test Service"))).toBe(
       true
     );
