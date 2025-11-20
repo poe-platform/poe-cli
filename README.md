@@ -5,13 +5,7 @@
 ## Quick Start
 
 ```bash
-npx poe-code configure claude-code
-```
-
-## Installation
-
-```bash
-npm i -g poe-code
+npx poe-code@latest configure claude-code
 ```
 
 ## Usage
@@ -19,49 +13,49 @@ npm i -g poe-code
 ### Authenticate Once
 
 ```bash
-poe-code login
+npx poe-code@latest login
 ```
 
 ### Install Coding CLIs
 
 ```bash
 # Claude Code
-poe-code install claude-code
+npx poe-code@latest install claude-code
 
 # Codex
-poe-code install codex
+npx poe-code@latest install codex
 
 # OpenCode
-poe-code install opencode
+npx poe-code@latest install opencode
 ```
 
 ### Configure Coding CLIs
 
 ```bash
 # Claude Code
-poe-code configure claude-code
+npx poe-code@latest configure claude-code
 
 # Codex
-poe-code configure codex
+npx poe-code@latest configure codex
 
 # OpenCode
-poe-code configure opencode
+npx poe-code@latest configure opencode
 
 ```
 
 ### Uninstall Configuration
 
 ```bash
-poe-code remove codex
+npx poe-code@latest remove codex
 ```
 
-Removes the Codex settings previously applied by `poe-code configure codex`.
+Removes the Codex settings previously applied by `npx poe-code@latest configure codex`.
 
 ### Spawn a coding agent
 
 ```bash
 # Claude Code
-poe-code spawn claude-code "Explain this error message"
+npx poe-code@latest spawn claude-code "Explain this error message"
 ```
 
 ### Optional Flags
