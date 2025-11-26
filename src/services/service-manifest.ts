@@ -171,7 +171,12 @@ export function jsonMergeMutation<Options>(config: {
     target: config.target,
     label: config.label,
     async transform({ content, context }) {
-      const current = parseJson(content);
+      const targetPath = resolveValue(config.target, context);
+      const current = await parseJsonWithRecovery({
+        content,
+        fs: context.fs,
+        targetPath
+      });
       const desired = resolveValue(config.value, context);
       const merged = deepMergeJson(current, desired);
       const serialized = serializeJson(merged);
@@ -526,6 +531,42 @@ function parseJson(content: string | null): JsonObject {
     throw new Error("Expected JSON object for manifest-managed file.");
   }
   return parsed;
+}
+
+async function parseJsonWithRecovery(input: {
+  content: string | null;
+  fs: FileSystem;
+  targetPath: string;
+}): Promise<JsonObject> {
+  try {
+    return parseJson(input.content);
+  } catch {
+    await backupInvalidJsonDocument(input);
+    return {};
+  }
+}
+
+async function backupInvalidJsonDocument(input: {
+  content: string | null;
+  fs: FileSystem;
+  targetPath: string;
+}): Promise<void> {
+  if (input.content == null) {
+    return;
+  }
+  const backupPath = createInvalidDocumentBackupPath(input.targetPath);
+  await input.fs.writeFile(backupPath, input.content, { encoding: "utf8" });
+}
+
+function createInvalidDocumentBackupPath(targetPath: string): string {
+  return `${targetPath}.invalid-${createTimestamp()}.json`;
+}
+
+function createTimestamp(): string {
+  return new Date()
+    .toISOString()
+    .replaceAll(":", "-")
+    .replaceAll(".", "-");
 }
 
 function serializeJson(value: JsonObject): string {
