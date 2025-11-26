@@ -22,7 +22,7 @@ Key commands
 - poe-code test: verify the key by pinging EchoBot
 - poe-code query "message": quick request to the default model
 - poe-code configure claude-code: write ~/.claude/settings.json and run health checks
-- poe-code configure codex --model gpt-5 --reasoning-effort medium: write ~/.codex/config.toml
+- poe-code configure codex --model GPT-5.1-Codex --reasoning-effort medium: write ~/.codex/config.toml
 - poe-code --dry-run <command ...>: preview file mutations only
 
 Models and defaults

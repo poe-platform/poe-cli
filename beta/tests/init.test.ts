@@ -23,7 +23,7 @@ describe("initProject", () => {
       cwd,
       projectName,
       apiKey: "secret",
-      model: "gpt-5"
+      model: "GPT-5.1-Codex"
     });
 
     const projectDir = path.join(cwd, projectName);
@@ -36,7 +36,7 @@ describe("initProject", () => {
     );
 
     expect(env).toContain("POE_API_KEY=secret");
-    expect(env).toContain("MODEL=gpt-5");
+    expect(env).toContain("MODEL=GPT-5.1-Codex");
     expect(mainPy).toContain("Tell me a joke");
     expect(requirements).toContain("openai");
   });
@@ -53,7 +53,7 @@ describe("initProject", () => {
         cwd,
         projectName,
         apiKey: "secret",
-        model: "gpt-5"
+        model: "GPT-5.1-Codex"
       })
     ).rejects.toThrow(/already exists/i);
   });

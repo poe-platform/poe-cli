@@ -17,7 +17,7 @@ const outputPath = readEnv('GITHUB_OUTPUT');
 
 const providers = new Map([
   ['claude-code', { service: 'claude-code', model: 'Claude-Sonnet-4.5' }],
-  ['codex', { service: 'codex', model: 'Claude-Sonnet-4.5' }],
+  ['codex', { service: 'codex', model: 'GPT-5.1-Codex' }],
   ['open-code', { service: 'opencode', model: 'Claude-Sonnet-4.5' }],
   ['opencode', { service: 'opencode', model: 'Claude-Sonnet-4.5' }],
   ['poe-code', { service: 'poe-code agent', model: 'Claude-Sonnet-4.5' }]

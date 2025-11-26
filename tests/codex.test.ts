@@ -29,13 +29,13 @@ describe("codex service", () => {
       fs,
       configPath,
       apiKey: "sk-test",
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
     });
 
     const content = await fs.readFile(configPath, "utf8");
-    expect(content.trim()).toContain('model = "gpt-5"');
+    expect(content.trim()).toContain('model = "GPT-5.1-Codex"');
     expect(content.trim()).toContain('model_reasoning_effort = "medium"');
     expect(content.trim()).toContain(
       'experimental_bearer_token = "sk-test"'
@@ -56,7 +56,7 @@ describe("codex service", () => {
       fs,
       configPath,
       apiKey: "sk-test",
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
     });
@@ -77,7 +77,7 @@ describe("codex service", () => {
       fs,
       configPath,
       apiKey: "sk-test",
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       reasoningEffort: "medium",
       timestamp: () => "20240101T000000"
     });
@@ -107,7 +107,7 @@ describe("codex service", () => {
       configPath,
       [
         'model_provider="poe"',
-        'model="gpt-5"',
+        'model="GPT-5.1-Codex"',
         'model_reasoning_effort="medium"',
         "",
         "[model_providers.poe]",
@@ -137,7 +137,7 @@ describe("codex service", () => {
       configPath,
       [
         'model_provider="poe"',
-        'model="gpt-5"',
+        'model="GPT-5.1-Codex"',
         'model_reasoning_effort="medium"',
         "",
         "[model_providers.poe]",
@@ -168,7 +168,7 @@ describe("codex service", () => {
       fs,
       configPath,
       apiKey: "sk-test",
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       reasoningEffort: "medium",
       timestamp: () => "20240202T101010"
     });
@@ -197,14 +197,14 @@ describe("codex service", () => {
       fs,
       configPath,
       apiKey: "sk-test",
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       reasoningEffort: "medium",
       timestamp: () => "20240303T030303"
     });
 
     const doc = parseTomlDocument(await fs.readFile(configPath, "utf8"));
     expect(doc["model_provider"]).toBe("poe");
-    expect(doc["model"]).toBe("gpt-5");
+    expect(doc["model"]).toBe("GPT-5.1-Codex");
     expect(doc["model_reasoning_effort"]).toBe("medium");
     expect(doc["features"]).toEqual({ foo: true });
 

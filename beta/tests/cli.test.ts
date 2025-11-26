@@ -531,7 +531,7 @@ beforeEach(() => {
       "configure",
       "codex",
       "--model",
-      "gpt-5",
+      "GPT-5.1-Codex",
       "--reasoning-effort",
       "medium"
     ]);
@@ -782,7 +782,7 @@ beforeEach(() => {
       "--api-key",
       "secret",
       "--model",
-      "gpt-5"
+      "GPT-5.1-Codex"
     ]);
 
     const envFile = await fs.readFile(
@@ -982,7 +982,7 @@ beforeEach(() => {
       "configure",
       "codex",
       "--model",
-      "gpt-5",
+      "GPT-5.1-Codex",
       "--reasoning-effort",
       "medium"
     ]);
@@ -1573,7 +1573,7 @@ beforeEach(() => {
       "cli",
       "query",
       "--model",
-      "gpt-5",
+      "GPT-5.1-Codex",
       "Hello there"
     ]);
 
@@ -1586,10 +1586,10 @@ beforeEach(() => {
       Authorization: "Bearer secret-key"
     });
     expect(JSON.parse(call.init?.body as string)).toEqual({
-      model: "gpt-5",
+      model: "GPT-5.1-Codex",
       messages: [{ role: "user", content: "Hello there" }]
     });
-    expect(logs).toContain("gpt-5: Hello from Poe");
+    expect(logs).toContain("GPT-5.1-Codex: Hello from Poe");
   });
 
   it("queries poe api with the default model when none is provided", async () => {
@@ -1689,7 +1689,7 @@ beforeEach(() => {
     const logs: string[] = [];
     const chatStub = createChatServiceStub({
       content: "Completed the task.",
-      model: "gpt-5"
+      model: "GPT-5.1-Codex"
     });
     const program = createProgram({
       fs,
@@ -1722,7 +1722,7 @@ beforeEach(() => {
       }
     });
     expect(logs).toContain(
-      "Agent response (gpt-5): Completed the task."
+      "Agent response (GPT-5.1-Codex): Completed the task."
     );
 
     const credentialsPath = path.join(
