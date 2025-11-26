@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import noHelperFunctions from './eslint-rules/no-helper-functions.ts';
 
 const tsFiles = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'];
 const jsFiles = ['**/*.js', '**/*.cjs', '**/*.mjs'];
@@ -43,6 +44,13 @@ export default tseslint.config(
       ...tseslint.configs.recommended,
       eslintConfigPrettier,
     ],
+    plugins: {
+      'custom': {
+        rules: {
+          'no-helper-functions': noHelperFunctions,
+        },
+      },
+    },
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'warn',
@@ -51,6 +59,7 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       'no-control-regex': 'off',
+      'custom/no-helper-functions': 'warn',
     },
   }
 );
