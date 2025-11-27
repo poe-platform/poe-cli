@@ -2,29 +2,25 @@
 
 ## Goals
 
-- Collapse “manifest + adapter” into a single provider service object per provider.
-- Eliminate helper/proxy exports (`configureFoo`, `spawnFoo`, `registerFooPrerequisites`, etc.) so logic lives directly on the service.
-- Share the tiny building blocks (chmod, path quoting, key-helper removal) via `src/providers/provider-helpers.ts` instead of bespoke helpers.
-- Leave README untouched until explicitly approved.
+- Keep a single provider service per tool while expressing configure/remove work declaratively through manifests.
+- Drop redundant helpers or proxies so the manifest and service live side by side in the same module.
+- Share only truly generic helpers (chmod mutation, single-quote escaping) from `src/providers/provider-helpers.ts`.
+- Leave the README untouched unless explicitly asked.
 
 ## Tasks
 
-1. **Single Service Definition**
-   - Make `ProviderService` the only export for a provider. The service should directly expose `id`, `summary`, `configure`, `remove`, `install`, `spawn`, `resolvePaths`, and `registerPrerequisites` (if any) without intermediate wrappers.
-   - Build whatever manifest/mutation arrays are required inline inside the same module, but keep them private helpers; no spreading or `Object.assign` to stitch objects together.
+1. **Declarative configure/remove**
+   - For each provider (Claude Code, Codex, OpenCode, Roo Code) describe filesystem, template, JSON, and script work as `ServiceMutation[]` definitions.
+   - Feed those definitions into `createServiceManifest` so the provider exports `configure`/`remove` directly from the manifest without extra wrappers.
 
-2. **Inline Mutation Execution**
-   - Execute `configure`/`remove` logic imperatively inside each service (plain `fs` calls, JSON/TOML transforms, etc.) instead of feeding a manifest runner.
-   - Delete `runServiceManifest`, `configureFoo`, `removeFoo`, `spawnFoo`, `registerFooPrerequisites`, and every other proxy export—the service owns the full flow.
-   - Drop legacy flag plumbing such as `mutationHooks`; services should derive execution metadata from context rather than threading options.
+2. **Single service entity**
+   - Export exactly one `ProviderService` per provider; eliminate `configureFoo`, `spawnFoo`, `registerFooPrerequisites`, or similar proxy exports.
+   - Keep install/spawn/prerequisite logic colocated with the service so there is no second layer of indirection.
 
-3. **Move Shared Helpers**
-   - Relocate generic utilities (`makeExecutableMutation`, chmod helpers, path quoting, key-helper removal, etc.) into `src/providers/provider-helpers.ts`.
-   - Ensure provider modules import these shared helpers instead of redefining tiny wrappers.
+3. **Shared helpers only when generic**
+   - Keep reusable helpers such as chmod mutations or single-quoted path rendering inside `src/providers/provider-helpers.ts`.
+   - Push provider-specific details (scripts, JSON shapes, template contexts) into the provider module rather than scattering helper files.
 
-4. **Update Consumers**
-   - Point every CLI command, registry lookup, lint/test helper, and any tool that shells into providers directly at the service object—no helper imports remain.
-
-5. **Clean Up Types & Tests**
-   - Delete configure/remove option interfaces that only existed for the old helper exports.
-   - Update tests to call the consolidated service (or the CLI command that uses it). Tests must stay valuable—remove or rewrite cases that only existed to cover the deleted proxies.
+4. **CLI + registry alignment**
+   - Make sure CLI commands and the service registry call the provider services directly.
+   - Let the manifest executor surface logging/instrumentation so providers do not replicate boilerplate for hooks or dry-run reporting.
