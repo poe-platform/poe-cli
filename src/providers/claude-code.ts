@@ -150,23 +150,34 @@ export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Claude CLI via npm."
 };
 
+export type InstallClaudeCodeOptions = InstallContext;
+
 export interface SpawnClaudeCodeOptions {
   prompt: string;
   args?: string[];
   runCommand: CommandRunner;
 }
 
-export type InstallClaudeCodeOptions = InstallContext;
+const CLAUDE_SPAWN_DEFAULTS = [
+  "--allowedTools",
+  "Bash,Read",
+  "--permission-mode",
+  "acceptEdits",
+  "--output-format",
+  "text"
+] as const;
+
+function buildClaudeArgs(prompt: string, extraArgs?: string[]): string[] {
+  return ["-p", prompt, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
+}
 
 function createClaudeCliHealthCheck(): PrerequisiteDefinition {
   return {
     id: "claude-cli-health",
     description: "Claude CLI health check must succeed",
     async run({ runCommand }) {
-      const result = await spawnClaudeCode({
-        prompt: "Output exactly: CLAUDE_CODE_OK",
-        runCommand
-      });
+      const args = buildClaudeArgs("Output exactly: CLAUDE_CODE_OK");
+      const result = await runCommand("claude", args);
       if (result.exitCode !== 0) {
         const detail = formatCommandRunnerResult(result);
         throw new Error(
@@ -223,17 +234,7 @@ export const claudeCodeService: ProviderService<
     });
   },
   async spawn(context, options) {
-    const defaults = [
-      "-p",
-      options.prompt,
-      "--allowedTools",
-      "Bash,Read",
-      "--permission-mode",
-      "acceptEdits",
-      "--output-format",
-      "text"
-    ];
-    const args = [...defaults, ...(options.args ?? [])];
+    const args = buildClaudeArgs(options.prompt, options.args);
     return context.command.runCommand("claude", args);
   }
 };

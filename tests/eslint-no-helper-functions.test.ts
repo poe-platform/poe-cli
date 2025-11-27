@@ -249,9 +249,9 @@ const fn = (x) => obj.method(x);`,
       },
       // Void method wrapper in object
       {
-        code: `const obj = {
+        code: `const service = {
           registerPrerequisites(manager) {
-            registerClaudeCodePrerequisites(manager);
+            other.registerPrerequisites?.(manager);
           }
         };`,
         errors: [{ messageId: 'noHelperFunction' }],

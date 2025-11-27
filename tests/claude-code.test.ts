@@ -390,7 +390,7 @@ describe("claude-code service", () => {
       runCommand
     });
 
-    claudeService.registerClaudeCodePrerequisites(manager);
+    claudeService.claudeCodeService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {
