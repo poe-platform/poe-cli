@@ -67,12 +67,10 @@ async function executeRemove(
       if (!entry.remove) {
         throw new Error(`Service "${service}" does not support remove.`);
       }
-      return await entry.remove(
-        {
-          fs: providerContext.command.fs,
-          options: payload
-        }
-      );
+      return await entry.remove({
+        ...providerContext,
+        options: payload
+      });
     }
   );
 

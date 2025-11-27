@@ -5,7 +5,6 @@ import type { FileSystem } from "../src/utils/file-system.js";
 import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
-import type { ProviderContext } from "../src/cli/service-registry.js";
 import type {
   CodexConfigureOptions,
   CodexRemoveOptions
@@ -40,22 +39,52 @@ describe("codex service", () => {
     configPath
   };
 
+  function createProviderContext(
+    options: CodexConfigureOptions | CodexRemoveOptions
+  ) {
+    return {
+      env: {
+        homeDir: home,
+        platform: "linux",
+        variables: {}
+      } as any,
+      paths: {
+        configPath
+      },
+      command: {
+        fs,
+        prerequisites: createPrerequisiteManager({
+          isDryRun: false,
+          runCommand: vi.fn()
+        }),
+        runCommand: vi.fn(),
+        complete: vi.fn()
+      },
+      logger: {
+        context: { dryRun: false, verbose: false, scope: "test" },
+        info: vi.fn(),
+        dryRun: vi.fn(),
+        error: vi.fn(),
+        verbose: vi.fn()
+      },
+      options
+    };
+  }
+
   async function configureCodex(
     overrides: Partial<CodexConfigureOptions> = {}
   ): Promise<void> {
-    await codexService.codexService.configure({
-      fs,
-      options: { ...baseConfigureOptions, ...overrides }
-    });
+    await codexService.codexService.configure(
+      createProviderContext({ ...baseConfigureOptions, ...overrides })
+    );
   }
 
   async function removeCodex(
     overrides: Partial<CodexRemoveOptions> = {}
   ): Promise<boolean> {
-    return codexService.codexService.remove({
-      fs,
-      options: { ...baseRemoveOptions, ...overrides }
-    });
+    return codexService.codexService.remove(
+      createProviderContext({ ...baseRemoveOptions, ...overrides })
+    );
   }
 
   it("writes codex config from template", async () => {

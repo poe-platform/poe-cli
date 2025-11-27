@@ -2,7 +2,6 @@ import type { CliEnvironment } from "./environment.js";
 import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
-import type { FileSystem } from "../utils/file-system.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -20,10 +19,12 @@ export interface ProviderContext<TPaths = Record<string, string>> {
   logger: ScopedLogger;
 }
 
-export interface ServiceExecutionContext<Options> {
-  fs: FileSystem;
+export type ProviderExecutionContext<
+  Options,
+  TPaths = Record<string, string>
+> = ProviderContext<TPaths> & {
   options: Options;
-}
+};
 
 export interface ProviderService<
   TPaths = Record<string, string>,
@@ -38,10 +39,10 @@ export interface ProviderService<
     after?: string[];
   };
   configure(
-    context: ServiceExecutionContext<TConfigure>
+    context: ProviderExecutionContext<TConfigure, TPaths>
   ): Promise<void>;
   remove(
-    context: ServiceExecutionContext<TRemove>
+    context: ProviderExecutionContext<TRemove, TPaths>
   ): Promise<boolean>;
   name: string;
   label: string;

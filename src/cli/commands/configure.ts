@@ -92,12 +92,10 @@ export async function executeConfigure(
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
     }
-    await entry.configure(
-      {
-        fs: providerContext.command.fs,
-        options: payload
-      }
-    );
+    await entry.configure({
+      ...providerContext,
+      options: payload
+    });
   });
 
   const dryMessage =
