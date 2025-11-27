@@ -1,13 +1,10 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { ServiceRunOptions } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
 import type {
   CommandRunner,
-  CommandRunnerResult,
-  PrerequisiteDefinition,
-  PrerequisiteManager
+  PrerequisiteDefinition
 } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
@@ -162,17 +159,14 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed OpenCode CLI via npm."
 };
 
-export interface ConfigureOpenCodeOptions {
+export interface ConfigureOpenCodeOptions
+  extends OpenCodeConfigureManifestOptions {
   fs: FileSystem;
-  configPath: string;
-  authPath: string;
-  apiKey: string;
 }
 
-export interface RemoveOpenCodeOptions {
+export interface RemoveOpenCodeOptions
+  extends OpenCodeRemoveManifestOptions {
   fs: FileSystem;
-  configPath: string;
-  authPath: string;
 }
 
 export interface SpawnOpenCodeOptions {
@@ -181,48 +175,7 @@ export interface SpawnOpenCodeOptions {
   runCommand: CommandRunner;
 }
 
-export async function configureOpenCode(
-  options: ConfigureOpenCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  const { fs, ...manifestOptions } = options;
-  await openCodeManifest.configure(
-    {
-      fs,
-      options: manifestOptions
-    },
-    runOptions
-  );
-}
-
-export async function removeOpenCode(
-  options: RemoveOpenCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  const { fs, ...manifestOptions } = options;
-  return openCodeManifest.remove(
-    {
-      fs,
-      options: manifestOptions
-    },
-    runOptions
-  );
-}
-
 export type InstallOpenCodeOptions = InstallContext;
-
-export async function spawnOpenCode(
-  options: SpawnOpenCodeOptions
-): Promise<CommandRunnerResult> {
-  const args = ["run", options.prompt, ...(options.args ?? [])];
-  return options.runCommand("opencode", args);
-}
-
-export function registerOpenCodePrerequisites(
-  prerequisites: PrerequisiteManager
-): void {
-  prerequisites.registerAfter(createOpenCodeHealthCheck());
-}
 
 function createOpenCodeVersionCheck(): PrerequisiteDefinition {
   return {
@@ -244,10 +197,8 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
     id: "opencode-cli-health",
     description: "OpenCode CLI health check must succeed",
     async run({ runCommand }) {
-      const result = await spawnOpenCode({
-        prompt: "Output exactly: OPEN_CODE_OK",
-        runCommand
-      });
+      const args = ["run", "Output exactly: OPEN_CODE_OK"];
+      const result = await runCommand("opencode", args);
       if (result.exitCode !== 0) {
         const detail = formatCommandRunnerResult(result);
         throw new Error(
@@ -292,7 +243,9 @@ export const openCodeService: ProviderService<
       authPath: env.resolveHomePath(".local", "share", "opencode", "auth.json")
     };
   },
-  registerPrerequisites: registerOpenCodePrerequisites,
+  registerPrerequisites(manager) {
+    manager.registerAfter(createOpenCodeHealthCheck());
+  },
   async install(context) {
     await runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, {
       isDryRun: context.logger.context.dryRun,
@@ -301,10 +254,7 @@ export const openCodeService: ProviderService<
     });
   },
   async spawn(context, options) {
-    return await spawnOpenCode({
-      prompt: options.prompt,
-      args: options.args,
-      runCommand: context.command.runCommand
-    });
+    const args = ["run", options.prompt, ...(options.args ?? [])];
+    return context.command.runCommand("opencode", args);
   }
 };

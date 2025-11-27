@@ -25,21 +25,19 @@ describe("codex service", () => {
     vol.mkdirSync(home, { recursive: true });
   });
 
-  const baseConfigureOptions: codexService.CodexConfigureOptions = {
-    fs,
+  const baseConfigureOptions: codexService.CodexConfigureOptions["options"] = {
     configPath,
     apiKey: "sk-test",
     model: "GPT-5.1-Codex",
     reasoningEffort: "medium"
   };
 
-  const baseRemoveOptions: codexService.CodexRemoveOptions = {
-    fs,
+  const baseRemoveOptions: codexService.CodexRemoveOptions["options"] = {
     configPath
   };
 
   async function configureCodex(
-    overrides: Partial<codexService.CodexConfigureOptions> = {}
+    overrides: Partial<codexService.CodexConfigureOptions["options"]> = {}
   ): Promise<void> {
     await codexService.codexService.configure({
       fs,
@@ -48,7 +46,7 @@ describe("codex service", () => {
   }
 
   async function removeCodex(
-    overrides: Partial<codexService.CodexRemoveOptions> = {}
+    overrides: Partial<codexService.CodexRemoveOptions["options"]> = {}
   ): Promise<boolean> {
     return codexService.codexService.remove({
       fs,

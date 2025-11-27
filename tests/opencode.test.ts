@@ -29,15 +29,18 @@ describe("opencode service", () => {
     vol.mkdirSync(homeDir, { recursive: true });
   });
 
+  const baseConfigureOptions: opencodeService.OpenCodeConfigureOptions["options"] = {
+    configPath,
+    authPath,
+    apiKey: "sk-test"
+  };
+
   async function configureOpenCode(
-    overrides: Partial<opencodeService.ConfigureOpenCodeOptions> = {}
+    overrides: Partial<typeof baseConfigureOptions> = {}
   ): Promise<void> {
-    await opencodeService.configureOpenCode({
+    await opencodeService.openCodeService.configure({
       fs,
-      configPath,
-      authPath,
-      apiKey: "sk-test",
-      ...overrides
+      options: { ...baseConfigureOptions, ...overrides }
     });
   }
 
@@ -152,11 +155,24 @@ describe("opencode service", () => {
       stderr: "",
       exitCode: 0
     }));
+    const providerContext = {
+      env: {} as any,
+      paths: {
+        configPath,
+        authPath
+      },
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: { dryRun: false, verbose: false }
+      }
+    } as unknown as import("../src/cli/service-registry.js").ProviderContext;
 
-    const result = await opencodeService.spawnOpenCode({
+    const result = await opencodeService.openCodeService.spawn(providerContext, {
       prompt: "List all files",
-      args: ["--format", "markdown"],
-      runCommand
+      args: ["--format", "markdown"]
     });
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
@@ -186,7 +202,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.registerOpenCodePrerequisites(manager);
+    opencodeService.openCodeService.registerPrerequisites?.(manager);
     await manager.run("after");
 
     expect(calls.map((entry) => entry.command)).toEqual(["opencode"]);
@@ -207,7 +223,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.registerOpenCodePrerequisites(manager);
+    opencodeService.openCodeService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {
@@ -232,7 +248,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.registerOpenCodePrerequisites(manager);
+    opencodeService.openCodeService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {

@@ -1,10 +1,7 @@
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import {
-  configureOpenCode as baseConfigureOpenCode,
-  OPEN_CODE_INSTALL_DEFINITION,
-  registerOpenCodePrerequisites as baseRegisterOpenCodePrerequisites,
-  removeOpenCode as baseRemoveOpenCode,
-  spawnOpenCode as baseSpawnOpenCode
+  openCodeService as baseOpenCodeService,
+  OPEN_CODE_INSTALL_DEFINITION
 } from "poe-code/dist/providers/opencode.js";
 import type {
   ConfigureOpenCodeOptions,
@@ -12,6 +9,7 @@ import type {
   SpawnOpenCodeOptions,
   InstallOpenCodeOptions
 } from "poe-code/dist/providers/opencode.js";
+import { runServiceInstall } from "poe-code/dist/services/service-install.js";
 
 export type {
   ConfigureOpenCodeOptions,
@@ -20,13 +18,18 @@ export type {
   InstallOpenCodeOptions
 } from "poe-code/dist/providers/opencode.js";
 
-export function configureOpenCode(
+export async function configureOpenCode(
   options: ConfigureOpenCodeOptions
 ): Promise<void> {
-  return baseConfigureOpenCode(options);
+  await baseOpenCodeService.configure({
+    fs: options.fs,
+    options: {
+      configPath: options.configPath,
+      authPath: options.authPath,
+      apiKey: options.apiKey
+    }
+  });
 }
-
-import { runServiceInstall } from "poe-code/dist/services/service-install.js";
 
 export function installOpenCode(
   options: InstallOpenCodeOptions
@@ -35,19 +38,28 @@ export function installOpenCode(
 }
 
 export function registerOpenCodePrerequisites(
-  manager: Parameters<typeof baseRegisterOpenCodePrerequisites>[0]
+  manager: Parameters<NonNullable<
+    typeof baseOpenCodeService.registerPrerequisites
+  >>[0]
 ): void {
-  baseRegisterOpenCodePrerequisites(manager);
+  baseOpenCodeService.registerPrerequisites?.(manager);
 }
 
 export async function removeOpenCode(
   options: RemoveOpenCodeOptions
 ): Promise<boolean> {
-  return baseRemoveOpenCode(options);
+  return baseOpenCodeService.remove({
+    fs: options.fs,
+    options: {
+      configPath: options.configPath,
+      authPath: options.authPath
+    }
+  });
 }
 
 export function spawnOpenCode(
   options: SpawnOpenCodeOptions
 ): Promise<CommandRunnerResult> {
-  return baseSpawnOpenCode(options);
+  const args = ["run", options.prompt, ...(options.args ?? [])];
+  return options.runCommand("opencode", args);
 }
