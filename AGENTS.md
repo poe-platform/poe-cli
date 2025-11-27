@@ -28,11 +28,6 @@ Use `npm run lint:workflows`
 
 Regexes are not allowed. When modifying existing files, you must parse them and deep merge them. If you run into unsupported file e.g. yaml, install parser library. 
 
-# Beta
-
-Features should only live in either main or beta.
-When moving from beta to main, or vice versa, move files, don't duplicate files.
-
 # Readme
 
 You are not allowed to add anything to readme without user's permission. Upon feature completion, ask user whether readme should be updated.

@@ -11,13 +11,8 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
-      'beta/dist/**',
       'vscode-extension/out/**',
       'vscode-extension/node_modules/**',
-      'beta/vscode-extension/out/**',
-      'beta/vscode-extension/node_modules/**',
-      'beta/vscode-extension/preview/public/**',
-      'beta/vscode-extension/preview/node_modules/**',
       '**/*.d.ts',
     ],
   },

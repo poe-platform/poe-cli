@@ -47,7 +47,7 @@ jobs:
           SERVICES: ${{ steps.select_service.outputs.services }}
           MENU_LABEL: ${{ steps.select_service.outputs.menu_label }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          LOGO_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/beta/vscode-extension/poe-logo.png
+          LOGO_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/docs/assets/poe-logo.png
         with:
           script: |-
             const issueNumber = Number(process.env.ISSUE_NUMBER);

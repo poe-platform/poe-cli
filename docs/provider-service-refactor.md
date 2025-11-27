@@ -5,7 +5,6 @@
 - Collapse “manifest + adapter” into a single provider service object per provider.
 - Eliminate helper/proxy exports (`configureFoo`, `spawnFoo`, `registerFooPrerequisites`, etc.) so logic lives directly on the service.
 - Share the tiny building blocks (chmod, path quoting, key-helper removal) via `src/providers/provider-helpers.ts` instead of bespoke helpers.
-- Keep beta parity by *moving* functionality when needed, never duplicating files between `src/` and `beta/`.
 - Leave README untouched until explicitly approved.
 
 ## Tasks
@@ -24,8 +23,7 @@
    - Ensure provider modules import these shared helpers instead of redefining tiny wrappers.
 
 4. **Update Consumers**
-   - Point every CLI command, registry lookup, lint/test helper, and beta entry point directly at the service object—no helper imports remain.
-   - When migrating logic between `beta/` and `src/`, move files instead of copy/paste; feature lives in exactly one place.
+   - Point every CLI command, registry lookup, lint/test helper, and any tool that shells into providers directly at the service object—no helper imports remain.
 
 5. **Clean Up Types & Tests**
    - Delete configure/remove option interfaces that only existed for the old helper exports.

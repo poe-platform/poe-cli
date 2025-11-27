@@ -39,12 +39,6 @@ npm test            # execute the Vitest suite (required before committing)
 - Builds output to `dist/`; the published package exposes `dist/index.js` as the
   `poe-code` binary.
 
-## Beta Workspace
-
-Experimental agent features, the VSCode extension, and the preview webview now
-live in [`beta/`](beta/README.md). Run `npm install` inside that directory and
-use the scripts defined in `beta/package.json` when working on those packages.
-
 ## Testing
 
 - `npm test` runs `vitest run`; append `-- --watch` during TDD.
