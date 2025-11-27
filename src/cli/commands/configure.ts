@@ -88,10 +88,6 @@ export async function executeConfigure(
     context: providerContext
   });
 
-  const runOptions = resources.mutationHooks
-    ? { hooks: resources.mutationHooks }
-    : undefined;
-
   await container.registry.invoke(service, "configure", async (entry) => {
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
@@ -100,8 +96,7 @@ export async function executeConfigure(
       {
         fs: providerContext.command.fs,
         options: payload
-      },
-      runOptions
+      }
     );
   });
 

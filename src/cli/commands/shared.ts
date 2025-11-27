@@ -6,14 +6,11 @@ import type {
 } from "../service-registry.js";
 import {
   createLoggingCommandRunner,
-  createMutationLogger,
   createPrerequisiteHooks,
   normalizePhase,
-  type CommandContext,
-  type MutationLogEntry
+  type CommandContext
 } from "../context.js";
 import type { ScopedLogger } from "../logger.js";
-import type { ServiceMutationHooks } from "../../services/service-manifest.js";
 import type { PrerequisitePhase } from "../../utils/prerequisites.js";
 
 export interface CommandFlags {
@@ -25,8 +22,6 @@ export interface CommandFlags {
 export interface ExecutionResources {
   logger: ScopedLogger;
   context: CommandContext;
-  mutationHooks?: ServiceMutationHooks;
-  recordMutation?: (entry: MutationLogEntry) => void;
 }
 
 export function resolveCommandFlags(program: Command): CommandFlags {
@@ -57,15 +52,9 @@ export function createExecutionResources(
     runner
   });
 
-  const mutationHooks = createMutationLogger(baseLogger, {
-    collector: context.recordMutation
-  });
-
   return {
     logger: baseLogger,
-    context,
-    mutationHooks,
-    recordMutation: context.recordMutation
+    context
   };
 }
 

@@ -1,13 +1,15 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import type { ProviderService } from "../cli/service-registry.js";
-import { isJsonObject, type JsonObject } from "../utils/json.js";
 import {
-  ensureDirectory,
-  jsonMergeMutation,
-  runServiceMutations,
-  type ServiceMutation
-} from "../services/service-manifest.js";
+  deepMergeJson,
+  isJsonObject,
+  type JsonObject
+} from "../utils/json.js";
+import {
+  readJsonFile,
+  writeJsonFile
+} from "./provider-helpers.js";
 
 const DEFAULT_RATE_LIMIT_SECONDS = 0;
 
@@ -17,7 +19,7 @@ export interface RooCodePaths extends Record<string, string> {
   autoImportPath: string;
 }
 
-type RooCodeConfigureManifestOptions = {
+export type RooCodeConfigureOptions = {
   configPath: string;
   settingsPath: string;
   configName: string;
@@ -28,112 +30,80 @@ type RooCodeConfigureManifestOptions = {
   rateLimitSeconds?: number;
 };
 
-type RooCodeRemoveManifestOptions = {
+export type RooCodeRemoveOptions = {
   configPath: string;
   settingsPath: string;
   configName: string;
   autoImportPath: string;
 };
 
-function createConfigMutation(): ServiceMutation<RooCodeConfigureManifestOptions> {
-  return {
-    kind: "transformFile",
-    label: "Merge Roo configuration",
-    target: ({ options }) => options.configPath,
-    async transform({ content, context }) {
-      const existing = content ? parseJson(content) : {};
-      const nextConfig: JsonObject = { ...existing };
+async function mergeRooConfig(
+  fs: FileSystem,
+  options: RooCodeConfigureOptions
+): Promise<void> {
+  const { data, raw } = await readJsonFile(fs, options.configPath);
+  const nextConfig: JsonObject = { ...data };
 
-      const providerProfiles = cloneObject(
-        nextConfig.providerProfiles
-      );
-      const apiConfigs = cloneObject(providerProfiles.apiConfigs);
-      const existingEntry = cloneObject(
-        apiConfigs[context.options.configName]
-      );
-      const modeApiConfigs = cloneObject(providerProfiles.modeApiConfigs);
+  const providerProfiles = cloneObject(nextConfig.providerProfiles);
+  const apiConfigs = cloneObject(providerProfiles.apiConfigs);
+  const existingEntry = cloneObject(apiConfigs[options.configName]);
+  const modeApiConfigs = cloneObject(providerProfiles.modeApiConfigs);
 
-      const profileId =
-        readString(existingEntry.id) ?? generateProfileId();
-      const entry: JsonObject = {
-        id: profileId,
-        apiProvider: "openai",
-        openAiApiKey: context.options.apiKey,
-        openAiModelId: context.options.model,
-        openAiBaseUrl: context.options.baseUrl,
-        rateLimitSeconds:
-          context.options.rateLimitSeconds ?? DEFAULT_RATE_LIMIT_SECONDS,
-        diffEnabled: true
-      };
-
-      apiConfigs[context.options.configName] = entry;
-      providerProfiles.apiConfigs = apiConfigs;
-      providerProfiles.modeApiConfigs = modeApiConfigs;
-      providerProfiles.currentApiConfigName = context.options.configName;
-
-      nextConfig.providerProfiles = providerProfiles;
-
-      const serialized = `${JSON.stringify(nextConfig, null, 2)}\n`;
-      return {
-        content: serialized,
-        changed: serialized !== content
-      };
-    }
+  const profileId = readString(existingEntry.id) ?? generateProfileId();
+  const entry: JsonObject = {
+    id: profileId,
+    apiProvider: "openai",
+    openAiApiKey: options.apiKey,
+    openAiModelId: options.model,
+    openAiBaseUrl: options.baseUrl,
+    rateLimitSeconds:
+      options.rateLimitSeconds ?? DEFAULT_RATE_LIMIT_SECONDS,
+    diffEnabled: true
   };
+
+  apiConfigs[options.configName] = entry;
+  providerProfiles.apiConfigs = apiConfigs;
+  providerProfiles.modeApiConfigs = modeApiConfigs;
+  providerProfiles.currentApiConfigName = options.configName;
+
+  nextConfig.providerProfiles = providerProfiles;
+
+  await writeJsonFile(fs, options.configPath, nextConfig, raw);
 }
 
-function createRemoveConfigMutation(): ServiceMutation<RooCodeRemoveManifestOptions> {
-  return {
-    kind: "transformFile",
-    label: "Remove Roo configuration",
-    target: ({ options }) => options.configPath,
-    async transform({ content, context }) {
-      if (content == null) {
-        return { content: null, changed: false };
-      }
-      const existing = parseJson(content);
-      if (!isJsonObject(existing.providerProfiles)) {
-        return { content, changed: false };
-      }
-
-      const providerProfiles = cloneObject(existing.providerProfiles);
-      const apiConfigs = cloneObject(providerProfiles.apiConfigs);
-      if (!(context.options.configName in apiConfigs)) {
-        return { content, changed: false };
-      }
-
-      delete apiConfigs[context.options.configName];
-      providerProfiles.apiConfigs = apiConfigs;
-
-      const remainingNames = Object.keys(apiConfigs);
-      if (remainingNames.length === 0) {
-        providerProfiles.currentApiConfigName = "";
-      } else if (
-        providerProfiles.currentApiConfigName === context.options.configName
-      ) {
-        providerProfiles.currentApiConfigName = remainingNames[0];
-      }
-
-      if (!isJsonObject(providerProfiles.modeApiConfigs)) {
-        providerProfiles.modeApiConfigs = {};
-      }
-
-      const nextConfig: JsonObject = { ...existing, providerProfiles };
-      const serialized = `${JSON.stringify(nextConfig, null, 2)}\n`;
-      return {
-        content: serialized,
-        changed: serialized !== content
-      };
-    }
-  };
-}
-
-function parseJson(content: string): JsonObject {
-  const parsed = JSON.parse(content);
-  if (!isJsonObject(parsed)) {
-    throw new Error("Expected JSON object for Roo Code configuration.");
+async function removeRooConfig(
+  fs: FileSystem,
+  options: RooCodeRemoveOptions
+): Promise<boolean> {
+  const { data, raw } = await readJsonFile(fs, options.configPath);
+  if (!isJsonObject(data.providerProfiles)) {
+    return false;
   }
-  return parsed;
+
+  const providerProfiles = cloneObject(data.providerProfiles);
+  const apiConfigs = cloneObject(providerProfiles.apiConfigs);
+  if (!(options.configName in apiConfigs)) {
+    return false;
+  }
+
+  delete apiConfigs[options.configName];
+  providerProfiles.apiConfigs = apiConfigs;
+
+  const remainingNames = Object.keys(apiConfigs);
+  if (remainingNames.length === 0) {
+    providerProfiles.currentApiConfigName = "";
+  } else if (
+    providerProfiles.currentApiConfigName === options.configName
+  ) {
+    providerProfiles.currentApiConfigName = remainingNames[0];
+  }
+
+  if (!isJsonObject(providerProfiles.modeApiConfigs)) {
+    providerProfiles.modeApiConfigs = {};
+  }
+
+  const nextConfig: JsonObject = { ...data, providerProfiles };
+  return writeJsonFile(fs, options.configPath, nextConfig, raw);
 }
 
 function cloneObject(value: unknown): JsonObject {
@@ -195,49 +165,25 @@ function formatAutoImportPath(homeDir: string, targetPath: string): string {
 
 export const rooCodeService: ProviderService<
   RooCodePaths,
-  RooCodeConfigureManifestOptions,
-  RooCodeRemoveManifestOptions
+  RooCodeConfigureOptions,
+  RooCodeRemoveOptions
 > = {
   id: "roo-code",
   summary: "Configure Roo Code auto-import to use the Poe API.",
-  async configure(context, runOptions) {
-    const mutations: ServiceMutation<
-      RooCodeConfigureManifestOptions
-    >[] = [
-      ensureDirectory({
-        path: ({ options }) => path.dirname(options.configPath),
-        label: "Ensure Roo configuration directory"
-      }),
-      createConfigMutation(),
-      ensureDirectory({
-        path: ({ options }) => path.dirname(options.settingsPath),
-        label: "Ensure VSCode settings directory"
-      }),
-      jsonMergeMutation({
-        target: ({ options }) => options.settingsPath,
-        label: "Configure Roo auto-import path",
-        value: ({ options }) =>
-          ({
-            "roo-cline.autoImportSettingsPath": options.autoImportPath
-          }) as JsonObject
-      })
-    ];
-
-    await runServiceMutations(mutations, context, {
-      manifestId: "roo-code",
-      hooks: runOptions?.hooks,
-      trackChanges: false
-    });
+  async configure(context) {
+    const { fs, options } = context;
+    await fs.mkdir(path.dirname(options.configPath), { recursive: true });
+    await mergeRooConfig(fs, options);
+    await fs.mkdir(path.dirname(options.settingsPath), { recursive: true });
+    const settingsDoc = await readJsonFile(fs, options.settingsPath);
+    const mergedSettings = deepMergeJson(settingsDoc.data, {
+      "roo-cline.autoImportSettingsPath": options.autoImportPath
+    } as JsonObject);
+    await writeJsonFile(fs, options.settingsPath, mergedSettings, settingsDoc.raw);
   },
-  remove(context, runOptions) {
-    const mutations: ServiceMutation<
-      RooCodeRemoveManifestOptions
-    >[] = [createRemoveConfigMutation()];
-    return runServiceMutations(mutations, context, {
-      manifestId: "roo-code",
-      hooks: runOptions?.hooks,
-      trackChanges: true
-    });
+  async remove(context) {
+    const { fs, options } = context;
+    return removeRooConfig(fs, options);
   },
   name: "roo-code",
   label: "Roo Code",

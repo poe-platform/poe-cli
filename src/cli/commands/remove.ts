@@ -60,10 +60,6 @@ async function executeRemove(
     context: providerContext
   });
 
-  const runOptions = resources.mutationHooks
-    ? { hooks: resources.mutationHooks }
-    : undefined;
-
   const removed = await container.registry.invoke(
     service,
     "remove",
@@ -75,8 +71,7 @@ async function executeRemove(
         {
           fs: providerContext.command.fs,
           options: payload
-        },
-        runOptions
+        }
       );
     }
   );

@@ -1,16 +1,11 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
+import type { FileSystem } from "../utils/file-system.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
-import {
-  createBackupMutation,
-  ensureDirectory,
-  runServiceMutations,
-  type ServiceMutation
-} from "../services/service-manifest.js";
 import {
   parseTomlDocument,
   serializeTomlDocument,
@@ -23,6 +18,9 @@ import {
   type ServiceInstallDefinition
 } from "../services/service-install.js";
 import { renderTemplate } from "../utils/templates.js";
+import {
+  readFileIfExists
+} from "./provider-helpers.js";
 
 export interface CodexPaths extends Record<string, string> {
   configPath: string;
@@ -201,6 +199,20 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
   };
 }
 
+async function createConfigBackup(
+  fs: FileSystem,
+  targetPath: string,
+  timestamp?: () => string
+): Promise<void> {
+  const content = await readFileIfExists(fs, targetPath);
+  if (content == null) {
+    return;
+  }
+  const stamp = timestamp?.() ?? new Date().toISOString().replaceAll(":", "-");
+  const backupPath = `${targetPath}.backup.${stamp}`;
+  await fs.writeFile(backupPath, content, { encoding: "utf8" });
+}
+
 export const codexService: ProviderService<
   CodexPaths,
   CodexConfigureOptions,
@@ -212,93 +224,61 @@ export const codexService: ProviderService<
   prerequisites: {
     after: ["codex-cli-health"]
   },
-  async configure(context, runOptions) {
-    const mutations: ServiceMutation<CodexConfigureOptions>[] = [
-      ensureDirectory({
-        path: ({ options }) => path.dirname(options.configPath),
-        label: "Ensure Codex config directory"
-      }),
-      createBackupMutation({
-        target: ({ options }) => options.configPath,
-        timestamp: ({ options }) => options.timestamp,
-        label: "Create Codex config backup"
-      }),
-      {
-        kind: "transformFile",
-        target: ({ options }) => options.configPath,
-        label: "Merge Codex configuration",
-        async transform({ content, context }) {
-          let document: TomlTable;
-          if (content == null) {
-            document = {};
-          } else {
-            try {
-              document = parseTomlDocument(content);
-            } catch {
-              document = {};
-            }
-          }
-          const rendered = await renderTemplate(
-            CODEX_CONFIG_TEMPLATE_ID,
-            { ...context.options }
-          );
-          const templateDocument = parseTomlDocument(rendered);
-          const nextTable = mergeTomlTables(document, templateDocument);
-          const nextContent = serializeTomlDocument(nextTable);
-          return {
-            content: nextContent,
-            changed: nextContent !== (content ?? "")
-          };
-        }
-      }
-    ];
+  async configure(context) {
+    const { fs, options } = context;
+    await fs.mkdir(path.dirname(options.configPath), { recursive: true });
+    await createConfigBackup(fs, options.configPath, options.timestamp);
 
-    await runServiceMutations(mutations, context, {
-      manifestId: "codex",
-      hooks: runOptions?.hooks,
-      trackChanges: false
+    const raw = await readFileIfExists(fs, options.configPath);
+    let document: TomlTable = {};
+    if (raw != null) {
+      try {
+        document = parseTomlDocument(raw);
+      } catch {
+        document = {};
+      }
+    }
+
+    const rendered = await renderTemplate(CODEX_CONFIG_TEMPLATE_ID, {
+      ...options
     });
+    const templateDocument = parseTomlDocument(rendered);
+    const nextTable = mergeTomlTables(document, templateDocument);
+    const serialized = serializeTomlDocument(nextTable);
+    if (serialized === (raw ?? "")) {
+      return;
+    }
+    await fs.writeFile(options.configPath, serialized, { encoding: "utf8" });
   },
-  remove(context, runOptions) {
-    const mutations: ServiceMutation<CodexRemoveOptions>[] = [
-      {
-        kind: "transformFile",
-        target: ({ options }) => options.configPath,
-        label: "Remove Codex managed configuration",
-        transform({ content }) {
-          if (content == null) {
-            return { content: null, changed: false };
-          }
+  async remove(context) {
+    const { fs, options } = context;
+    const raw = await readFileIfExists(fs, options.configPath);
+    if (raw == null) {
+      return false;
+    }
 
-          let document: TomlTable;
-          try {
-            document = parseTomlDocument(content);
-          } catch {
-            return { content, changed: false };
-          }
+    let document: TomlTable;
+    try {
+      document = parseTomlDocument(raw);
+    } catch {
+      return false;
+    }
 
-          const result = stripCodexConfiguration(document);
-          if (!result.changed) {
-            return { content, changed: false };
-          }
+    const result = stripCodexConfiguration(document);
+    if (!result.changed) {
+      return false;
+    }
+    if (result.empty) {
+      await fs.unlink(options.configPath);
+      return true;
+    }
 
-          if (result.empty) {
-            return { content: null, changed: true };
-          }
-
-          const nextContent = serializeTomlDocument(document);
-          return {
-            content: nextContent,
-            changed: nextContent !== content
-          };
-        }
-      }
-    ];
-    return runServiceMutations(mutations, context, {
-      manifestId: "codex",
-      hooks: runOptions?.hooks,
-      trackChanges: true
-    });
+    const serialized = serializeTomlDocument(document);
+    if (serialized === raw) {
+      return false;
+    }
+    await fs.writeFile(options.configPath, serialized, { encoding: "utf8" });
+    return true;
   },
   name: "codex",
   label: "Codex",

@@ -14,7 +14,7 @@
    - Build whatever manifest/mutation arrays are required inline inside the same module, but keep them private helpers; no spreading or `Object.assign` to stitch objects together.
 
 2. **Inline Mutation Execution**
-   - Define the configure/remove mutation lists next to the service and execute them directly inside `service.configure`/`service.remove` via a thin runtime helper (e.g., `runServiceMutations`).
+   - Execute `configure`/`remove` logic imperatively inside each service (plain `fs` calls, JSON/TOML transforms, etc.) instead of feeding a manifest runner.
    - Delete `runServiceManifest`, `configureFoo`, `removeFoo`, `spawnFoo`, `registerFooPrerequisites`, and every other proxy export—the service owns the full flow.
    - Drop legacy flag plumbing such as `mutationHooks`; services should derive execution metadata from context rather than threading options.
 

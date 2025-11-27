@@ -6,15 +6,6 @@ import {
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import {
-  ensureDirectory,
-  jsonMergeMutation,
-  jsonPruneMutation,
-  removeFileMutation,
-  runServiceMutations,
-  type ServiceMutation,
-  writeTemplateMutation
-} from "../services/service-manifest.js";
-import {
   runServiceInstall,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
@@ -23,7 +14,15 @@ import {
   CLAUDE_MODEL_SONNET,
   CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
-import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
+import { deepMergeJson, pruneJsonByShape } from "../utils/json.js";
+import { renderTemplate } from "../utils/templates.js";
+import {
+  makeExecutable,
+  quoteSinglePath,
+  readJsonFile,
+  removeFileIfExists,
+  writeJsonFile
+} from "./provider-helpers.js";
 
 export interface ClaudeCodePaths extends Record<string, string> {
   settingsPath: string;
@@ -130,64 +129,47 @@ export const claudeCodeService: ProviderService<
   prerequisites: {
     after: ["claude-cli-health"]
   },
-  async configure(context, runOptions) {
-    const mutations: ServiceMutation<ClaudeCodeConfigureOptions>[] = [
-      ensureDirectory({
-        path: ({ options }) => path.dirname(options.settingsPath),
-        label: "Ensure Claude settings directory"
-      }),
-      writeTemplateMutation({
-        target: ({ options }) => options.keyHelperPath,
-        templateId: KEY_HELPER_TEMPLATE_ID,
-        context: ({ options }) => ({
-          credentialsPathLiteral: quoteSinglePath(options.credentialsPath)
-        }),
-        label: "Write API key helper script"
-      }),
-      makeExecutableMutation({
-        target: ({ options }) => options.keyHelperPath,
-        label: "Make API key helper executable",
-        mode: KEY_HELPER_MODE
-      }),
-      jsonMergeMutation({
-        target: ({ options }) => options.settingsPath,
-        label: "Merge Claude settings",
-        value: ({ options }) => ({
-          apiKeyHelper: options.keyHelperPath,
-          env: {
-            ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
-            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
-            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
-          },
-          model: options.defaultModel
-        })
-      })
-    ];
+  async configure(context) {
+    const { fs, options } = context;
+    await fs.mkdir(path.dirname(options.settingsPath), { recursive: true });
+    await fs.mkdir(path.dirname(options.keyHelperPath), { recursive: true });
 
-    await runServiceMutations(mutations, context, {
-      manifestId: "claude-code",
-      hooks: runOptions?.hooks,
-      trackChanges: false
+    const helperScript = await renderTemplate(KEY_HELPER_TEMPLATE_ID, {
+      credentialsPathLiteral: quoteSinglePath(options.credentialsPath)
     });
+    await fs.writeFile(options.keyHelperPath, helperScript, {
+      encoding: "utf8"
+    });
+    await makeExecutable(fs, options.keyHelperPath, KEY_HELPER_MODE);
+
+    const { data, raw } = await readJsonFile(fs, options.settingsPath);
+    const merged = deepMergeJson(data, {
+      apiKeyHelper: options.keyHelperPath,
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.poe.com",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
+      },
+      model: options.defaultModel
+    });
+    await writeJsonFile(fs, options.settingsPath, merged, raw);
   },
-  remove(context, runOptions) {
-    const mutations: ServiceMutation<ClaudeCodeRemoveOptions>[] = [
-      jsonPruneMutation({
-        target: ({ options }) => options.settingsPath,
-        label: "Prune Claude settings",
-        shape: () => CLAUDE_ENV_SHAPE
-      }),
-      removeFileMutation({
-        target: ({ options }) => options.keyHelperPath,
-        label: "Remove API key helper script"
-      })
-    ];
-    return runServiceMutations(mutations, context, {
-      manifestId: "claude-code",
-      hooks: runOptions?.hooks,
-      trackChanges: true
-    });
+  async remove(context) {
+    const { fs, options } = context;
+    let changed = false;
+    const { data, raw } = await readJsonFile(fs, options.settingsPath);
+    const pruned = pruneJsonByShape(data, CLAUDE_ENV_SHAPE);
+    if (pruned.changed) {
+      changed = true;
+      if (Object.keys(pruned.result).length === 0) {
+        await removeFileIfExists(fs, options.settingsPath);
+      } else {
+        await writeJsonFile(fs, options.settingsPath, pruned.result, raw);
+      }
+    }
+    const removedScript = await removeFileIfExists(fs, options.keyHelperPath);
+    return changed || removedScript;
   },
   name: "claude-code",
   label: "Claude Code",
