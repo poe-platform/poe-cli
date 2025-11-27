@@ -1,7 +1,6 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
 import type { JsonObject } from "../utils/json.js";
-import { deepMergeJson, pruneJsonByShape } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
@@ -12,10 +11,11 @@ import {
   type ServiceInstallDefinition
 } from "../services/service-install.js";
 import {
-  readJsonFile,
-  removeFileIfExists,
-  writeJsonFile
-} from "./provider-helpers.js";
+  createServiceManifest,
+  ensureDirectory,
+  jsonMergeMutation,
+  jsonPruneMutation
+} from "../services/service-manifest.js";
 
 const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
   $schema: "https://opencode.ai/config.json",
@@ -42,6 +42,10 @@ const OPEN_CODE_CONFIG_SHAPE: JsonObject = {
   provider: {
     poe: true
   }
+};
+
+const OPEN_CODE_AUTH_SHAPE: JsonObject = {
+  poe: true
 };
 
 export interface OpenCodePaths extends Record<string, string> {
@@ -125,71 +129,61 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
   };
 }
 
+const openCodeManifest = createServiceManifest<
+  OpenCodeConfigureOptions,
+  OpenCodeRemoveOptions
+>({
+  id: "opencode",
+  summary: "Configure OpenCode CLI to use the Poe API.",
+  prerequisites: {
+    after: ["opencode-cli-health"]
+  },
+  configure: [
+    ensureDirectory({
+      path: ({ options }) => path.dirname(options.configPath),
+      label: "Ensure OpenCode config directory"
+    }),
+    ensureDirectory({
+      path: ({ options }) => path.dirname(options.authPath),
+      label: "Ensure OpenCode auth directory"
+    }),
+    jsonMergeMutation({
+      target: ({ options }) => options.configPath,
+      label: "Merge OpenCode config",
+      value: () => OPEN_CODE_CONFIG_TEMPLATE
+    }),
+    jsonMergeMutation({
+      target: ({ options }) => options.authPath,
+      label: "Merge OpenCode auth",
+      value: ({ options }) => ({
+        poe: {
+          type: "api",
+          key: options.apiKey
+        }
+      })
+    })
+  ],
+  remove: [
+    jsonPruneMutation({
+      target: ({ options }) => options.configPath,
+      label: "Prune OpenCode config",
+      shape: () => OPEN_CODE_CONFIG_SHAPE
+    }),
+    jsonPruneMutation({
+      target: ({ options }) => options.authPath,
+      label: "Remove OpenCode auth entry",
+      shape: () => OPEN_CODE_AUTH_SHAPE
+    })
+  ]
+});
+
 export const openCodeService: ProviderService<
   OpenCodePaths,
   OpenCodeConfigureOptions,
   OpenCodeRemoveOptions,
   { prompt: string; args?: string[] }
 > = {
-  id: "opencode",
-  summary: "Configure OpenCode CLI to use the Poe API.",
-  prerequisites: {
-    after: ["opencode-cli-health"]
-  },
-  async configure(context) {
-    const { fs, options } = context;
-    await fs.mkdir(path.dirname(options.configPath), { recursive: true });
-    await fs.mkdir(path.dirname(options.authPath), { recursive: true });
-
-    const configDoc = await readJsonFile(fs, options.configPath);
-    const mergedConfig = deepMergeJson(
-      configDoc.data,
-      OPEN_CODE_CONFIG_TEMPLATE
-    );
-    await writeJsonFile(fs, options.configPath, mergedConfig, configDoc.raw);
-
-    const authDoc = await readJsonFile(fs, options.authPath);
-    const nextAuth: JsonObject = {
-      ...authDoc.data,
-      poe: {
-        type: "api",
-        key: options.apiKey
-      }
-    };
-    await writeJsonFile(fs, options.authPath, nextAuth, authDoc.raw);
-  },
-  async remove(context) {
-    const { fs, options } = context;
-    let changed = false;
-
-    const configDoc = await readJsonFile(fs, options.configPath);
-    const prunedConfig = pruneJsonByShape(
-      configDoc.data,
-      OPEN_CODE_CONFIG_SHAPE
-    );
-    if (prunedConfig.changed) {
-      changed = true;
-      if (Object.keys(prunedConfig.result).length === 0) {
-        await removeFileIfExists(fs, options.configPath);
-      } else {
-        await writeJsonFile(fs, options.configPath, prunedConfig.result, configDoc.raw);
-      }
-    }
-
-    const authDoc = await readJsonFile(fs, options.authPath);
-    if ("poe" in authDoc.data) {
-      changed = true;
-      const nextAuth = { ...authDoc.data };
-      delete nextAuth.poe;
-      if (Object.keys(nextAuth).length === 0) {
-        await removeFileIfExists(fs, options.authPath);
-      } else {
-        await writeJsonFile(fs, options.authPath, nextAuth, authDoc.raw);
-      }
-    }
-
-    return changed;
-  },
+  ...openCodeManifest,
   name: "opencode",
   label: "OpenCode CLI",
   branding: {

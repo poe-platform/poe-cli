@@ -1,6 +1,5 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { FileSystem } from "../utils/file-system.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
@@ -19,8 +18,10 @@ import {
 } from "../services/service-install.js";
 import { renderTemplate } from "../utils/templates.js";
 import {
-  readFileIfExists
-} from "./provider-helpers.js";
+  createBackupMutation,
+  createServiceManifest,
+  ensureDirectory
+} from "../services/service-manifest.js";
 
 export interface CodexPaths extends Record<string, string> {
   configPath: string;
@@ -199,19 +200,89 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
   };
 }
 
-async function createConfigBackup(
-  fs: FileSystem,
-  targetPath: string,
-  timestamp?: () => string
-): Promise<void> {
-  const content = await readFileIfExists(fs, targetPath);
-  if (content == null) {
-    return;
-  }
-  const stamp = timestamp?.() ?? new Date().toISOString().replaceAll(":", "-");
-  const backupPath = `${targetPath}.backup.${stamp}`;
-  await fs.writeFile(backupPath, content, { encoding: "utf8" });
-}
+const codexManifest = createServiceManifest<
+  CodexConfigureOptions,
+  CodexRemoveOptions
+>({
+  id: "codex",
+  summary: "Configure Codex to use Poe as the model provider.",
+  prerequisites: {
+    after: ["codex-cli-health"]
+  },
+  configure: [
+    ensureDirectory({
+      path: ({ options }) => path.dirname(options.configPath),
+      label: "Ensure Codex config directory"
+    }),
+    createBackupMutation({
+      target: ({ options }) => options.configPath,
+      timestamp: ({ options }) => options.timestamp,
+      label: "Backup Codex config"
+    }),
+    {
+      kind: "transformFile",
+      target: ({ options }) => options.configPath,
+      label: "Merge Codex provider configuration",
+      async transform({ content, context }) {
+        const previous = content ?? "";
+        let document: TomlTable = {};
+        if (content != null) {
+          try {
+            document = parseTomlDocument(content);
+          } catch {
+            document = {};
+          }
+        }
+
+        const rendered = await renderTemplate(CODEX_CONFIG_TEMPLATE_ID, {
+          apiKey: context.options.apiKey,
+          model: context.options.model,
+          reasoningEffort: context.options.reasoningEffort
+        });
+        const templateDocument = parseTomlDocument(rendered);
+        const merged = mergeTomlTables(document, templateDocument);
+        const serialized = serializeTomlDocument(merged);
+        return {
+          content: serialized,
+          changed: serialized !== previous
+        };
+      }
+    }
+  ],
+  remove: [
+    {
+      kind: "transformFile",
+      target: ({ options }) => options.configPath,
+      label: "Prune Codex provider configuration",
+      async transform({ content }) {
+        if (content == null) {
+          return { content: null, changed: false };
+        }
+
+        let document: TomlTable;
+        try {
+          document = parseTomlDocument(content);
+        } catch {
+          return { content, changed: false };
+        }
+
+        const result = stripCodexConfiguration(document);
+        if (!result.changed) {
+          return { content, changed: false };
+        }
+        if (result.empty) {
+          return { content: null, changed: true };
+        }
+
+        const serialized = serializeTomlDocument(document);
+        return {
+          content: serialized,
+          changed: serialized !== content
+        };
+      }
+    }
+  ]
+});
 
 export const codexService: ProviderService<
   CodexPaths,
@@ -219,67 +290,7 @@ export const codexService: ProviderService<
   CodexRemoveOptions,
   { prompt: string; args?: string[] }
 > = {
-  id: "codex",
-  summary: "Configure Codex to use Poe as the model provider.",
-  prerequisites: {
-    after: ["codex-cli-health"]
-  },
-  async configure(context) {
-    const { fs, options } = context;
-    await fs.mkdir(path.dirname(options.configPath), { recursive: true });
-    await createConfigBackup(fs, options.configPath, options.timestamp);
-
-    const raw = await readFileIfExists(fs, options.configPath);
-    let document: TomlTable = {};
-    if (raw != null) {
-      try {
-        document = parseTomlDocument(raw);
-      } catch {
-        document = {};
-      }
-    }
-
-    const rendered = await renderTemplate(CODEX_CONFIG_TEMPLATE_ID, {
-      ...options
-    });
-    const templateDocument = parseTomlDocument(rendered);
-    const nextTable = mergeTomlTables(document, templateDocument);
-    const serialized = serializeTomlDocument(nextTable);
-    if (serialized === (raw ?? "")) {
-      return;
-    }
-    await fs.writeFile(options.configPath, serialized, { encoding: "utf8" });
-  },
-  async remove(context) {
-    const { fs, options } = context;
-    const raw = await readFileIfExists(fs, options.configPath);
-    if (raw == null) {
-      return false;
-    }
-
-    let document: TomlTable;
-    try {
-      document = parseTomlDocument(raw);
-    } catch {
-      return false;
-    }
-
-    const result = stripCodexConfiguration(document);
-    if (!result.changed) {
-      return false;
-    }
-    if (result.empty) {
-      await fs.unlink(options.configPath);
-      return true;
-    }
-
-    const serialized = serializeTomlDocument(document);
-    if (serialized === raw) {
-      return false;
-    }
-    await fs.writeFile(options.configPath, serialized, { encoding: "utf8" });
-    return true;
-  },
+  ...codexManifest,
   name: "codex",
   label: "Codex",
   branding: {
