@@ -1,18 +1,15 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { FileSystem } from "../utils/file-system.js";
-import type {
-  CommandRunner,
-  PrerequisiteDefinition
-} from "../utils/prerequisites.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import {
   createBackupMutation,
-  createServiceManifest,
-  ensureDirectory
+  ensureDirectory,
+  runServiceMutations,
+  type ServiceMutation
 } from "../services/service-manifest.js";
 import {
   parseTomlDocument,
@@ -23,7 +20,6 @@ import {
 } from "../utils/toml.js";
 import {
   runServiceInstall,
-  type InstallContext,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
 import { renderTemplate } from "../utils/templates.js";
@@ -32,7 +28,7 @@ export interface CodexPaths extends Record<string, string> {
   configPath: string;
 }
 
-type CodexConfigureManifestOptions = {
+export type CodexConfigureOptions = {
   configPath: string;
   apiKey: string;
   model: string;
@@ -40,23 +36,9 @@ type CodexConfigureManifestOptions = {
   timestamp?: () => string;
 };
 
-type CodexRemoveManifestOptions = {
+export type CodexRemoveOptions = {
   configPath: string;
 };
-
-export interface CodexConfigureOptions
-  extends CodexConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface CodexRemoveOptions extends CodexRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export interface CodexSpawnOptions {
-  prompt: string;
-  args: string[];
-}
 
 const CODEX_PROVIDER_ID = "poe";
 const CODEX_BASE_URL = "https://api.poe.com/v1";
@@ -65,90 +47,6 @@ const CODEX_TOP_LEVEL_FIELDS = [
   "model_reasoning_effort"
 ] as const;
 const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
-
-const codexManifest = createServiceManifest<
-  CodexConfigureManifestOptions,
-  CodexRemoveManifestOptions
->({
-  id: "codex",
-  summary: "Configure Codex to use Poe as the model provider.",
-  prerequisites: {
-    after: ["codex-cli-health"]
-  },
-  configure: [
-    ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
-      label: "Ensure Codex config directory"
-    }),
-    createBackupMutation({
-      target: ({ options }) => options.configPath,
-      timestamp: ({ options }) => options.timestamp,
-      label: "Create Codex config backup"
-    }),
-    {
-      kind: "transformFile",
-      target: ({ options }) => options.configPath,
-      label: "Merge Codex configuration",
-      async transform({ content, context }) {
-        let document: TomlTable;
-        if (content == null) {
-          document = {};
-        } else {
-          try {
-            document = parseTomlDocument(content);
-          } catch {
-            document = {};
-          }
-        }
-        const rendered = await renderTemplate(
-          CODEX_CONFIG_TEMPLATE_ID,
-          { ...context.options }
-        );
-        const templateDocument = parseTomlDocument(rendered);
-        const nextTable = mergeTomlTables(document, templateDocument);
-        const nextContent = serializeTomlDocument(nextTable);
-        return {
-          content: nextContent,
-          changed: nextContent !== (content ?? "")
-        };
-      }
-    }
-  ],
-  remove: [
-    {
-      kind: "transformFile",
-      target: ({ options }) => options.configPath,
-      label: "Remove Codex managed configuration",
-      transform({ content }) {
-        if (content == null) {
-          return { content: null, changed: false };
-        }
-
-        let document: TomlTable;
-        try {
-          document = parseTomlDocument(content);
-        } catch {
-          return { content, changed: false };
-        }
-
-        const result = stripCodexConfiguration(document);
-        if (!result.changed) {
-          return { content, changed: false };
-        }
-
-        if (result.empty) {
-          return { content: null, changed: true };
-        }
-
-        const nextContent = serializeTomlDocument(document);
-        return {
-          content: nextContent,
-          changed: nextContent !== content
-        };
-      }
-    }
-  ]
-});
 
 export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
@@ -169,23 +67,6 @@ export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   postChecks: [createCodexVersionCheck()],
   successMessage: "Installed Codex CLI via npm."
 };
-
-export interface ConfigureCodexOptions
-  extends CodexConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface RemoveCodexOptions extends CodexRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export interface SpawnCodexOptions {
-  prompt: string;
-  args?: string[];
-  runCommand: CommandRunner;
-}
-
-export type InstallCodexOptions = InstallContext;
 
 function stripCodexConfiguration(
   document: TomlTable
@@ -322,11 +203,103 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
 
 export const codexService: ProviderService<
   CodexPaths,
-  CodexConfigureManifestOptions,
-  CodexRemoveManifestOptions,
-  CodexSpawnOptions
+  CodexConfigureOptions,
+  CodexRemoveOptions,
+  { prompt: string; args?: string[] }
 > = {
-  ...codexManifest,
+  id: "codex",
+  summary: "Configure Codex to use Poe as the model provider.",
+  prerequisites: {
+    after: ["codex-cli-health"]
+  },
+  async configure(context, runOptions) {
+    const mutations: ServiceMutation<CodexConfigureOptions>[] = [
+      ensureDirectory({
+        path: ({ options }) => path.dirname(options.configPath),
+        label: "Ensure Codex config directory"
+      }),
+      createBackupMutation({
+        target: ({ options }) => options.configPath,
+        timestamp: ({ options }) => options.timestamp,
+        label: "Create Codex config backup"
+      }),
+      {
+        kind: "transformFile",
+        target: ({ options }) => options.configPath,
+        label: "Merge Codex configuration",
+        async transform({ content, context }) {
+          let document: TomlTable;
+          if (content == null) {
+            document = {};
+          } else {
+            try {
+              document = parseTomlDocument(content);
+            } catch {
+              document = {};
+            }
+          }
+          const rendered = await renderTemplate(
+            CODEX_CONFIG_TEMPLATE_ID,
+            { ...context.options }
+          );
+          const templateDocument = parseTomlDocument(rendered);
+          const nextTable = mergeTomlTables(document, templateDocument);
+          const nextContent = serializeTomlDocument(nextTable);
+          return {
+            content: nextContent,
+            changed: nextContent !== (content ?? "")
+          };
+        }
+      }
+    ];
+
+    await runServiceMutations(mutations, context, {
+      manifestId: "codex",
+      hooks: runOptions?.hooks,
+      trackChanges: false
+    });
+  },
+  remove(context, runOptions) {
+    const mutations: ServiceMutation<CodexRemoveOptions>[] = [
+      {
+        kind: "transformFile",
+        target: ({ options }) => options.configPath,
+        label: "Remove Codex managed configuration",
+        transform({ content }) {
+          if (content == null) {
+            return { content: null, changed: false };
+          }
+
+          let document: TomlTable;
+          try {
+            document = parseTomlDocument(content);
+          } catch {
+            return { content, changed: false };
+          }
+
+          const result = stripCodexConfiguration(document);
+          if (!result.changed) {
+            return { content, changed: false };
+          }
+
+          if (result.empty) {
+            return { content: null, changed: true };
+          }
+
+          const nextContent = serializeTomlDocument(document);
+          return {
+            content: nextContent,
+            changed: nextContent !== content
+          };
+        }
+      }
+    ];
+    return runServiceMutations(mutations, context, {
+      manifestId: "codex",
+      hooks: runOptions?.hooks,
+      trackChanges: true
+    });
+  },
   name: "codex",
   label: "Codex",
   branding: {

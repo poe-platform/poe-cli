@@ -19,27 +19,21 @@ export function createProviderStub<
   const id = overrides.id ?? overrides.name;
   const summary = overrides.summary ?? overrides.label;
 
-  const baseManifest = {
+  const defaultConfigure = async (
+    _context: ServiceExecutionContext<ConfigureOptions>,
+    _runOptions?: ServiceRunOptions
+  ): Promise<void> => {};
+
+  const defaultRemove = async (
+    _context: ServiceExecutionContext<RemoveOptions>,
+    _runOptions?: ServiceRunOptions
+  ): Promise<boolean> => false;
+
+  return {
+    ...overrides,
     id,
     summary,
     prerequisites: overrides.prerequisites,
-    configureMutations: [],
-    removeMutations: [],
-    async configure(
-      _context: ServiceExecutionContext<ConfigureOptions>,
-      _runOptions?: ServiceRunOptions
-    ): Promise<void> {},
-    async remove(
-      _context: ServiceExecutionContext<RemoveOptions>,
-      _runOptions?: ServiceRunOptions
-    ): Promise<boolean> {
-      return false;
-    }
-  };
-
-  return {
-    ...baseManifest,
-    ...overrides,
     resolvePaths:
       overrides.resolvePaths ?? ((() => ({} as Paths)) as ProviderService<
         Paths,
@@ -47,7 +41,7 @@ export function createProviderStub<
         RemoveOptions,
         SpawnOptions
       >["resolvePaths"]),
-    configure: overrides.configure ?? baseManifest.configure,
-    remove: overrides.remove ?? baseManifest.remove
+    configure: overrides.configure ?? defaultConfigure,
+    remove: overrides.remove ?? defaultRemove
   };
 }

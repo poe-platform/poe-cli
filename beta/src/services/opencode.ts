@@ -1,22 +1,36 @@
-import type { CommandRunnerResult } from "../utils/prerequisites.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult
+} from "../utils/prerequisites.js";
+import type { FileSystem } from "../utils/file-system.js";
 import {
   openCodeService as baseOpenCodeService,
   OPEN_CODE_INSTALL_DEFINITION
 } from "poe-code/dist/providers/opencode.js";
 import type {
-  ConfigureOpenCodeOptions,
-  RemoveOpenCodeOptions,
-  SpawnOpenCodeOptions,
-  InstallOpenCodeOptions
+  OpenCodeConfigureOptions,
+  OpenCodeRemoveOptions
 } from "poe-code/dist/providers/opencode.js";
-import { runServiceInstall } from "poe-code/dist/services/service-install.js";
+import {
+  runServiceInstall,
+  type InstallContext
+} from "poe-code/dist/services/service-install.js";
 
-export type {
-  ConfigureOpenCodeOptions,
-  RemoveOpenCodeOptions,
-  SpawnOpenCodeOptions,
-  InstallOpenCodeOptions
-} from "poe-code/dist/providers/opencode.js";
+type ConfigureOpenCodeOptions = OpenCodeConfigureOptions & {
+  fs: FileSystem;
+};
+
+type RemoveOpenCodeOptions = OpenCodeRemoveOptions & {
+  fs: FileSystem;
+};
+
+type InstallOpenCodeOptions = InstallContext;
+
+type SpawnOpenCodeOptions = {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+};
 
 export async function configureOpenCode(
   options: ConfigureOpenCodeOptions

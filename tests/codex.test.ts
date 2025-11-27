@@ -6,6 +6,10 @@ import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
+import type {
+  CodexConfigureOptions,
+  CodexRemoveOptions
+} from "../src/providers/codex.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -25,19 +29,19 @@ describe("codex service", () => {
     vol.mkdirSync(home, { recursive: true });
   });
 
-  const baseConfigureOptions: codexService.CodexConfigureOptions["options"] = {
+  const baseConfigureOptions: CodexConfigureOptions = {
     configPath,
     apiKey: "sk-test",
     model: "GPT-5.1-Codex",
     reasoningEffort: "medium"
   };
 
-  const baseRemoveOptions: codexService.CodexRemoveOptions["options"] = {
+  const baseRemoveOptions: CodexRemoveOptions = {
     configPath
   };
 
   async function configureCodex(
-    overrides: Partial<codexService.CodexConfigureOptions["options"]> = {}
+    overrides: Partial<CodexConfigureOptions> = {}
   ): Promise<void> {
     await codexService.codexService.configure({
       fs,
@@ -46,7 +50,7 @@ describe("codex service", () => {
   }
 
   async function removeCodex(
-    overrides: Partial<codexService.CodexRemoveOptions["options"]> = {}
+    overrides: Partial<CodexRemoveOptions> = {}
   ): Promise<boolean> {
     return codexService.codexService.remove({
       fs,

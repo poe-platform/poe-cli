@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as opencodeService from "../src/providers/opencode.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import type { OpenCodeConfigureOptions } from "../src/providers/opencode.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -29,7 +30,7 @@ describe("opencode service", () => {
     vol.mkdirSync(homeDir, { recursive: true });
   });
 
-  const baseConfigureOptions: opencodeService.OpenCodeConfigureOptions["options"] = {
+  const baseConfigureOptions: OpenCodeConfigureOptions = {
     configPath,
     authPath,
     apiKey: "sk-test"

@@ -6,8 +6,8 @@ import * as claudeService from "../src/providers/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import type {
-  ClaudeCodeConfigureManifestOptions,
-  ClaudeCodeRemoveManifestOptions
+  ClaudeCodeConfigureOptions,
+  ClaudeCodeRemoveOptions
 } from "../src/providers/claude-code.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
@@ -30,7 +30,7 @@ describe("claude-code service", () => {
     vol.mkdirSync(home, { recursive: true });
   });
 
-  const baseConfigureOptions: ClaudeCodeConfigureManifestOptions = {
+  const baseConfigureOptions: ClaudeCodeConfigureOptions = {
     apiKey,
     settingsPath,
     keyHelperPath,
@@ -38,13 +38,13 @@ describe("claude-code service", () => {
     defaultModel: "Claude-Sonnet-4.5"
   };
 
-  const baseRemoveOptions: ClaudeCodeRemoveManifestOptions = {
+  const baseRemoveOptions: ClaudeCodeRemoveOptions = {
     settingsPath,
     keyHelperPath
   };
 
   async function configureClaude(
-    overrides: Partial<ClaudeCodeConfigureManifestOptions> = {}
+    overrides: Partial<ClaudeCodeConfigureOptions> = {}
   ): Promise<void> {
     await claudeService.claudeCodeService.configure({
       fs,
@@ -53,7 +53,7 @@ describe("claude-code service", () => {
   }
 
   async function removeClaude(
-    overrides: Partial<ClaudeCodeRemoveManifestOptions> = {}
+    overrides: Partial<ClaudeCodeRemoveOptions> = {}
   ): Promise<boolean> {
     return claudeService.claudeCodeService.remove({
       fs,

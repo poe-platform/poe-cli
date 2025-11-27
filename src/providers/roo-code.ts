@@ -1,13 +1,11 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { ServiceRunOptions } from "../services/service-manifest.js";
-import type { FileSystem } from "../utils/file-system.js";
 import { isJsonObject, type JsonObject } from "../utils/json.js";
 import {
-  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
+  runServiceMutations,
   type ServiceMutation
 } from "../services/service-manifest.js";
 
@@ -36,72 +34,6 @@ type RooCodeRemoveManifestOptions = {
   configName: string;
   autoImportPath: string;
 };
-
-export interface ConfigureRooCodeOptions
-  extends RooCodeConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface RemoveRooCodeOptions
-  extends RooCodeRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export async function configureRooCode(
-  options: ConfigureRooCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  const { fs, ...manifestOptions } = options;
-  await rooCodeManifest.configure(
-    {
-      fs,
-      options: manifestOptions
-    },
-    runOptions
-  );
-}
-
-export async function removeRooCode(
-  options: RemoveRooCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  const { fs, ...manifestOptions } = options;
-  return rooCodeManifest.remove(
-    {
-      fs,
-      options: manifestOptions
-    },
-    runOptions
-  );
-}
-
-const rooCodeManifest = createServiceManifest<
-  RooCodeConfigureManifestOptions,
-  RooCodeRemoveManifestOptions
->({
-  id: "roo-code",
-  summary: "Configure Roo Code auto-import to use the Poe API.",
-  configure: [
-    ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
-      label: "Ensure Roo configuration directory"
-    }),
-    createConfigMutation(),
-    ensureDirectory({
-      path: ({ options }) => path.dirname(options.settingsPath),
-      label: "Ensure VSCode settings directory"
-    }),
-    jsonMergeMutation({
-      target: ({ options }) => options.settingsPath,
-      label: "Configure Roo auto-import path",
-      value: ({ options }) =>
-        ({
-          "roo-cline.autoImportSettingsPath": options.autoImportPath
-        }) as JsonObject
-    })
-  ],
-  remove: [createRemoveConfigMutation()]
-});
 
 function createConfigMutation(): ServiceMutation<RooCodeConfigureManifestOptions> {
   return {
@@ -266,7 +198,47 @@ export const rooCodeService: ProviderService<
   RooCodeConfigureManifestOptions,
   RooCodeRemoveManifestOptions
 > = {
-  ...rooCodeManifest,
+  id: "roo-code",
+  summary: "Configure Roo Code auto-import to use the Poe API.",
+  async configure(context, runOptions) {
+    const mutations: ServiceMutation<
+      RooCodeConfigureManifestOptions
+    >[] = [
+      ensureDirectory({
+        path: ({ options }) => path.dirname(options.configPath),
+        label: "Ensure Roo configuration directory"
+      }),
+      createConfigMutation(),
+      ensureDirectory({
+        path: ({ options }) => path.dirname(options.settingsPath),
+        label: "Ensure VSCode settings directory"
+      }),
+      jsonMergeMutation({
+        target: ({ options }) => options.settingsPath,
+        label: "Configure Roo auto-import path",
+        value: ({ options }) =>
+          ({
+            "roo-cline.autoImportSettingsPath": options.autoImportPath
+          }) as JsonObject
+      })
+    ];
+
+    await runServiceMutations(mutations, context, {
+      manifestId: "roo-code",
+      hooks: runOptions?.hooks,
+      trackChanges: false
+    });
+  },
+  remove(context, runOptions) {
+    const mutations: ServiceMutation<
+      RooCodeRemoveManifestOptions
+    >[] = [createRemoveConfigMutation()];
+    return runServiceMutations(mutations, context, {
+      manifestId: "roo-code",
+      hooks: runOptions?.hooks,
+      trackChanges: true
+    });
+  },
   name: "roo-code",
   label: "Roo Code",
   disabled: true,

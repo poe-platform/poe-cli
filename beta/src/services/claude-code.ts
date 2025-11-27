@@ -1,22 +1,36 @@
-import type { CommandRunnerResult } from "../utils/prerequisites.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult
+} from "../utils/prerequisites.js";
+import type { FileSystem } from "../utils/file-system.js";
 import {
   claudeCodeService as baseClaudeCodeService,
   CLAUDE_CODE_INSTALL_DEFINITION
 } from "poe-code/dist/providers/claude-code.js";
-import { runServiceInstall } from "poe-code/dist/services/service-install.js";
+import {
+  runServiceInstall,
+  type InstallContext
+} from "poe-code/dist/services/service-install.js";
 import type {
-  ConfigureClaudeCodeOptions,
-  InstallClaudeCodeOptions,
-  RemoveClaudeCodeOptions,
-  SpawnClaudeCodeOptions
+  ClaudeCodeConfigureOptions,
+  ClaudeCodeRemoveOptions
 } from "poe-code/dist/providers/claude-code.js";
 
-export type {
-  ConfigureClaudeCodeOptions,
-  InstallClaudeCodeOptions,
-  RemoveClaudeCodeOptions,
-  SpawnClaudeCodeOptions
-} from "poe-code/dist/providers/claude-code.js";
+type ConfigureClaudeCodeOptions = ClaudeCodeConfigureOptions & {
+  fs: FileSystem;
+};
+
+type RemoveClaudeCodeOptions = ClaudeCodeRemoveOptions & {
+  fs: FileSystem;
+};
+
+type InstallClaudeCodeOptions = InstallContext;
+
+type SpawnClaudeCodeOptions = {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+};
 
 export async function configureClaudeCode(
   options: ConfigureClaudeCodeOptions

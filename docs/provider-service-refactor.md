@@ -2,30 +2,31 @@
 
 ## Goals
 
-- Eliminate the “adapter vs service” split so each provider exposes a single object that resolves paths, installs, configures, removes, and spawns.
-- Remove intermediate helper exports (`configureFoo`, `removeFoo`, etc.) and run manifests directly inside the service implementation.
-- Stop piping mutation hooks (or any execution metadata) through option payloads; services should derive everything from context.
-- Ensure CLI commands and utilities interact with the streamlined service shape without reintroducing proxy layers.
+- Collapse “manifest + adapter” into a single provider service object per provider.
+- Eliminate helper/proxy exports (`configureFoo`, `spawnFoo`, `registerFooPrerequisites`, etc.) so logic lives directly on the service.
+- Share the tiny building blocks (chmod, path quoting, key-helper removal) via `src/providers/provider-helpers.ts` instead of bespoke helpers.
+- Keep beta parity by *moving* functionality when needed, never duplicating files between `src/` and `beta/`.
+- Leave README untouched until explicitly approved.
 
 ## Tasks
 
-1. **Define a Single Service Shape**
-   - Update `ProviderService` so `configure`/`remove` receive only business options; hooks and other execution details live on the context.
-   - Strip `mutationHooks` (and similar wiring) from all configure/remove option types and command payload builders.
+1. **Single Service Definition**
+   - Make `ProviderService` the only export for a provider. The service should directly expose `id`, `summary`, `configure`, `remove`, `install`, `spawn`, `resolvePaths`, and `registerPrerequisites` (if any) without intermediate wrappers.
+   - Build whatever manifest/mutation arrays are required inline inside the same module, but keep them private helpers; no spreading or `Object.assign` to stitch objects together.
 
-2. **Inline Manifest Execution**
-   - Keep each `createServiceManifest` result private (`const fooManifest = …`) and delete exported wrapper functions.
-   - Inside the service’s `configure`/`remove`, map the CLI context + resolved paths into the manifest options and call `fooManifest.configure/remove` directly.
-   - Any provider-specific glue (spawn helpers, prerequisite registration) stays in the same module next to the manifest call.
+2. **Inline Mutation Execution**
+   - Define the configure/remove mutation lists next to the service and execute them directly inside `service.configure`/`service.remove` via a thin runtime helper (e.g., `runServiceMutations`).
+   - Delete `runServiceManifest`, `configureFoo`, `removeFoo`, `spawnFoo`, `registerFooPrerequisites`, and every other proxy export—the service owns the full flow.
+   - Drop legacy flag plumbing such as `mutationHooks`; services should derive execution metadata from context rather than threading options.
 
-3. **Centralize Hook Handling**
-   - Add a small utility that inspects the provider context for mutation hooks and returns `{ hooks } | undefined`.
-   - Invoke that helper inside every service `configure`/`remove` so no service repeats the hook plumbing.
+3. **Move Shared Helpers**
+   - Relocate generic utilities (`makeExecutableMutation`, chmod helpers, path quoting, key-helper removal, etc.) into `src/providers/provider-helpers.ts`.
+   - Ensure provider modules import these shared helpers instead of redefining tiny wrappers.
 
-4. **Update Registry Consumers**
-   - Adjust the service registry, CLI commands, service menu, label generator, etc., to depend on the single service object (no casting, no secondary exports).
-   - Ensure command payload builders no longer inject hooks or proxy data; they should return only provider-specific options.
+4. **Update Consumers**
+   - Point every CLI command, registry lookup, lint/test helper, and beta entry point directly at the service object—no helper imports remain.
+   - When migrating logic between `beta/` and `src/`, move files instead of copy/paste; feature lives in exactly one place.
 
-5. **Prune Legacy Types and Imports**
-   - Remove unused type aliases (`InstallFooOptions`, configure/remove option exports meant for the old helpers) and fix imports accordingly.
-   - Drop any references to the deleted helpers throughout the repo so only the service object remains as the integration point.
+5. **Clean Up Types & Tests**
+   - Delete configure/remove option interfaces that only existed for the old helper exports.
+   - Update tests to call the consolidated service (or the CLI command that uses it). Tests must stay valuable—remove or rewrite cases that only existed to cover the deleted proxies.

@@ -2,7 +2,10 @@ import type { CliEnvironment } from "./environment.js";
 import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
-import type { ServiceManifest } from "../services/service-manifest.js";
+import type {
+  ServiceExecutionContext,
+  ServiceRunOptions
+} from "../services/service-manifest.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -25,7 +28,21 @@ export interface ProviderService<
   TConfigure = unknown,
   TRemove = unknown,
   TSpawn = unknown
-> extends ServiceManifest<TConfigure, TRemove> {
+> {
+  id: string;
+  summary: string;
+  prerequisites?: {
+    before?: string[];
+    after?: string[];
+  };
+  configure(
+    context: ServiceExecutionContext<TConfigure>,
+    runOptions?: ServiceRunOptions
+  ): Promise<void>;
+  remove(
+    context: ServiceExecutionContext<TRemove>,
+    runOptions?: ServiceRunOptions
+  ): Promise<boolean>;
   name: string;
   label: string;
   branding?: ProviderBranding;

@@ -170,8 +170,6 @@ async function setupEnvironment(options?: {
     const adapter: ProviderService = {
       id: name,
       summary: name,
-      configureMutations: [],
-      removeMutations: [],
       async configure() {},
       async remove() {
         return false;

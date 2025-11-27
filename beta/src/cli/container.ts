@@ -7,15 +7,6 @@ import type {
   ProviderService,
   ProviderContext
 } from "poe-code/dist/cli/service-registry.js";
-import type {
-  ClaudeCodeSpawnOptions
-} from "poe-code/dist/providers/claude-code.js";
-import type {
-  CodexSpawnOptions
-} from "poe-code/dist/providers/codex.js";
-import type {
-  OpenCodeSpawnOptions
-} from "poe-code/dist/providers/opencode.js";
 import { createPoeApiClient, type PoeApiClient } from "../cli/api-client.js";
 import type { ChatServiceFactory } from "./chat.js";
 import { createAgentSession } from "../services/agent-session.js";
@@ -55,8 +46,13 @@ type SpawnContext<TPaths> = ProviderContext<TPaths> & {
   command: ProviderContext<TPaths>["command"];
 };
 
+type AgentSpawnOptions = {
+  prompt: string;
+  args?: string[];
+};
+
 function overrideAgentSpawns(registry: CoreContainer["registry"]): void {
-  updateSpawn<ClaudeCodeSpawnOptions>(registry, "claude-code", async (context, options) => {
+  updateSpawn<AgentSpawnOptions>(registry, "claude-code", async (context, options) => {
     return await spawnClaudeCode({
       prompt: options.prompt,
       args: options.args,
@@ -64,7 +60,7 @@ function overrideAgentSpawns(registry: CoreContainer["registry"]): void {
     });
   });
 
-  updateSpawn<CodexSpawnOptions>(registry, "codex", async (context, options) => {
+  updateSpawn<AgentSpawnOptions>(registry, "codex", async (context, options) => {
     return await spawnCodex({
       prompt: options.prompt,
       args: options.args,
@@ -72,7 +68,7 @@ function overrideAgentSpawns(registry: CoreContainer["registry"]): void {
     });
   });
 
-  updateSpawn<OpenCodeSpawnOptions>(registry, "opencode", async (context, options) => {
+  updateSpawn<AgentSpawnOptions>(registry, "opencode", async (context, options) => {
     return await spawnOpenCode({
       prompt: options.prompt,
       args: options.args,

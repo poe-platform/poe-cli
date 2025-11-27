@@ -1,25 +1,21 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
-import type {
-  CommandRunner,
-  PrerequisiteDefinition
-} from "../utils/prerequisites.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import {
-  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
   jsonPruneMutation,
-  removeFileMutation
+  removeFileMutation,
+  runServiceMutations,
+  type ServiceMutation
 } from "../services/service-manifest.js";
 import {
   runServiceInstall,
-  type InstallContext,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
 
@@ -59,85 +55,16 @@ export interface OpenCodePaths extends Record<string, string> {
   authPath: string;
 }
 
-type OpenCodeConfigureManifestOptions = {
+export type OpenCodeConfigureOptions = {
   configPath: string;
   authPath: string;
   apiKey: string;
 };
 
-type OpenCodeRemoveManifestOptions = {
+export type OpenCodeRemoveOptions = {
   configPath: string;
   authPath: string;
 };
-
-export interface OpenCodeConfigureOptions
-  extends OpenCodeConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface OpenCodeRemoveOptions
-  extends OpenCodeRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export interface OpenCodeSpawnOptions {
-  prompt: string;
-  args: string[];
-}
-
-const openCodeManifest = createServiceManifest<
-  OpenCodeConfigureManifestOptions,
-  OpenCodeRemoveManifestOptions
->({
-  id: "opencode",
-  summary: "Configure OpenCode CLI to use the Poe API.",
-  prerequisites: {
-    after: ["opencode-cli-health"]
-  },
-  configure: [
-    ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
-      label: "Ensure OpenCode config directory"
-    }),
-    ensureDirectory({
-      path: ({ options }) => path.dirname(options.authPath),
-      label: "Ensure OpenCode auth directory"
-    }),
-    jsonMergeMutation({
-      target: ({ options }) => options.configPath,
-      label: "Merge OpenCode config",
-      value: () => OPEN_CODE_CONFIG_TEMPLATE
-    }),
-    jsonMergeMutation({
-      target: ({ options }) => options.authPath,
-      label: "Merge OpenCode auth",
-      value: ({ options }) =>
-        ({
-          poe: {
-            type: "api",
-            key: options.apiKey
-          }
-        }) as JsonObject
-    })
-  ],
-  remove: [
-    jsonPruneMutation({
-      target: ({ options }) => options.configPath,
-      label: "Prune OpenCode config",
-      shape: () => OPEN_CODE_CONFIG_SHAPE
-    }),
-    jsonPruneMutation({
-      target: ({ options }) => options.authPath,
-      label: "Prune OpenCode auth",
-      shape: () => OPEN_CODE_AUTH_SHAPE
-    }),
-    removeFileMutation({
-      target: ({ options }) => options.authPath,
-      label: "Delete OpenCode auth when empty",
-      whenEmpty: true
-    })
-  ]
-});
 
 export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "opencode",
@@ -158,24 +85,6 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   postChecks: [createOpenCodeVersionCheck()],
   successMessage: "Installed OpenCode CLI via npm."
 };
-
-export interface ConfigureOpenCodeOptions
-  extends OpenCodeConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface RemoveOpenCodeOptions
-  extends OpenCodeRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export interface SpawnOpenCodeOptions {
-  prompt: string;
-  args?: string[];
-  runCommand: CommandRunner;
-}
-
-export type InstallOpenCodeOptions = InstallContext;
 
 function createOpenCodeVersionCheck(): PrerequisiteDefinition {
   return {
@@ -224,11 +133,72 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
 
 export const openCodeService: ProviderService<
   OpenCodePaths,
-  OpenCodeConfigureManifestOptions,
-  OpenCodeRemoveManifestOptions,
-  OpenCodeSpawnOptions
+  OpenCodeConfigureOptions,
+  OpenCodeRemoveOptions,
+  { prompt: string; args?: string[] }
 > = {
-  ...openCodeManifest,
+  id: "opencode",
+  summary: "Configure OpenCode CLI to use the Poe API.",
+  prerequisites: {
+    after: ["opencode-cli-health"]
+  },
+  async configure(context, runOptions) {
+    const mutations: ServiceMutation<OpenCodeConfigureOptions>[] = [
+      ensureDirectory({
+        path: ({ options }) => path.dirname(options.configPath),
+        label: "Ensure OpenCode config directory"
+      }),
+      ensureDirectory({
+        path: ({ options }) => path.dirname(options.authPath),
+        label: "Ensure OpenCode auth directory"
+      }),
+      jsonMergeMutation({
+        target: ({ options }) => options.configPath,
+        label: "Merge OpenCode config",
+        value: () => OPEN_CODE_CONFIG_TEMPLATE
+      }),
+      jsonMergeMutation({
+        target: ({ options }) => options.authPath,
+        label: "Merge OpenCode auth",
+        value: ({ options }) =>
+          ({
+            poe: {
+              type: "api",
+              key: options.apiKey
+            }
+          }) as JsonObject
+      })
+    ];
+    await runServiceMutations(mutations, context, {
+      manifestId: "opencode",
+      hooks: runOptions?.hooks,
+      trackChanges: false
+    });
+  },
+  remove(context, runOptions) {
+    const mutations: ServiceMutation<OpenCodeRemoveOptions>[] = [
+      jsonPruneMutation({
+        target: ({ options }) => options.configPath,
+        label: "Prune OpenCode config",
+        shape: () => OPEN_CODE_CONFIG_SHAPE
+      }),
+      jsonPruneMutation({
+        target: ({ options }) => options.authPath,
+        label: "Prune OpenCode auth",
+        shape: () => OPEN_CODE_AUTH_SHAPE
+      }),
+      removeFileMutation({
+        target: ({ options }) => options.authPath,
+        label: "Delete OpenCode auth when empty",
+        whenEmpty: true
+      })
+    ];
+    return runServiceMutations(mutations, context, {
+      manifestId: "opencode",
+      hooks: runOptions?.hooks,
+      trackChanges: true
+    });
+  },
   name: "opencode",
   label: "OpenCode CLI",
   branding: {

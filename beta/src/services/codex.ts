@@ -1,24 +1,37 @@
-import type { CommandRunnerResult } from "../utils/prerequisites.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult
+} from "../utils/prerequisites.js";
+import type { FileSystem } from "../utils/file-system.js";
 import {
   buildCodexExecArgs as baseBuildCodexExecArgs,
   codexService as baseCodexService,
   CODEX_INSTALL_DEFINITION
 } from "poe-code/dist/providers/codex.js";
 import type {
-  ConfigureCodexOptions,
-  RemoveCodexOptions,
-  SpawnCodexOptions,
-  InstallCodexOptions
+  CodexConfigureOptions,
+  CodexRemoveOptions
 } from "poe-code/dist/providers/codex.js";
+import {
+  runServiceInstall,
+  type InstallContext
+} from "poe-code/dist/services/service-install.js";
 
-export type {
-  ConfigureCodexOptions,
-  RemoveCodexOptions,
-  SpawnCodexOptions,
-  InstallCodexOptions
-} from "poe-code/dist/providers/codex.js";
+type ConfigureCodexOptions = CodexConfigureOptions & {
+  fs: FileSystem;
+};
 
-import { runServiceInstall } from "poe-code/dist/services/service-install.js";
+type RemoveCodexOptions = CodexRemoveOptions & {
+  fs: FileSystem;
+};
+
+type InstallCodexOptions = InstallContext;
+
+type SpawnCodexOptions = {
+  prompt: string;
+  args?: string[];
+  runCommand: CommandRunner;
+};
 
 export function installCodex(
   options: InstallCodexOptions
