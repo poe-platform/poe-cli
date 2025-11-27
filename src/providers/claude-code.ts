@@ -15,13 +15,13 @@ import {
   CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
 import { deepMergeJson, pruneJsonByShape } from "../utils/json.js";
+import { renderTemplate } from "../utils/templates.js";
 import {
   makeExecutable,
   quoteSinglePath,
   readJsonFile,
   removeFileIfExists,
-  writeJsonFile,
-  writeTemplateFile
+  writeJsonFile
 } from "./provider-helpers.js";
 
 export interface ClaudeCodePaths extends Record<string, string> {
@@ -29,6 +29,19 @@ export interface ClaudeCodePaths extends Record<string, string> {
   keyHelperPath: string;
   credentialsPath: string;
 }
+
+export type ClaudeCodeConfigureOptions = {
+  apiKey: string;
+  settingsPath: string;
+  keyHelperPath: string;
+  credentialsPath: string;
+  defaultModel: string;
+};
+
+export type ClaudeCodeRemoveOptions = {
+  settingsPath: string;
+  keyHelperPath: string;
+};
 
 const KEY_HELPER_TEMPLATE_ID = "claude-code/anthropic_key.sh.hbs";
 const KEY_HELPER_MODE = 0o700;
@@ -117,17 +130,16 @@ export const claudeCodeService: ProviderService<
     after: ["claude-cli-health"]
   },
   async configure(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     await fs.mkdir(path.dirname(options.settingsPath), { recursive: true });
     await fs.mkdir(path.dirname(options.keyHelperPath), { recursive: true });
 
-    await writeTemplateFile(
-      fs,
-      options.keyHelperPath,
-      KEY_HELPER_TEMPLATE_ID,
-      { credentialsPathLiteral: quoteSinglePath(options.credentialsPath) }
-    );
+    const helperScript = await renderTemplate(KEY_HELPER_TEMPLATE_ID, {
+      credentialsPathLiteral: quoteSinglePath(options.credentialsPath)
+    });
+    await fs.writeFile(options.keyHelperPath, helperScript, {
+      encoding: "utf8"
+    });
     await makeExecutable(fs, options.keyHelperPath, KEY_HELPER_MODE);
 
     const { data, raw } = await readJsonFile(fs, options.settingsPath);
@@ -144,8 +156,7 @@ export const claudeCodeService: ProviderService<
     await writeJsonFile(fs, options.settingsPath, merged, raw);
   },
   async remove(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     let changed = false;
     const { data, raw } = await readJsonFile(fs, options.settingsPath);
     const pruned = pruneJsonByShape(data, CLAUDE_ENV_SHAPE);

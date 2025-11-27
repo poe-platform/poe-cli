@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/providers/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import type { ProviderContext } from "../src/cli/service-registry.js";
 import type {
   ClaudeCodeConfigureOptions,
   ClaudeCodeRemoveOptions
@@ -42,54 +43,22 @@ describe("claude-code service", () => {
     keyHelperPath
   };
 
-  function createProviderContext(
-    options: ClaudeCodeConfigureOptions | ClaudeCodeRemoveOptions
-  ) {
-    return {
-      env: {
-        homeDir: home,
-        platform: "linux",
-        variables: {}
-      } as any,
-      paths: {
-        settingsPath,
-        keyHelperPath,
-        credentialsPath
-      },
-      command: {
-        fs,
-        prerequisites: createPrerequisiteManager({
-          isDryRun: false,
-          runCommand: vi.fn()
-        }),
-        runCommand: vi.fn(),
-        complete: vi.fn()
-      },
-      logger: {
-        context: { dryRun: false, verbose: false, scope: "test" },
-        info: vi.fn(),
-        dryRun: vi.fn(),
-        error: vi.fn(),
-        verbose: vi.fn()
-      },
-      options
-    };
-  }
-
   async function configureClaude(
     overrides: Partial<ClaudeCodeConfigureOptions> = {}
   ): Promise<void> {
-    await claudeService.claudeCodeService.configure(
-      createProviderContext({ ...baseConfigureOptions, ...overrides })
-    );
+    await claudeService.claudeCodeService.configure({
+      fs,
+      options: { ...baseConfigureOptions, ...overrides }
+    });
   }
 
   async function removeClaude(
     overrides: Partial<ClaudeCodeRemoveOptions> = {}
   ): Promise<boolean> {
-    return claudeService.claudeCodeService.remove(
-      createProviderContext({ ...baseRemoveOptions, ...overrides })
-    );
+    return claudeService.claudeCodeService.remove({
+      fs,
+      options: { ...baseRemoveOptions, ...overrides }
+    });
   }
 
   it("removeClaudeCode prunes manifest-managed env keys from settings json", async () => {

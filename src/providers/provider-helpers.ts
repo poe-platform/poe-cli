@@ -1,7 +1,6 @@
 import type { FileSystem } from "../utils/file-system.js";
 import type { JsonObject } from "../utils/json.js";
 import { isJsonObject } from "../utils/json.js";
-import { renderTemplate } from "../utils/templates.js";
 
 export function quoteSinglePath(targetPath: string): string {
   const escaped = targetPath.replace(/'/g, `'\\''`);
@@ -54,16 +53,6 @@ export async function writeJsonFile(
   }
   await fs.writeFile(targetPath, content, { encoding: "utf8" });
   return true;
-}
-
-export async function writeTemplateFile(
-  fs: FileSystem,
-  targetPath: string,
-  templateId: string,
-  context?: JsonObject
-): Promise<void> {
-  const rendered = await renderTemplate(templateId, context);
-  await fs.writeFile(targetPath, rendered, { encoding: "utf8" });
 }
 
 export async function makeExecutable(

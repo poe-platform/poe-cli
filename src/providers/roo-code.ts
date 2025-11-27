@@ -171,8 +171,7 @@ export const rooCodeService: ProviderService<
   id: "roo-code",
   summary: "Configure Roo Code auto-import to use the Poe API.",
   async configure(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     await fs.mkdir(path.dirname(options.configPath), { recursive: true });
     await mergeRooConfig(fs, options);
     await fs.mkdir(path.dirname(options.settingsPath), { recursive: true });
@@ -183,8 +182,7 @@ export const rooCodeService: ProviderService<
     await writeJsonFile(fs, options.settingsPath, mergedSettings, settingsDoc.raw);
   },
   async remove(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     return removeRooConfig(fs, options);
   },
   name: "roo-code",

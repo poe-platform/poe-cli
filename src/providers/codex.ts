@@ -225,8 +225,7 @@ export const codexService: ProviderService<
     after: ["codex-cli-health"]
   },
   async configure(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     await fs.mkdir(path.dirname(options.configPath), { recursive: true });
     await createConfigBackup(fs, options.configPath, options.timestamp);
 
@@ -252,8 +251,7 @@ export const codexService: ProviderService<
     await fs.writeFile(options.configPath, serialized, { encoding: "utf8" });
   },
   async remove(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     const raw = await readFileIfExists(fs, options.configPath);
     if (raw == null) {
       return false;

@@ -36,45 +36,13 @@ describe("opencode service", () => {
     apiKey: "sk-test"
   };
 
-  function createProviderContext(
-    options: typeof baseConfigureOptions
-  ) {
-    return {
-      env: {
-        homeDir,
-        platform: "linux",
-        variables: {}
-      } as any,
-      paths: {
-        configPath,
-        authPath
-      },
-      command: {
-        fs,
-        prerequisites: createPrerequisiteManager({
-          isDryRun: false,
-          runCommand: vi.fn()
-        }),
-        runCommand: vi.fn(),
-        complete: vi.fn()
-      },
-      logger: {
-        context: { dryRun: false, verbose: false, scope: "test" },
-        info: vi.fn(),
-        dryRun: vi.fn(),
-        error: vi.fn(),
-        verbose: vi.fn()
-      },
-      options
-    };
-  }
-
   async function configureOpenCode(
     overrides: Partial<typeof baseConfigureOptions> = {}
   ): Promise<void> {
-    await opencodeService.openCodeService.configure(
-      createProviderContext({ ...baseConfigureOptions, ...overrides })
-    );
+    await opencodeService.openCodeService.configure({
+      fs,
+      options: { ...baseConfigureOptions, ...overrides }
+    });
   }
 
   it("creates the opencode config and auth files", async () => {

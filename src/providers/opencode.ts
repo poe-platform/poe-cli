@@ -137,8 +137,7 @@ export const openCodeService: ProviderService<
     after: ["opencode-cli-health"]
   },
   async configure(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     await fs.mkdir(path.dirname(options.configPath), { recursive: true });
     await fs.mkdir(path.dirname(options.authPath), { recursive: true });
 
@@ -160,8 +159,7 @@ export const openCodeService: ProviderService<
     await writeJsonFile(fs, options.authPath, nextAuth, authDoc.raw);
   },
   async remove(context) {
-    const fs = context.command.fs;
-    const { options } = context;
+    const { fs, options } = context;
     let changed = false;
 
     const configDoc = await readJsonFile(fs, options.configPath);
