@@ -90,9 +90,9 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
   const [filePickerIndex, setFilePickerIndex] = useState(0);
   const [inputBeforeAt, setInputBeforeAt] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
-  const [history, setHistory] = useState<string[]>([]);
+  const [, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [isBrowsingHistory, setIsBrowsingHistory] = useState(false);
+  const [, setIsBrowsingHistory] = useState(false);
   const historyRef = React.useRef<string[]>([]);
   const isBrowsingHistoryRef = React.useRef(false);
   const fileSearchQueryRef = React.useRef("");
@@ -478,7 +478,7 @@ export const InteractiveCli: React.FC<InteractiveCliProps> = ({
     try {
       const response = await onCommand(trimmedInput, {
         signal: controller.signal,
-        onChunk: (chunk) => setPartialResponse(chunk)
+        onChunk: setPartialResponse
       });
 
       // Parse model name from response if present

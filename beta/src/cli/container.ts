@@ -4,7 +4,7 @@ import {
   type CliDependencies as CoreDependencies
 } from "poe-code/dist/cli/container.js";
 import type {
-  ProviderAdapter,
+  ProviderService,
   ProviderContext
 } from "poe-code/dist/cli/service-registry.js";
 import type {
@@ -17,11 +17,7 @@ import type {
   OpenCodeSpawnOptions
 } from "poe-code/dist/providers/opencode.js";
 import { createPoeApiClient, type PoeApiClient } from "../cli/api-client.js";
-import type {
-  ChatServiceFactory,
-  ChatServiceFactoryOptions,
-  AgentSession
-} from "./chat.js";
+import type { ChatServiceFactory } from "./chat.js";
 import { createAgentSession } from "../services/agent-session.js";
 import { spawnClaudeCode } from "../services/claude-code.js";
 import { spawnCodex } from "../services/codex.js";
@@ -42,10 +38,7 @@ export function createCliContainer(
   const base = createCoreContainer(dependencies);
 
   const chatServiceFactory =
-    dependencies.chatServiceFactory ??
-    (async (options: ChatServiceFactoryOptions): Promise<AgentSession> => {
-      return await createAgentSession(options);
-    });
+    dependencies.chatServiceFactory ?? createAgentSession;
 
   const poeApiClient = createPoeApiClient(base.httpClient);
 
@@ -97,7 +90,7 @@ function updateSpawn<TOptions>(
   ) => Promise<unknown>
 ): void {
   const adapter = registry.get(serviceName) as
-    | (ProviderAdapter<Record<string, string>, unknown, unknown, TOptions> & {
+    | (ProviderService<Record<string, string>, unknown, unknown, TOptions> & {
         spawn?: (
           context: SpawnContext<Record<string, string>>,
           options: TOptions
@@ -107,7 +100,5 @@ function updateSpawn<TOptions>(
   if (!adapter) {
     return;
   }
-  adapter.spawn = async (context, options) => {
-    return await handler(context, options);
-  };
+  adapter.spawn = handler;
 }

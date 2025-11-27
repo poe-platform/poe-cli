@@ -13,6 +13,4 @@ beforeAll(() => {
   });
 });
 
-afterAll(() => {
-  setTemplateLoader(null);
-});
+afterAll(setTemplateLoader.bind(null, null));

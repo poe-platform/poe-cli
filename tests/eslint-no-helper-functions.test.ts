@@ -87,6 +87,38 @@ describe('no-helper-functions rule', () => {
       {
         code: `const toString = (x) => String(x);`,
       },
+      // Static methods on built-in objects are allowed
+      {
+        code: `const toNumber = (x) => Number.parseInt(x, 10);`,
+      },
+      {
+        code: `const stringify = (x) => JSON.stringify(x);`,
+      },
+      {
+        code: `const floor = (x) => Math.floor(x);`,
+      },
+      // Imported functions from external packages are allowed
+      {
+        code: `import lodash from 'lodash';
+const wrap = (x) => lodash.map(x);`,
+      },
+      {
+        code: `import { map } from 'lodash';
+const wrap = (x) => map(x);`,
+      },
+      {
+        code: `import * as R from 'ramda';
+const wrap = (x) => R.map(x);`,
+      },
+      // Require from external packages are allowed
+      {
+        code: `const lodash = require('lodash');
+const wrap = (x) => lodash.map(x);`,
+      },
+      {
+        code: `const { map } = require('lodash');
+const wrap = (x) => map(x);`,
+      },
       {
         code: `const delay = (ms) => setTimeout(ms);`,
       },
@@ -126,6 +158,15 @@ const foo = (x) => bar(outerVar, x);`,
       },
       {
         code: `const logger = (msg) => console.log(prefix, msg);`,
+      },
+      // Method calls on closure variables are allowed
+      {
+        code: `const registry = createRegistry();
+const wrapper = () => registry.require("test");`,
+      },
+      {
+        code: `const obj = getObject();
+const fn = (x) => obj.method(x);`,
       },
     ],
     invalid: [
@@ -197,6 +238,29 @@ const foo = (x) => bar(outerVar, x);`,
             return bar(x);
           }
         };`,
+        errors: [{ messageId: 'noHelperFunction' }],
+      },
+      // Void function wrapper (no return, just calls)
+      {
+        code: `function foo(x) {
+          bar(x);
+        }`,
+        errors: [{ messageId: 'noHelperFunction' }],
+      },
+      // Void method wrapper in object
+      {
+        code: `const obj = {
+          registerPrerequisites(manager) {
+            registerClaudeCodePrerequisites(manager);
+          }
+        };`,
+        errors: [{ messageId: 'noHelperFunction' }],
+      },
+      // Async void wrapper
+      {
+        code: `async function foo(x) {
+          await bar(x);
+        }`,
         errors: [{ messageId: 'noHelperFunction' }],
       },
     ],

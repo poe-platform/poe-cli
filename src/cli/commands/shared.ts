@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
 import type {
-  ProviderAdapter,
+  ProviderService,
   ProviderContext
 } from "../service-registry.js";
 import {
@@ -71,7 +71,7 @@ export function createExecutionResources(
 
 export function buildProviderContext(
   container: CliContainer,
-  adapter: ProviderAdapter,
+  adapter: ProviderService,
   resources: ExecutionResources
 ): ProviderContext {
   return {
@@ -83,14 +83,14 @@ export function buildProviderContext(
 }
 
 export function registerProviderPrerequisites(
-  adapter: ProviderAdapter,
+  adapter: ProviderService,
   resources: ExecutionResources
 ): void {
   adapter.registerPrerequisites?.(resources.context.prerequisites);
 }
 
 export async function runPrerequisites(
-  adapter: ProviderAdapter,
+  adapter: ProviderService,
   resources: ExecutionResources,
   phase: PrerequisitePhase
 ): Promise<void> {
@@ -105,7 +105,7 @@ export async function runPrerequisites(
 export function resolveServiceAdapter(
   container: CliContainer,
   service: string
-): ProviderAdapter {
+): ProviderService {
   const adapter = container.registry.get(service);
   if (!adapter) {
     throw new Error(`Unknown service "${service}".`);

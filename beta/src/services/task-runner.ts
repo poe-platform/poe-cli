@@ -170,8 +170,9 @@ async function main(): Promise<void> {
 const modulePath = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(modulePath)) {
   void main().catch((error) => {
-    // eslint-disable-next-line no-console
-    console.error("Task runner failed", error);
+    const detail =
+      error instanceof Error ? error.stack ?? error.message : String(error);
+    process.stderr.write(`Task runner failed ${detail}\n`);
     process.exitCode = 1;
   });
 }

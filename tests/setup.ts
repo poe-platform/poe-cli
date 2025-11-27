@@ -14,9 +14,7 @@ beforeAll(() => {
   });
 });
 
-afterAll(() => {
-  setTemplateLoader(null);
-});
+afterAll(setTemplateLoader.bind(null, null));
 
 const fetchMock = vi.fn(async () => {
   throw new Error("Unexpected fetch invocation. Provide a mock implementation.");

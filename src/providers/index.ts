@@ -1,14 +1,9 @@
-import { claudeCodeAdapter } from "./claude-code.js";
-import { codexAdapter } from "./codex.js";
-import { openCodeAdapter } from "./opencode.js";
-import { rooCodeAdapter } from "./roo-code.js";
-import type { ProviderAdapter } from "../cli/service-registry.js";
+import { claudeCodeService } from "./claude-code.js";
+import { codexService } from "./codex.js";
+import { openCodeService } from "./opencode.js";
+import { rooCodeService } from "./roo-code.js";
+import type { ProviderService } from "../cli/service-registry.js";
 
-export function getDefaultProviders(): ProviderAdapter[] {
-  return [
-    claudeCodeAdapter as unknown as ProviderAdapter,
-    codexAdapter as unknown as ProviderAdapter,
-    openCodeAdapter as unknown as ProviderAdapter,
-    rooCodeAdapter as unknown as ProviderAdapter
-  ];
+export function getDefaultProviders(): ProviderService[] {
+  return [claudeCodeService, codexService, openCodeService, rooCodeService];
 }

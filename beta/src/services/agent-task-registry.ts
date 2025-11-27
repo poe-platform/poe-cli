@@ -458,9 +458,7 @@ export class AgentTaskRegistry {
 
   private startWatching(): void {
     const factory =
-      this.watchFactory ??
-      ((dir: string, listener: (event: string, filename: string | null) => void) =>
-        this.fs.watch(dir, listener));
+      this.watchFactory ?? this.fs.watch.bind(this.fs);
     this.watcher = factory(this.tasksDir, (event, filename) => {
       if (!filename) {
         return;

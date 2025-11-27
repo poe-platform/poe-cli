@@ -11,8 +11,6 @@ const ITALIC = "\x1b[3m";
 const UNDERLINE = "\x1b[4m";
 
 // Colors
-const RED = "\x1b[31m";
-const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const BLUE = "\x1b[34m";
 const MAGENTA = "\x1b[35m";
@@ -42,9 +40,7 @@ export function renderMarkdown(markdown: string, options: RenderOptions = {}): s
   const lines = markdown.split("\n");
   const output: string[] = [];
   let inCodeBlock = false;
-  let codeBlockLang = "";
   let inList = false;
-  let listIndent = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -53,15 +49,12 @@ export function renderMarkdown(markdown: string, options: RenderOptions = {}): s
     // Code blocks
     if (trimmed.startsWith("```")) {
       if (!inCodeBlock) {
-        // Start code block
         inCodeBlock = true;
-        codeBlockLang = trimmed.slice(3).trim();
         output.push(""); // Empty line before code block
         continue;
       } else {
         // End code block
         inCodeBlock = false;
-        codeBlockLang = "";
         output.push(""); // Empty line after code block
         continue;
       }
@@ -103,11 +96,9 @@ export function renderMarkdown(markdown: string, options: RenderOptions = {}): s
         indent + "  ".repeat(level) + YELLOW + renderedBullet + RESET + " " + renderInline(content)
       );
       inList = true;
-      listIndent = level;
       continue;
     } else if (inList && trimmed === "") {
       inList = false;
-      listIndent = 0;
     }
 
     // Blockquotes (> text)
@@ -180,7 +171,6 @@ function renderInline(text: string): string {
  * Strips all ANSI codes from a string (useful for testing or length calculation)
  */
 export function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 

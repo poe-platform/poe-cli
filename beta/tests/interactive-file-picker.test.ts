@@ -25,36 +25,6 @@ async function flushEffects(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function stripAnsi(value: string | undefined): string {
-  if (!value) {
-    return "";
-  }
-  let result = "";
-  let index = 0;
-  while (index < value.length) {
-    if (value[index] === "\u001B") {
-      index += 1;
-      if (index < value.length && (value[index] === "[" || value[index] === "]")) {
-        index += 1;
-      }
-      while (index < value.length) {
-        const code = value[index];
-        const isLetter =
-          (code >= "A" && code <= "Z") || (code >= "a" && code <= "z");
-        if (isLetter) {
-          index += 1;
-          break;
-        }
-        index += 1;
-      }
-      continue;
-    }
-    result += value[index];
-    index += 1;
-  }
-  return result;
-}
-
 async function expectFrameToContain(
   readFrame: () => string | undefined,
   text: string
@@ -90,23 +60,6 @@ async function expectPickerToShowOnly(
   );
 }
 
-async function expectInputToContain(
-  readFrame: () => string | undefined,
-  text: string
-): Promise<string> {
-  const deadline = Date.now() + 2000;
-  while (Date.now() < deadline) {
-    const sanitized = stripAnsi(readFrame());
-    if (sanitized.includes(text)) {
-      return sanitized;
-    }
-    await flushEffects();
-  }
-  throw new Error(
-    `Timed out waiting for input to include "${text}". Last frame:\n${readFrame() ?? "<empty>"}`
-  );
-}
-
 async function getHarness(): Promise<InputHarness> {
   const deadline = Date.now() + 2000;
   while (Date.now() < deadline) {
@@ -122,13 +75,6 @@ async function setInputValue(value: string): Promise<void> {
   const harness = await getHarness();
   harness.onChange(value);
   await flushEffects();
-}
-
-async function typeSequence(stdin: { write: (chunk: string) => void }, sequence: string): Promise<void> {
-  for (const char of sequence) {
-    stdin.write(char);
-    await flushEffects();
-  }
 }
 
 describe("Interactive CLI file picker behaviour", () => {

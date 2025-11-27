@@ -269,7 +269,7 @@ export class DefaultToolExecutor implements ToolExecutor {
     const result = await spawnClaudeCode({
       prompt,
       args: forwardedArgs,
-      runCommand: (cmd, commandArgs) => this.runProcess(cmd, commandArgs)
+      runCommand: this.runProcess.bind(this)
     });
 
     if (result.exitCode !== 0) {
@@ -537,16 +537,6 @@ export class DefaultToolExecutor implements ToolExecutor {
           return adapter;
         }
 
-        async function runCommand(cmd, args, cwd) {
-          return new Promise((resolve) => {
-            const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-            let stdout = '', stderr = '';
-            child.stdout?.on('data', (d) => stdout += d);
-            child.stderr?.on('data', (d) => stderr += d);
-            child.on('close', (code) => resolve({ stdout, stderr, exitCode: code || 0 }));
-          });
-        }
-
         let agentAdapter;
 
         async function runAgent(details) {
@@ -559,7 +549,7 @@ export class DefaultToolExecutor implements ToolExecutor {
           return await agentAdapter.spawn({
             prompt: details.prompt,
             args: details.args,
-            runCommand: (c, a) => runCommand(c, a, details.cwd)
+            runCommand: (c, a) => runCommandInCwd(c, a, details.cwd)
           });
         }
 

@@ -17,7 +17,7 @@
 // src/services/agent-registry.ts
 getSpawnableAgents() → {name, supportsWorktree, supportsInline}[]
 ```
-- Query all provider adapters with `supportsSpawn: true`
+- Query all provider adapters that implement a `spawn()` handler
 - Check installation status dynamically
 - Cache results per session
 

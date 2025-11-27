@@ -5,6 +5,7 @@ import type { FileSystem } from "../src/utils/file-system.js";
 import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import type { ProviderContext } from "../src/cli/service-registry.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -24,13 +25,39 @@ describe("codex service", () => {
     vol.mkdirSync(home, { recursive: true });
   });
 
-  it("writes codex config from template", async () => {
-    await codexService.configureCodex({
+  const baseConfigureOptions: codexService.CodexConfigureOptions = {
+    fs,
+    configPath,
+    apiKey: "sk-test",
+    model: "GPT-5.1-Codex",
+    reasoningEffort: "medium"
+  };
+
+  const baseRemoveOptions: codexService.CodexRemoveOptions = {
+    fs,
+    configPath
+  };
+
+  async function configureCodex(
+    overrides: Partial<codexService.CodexConfigureOptions> = {}
+  ): Promise<void> {
+    await codexService.codexService.configure({
       fs,
-      configPath,
-      apiKey: "sk-test",
-      model: "GPT-5.1-Codex",
-      reasoningEffort: "medium",
+      options: { ...baseConfigureOptions, ...overrides }
+    });
+  }
+
+  async function removeCodex(
+    overrides: Partial<codexService.CodexRemoveOptions> = {}
+  ): Promise<boolean> {
+    return codexService.codexService.remove({
+      fs,
+      options: { ...baseRemoveOptions, ...overrides }
+    });
+  }
+
+  it("writes codex config from template", async () => {
+    await configureCodex({
       timestamp: () => "20240101T000000"
     });
 
@@ -52,12 +79,7 @@ describe("codex service", () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(configPath, "original", { encoding: "utf8" });
 
-    await codexService.configureCodex({
-      fs,
-      configPath,
-      apiKey: "sk-test",
-      model: "GPT-5.1-Codex",
-      reasoningEffort: "medium",
+    await configureCodex({
       timestamp: () => "20240101T000000"
     });
 
@@ -66,23 +88,18 @@ describe("codex service", () => {
       "legacy",
       { encoding: "utf8" }
     );
-    const removed = await codexService.removeCodex({ fs, configPath });
+    const removed = await removeCodex();
     expect(removed).toBe(true);
 
     await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
   });
 
   it("deletes config when content matches template", async () => {
-    await codexService.configureCodex({
-      fs,
-      configPath,
-      apiKey: "sk-test",
-      model: "GPT-5.1-Codex",
-      reasoningEffort: "medium",
+    await configureCodex({
       timestamp: () => "20240101T000000"
     });
 
-    const removed = await codexService.removeCodex({ fs, configPath });
+    const removed = await removeCodex();
     expect(removed).toBe(true);
 
     await expect(fs.readFile(configPath, "utf8")).rejects.toThrow();
@@ -94,7 +111,7 @@ describe("codex service", () => {
       encoding: "utf8"
     });
 
-    const removed = await codexService.removeCodex({ fs, configPath });
+    const removed = await removeCodex();
     expect(removed).toBe(false);
 
     const content = await fs.readFile(configPath, "utf8");
@@ -124,7 +141,7 @@ describe("codex service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await codexService.removeCodex({ fs, configPath });
+    const removed = await removeCodex();
     expect(removed).toBe(true);
 
     const content = await fs.readFile(configPath, "utf8");
@@ -153,7 +170,7 @@ describe("codex service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await codexService.removeCodex({ fs, configPath });
+    const removed = await removeCodex();
     expect(removed).toBe(true);
 
     const content = await fs.readFile(configPath, "utf8");
@@ -164,12 +181,7 @@ describe("codex service", () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(configPath, "legacy-config", { encoding: "utf8" });
 
-    await codexService.configureCodex({
-      fs,
-      configPath,
-      apiKey: "sk-test",
-      model: "GPT-5.1-Codex",
-      reasoningEffort: "medium",
+    await configureCodex({
       timestamp: () => "20240202T101010"
     });
 
@@ -193,12 +205,7 @@ describe("codex service", () => {
       { encoding: "utf8" }
     );
 
-    await codexService.configureCodex({
-      fs,
-      configPath,
-      apiKey: "sk-test",
-      model: "GPT-5.1-Codex",
-      reasoningEffort: "medium",
+    await configureCodex({
       timestamp: () => "20240303T030303"
     });
 
@@ -235,12 +242,25 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     }));
+    const providerContext = {
+      env: {} as any,
+      paths: { configPath },
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: { dryRun: false, verbose: false }
+      }
+    } as unknown as ProviderContext;
 
-    const result = await codexService.spawnCodex({
-      prompt: "Describe the codebase",
-      args: ["--output", "json"],
-      runCommand
-    });
+    const result = await codexService.codexService.spawn(
+      providerContext,
+      {
+        prompt: "Describe the codebase",
+        args: ["--output", "json"]
+      }
+    );
 
     const expectedArgs = codexService.buildCodexExecArgs("Describe the codebase", [
       "--output",
@@ -269,7 +289,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.registerCodexPrerequisites(manager);
+    codexService.codexService.registerPrerequisites?.(manager);
     await manager.run("after");
 
     expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
@@ -290,7 +310,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.registerCodexPrerequisites(manager);
+    codexService.codexService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {
@@ -315,7 +335,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.registerCodexPrerequisites(manager);
+    codexService.codexService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {

@@ -1,6 +1,5 @@
 import path from "node:path";
-import type { ProviderAdapter } from "../cli/service-registry.js";
-import type { ServiceMutationHooks } from "../services/service-manifest.js";
+import type { ProviderService } from "../cli/service-registry.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
@@ -13,15 +12,12 @@ import {
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import {
+  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
   jsonPruneMutation,
-  runServiceConfigure,
-  runServiceRemove,
-  writeTemplateMutation,
-  type ServiceManifest,
-  type ServiceRunOptions,
-  type ServiceMutation
+  removeFileMutation,
+  writeTemplateMutation
 } from "../services/service-manifest.js";
 import {
   runServiceInstall,
@@ -33,6 +29,7 @@ import {
   CLAUDE_MODEL_SONNET,
   CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
+import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 
 export interface ClaudeCodePaths extends Record<string, string> {
   settingsPath: string;
@@ -40,14 +37,27 @@ export interface ClaudeCodePaths extends Record<string, string> {
   credentialsPath: string;
 }
 
-export interface ClaudeCodeConfigureOptions {
+export type ClaudeCodeConfigureManifestOptions = {
   apiKey: string;
+  settingsPath: string;
+  keyHelperPath: string;
+  credentialsPath: string;
   defaultModel: string;
-  mutationHooks?: ServiceMutationHooks;
+};
+
+export type ClaudeCodeRemoveManifestOptions = {
+  settingsPath: string;
+  keyHelperPath: string;
+};
+
+export interface ConfigureClaudeCodeOptions
+  extends ClaudeCodeConfigureManifestOptions {
+  fs: FileSystem;
 }
 
-export interface ClaudeCodeRemoveOptions {
-  mutationHooks?: ServiceMutationHooks;
+export interface RemoveClaudeCodeOptions
+  extends ClaudeCodeRemoveManifestOptions {
+  fs: FileSystem;
 }
 
 export interface ClaudeCodeSpawnOptions {
@@ -68,10 +78,10 @@ const CLAUDE_ENV_SHAPE = {
   model: true
 } as const;
 
-const CLAUDE_CODE_MANIFEST: ServiceManifest<
-  ConfigureClaudeCodeOptions,
-  RemoveClaudeCodeOptions
-> = {
+const claudeCodeManifest = createServiceManifest<
+  ClaudeCodeConfigureManifestOptions,
+  ClaudeCodeRemoveManifestOptions
+>({
   id: "claude-code",
   summary: "Configure Claude Code to route through Poe.",
   prerequisites: {
@@ -86,11 +96,15 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
       target: ({ options }) => options.keyHelperPath,
       templateId: KEY_HELPER_TEMPLATE_ID,
       context: ({ options }) => ({
-        credentialsPathLiteral: toSingleQuotedLiteral(options.credentialsPath)
+        credentialsPathLiteral: quoteSinglePath(options.credentialsPath)
       }),
       label: "Write API key helper script"
     }),
-    createChmodMutation(),
+    makeExecutableMutation({
+      target: ({ options }) => options.keyHelperPath,
+      label: "Make API key helper executable",
+      mode: KEY_HELPER_MODE
+    }),
     jsonMergeMutation({
       target: ({ options }) => options.settingsPath,
       label: "Merge Claude settings",
@@ -112,14 +126,21 @@ const CLAUDE_CODE_MANIFEST: ServiceManifest<
       label: "Prune Claude settings",
       shape: () => CLAUDE_ENV_SHAPE
     }),
-    removeKeyHelperMutation()
+    removeFileMutation({
+      target: ({ options }) => options.keyHelperPath,
+      label: "Remove API key helper script"
+    })
   ]
-};
+});
 
-const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
+export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
   summary: "Claude CLI",
-  check: createClaudeCliBinaryCheck(),
+  check: createBinaryExistsCheck(
+    "claude",
+    "claude-cli-binary",
+    "Claude CLI binary must exist"
+  ),
   steps: [
     {
       id: "install-claude-cli-npm",
@@ -131,21 +152,6 @@ const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Claude CLI via npm."
 };
 
-export interface ConfigureClaudeCodeOptions {
-  fs: FileSystem;
-  apiKey: string;
-  settingsPath: string;
-  keyHelperPath: string;
-  credentialsPath: string;
-  defaultModel: string;
-}
-
-export interface RemoveClaudeCodeOptions {
-  fs: FileSystem;
-  settingsPath: string;
-  keyHelperPath: string;
-}
-
 export interface SpawnClaudeCodeOptions {
   prompt: string;
   args?: string[];
@@ -153,101 +159,6 @@ export interface SpawnClaudeCodeOptions {
 }
 
 export type InstallClaudeCodeOptions = InstallContext;
-
-function createChmodMutation(): ServiceMutation<ConfigureClaudeCodeOptions> {
-  return {
-    kind: "transformFile",
-    target: ({ options }) => options.keyHelperPath,
-    label: "Make API key helper executable",
-    async transform({ content, context }) {
-      if (
-        typeof context.fs.chmod === "function" &&
-        content != null
-      ) {
-        await context.fs.chmod(context.options.keyHelperPath, KEY_HELPER_MODE);
-      }
-      return { content, changed: false };
-    }
-  };
-}
-
-function removeKeyHelperMutation(): ServiceMutation<RemoveClaudeCodeOptions> {
-  return {
-    kind: "removeFile",
-    target: ({ options }) => options.keyHelperPath,
-    label: "Remove API key helper script"
-  };
-}
-
-function toSingleQuotedLiteral(targetPath: string): string {
-  const escaped = targetPath.replace(/'/g, `'\\''`);
-  return `'${escaped}'`;
-}
-
-export async function configureClaudeCode(
-  options: ConfigureClaudeCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  await runServiceConfigure(
-    CLAUDE_CODE_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
-export async function spawnClaudeCode(
-  options: SpawnClaudeCodeOptions
-): Promise<CommandRunnerResult> {
-  const defaults = [
-    "-p",
-    options.prompt,
-    "--allowedTools",
-    "Bash,Read",
-    "--permission-mode",
-    "acceptEdits",
-    "--output-format",
-    "text"
-  ];
-  const args = [...defaults, ...(options.args ?? [])];
-  return options.runCommand("claude", args);
-}
-
-export async function removeClaudeCode(
-  options: RemoveClaudeCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  return runServiceRemove(
-    CLAUDE_CODE_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
-export function registerClaudeCodePrerequisites(
-  prerequisites: PrerequisiteManager
-): void {
-  prerequisites.registerAfter(createClaudeCliHealthCheck());
-}
-
-export async function installClaudeCode(
-  context: InstallContext
-): Promise<boolean> {
-  return runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, context);
-}
-
-export function createClaudeCliBinaryCheck(): PrerequisiteDefinition {
-  return createBinaryExistsCheck(
-    "claude",
-    "claude-cli-binary",
-    "Claude CLI binary must exist"
-  );
-}
 
 function createClaudeCliHealthCheck(): PrerequisiteDefinition {
   return {
@@ -281,12 +192,13 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
   };
 }
 
-export const claudeCodeAdapter: ProviderAdapter<
+export const claudeCodeService: ProviderService<
   ClaudeCodePaths,
-  ClaudeCodeConfigureOptions,
-  ClaudeCodeRemoveOptions,
+  ClaudeCodeConfigureManifestOptions,
+  ClaudeCodeRemoveManifestOptions,
   ClaudeCodeSpawnOptions
 > = {
+  ...claudeCodeManifest,
   name: "claude-code",
   label: "Claude Code",
   branding: {
@@ -295,7 +207,6 @@ export const claudeCodeAdapter: ProviderAdapter<
       light: "#C15F3C"
     }
   },
-  supportsSpawn: true,
   resolvePaths(env) {
     return {
       settingsPath: env.resolveHomePath(".claude", "settings.json"),
@@ -304,43 +215,27 @@ export const claudeCodeAdapter: ProviderAdapter<
     };
   },
   registerPrerequisites(manager) {
-    registerClaudeCodePrerequisites(manager);
+    manager.registerAfter(createClaudeCliHealthCheck());
   },
   async install(context) {
-    await installClaudeCode({
+    await runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, {
       isDryRun: context.logger.context.dryRun,
       runCommand: context.command.runCommand,
       logger: (message) => context.logger.info(message)
     });
   },
-  async configure(context, options) {
-    await configureClaudeCode(
-      {
-        fs: context.command.fs,
-        apiKey: options.apiKey,
-        settingsPath: context.paths.settingsPath,
-        keyHelperPath: context.paths.keyHelperPath,
-        credentialsPath: context.paths.credentialsPath,
-        defaultModel: options.defaultModel
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
-  },
-  async remove(context, options) {
-    return await removeClaudeCode(
-      {
-        fs: context.command.fs,
-        settingsPath: context.paths.settingsPath,
-        keyHelperPath: context.paths.keyHelperPath
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
-  },
   async spawn(context, options) {
-    return await spawnClaudeCode({
-      prompt: options.prompt,
-      args: options.args,
-      runCommand: context.command.runCommand
-    });
+    const defaults = [
+      "-p",
+      options.prompt,
+      "--allowedTools",
+      "Bash,Read",
+      "--permission-mode",
+      "acceptEdits",
+      "--output-format",
+      "text"
+    ];
+    const args = [...defaults, ...(options.args ?? [])];
+    return context.command.runCommand("claude", args);
   }
 };

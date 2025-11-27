@@ -85,16 +85,6 @@ export class PoeSettingsPanel extends LitElement {
     }
   }
 
-  private emit<T>(type: string, detail?: T): void {
-    this.dispatchEvent(
-      new CustomEvent<T>(type, {
-        detail,
-        bubbles: true,
-        composed: true,
-      })
-    );
-  }
-
   private handleOverlayClick(event: Event): void {
     if (event.target === event.currentTarget) {
       this.requestClose();
@@ -102,7 +92,12 @@ export class PoeSettingsPanel extends LitElement {
   }
 
   private requestClose(): void {
-    this.emit("settings-close");
+    this.dispatchEvent(
+      new CustomEvent("settings-close", {
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private handleModelInput(event: Event): void {
@@ -115,7 +110,13 @@ export class PoeSettingsPanel extends LitElement {
     if (!trimmed.length) {
       return;
     }
-    this.emit("model-change", { model: trimmed });
+    this.dispatchEvent(
+      new CustomEvent("model-change", {
+        detail: { model: trimmed },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private handleModelSubmit(event: Event): void {
@@ -134,30 +135,50 @@ export class PoeSettingsPanel extends LitElement {
     if (!trimmed.length) {
       return;
     }
-    this.emit("strategy-change", {
-      config: { type: "fixed", fixedModel: trimmed },
-    });
+    this.dispatchEvent(
+      new CustomEvent("strategy-change", {
+        detail: { config: { type: "fixed", fixedModel: trimmed } },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private handleStrategyToggle(event: Event): void {
     const target = event.target as HTMLInputElement;
-    this.emit("strategy-toggle", { enabled: target.checked });
+    this.dispatchEvent(
+      new CustomEvent("strategy-toggle", {
+        detail: { enabled: target.checked },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private handleStrategySelect(strategy: StrategyKind): void {
     if (this.strategyType === strategy) {
       return;
     }
-    this.emit("strategy-change", {
-      config:
-        strategy === "fixed"
-          ? { type: "fixed", fixedModel: this._fixedModelInput || this.activeModel }
-          : { type: strategy },
-    });
+    const config =
+      strategy === "fixed"
+        ? { type: "fixed", fixedModel: this._fixedModelInput || this.activeModel }
+        : { type: strategy };
+    this.dispatchEvent(
+      new CustomEvent("strategy-change", {
+        detail: { config },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private handleOpenMcp(): void {
-    this.emit("open-mcp");
+    this.dispatchEvent(
+      new CustomEvent("open-mcp", {
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private renderModelOption(option: ProviderSetting): unknown {
@@ -239,7 +260,7 @@ export class PoeSettingsPanel extends LitElement {
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
             ${this.providers.length > 0
-              ? this.providers.map((provider) => this.renderModelOption(provider))
+              ? this.providers.map(this.renderModelOption, this)
               : html`<p class="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-3 text-sm text-text-muted">
                   No providers configured yet. Open MCP configuration to add providers.
                 </p>`}
@@ -304,7 +325,7 @@ export class PoeSettingsPanel extends LitElement {
           </div>
 
           <div class="grid gap-3 lg:grid-cols-2">
-            ${STRATEGIES.map((strategy) => this.renderStrategyOption(strategy))}
+            ${STRATEGIES.map(this.renderStrategyOption, this)}
           </div>
 
           ${this.strategyEnabled && this.strategyType === "fixed"

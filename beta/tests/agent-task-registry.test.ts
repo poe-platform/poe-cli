@@ -24,14 +24,11 @@ function createWatchHarness(): WatchHarness {
     dir: string,
     listener: (event: string, filename: string | null) => void
   ) => {
-    const trigger = (event: string, filename: string) => {
-      listener(event, filename);
-    };
-    watchers.push({ dir, trigger });
+    watchers.push({ dir, trigger: listener });
 
     return {
       close: vi.fn(),
-      trigger
+      trigger: listener
     };
   };
 

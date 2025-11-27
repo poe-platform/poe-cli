@@ -74,7 +74,7 @@ export function registerSpawnCommand(
       }
 
       const adapter = resolveServiceAdapter(container, service);
-      if (!adapter.supportsSpawn) {
+      if (typeof adapter.spawn !== "function") {
         throw new Error(`${adapter.label} does not support spawn.`);
       }
 

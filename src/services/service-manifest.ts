@@ -67,7 +67,7 @@ export type ServiceMutation<Options> =
   | WriteTemplateMutation<Options>
   | RemoveFileMutation<Options>;
 
-export interface ServiceManifest<
+interface ServiceManifestDefinition<
   ConfigureOptions,
   RemoveOptions = ConfigureOptions
 > {
@@ -79,6 +79,28 @@ export interface ServiceManifest<
   };
   configure: ServiceMutation<ConfigureOptions>[];
   remove?: ServiceMutation<RemoveOptions>[];
+}
+
+export interface ServiceManifest<
+  ConfigureOptions,
+  RemoveOptions = ConfigureOptions
+> {
+  id: string;
+  summary: string;
+  prerequisites?: {
+    before?: string[];
+    after?: string[];
+  };
+  configureMutations: ServiceMutation<ConfigureOptions>[];
+  removeMutations?: ServiceMutation<RemoveOptions>[];
+  configure(
+    context: ServiceExecutionContext<ConfigureOptions>,
+    runOptions?: ServiceRunOptions
+  ): Promise<void>;
+  remove: (
+    context: ServiceExecutionContext<RemoveOptions>,
+    runOptions?: ServiceRunOptions
+  ) => Promise<boolean>;
 }
 
 export interface ServiceExecutionContext<Options> {
@@ -270,34 +292,37 @@ export function removeFileMutation<Options>(config: {
   };
 }
 
-export async function runServiceConfigure<
+export function createServiceManifest<
   ConfigureOptions,
   RemoveOptions = ConfigureOptions
->(
-  manifest: ServiceManifest<ConfigureOptions, RemoveOptions>,
-  context: ServiceExecutionContext<ConfigureOptions>,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  await runMutations(manifest.configure, context, {
-    trackChanges: false,
-    hooks: runOptions?.hooks,
-    manifestId: manifest.id
-  });
-}
+>(definition: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>): ServiceManifest<ConfigureOptions, RemoveOptions> {
+  const configureMutations = definition.configure;
+  const removeMutations = definition.remove;
 
-export async function runServiceRemove<
-  ConfigureOptions,
-  RemoveOptions = ConfigureOptions
->(
-  manifest: ServiceManifest<ConfigureOptions, RemoveOptions>,
-  context: ServiceExecutionContext<RemoveOptions>,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  return runMutations(manifest.remove ?? [], context, {
-    trackChanges: true,
-    hooks: runOptions?.hooks,
-    manifestId: manifest.id
-  });
+  return {
+    id: definition.id,
+    summary: definition.summary,
+    prerequisites: definition.prerequisites,
+    configureMutations,
+    removeMutations,
+    async configure(context, runOptions) {
+      await runMutations(configureMutations, context, {
+        trackChanges: false,
+        hooks: runOptions?.hooks,
+        manifestId: definition.id
+      });
+    },
+    async remove(context, runOptions) {
+      if (!removeMutations) {
+        return false;
+      }
+      return runMutations(removeMutations, context, {
+        trackChanges: true,
+        hooks: runOptions?.hooks,
+        manifestId: definition.id
+      });
+    }
+  };
 }
 
 async function runMutations<Options>(

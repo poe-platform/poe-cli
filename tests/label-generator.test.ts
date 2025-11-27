@@ -1,40 +1,24 @@
 import { describe, it, expect } from "vitest";
-import type { ProviderAdapter } from "../src/cli/service-registry.js";
+import type { ProviderService } from "../src/cli/service-registry.js";
 import {
   collectSpawnLabels,
   normalizeColor,
   renderLabelDocument
 } from "../src/tools/label-generator.js";
-
-function createAdapter(
-  overrides: Partial<ProviderAdapter> & Pick<ProviderAdapter, "name" | "label">
-): ProviderAdapter {
-  return {
-    name: overrides.name,
-    label: overrides.label,
-    resolvePaths: overrides.resolvePaths ?? (() => ({})),
-    supportsSpawn: overrides.supportsSpawn,
-    branding: overrides.branding,
-    install: overrides.install,
-    configure: overrides.configure,
-    remove: overrides.remove,
-    spawn: overrides.spawn
-  };
-}
+import { createProviderStub } from "./provider-stub.js";
 
 describe("label generator", () => {
   it("collects spawn labels and normalizes colors", () => {
-    const providers: ProviderAdapter[] = [
-      createAdapter({
+    const providers: ProviderService[] = [
+      createProviderStub({
         name: "alpha",
         label: "Alpha",
-        supportsSpawn: true,
+        spawn: async () => undefined,
         branding: { colors: { light: "#abc123" } }
       }),
-      createAdapter({
+      createProviderStub({
         name: "beta",
         label: "Beta",
-        supportsSpawn: false,
         branding: { colors: { light: "#ffffff" } }
       })
     ];

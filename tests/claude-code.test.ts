@@ -4,6 +4,11 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/providers/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import type { ProviderContext } from "../src/cli/service-registry.js";
+import type {
+  ClaudeCodeConfigureManifestOptions,
+  ClaudeCodeRemoveManifestOptions
+} from "../src/providers/claude-code.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -24,6 +29,37 @@ describe("claude-code service", () => {
     ({ fs, vol } = createMemFs());
     vol.mkdirSync(home, { recursive: true });
   });
+
+  const baseConfigureOptions: ClaudeCodeConfigureManifestOptions = {
+    apiKey,
+    settingsPath,
+    keyHelperPath,
+    credentialsPath,
+    defaultModel: "Claude-Sonnet-4.5"
+  };
+
+  const baseRemoveOptions: ClaudeCodeRemoveManifestOptions = {
+    settingsPath,
+    keyHelperPath
+  };
+
+  async function configureClaude(
+    overrides: Partial<ClaudeCodeConfigureManifestOptions> = {}
+  ): Promise<void> {
+    await claudeService.claudeCodeService.configure({
+      fs,
+      options: { ...baseConfigureOptions, ...overrides }
+    });
+  }
+
+  async function removeClaude(
+    overrides: Partial<ClaudeCodeRemoveManifestOptions> = {}
+  ): Promise<boolean> {
+    return claudeService.claudeCodeService.remove({
+      fs,
+      options: { ...baseRemoveOptions, ...overrides }
+    });
+  }
 
   it("removeClaudeCode prunes manifest-managed env keys from settings json", async () => {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
@@ -54,11 +90,7 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await claudeService.removeClaudeCode({
-      fs,
-      settingsPath,
-      keyHelperPath
-    });
+    const removed = await removeClaude();
     expect(removed).toBe(true);
 
     const content = await fs.readFile(settingsPath, "utf8");
@@ -99,11 +131,7 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    const removed = await claudeService.removeClaudeCode({
-      fs,
-      settingsPath,
-      keyHelperPath
-    });
+    const removed = await removeClaude();
     expect(removed).toBe(true);
 
     await expect(fs.readFile(settingsPath, "utf8")).rejects.toThrow();
@@ -111,23 +139,12 @@ describe("claude-code service", () => {
   });
 
   it("removeClaudeCode returns false when settings file absent", async () => {
-    const removed = await claudeService.removeClaudeCode({
-      fs,
-      settingsPath,
-      keyHelperPath
-    });
+    const removed = await removeClaude();
     expect(removed).toBe(false);
   });
 
   it("creates settings json with claude env configuration", async () => {
-    await claudeService.configureClaudeCode({
-      fs,
-      apiKey,
-      settingsPath,
-      keyHelperPath,
-      credentialsPath,
-      defaultModel: "Claude-Sonnet-4.5"
-    });
+    await configureClaude();
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
@@ -169,14 +186,7 @@ describe("claude-code service", () => {
       { encoding: "utf8" }
     );
 
-    await claudeService.configureClaudeCode({
-      fs,
-      apiKey,
-      settingsPath,
-      keyHelperPath,
-      credentialsPath,
-      defaultModel: "Claude-Sonnet-4.5"
-    });
+    await configureClaude();
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
@@ -206,14 +216,7 @@ describe("claude-code service", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(settingsPath, "test\n", { encoding: "utf8" });
 
-    await claudeService.configureClaudeCode({
-      fs,
-      apiKey,
-      settingsPath,
-      keyHelperPath,
-      credentialsPath,
-      defaultModel: "Claude-Sonnet-4.5"
-    });
+    await configureClaude();
 
     const files = await fs.readdir(dir);
     const backupName = files.find((name) =>
@@ -246,14 +249,7 @@ describe("claude-code service", () => {
   });
 
   it("creates settings with custom defaultModel value", async () => {
-    await claudeService.configureClaudeCode({
-      fs,
-      apiKey,
-      settingsPath,
-      keyHelperPath,
-      credentialsPath,
-      defaultModel: "Claude-Haiku-4.5"
-    });
+    await configureClaude({ defaultModel: "Claude-Haiku-4.5" });
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
@@ -270,12 +266,41 @@ describe("claude-code service", () => {
       stderr: "",
       exitCode: 0
     }));
+    const providerContext = {
+      env: {} as any,
+      paths: {
+        settingsPath,
+        keyHelperPath,
+        credentialsPath
+      },
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: {
+          dryRun: false,
+          verbose: false
+        },
+        info: vi.fn(),
+        success: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        errorWithStack: vi.fn(),
+        logException: vi.fn(),
+        dryRun: vi.fn(),
+        verbose: vi.fn(),
+        child: vi.fn()
+      }
+    } as unknown as ProviderContext;
 
-    const result = await claudeService.spawnClaudeCode({
-      prompt: "Test prompt",
-      args: ["--custom-arg", "value"],
-      runCommand
-    });
+    const result = await claudeService.claudeCodeService.spawn(
+      providerContext,
+      {
+        prompt: "Test prompt",
+        args: ["--custom-arg", "value"]
+      }
+    );
 
     expect(runCommand).toHaveBeenCalledWith("claude", [
       "-p",
@@ -310,7 +335,7 @@ describe("claude-code service", () => {
       runCommand
     });
 
-    claudeService.registerClaudeCodePrerequisites(manager);
+    claudeService.claudeCodeService.registerPrerequisites?.(manager);
     await manager.run("after");
 
     expect(calls.map((entry) => entry.command)).toEqual(["claude"]);
@@ -340,7 +365,7 @@ describe("claude-code service", () => {
       runCommand
     });
 
-    claudeService.registerClaudeCodePrerequisites(manager);
+    claudeService.claudeCodeService.registerPrerequisites?.(manager);
 
     let caught: Error | undefined;
     try {
@@ -394,7 +419,7 @@ describe("claude-code service", () => {
     });
 
     // Test the binary check directly (used during installation)
-    const binaryCheck = claudeService.createClaudeCliBinaryCheck();
+    const binaryCheck = claudeService.CLAUDE_CODE_INSTALL_DEFINITION.check;
     await binaryCheck.run({ isDryRun: false, runCommand });
 
     expect(captured.map((entry) => entry.command)).toEqual(["which", "where"]);

@@ -7,7 +7,7 @@ import {
 import { createCliEnvironment } from "./environment.js";
 import {
   createServiceRegistry,
-  type ProviderAdapter
+  type ProviderService
 } from "./service-registry.js";
 import {
   createCommandContextFactory,
@@ -60,7 +60,7 @@ export interface CliContainer {
   readonly httpClient: HttpClient;
   readonly commandRunner: CommandRunner;
   readonly telemetryLogger: ScopedLogger;
-  readonly providers: ProviderAdapter[];
+  readonly providers: ProviderService[];
   readonly dependencies: CliDependencies;
 }
 

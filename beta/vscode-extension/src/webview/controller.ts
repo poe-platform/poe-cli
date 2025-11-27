@@ -326,9 +326,7 @@ export function createWebviewController(
   }
 
   return {
-    async handleWebviewMessage(message: unknown) {
-      await handleWebviewMessage(message);
-    },
+    handleWebviewMessage,
     post,
     setAvailableTools(nextTools: unknown[]) {
       tools = [...nextTools];

@@ -1,19 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { renderServiceMenu } from "../src/cli/ui/service-menu.js";
 import type { MenuTheme } from "../src/cli/ui/theme.js";
-import type { ProviderAdapter } from "../src/cli/service-registry.js";
+import type { ProviderService } from "../src/cli/service-registry.js";
+import { createProviderStub } from "./provider-stub.js";
 
 function createAdapter(
   name: string,
   label: string,
-  branding?: ProviderAdapter["branding"]
-): ProviderAdapter {
-  return {
+  branding?: ProviderService["branding"]
+): ProviderService {
+  return createProviderStub({
     name,
     label,
-    resolvePaths: () => ({}),
-    branding
-  } as ProviderAdapter;
+    branding,
+    resolvePaths: () => ({})
+  });
 }
 
 const theme: MenuTheme = {

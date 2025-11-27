@@ -7,16 +7,15 @@ const BUILTIN_GLOBALS = new Set([
   // Global functions
   'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'decodeURI', 'decodeURIComponent',
   'encodeURI', 'encodeURIComponent', 'escape', 'unescape', 'eval',
-  // Constructors
+  // Constructors / Built-in objects with static methods
   'Array', 'Boolean', 'Date', 'Error', 'Function', 'Map', 'Number', 'Object',
   'Promise', 'Proxy', 'RegExp', 'Set', 'String', 'Symbol', 'WeakMap', 'WeakSet',
   'BigInt', 'ArrayBuffer', 'DataView', 'Float32Array', 'Float64Array',
   'Int8Array', 'Int16Array', 'Int32Array', 'Uint8Array', 'Uint16Array', 'Uint32Array',
+  'Math', 'JSON', 'Reflect', 'Intl', 'Atomics',
   // Node.js globals
   'Buffer', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval',
   'clearImmediate', 'require', 'console',
-  // Common type coercion
-  'String', 'Number', 'Boolean',
 ]);
 
 // Common module/package names that are external
@@ -44,8 +43,16 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
   },
   defaultOptions: [],
   create(context) {
+    // Track imported identifiers (from external packages)
+    const importedIdentifiers = new Set<string>();
+
     function isSimpleIdentifier(node: TSESTree.Node): node is TSESTree.Identifier {
       return node.type === 'Identifier';
+    }
+
+    function isExternalImport(source: string): boolean {
+      // External imports don't start with './' or '../' or '/'
+      return !source.startsWith('.') && !source.startsWith('/');
     }
 
     function getCalleeName(node: TSESTree.CallExpression): string {
@@ -61,16 +68,18 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
     function isBuiltinOrExternalCall(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
 
-      // Direct call to built-in global: parseInt(x), String(x), etc.
+      // Direct call to built-in global or imported function: parseInt(x), String(x), importedFn(x)
       if (isSimpleIdentifier(callee)) {
-        return BUILTIN_GLOBALS.has(callee.name);
+        return BUILTIN_GLOBALS.has(callee.name) || importedIdentifiers.has(callee.name);
       }
 
-      // Method call on an object: path.dirname(), fs.readFile(), etc.
+      // Method call on an object: path.dirname(), fs.readFile(), Number.parseInt(), importedObj.method()
       if (callee.type === 'MemberExpression') {
-        // Check if it's a call on a known module: path.dirname()
+        // Check if it's a call on a known module, built-in, or imported object
         if (isSimpleIdentifier(callee.object)) {
-          if (COMMON_MODULES.has(callee.object.name)) {
+          if (COMMON_MODULES.has(callee.object.name) ||
+              BUILTIN_GLOBALS.has(callee.object.name) ||
+              importedIdentifiers.has(callee.object.name)) {
             return true;
           }
         }
@@ -171,38 +180,55 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
       return identifiers;
     }
 
-    function usesClosureVariables(
+    function usesClosureVariablesInArguments(
       node: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression,
       callExpr: TSESTree.CallExpression
     ): boolean {
       const paramNames = new Set(getParamNames(node.params));
       const functionName = node.type === 'FunctionDeclaration' && node.id ? node.id.name : null;
       
-      // Collect all identifiers used in the call expression
-      const usedIdentifiers = collectIdentifiers(callExpr);
-      
-      // Get the callee name(s) to exclude from closure check
-      const calleeNames = new Set<string>();
-      if (isSimpleIdentifier(callExpr.callee)) {
-        calleeNames.add(callExpr.callee.name);
-      } else if (callExpr.callee.type === 'MemberExpression') {
-        if (isSimpleIdentifier(callExpr.callee.object)) {
-          calleeNames.add(callExpr.callee.object.name);
-        }
-        if (isSimpleIdentifier(callExpr.callee.property)) {
-          calleeNames.add(callExpr.callee.property.name);
+      // Only check identifiers used in ARGUMENTS, not in the callee
+      // This way, `() => registry.require("test")` is detected as using closure variable `registry`
+      // But `(x) => someLocalFunction(x)` is still flagged as a helper function
+      for (const arg of callExpr.arguments) {
+        const usedIdentifiers = collectIdentifiers(arg);
+        
+        for (const id of usedIdentifiers) {
+          if (!paramNames.has(id) &&
+              !BUILTIN_GLOBALS.has(id) &&
+              !COMMON_MODULES.has(id) &&
+              !importedIdentifiers.has(id) &&
+              id !== functionName) {
+            // This is a closure variable used in arguments
+            return true;
+          }
         }
       }
       
-      // Check if any identifier is not a parameter, not the callee, and not a built-in
-      for (const id of usedIdentifiers) {
-        if (!paramNames.has(id) &&
-            !calleeNames.has(id) &&
-            !BUILTIN_GLOBALS.has(id) &&
-            !COMMON_MODULES.has(id) &&
-            id !== functionName) {
-          // This is a closure variable
-          return true;
+      return false;
+    }
+
+    function calleeUsesClosureVariable(
+      node: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression,
+      callExpr: TSESTree.CallExpression
+    ): boolean {
+      const paramNames = new Set(getParamNames(node.params));
+      const functionName = node.type === 'FunctionDeclaration' && node.id ? node.id.name : null;
+      
+      // Check if the callee object (for method calls) is a closure variable
+      // For `registry.require()`, check if `registry` is a closure variable
+      if (callExpr.callee.type === 'MemberExpression') {
+        const usedIdentifiers = collectIdentifiers(callExpr.callee.object);
+        
+        for (const id of usedIdentifiers) {
+          if (!paramNames.has(id) &&
+              !BUILTIN_GLOBALS.has(id) &&
+              !COMMON_MODULES.has(id) &&
+              !importedIdentifiers.has(id) &&
+              id !== functionName) {
+            // The callee object is a closure variable
+            return true;
+          }
         }
       }
       
@@ -220,8 +246,12 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
         if (isBuiltinOrExternalCall(body)) {
           return null;
         }
-        // Skip if using closure variables
-        if (usesClosureVariables(node, body)) {
+        // Skip if using closure variables in arguments
+        if (usesClosureVariablesInArguments(node, body)) {
+          return null;
+        }
+        // Skip if the callee object is a closure variable (e.g., registry.method())
+        if (calleeUsesClosureVariable(node, body)) {
           return null;
         }
         const paramNames = getParamNames(node.params);
@@ -238,8 +268,12 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
         if (isBuiltinOrExternalCall(body.argument)) {
           return null;
         }
-        // Skip if using closure variables
-        if (usesClosureVariables(node, body.argument)) {
+        // Skip if using closure variables in arguments
+        if (usesClosureVariablesInArguments(node, body.argument)) {
+          return null;
+        }
+        // Skip if the callee object is a closure variable
+        if (calleeUsesClosureVariable(node, body.argument)) {
           return null;
         }
         const paramNames = getParamNames(node.params);
@@ -250,7 +284,7 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
         return null;
       }
 
-      // Block body - check for single return statement
+      // Block body - check for single return statement or single expression statement
       if (body.type === 'BlockStatement') {
         const statements = body.body;
 
@@ -260,24 +294,35 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
         }
 
         const stmt = statements[0];
-
-        // Must be a return statement
-        if (stmt.type !== 'ReturnStatement' || !stmt.argument) {
-          return null;
-        }
-
         let callExpr: TSESTree.CallExpression | null = null;
 
-        // Direct call: return foo()
-        if (stmt.argument.type === 'CallExpression') {
-          callExpr = stmt.argument;
+        // Return statement: return foo() or return await foo()
+        if (stmt.type === 'ReturnStatement' && stmt.argument) {
+          // Direct call: return foo()
+          if (stmt.argument.type === 'CallExpression') {
+            callExpr = stmt.argument;
+          }
+          // Await call: return await foo()
+          else if (
+            stmt.argument.type === 'AwaitExpression' &&
+            stmt.argument.argument.type === 'CallExpression'
+          ) {
+            callExpr = stmt.argument.argument;
+          }
         }
-        // Await call: return await foo()
-        else if (
-          stmt.argument.type === 'AwaitExpression' &&
-          stmt.argument.argument.type === 'CallExpression'
-        ) {
-          callExpr = stmt.argument.argument;
+        // Expression statement: foo() (void function that just calls another)
+        else if (stmt.type === 'ExpressionStatement') {
+          // Direct call: foo()
+          if (stmt.expression.type === 'CallExpression') {
+            callExpr = stmt.expression;
+          }
+          // Await call: await foo()
+          else if (
+            stmt.expression.type === 'AwaitExpression' &&
+            stmt.expression.argument.type === 'CallExpression'
+          ) {
+            callExpr = stmt.expression.argument;
+          }
         }
 
         if (!callExpr) {
@@ -289,8 +334,12 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
           return null;
         }
 
-        // Skip if using closure variables
-        if (usesClosureVariables(node, callExpr)) {
+        // Skip if using closure variables in arguments
+        if (usesClosureVariablesInArguments(node, callExpr)) {
+          return null;
+        }
+        // Skip if the callee object is a closure variable
+        if (calleeUsesClosureVariable(node, callExpr)) {
           return null;
         }
 
@@ -323,6 +372,40 @@ const noHelperFunctions: TSESLint.RuleModule<MessageIds> = {
     }
 
     return {
+      // Track import declarations to identify external imports
+      ImportDeclaration(node: TSESTree.ImportDeclaration) {
+        const source = node.source.value as string;
+        if (isExternalImport(source)) {
+          for (const specifier of node.specifiers) {
+            if (specifier.type === 'ImportDefaultSpecifier' ||
+                specifier.type === 'ImportNamespaceSpecifier' ||
+                specifier.type === 'ImportSpecifier') {
+              importedIdentifiers.add(specifier.local.name);
+            }
+          }
+        }
+      },
+      // Track require calls: const x = require('package')
+      VariableDeclarator(node: TSESTree.VariableDeclarator) {
+        if (node.init?.type === 'CallExpression' &&
+            isSimpleIdentifier(node.init.callee) &&
+            node.init.callee.name === 'require' &&
+            node.init.arguments.length > 0 &&
+            node.init.arguments[0].type === 'Literal' &&
+            typeof node.init.arguments[0].value === 'string' &&
+            isExternalImport(node.init.arguments[0].value)) {
+          if (isSimpleIdentifier(node.id)) {
+            importedIdentifiers.add(node.id.name);
+          } else if (node.id.type === 'ObjectPattern') {
+            // const { a, b } = require('package')
+            for (const prop of node.id.properties) {
+              if (prop.type === 'Property' && isSimpleIdentifier(prop.value)) {
+                importedIdentifiers.add(prop.value.name);
+              }
+            }
+          }
+        }
+      },
       FunctionDeclaration: checkFunction,
       FunctionExpression: checkFunction,
       ArrowFunctionExpression: checkFunction,

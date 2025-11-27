@@ -3,9 +3,10 @@ import { Command } from "commander";
 import { Volume, createFsFromVolume } from "memfs";
 import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { ProviderAdapter } from "../src/cli/service-registry.js";
+import type { ProviderService } from "../src/cli/service-registry.js";
 import { registerRemoveCommand } from "../src/cli/commands/remove.js";
 import { DEFAULT_ROO_CONFIG_NAME } from "../src/cli/constants.js";
+import { createProviderStub } from "./provider-stub.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";
@@ -44,19 +45,19 @@ describe("remove command", () => {
       }
     });
 
-    const removeSpy = vi.fn().mockResolvedValue(true);
+    const removeSpy = vi.fn();
 
-    const adapter: ProviderAdapter = {
+    const adapter: ProviderService = createProviderStub({
       name: "test-service",
       label: "Test Service",
       resolvePaths() {
         return {};
       },
-      async remove(context, options: { mutationHooks?: unknown }) {
-        void context;
-        return await removeSpy(options);
+      async remove(context) {
+        removeSpy(context.options);
+        return true;
       }
-    };
+    });
 
     container.registry.register(adapter);
 
@@ -86,19 +87,19 @@ describe("remove command", () => {
       env: { cwd, homeDir },
       logger: () => {}
     });
-    const removeSpy = vi.fn().mockResolvedValue(true);
+    const removeSpy = vi.fn();
 
-    const rooAdapter: ProviderAdapter = {
+    const rooAdapter: ProviderService = createProviderStub({
       name: "roo-code",
       label: "Roo Code",
       resolvePaths() {
         return {};
       },
-      async remove(context, options: { mutationHooks?: unknown; configName?: string }) {
-        void context;
-        return await removeSpy(context, options);
+      async remove(context) {
+        removeSpy(context.options);
+        return true;
       }
-    };
+    });
 
     container.registry.register(rooAdapter);
 
@@ -125,8 +126,8 @@ describe("remove command", () => {
     );
 
     expect(removeSpy).toHaveBeenCalledTimes(1);
-    const [, options] = removeSpy.mock.calls[0]!;
+    const [options] = removeSpy.mock.calls[0]!;
     expect(options?.configName).toBe("custom-profile");
-    expect(options?.mutationHooks).toBeTruthy();
+    expect(options).toBeDefined();
   });
 });

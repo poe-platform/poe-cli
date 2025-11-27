@@ -1,4 +1,4 @@
-import type { ProviderAdapter } from "../cli/service-registry.js";
+import type { ProviderService } from "../cli/service-registry.js";
 
 export interface ServiceLabelInfo {
   service: string;
@@ -9,9 +9,11 @@ export interface ServiceLabelInfo {
 }
 
 export function collectSpawnLabels(
-  adapters: ProviderAdapter[]
+  adapters: ProviderService[]
 ): ServiceLabelInfo[] {
-  const spawnable = adapters.filter((adapter) => adapter.supportsSpawn);
+  const spawnable = adapters.filter(
+    (adapter) => typeof adapter.spawn === "function"
+  );
   const labels = spawnable.map((adapter) => {
     const colorSource =
       adapter.branding?.colors?.light ??

@@ -90,9 +90,7 @@ export class McpClient extends EventEmitter {
       });
 
       // Initialize the connection
-      this.initialize()
-        .then(() => resolve())
-        .catch(reject);
+      this.initialize().then(resolve).catch(reject);
     });
   }
 

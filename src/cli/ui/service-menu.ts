@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { ProviderAdapter } from "../service-registry.js";
+import type { ProviderService } from "../service-registry.js";
 import {
   defaultMenuTheme,
   type MenuTheme
@@ -14,7 +14,7 @@ export interface RenderServiceMenuOptions {
 }
 
 function formatProviderLabel(
-  service: ProviderAdapter,
+  service: ProviderService,
   theme: MenuTheme
 ): string {
   const palette = theme.palette;
@@ -32,7 +32,7 @@ function formatProviderLabel(
 }
 
 export function renderServiceMenu(
-  services: ProviderAdapter[],
+  services: ProviderService[],
   options?: RenderServiceMenuOptions
 ): string[] {
   const theme = options?.theme ?? defaultMenuTheme;

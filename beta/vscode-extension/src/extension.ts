@@ -78,9 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Register the open terminal command
-    const openTerminalCommand = vscode.commands.registerCommand('poe-code.terminal.open', () => {
-        openPoeTerminal();
-    });
+    const openTerminalCommand = vscode.commands.registerCommand('poe-code.terminal.open', openPoeTerminal);
 
     const openMcpSettingsCommand = vscode.commands.registerCommand('poe-code.settings.openMcp', async () => {
         const homeDir = process.env.HOME || process.env.USERPROFILE || '';

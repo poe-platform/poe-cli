@@ -1,13 +1,17 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
+import type { ProviderContext } from "../service-registry.js";
 import {
   buildProviderContext,
   createExecutionResources,
-  type ExecutionResources,
   resolveCommandFlags,
   resolveServiceAdapter
 } from "./shared.js";
 import { DEFAULT_ROO_CONFIG_NAME } from "../constants.js";
+import type { ClaudeCodePaths } from "../../providers/claude-code.js";
+import type { CodexPaths } from "../../providers/codex.js";
+import type { OpenCodePaths } from "../../providers/opencode.js";
+import type { RooCodePaths } from "../../providers/roo-code.js";
 
 export interface RemoveCommandOptions {
   configName?: string;
@@ -49,12 +53,16 @@ async function executeRemove(
     resources
   );
 
-  const payload = await createRemovePayload(
+  const payload = await createRemovePayload({
     service,
     container,
     options,
-    resources
-  );
+    context: providerContext
+  });
+
+  const runOptions = resources.mutationHooks
+    ? { hooks: resources.mutationHooks }
+    : undefined;
 
   const removed = await container.registry.invoke(
     service,
@@ -63,7 +71,13 @@ async function executeRemove(
       if (!entry.remove) {
         throw new Error(`Service "${service}" does not support remove.`);
       }
-      return await entry.remove(providerContext, payload);
+      return await entry.remove(
+        {
+          fs: providerContext.command.fs,
+          options: payload
+        },
+        runOptions
+      );
     }
   );
 
@@ -77,24 +91,52 @@ async function executeRemove(
   resources.context.complete(messages);
 }
 
-async function createRemovePayload(
-  service: string,
-  container: CliContainer,
-  options: RemoveCommandOptions,
-  resources: ExecutionResources
-): Promise<unknown> {
-  const mutationHooks = resources.mutationHooks;
-  if (service === "roo-code") {
-    const configName = await container.options.resolveConfigName(
-      options.configName,
-      DEFAULT_ROO_CONFIG_NAME
-    );
-    return {
-      configName,
-      mutationHooks
-    };
-  }
-  return { mutationHooks };
+interface RemovePayloadInit {
+  service: string;
+  container: CliContainer;
+  options: RemoveCommandOptions;
+  context: ProviderContext;
+}
+
+async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
+  const { service, container, options, context } = init;
+  switch (service) {
+    case "claude-code": {
+      const paths = context.paths as ClaudeCodePaths;
+      return {
+        settingsPath: paths.settingsPath,
+        keyHelperPath: paths.keyHelperPath
+      };
+    }
+    case "codex": {
+      const paths = context.paths as CodexPaths;
+      return {
+        configPath: paths.configPath
+      };
+    }
+    case "opencode": {
+      const paths = context.paths as OpenCodePaths;
+      return {
+        configPath: paths.configPath,
+        authPath: paths.authPath
+      };
+    }
+    case "roo-code": {
+      const paths = context.paths as RooCodePaths;
+      const configName = await container.options.resolveConfigName(
+        options.configName,
+        DEFAULT_ROO_CONFIG_NAME
+      );
+      return {
+        configName,
+        configPath: paths.configPath,
+        settingsPath: paths.settingsPath,
+        autoImportPath: paths.autoImportPath
+      };
+    }
+    default:
+      return {};
+    }
 }
 
 function formatRemovalMessages(

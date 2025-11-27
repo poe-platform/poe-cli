@@ -26,7 +26,7 @@ interface ThemeConfig {
 
 const DARK_THEME: ThemeConfig = {
   header: (text) => chalk.magentaBright.bold(text),
-  divider: (text) => chalk.dim(text),
+  divider: chalk.dim,
   prompt: (text) => chalk.cyan(text),
   number: (text) => chalk.cyanBright(text),
   providerFallback: (text) => text
@@ -34,7 +34,7 @@ const DARK_THEME: ThemeConfig = {
 
 const LIGHT_THEME: ThemeConfig = {
   header: (text) => chalk.hex("#a200ff").bold(text),
-  divider: (text) => chalk.hex("#666666")(text),
+  divider: chalk.hex("#666666"),
   prompt: (text) => chalk.hex("#006699").bold(text),
   number: (text) => chalk.hex("#0077cc").bold(text),
   providerFallback: (text) => text
@@ -90,11 +90,11 @@ export function resolveMenuThemeName(env: CliEnvironment): MenuThemeName {
 
 function buildPalette(config: ThemeConfig): MenuPalette {
   return {
-    header: (text) => config.header(text),
-    divider: (text) => config.divider(text),
-    prompt: (text) => config.prompt(text),
+    header: config.header,
+    divider: config.divider,
+    prompt: config.prompt,
     number: (value) => config.number(`[${value}]`),
-    providerFallback: (label) => config.providerFallback(label)
+    providerFallback: config.providerFallback
   };
 }
 

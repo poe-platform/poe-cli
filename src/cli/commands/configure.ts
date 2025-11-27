@@ -1,10 +1,10 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
+import type { ProviderContext } from "../service-registry.js";
 import {
   buildProviderContext,
   createExecutionResources,
   type CommandFlags,
-  type ExecutionResources,
   resolveCommandFlags,
   resolveServiceAdapter
 } from "./shared.js";
@@ -18,6 +18,10 @@ import {
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
+import type { ClaudeCodePaths } from "../../providers/claude-code.js";
+import type { CodexPaths } from "../../providers/codex.js";
+import type { OpenCodePaths } from "../../providers/opencode.js";
+import type { RooCodePaths } from "../../providers/roo-code.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -81,14 +85,24 @@ export async function executeConfigure(
     container,
     flags,
     options,
-    resources
+    context: providerContext
   });
+
+  const runOptions = resources.mutationHooks
+    ? { hooks: resources.mutationHooks }
+    : undefined;
 
   await container.registry.invoke(service, "configure", async (entry) => {
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
     }
-    await entry.configure(providerContext, payload);
+    await entry.configure(
+      {
+        fs: providerContext.command.fs,
+        options: payload
+      },
+      runOptions
+    );
   });
 
   const dryMessage =
@@ -107,16 +121,16 @@ interface ConfigurePayloadInit {
   container: CliContainer;
   flags: CommandFlags;
   options: ConfigureCommandOptions;
-  resources: ExecutionResources;
+  context: ProviderContext;
 }
 
 async function createConfigurePayload(
   init: ConfigurePayloadInit
 ): Promise<unknown> {
-  const { service, container, flags, options, resources } = init;
-  const mutationHooks = resources.mutationHooks;
+  const { service, container, flags, options, context } = init;
   switch (service) {
     case "claude-code": {
+      const paths = context.paths as ClaudeCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -129,10 +143,13 @@ async function createConfigurePayload(
       return {
         apiKey,
         defaultModel,
-        mutationHooks
+        settingsPath: paths.settingsPath,
+        keyHelperPath: paths.keyHelperPath,
+        credentialsPath: paths.credentialsPath
       };
     }
     case "codex": {
+      const paths = context.paths as CodexPaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -149,20 +166,23 @@ async function createConfigurePayload(
         apiKey,
         model,
         reasoningEffort,
-        mutationHooks
+        configPath: paths.configPath
       };
     }
     case "opencode": {
+      const paths = context.paths as OpenCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
       });
       return {
         apiKey,
-        mutationHooks
+        configPath: paths.configPath,
+        authPath: paths.authPath
       };
     }
     case "roo-code": {
+      const paths = context.paths as RooCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -181,7 +201,9 @@ async function createConfigurePayload(
         model,
         baseUrl,
         configName,
-        mutationHooks
+        configPath: paths.configPath,
+        settingsPath: paths.settingsPath,
+        autoImportPath: paths.autoImportPath
       };
     }
     default:

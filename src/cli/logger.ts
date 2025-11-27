@@ -42,27 +42,25 @@ export function createLoggerFactory(
     const dryRun = context.dryRun ?? false;
     const verbose = context.verbose ?? false;
     const scope = context.scope;
-
-    const send = (message: string): void => {
-      emitter(message);
-    };
+    const formatMessage = (message: string): string =>
+      scope ? `[${scope}] ${message}` : message;
 
     const scoped: ScopedLogger = {
       context: { dryRun, verbose, scope: context.scope },
       info(message) {
-        send(message);
+        emitter(formatMessage(message));
       },
       success(message) {
-        send(chalk.green(message));
+        emitter(chalk.green(formatMessage(message)));
       },
       warn(message) {
-        send(chalk.yellow(message));
+        emitter(chalk.yellow(formatMessage(message)));
       },
       error(message) {
-        send(chalk.red(message));
+        emitter(chalk.red(formatMessage(message)));
       },
       errorWithStack(error, errorContext) {
-        send(chalk.red(error.message));
+        emitter(chalk.red(formatMessage(error.message)));
 
         if (errorLogger) {
           const fullContext: ErrorContext = {
@@ -77,7 +75,9 @@ export function createLoggerFactory(
         }
       },
       logException(error, operation, errorContext) {
-        send(chalk.red(`Error during ${operation}: ${error.message}`));
+        emitter(
+          chalk.red(formatMessage(`Error during ${operation}: ${error.message}`))
+        );
 
         if (errorLogger) {
           const fullContext: ErrorContext = {
@@ -93,13 +93,13 @@ export function createLoggerFactory(
         }
       },
       dryRun(message) {
-        send(message);
+        emitter(formatMessage(message));
       },
       verbose(message) {
         if (!verbose) {
           return;
         }
-        send(message);
+        emitter(formatMessage(message));
       },
       child(next) {
         return create({

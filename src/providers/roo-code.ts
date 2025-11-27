@@ -1,17 +1,14 @@
 import path from "node:path";
 import crypto from "node:crypto";
-import type { ProviderAdapter } from "../cli/service-registry.js";
-import type { ServiceMutationHooks } from "../services/service-manifest.js";
+import type { ProviderService } from "../cli/service-registry.js";
+import type { ServiceRunOptions } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import { isJsonObject, type JsonObject } from "../utils/json.js";
 import {
+  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
-  runServiceConfigure,
-  runServiceRemove,
-  type ServiceManifest,
-  type ServiceMutation,
-  type ServiceRunOptions
+  type ServiceMutation
 } from "../services/service-manifest.js";
 
 const DEFAULT_RATE_LIMIT_SECONDS = 0;
@@ -22,21 +19,7 @@ export interface RooCodePaths extends Record<string, string> {
   autoImportPath: string;
 }
 
-export interface RooCodeConfigureOptions {
-  apiKey: string;
-  model: string;
-  baseUrl: string;
-  configName: string;
-  mutationHooks?: ServiceMutationHooks;
-}
-
-export interface RooCodeRemoveOptions {
-  configName: string;
-  mutationHooks?: ServiceMutationHooks;
-}
-
-export interface ConfigureRooCodeOptions {
-  fs: FileSystem;
+type RooCodeConfigureManifestOptions = {
   configPath: string;
   settingsPath: string;
   configName: string;
@@ -45,20 +28,57 @@ export interface ConfigureRooCodeOptions {
   baseUrl: string;
   autoImportPath: string;
   rateLimitSeconds?: number;
-}
+};
 
-export interface RemoveRooCodeOptions {
-  fs: FileSystem;
+type RooCodeRemoveManifestOptions = {
   configPath: string;
   settingsPath: string;
   configName: string;
   autoImportPath: string;
+};
+
+export interface ConfigureRooCodeOptions
+  extends RooCodeConfigureManifestOptions {
+  fs: FileSystem;
 }
 
-const ROO_CODE_MANIFEST: ServiceManifest<
-  ConfigureRooCodeOptions,
-  RemoveRooCodeOptions
-> = {
+export interface RemoveRooCodeOptions
+  extends RooCodeRemoveManifestOptions {
+  fs: FileSystem;
+}
+
+export async function configureRooCode(
+  options: ConfigureRooCodeOptions,
+  runOptions?: ServiceRunOptions
+): Promise<void> {
+  const { fs, ...manifestOptions } = options;
+  await rooCodeManifest.configure(
+    {
+      fs,
+      options: manifestOptions
+    },
+    runOptions
+  );
+}
+
+export async function removeRooCode(
+  options: RemoveRooCodeOptions,
+  runOptions?: ServiceRunOptions
+): Promise<boolean> {
+  const { fs, ...manifestOptions } = options;
+  return rooCodeManifest.remove(
+    {
+      fs,
+      options: manifestOptions
+    },
+    runOptions
+  );
+}
+
+const rooCodeManifest = createServiceManifest<
+  RooCodeConfigureManifestOptions,
+  RooCodeRemoveManifestOptions
+>({
   id: "roo-code",
   summary: "Configure Roo Code auto-import to use the Poe API.",
   configure: [
@@ -81,37 +101,9 @@ const ROO_CODE_MANIFEST: ServiceManifest<
     })
   ],
   remove: [createRemoveConfigMutation()]
-};
+});
 
-export async function configureRooCode(
-  options: ConfigureRooCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  await runServiceConfigure(
-    ROO_CODE_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
-export async function removeRooCode(
-  options: RemoveRooCodeOptions,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  return runServiceRemove(
-    ROO_CODE_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
-function createConfigMutation(): ServiceMutation<ConfigureRooCodeOptions> {
+function createConfigMutation(): ServiceMutation<RooCodeConfigureManifestOptions> {
   return {
     kind: "transformFile",
     label: "Merge Roo configuration",
@@ -158,7 +150,7 @@ function createConfigMutation(): ServiceMutation<ConfigureRooCodeOptions> {
   };
 }
 
-function createRemoveConfigMutation(): ServiceMutation<RemoveRooCodeOptions> {
+function createRemoveConfigMutation(): ServiceMutation<RooCodeRemoveManifestOptions> {
   return {
     kind: "transformFile",
     label: "Remove Roo configuration",
@@ -269,15 +261,15 @@ function formatAutoImportPath(homeDir: string, targetPath: string): string {
   return normalizedTarget.split(path.sep).join("/");
 }
 
-export const rooCodeAdapter: ProviderAdapter<
+export const rooCodeService: ProviderService<
   RooCodePaths,
-  RooCodeConfigureOptions,
-  RooCodeRemoveOptions
+  RooCodeConfigureManifestOptions,
+  RooCodeRemoveManifestOptions
 > = {
+  ...rooCodeManifest,
   name: "roo-code",
   label: "Roo Code",
   disabled: true,
-  supportsSpawn: false,
   resolvePaths(env) {
     const settingsPath = resolveVsCodeSettingsPath(
       env.platform,
@@ -295,32 +287,5 @@ export const rooCodeAdapter: ProviderAdapter<
       settingsPath,
       autoImportPath: formatAutoImportPath(env.homeDir, configPath)
     };
-  },
-  async configure(context, options) {
-    await configureRooCode(
-      {
-        fs: context.command.fs,
-        configPath: context.paths.configPath,
-        settingsPath: context.paths.settingsPath,
-        configName: options.configName,
-        apiKey: options.apiKey,
-        model: options.model,
-        baseUrl: options.baseUrl,
-        autoImportPath: context.paths.autoImportPath
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
-  },
-  async remove(context, options) {
-    return await removeRooCode(
-      {
-        fs: context.command.fs,
-        configPath: context.paths.configPath,
-        settingsPath: context.paths.settingsPath,
-        configName: options.configName,
-        autoImportPath: context.paths.autoImportPath
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
   }
 };

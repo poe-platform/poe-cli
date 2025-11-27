@@ -2,6 +2,7 @@ import type { CliEnvironment } from "./environment.js";
 import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
+import type { ServiceManifest } from "../services/service-manifest.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -19,30 +20,21 @@ export interface ProviderContext<TPaths = Record<string, string>> {
   logger: ScopedLogger;
 }
 
-export interface ProviderAdapter<
+export interface ProviderService<
   TPaths = Record<string, string>,
   TConfigure = unknown,
   TRemove = unknown,
   TSpawn = unknown
-> {
+> extends ServiceManifest<TConfigure, TRemove> {
   name: string;
   label: string;
   branding?: ProviderBranding;
   disabled?: boolean;
-  supportsSpawn?: boolean;
   resolvePaths(env: CliEnvironment): TPaths;
   registerPrerequisites?: (
     manager: CommandContext["prerequisites"]
   ) => void;
   install?: (context: ProviderContext<TPaths>) => Promise<void> | void;
-  configure?: (
-    context: ProviderContext<TPaths>,
-    options: TConfigure
-  ) => Promise<void> | void;
-  remove?: (
-    context: ProviderContext<TPaths>,
-    options: TRemove
-  ) => Promise<boolean | void> | boolean | void;
   spawn?: (
     context: ProviderContext<TPaths>,
     options: TSpawn
@@ -50,15 +42,15 @@ export interface ProviderAdapter<
 }
 
 export interface ServiceRegistry {
-  register(adapter: ProviderAdapter): void;
-  discover(adapters: ProviderAdapter[]): void;
-  get(name: string): ProviderAdapter | undefined;
-  require(name: string): ProviderAdapter;
-  list(): ProviderAdapter[];
+  register(adapter: ProviderService): void;
+  discover(adapters: ProviderService[]): void;
+  get(name: string): ProviderService | undefined;
+  require(name: string): ProviderService;
+  list(): ProviderService[];
   invoke<T>(
     serviceName: string,
     operation: ProviderOperation,
-    runner: (adapter: ProviderAdapter) => Promise<T>
+    runner: (adapter: ProviderService) => Promise<T>
   ): Promise<T>;
 }
 
@@ -69,16 +61,16 @@ export interface ServiceRegistryInit {
 export function createServiceRegistry(
   init: ServiceRegistryInit = {}
 ): ServiceRegistry {
-  const adapters = new Map<string, ProviderAdapter>();
+  const adapters = new Map<string, ProviderService>();
 
-  const register = (adapter: ProviderAdapter): void => {
+  const register = (adapter: ProviderService): void => {
     if (adapters.has(adapter.name)) {
       throw new Error(`Provider "${adapter.name}" is already registered.`);
     }
     adapters.set(adapter.name, adapter);
   };
 
-  const discover = (candidates: ProviderAdapter[]): void => {
+  const discover = (candidates: ProviderService[]): void => {
     for (const candidate of candidates) {
       if (adapters.has(candidate.name)) {
         continue;
@@ -87,9 +79,9 @@ export function createServiceRegistry(
     }
   };
 
-  const get = (name: string): ProviderAdapter | undefined => adapters.get(name);
+  const get = (name: string): ProviderService | undefined => adapters.get(name);
 
-  const require = (name: string): ProviderAdapter => {
+  const require = (name: string): ProviderService => {
     const adapter = adapters.get(name);
     if (!adapter) {
       throw new Error(`Unknown provider "${name}".`);
@@ -97,12 +89,12 @@ export function createServiceRegistry(
     return adapter;
   };
 
-  const list = (): ProviderAdapter[] => Array.from(adapters.values());
+  const list = (): ProviderService[] => Array.from(adapters.values());
 
   const invoke = async <T>(
     serviceName: string,
     operation: ProviderOperation,
-    runner: (adapter: ProviderAdapter) => Promise<T>
+    runner: (adapter: ProviderService) => Promise<T>
   ): Promise<T> => {
     const adapter = require(serviceName);
     if (init.telemetry) {

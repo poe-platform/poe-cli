@@ -1,16 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   createServiceRegistry,
-  type ProviderAdapter
+  type ProviderService
 } from "../src/cli/service-registry.js";
+import { createProviderStub } from "./provider-stub.js";
 
-function createAdapter(name: string, label: string): ProviderAdapter {
-  return {
+function createAdapter(name: string, label: string): ProviderService {
+  return createProviderStub({
     name,
-    label,
-    configure: vi.fn(),
-    remove: vi.fn()
-  };
+    label
+  });
 }
 
 describe("ServiceRegistry", () => {

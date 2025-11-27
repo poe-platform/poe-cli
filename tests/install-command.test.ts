@@ -4,7 +4,8 @@ import { Command } from "commander";
 import { registerInstallCommand } from "../src/cli/commands/install.js";
 import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { ProviderAdapter } from "../src/cli/service-registry.js";
+import type { ProviderService } from "../src/cli/service-registry.js";
+import { createProviderStub } from "./provider-stub.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";
@@ -40,7 +41,7 @@ describe("install command", () => {
     });
 
     const callOrder: string[] = [];
-    const adapter: ProviderAdapter = {
+    const adapter: ProviderService = createProviderStub({
       name: "test-service",
       label: "Test Service",
       resolvePaths() {
@@ -52,7 +53,7 @@ describe("install command", () => {
       async install() {
         callOrder.push("install");
       }
-    };
+    });
 
     container.registry.register(adapter);
 

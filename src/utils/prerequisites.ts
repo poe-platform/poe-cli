@@ -56,19 +56,12 @@ export function createPrerequisiteManager(init: {
     after: []
   };
 
-  const register = (
-    phase: PrerequisitePhase,
-    prerequisite: PrerequisiteDefinition
-  ) => {
-    store[phase].push(prerequisite);
-  };
-
   return {
     registerBefore(prerequisite: PrerequisiteDefinition) {
-      register("before", prerequisite);
+      store.before.push(prerequisite);
     },
     registerAfter(prerequisite: PrerequisiteDefinition) {
-      register("after", prerequisite);
+      store.after.push(prerequisite);
     },
     async run(
       phase: PrerequisitePhase,

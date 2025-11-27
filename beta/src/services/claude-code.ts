@@ -1,10 +1,9 @@
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import {
-  configureClaudeCode as baseConfigureClaudeCode,
-  installClaudeCode as baseInstallClaudeCode,
-  registerClaudeCodePrerequisites as baseRegisterClaudeCodePrerequisites,
-  removeClaudeCode as baseRemoveClaudeCode
+  claudeCodeService as baseClaudeCodeService,
+  CLAUDE_CODE_INSTALL_DEFINITION
 } from "poe-code/dist/providers/claude-code.js";
+import { runServiceInstall } from "poe-code/dist/services/service-install.js";
 import type {
   ConfigureClaudeCodeOptions,
   InstallClaudeCodeOptions,
@@ -19,34 +18,51 @@ export type {
   SpawnClaudeCodeOptions
 } from "poe-code/dist/providers/claude-code.js";
 
-export function configureClaudeCode(
+export async function configureClaudeCode(
   options: ConfigureClaudeCodeOptions
 ): Promise<void> {
-  return baseConfigureClaudeCode(options);
+  await baseClaudeCodeService.configure({
+    fs: options.fs,
+    options: {
+      apiKey: options.apiKey,
+      settingsPath: options.settingsPath,
+      keyHelperPath: options.keyHelperPath,
+      credentialsPath: options.credentialsPath,
+      defaultModel: options.defaultModel
+    }
+  });
 }
 
 export function installClaudeCode(
   options: InstallClaudeCodeOptions
-): Promise<void> {
-  return baseInstallClaudeCode(options);
+): Promise<boolean> {
+  return runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, options);
 }
 
 export function registerClaudePrerequisites(
-  manager: Parameters<typeof baseRegisterClaudeCodePrerequisites>[0]
+  manager: Parameters<NonNullable<
+    typeof baseClaudeCodeService.registerPrerequisites
+  >>[0]
 ): void {
-  baseRegisterClaudeCodePrerequisites(manager);
+  baseClaudeCodeService.registerPrerequisites?.(manager);
 }
 
-export function removeClaudeCode(
+export async function removeClaudeCode(
   options: RemoveClaudeCodeOptions
-): Promise<void> {
-  return baseRemoveClaudeCode(options);
+): Promise<boolean> {
+  return baseClaudeCodeService.remove({
+    fs: options.fs,
+    options: {
+      settingsPath: options.settingsPath,
+      keyHelperPath: options.keyHelperPath
+    }
+  });
 }
 
 export function spawnClaudeCode(
   options: SpawnClaudeCodeOptions
 ): Promise<CommandRunnerResult> {
-  const defaultArgs = [
+  const defaults = [
     "-p",
     options.prompt,
     "--allowedTools",
@@ -56,6 +72,6 @@ export function spawnClaudeCode(
     "--output-format",
     "text"
   ];
-  const args = [...defaultArgs, ...(options.args ?? [])];
+  const args = [...defaults, ...(options.args ?? [])];
   return options.runCommand("claude", args);
 }

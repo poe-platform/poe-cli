@@ -1,20 +1,23 @@
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import {
   configureOpenCode as baseConfigureOpenCode,
-  installOpenCode as baseInstallOpenCode,
+  OPEN_CODE_INSTALL_DEFINITION,
   registerOpenCodePrerequisites as baseRegisterOpenCodePrerequisites,
-  removeOpenCode as baseRemoveOpenCode
+  removeOpenCode as baseRemoveOpenCode,
+  spawnOpenCode as baseSpawnOpenCode
 } from "poe-code/dist/providers/opencode.js";
 import type {
   ConfigureOpenCodeOptions,
   RemoveOpenCodeOptions,
-  SpawnOpenCodeOptions
+  SpawnOpenCodeOptions,
+  InstallOpenCodeOptions
 } from "poe-code/dist/providers/opencode.js";
 
 export type {
   ConfigureOpenCodeOptions,
   RemoveOpenCodeOptions,
-  SpawnOpenCodeOptions
+  SpawnOpenCodeOptions,
+  InstallOpenCodeOptions
 } from "poe-code/dist/providers/opencode.js";
 
 export function configureOpenCode(
@@ -23,8 +26,12 @@ export function configureOpenCode(
   return baseConfigureOpenCode(options);
 }
 
-export function installOpenCode(options: Parameters<typeof baseInstallOpenCode>[0]) {
-  return baseInstallOpenCode(options);
+import { runServiceInstall } from "poe-code/dist/services/service-install.js";
+
+export function installOpenCode(
+  options: InstallOpenCodeOptions
+): Promise<boolean> {
+  return runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, options);
 }
 
 export function registerOpenCodePrerequisites(
@@ -33,15 +40,14 @@ export function registerOpenCodePrerequisites(
   baseRegisterOpenCodePrerequisites(manager);
 }
 
-export function removeOpenCode(
+export async function removeOpenCode(
   options: RemoveOpenCodeOptions
-): Promise<void> {
+): Promise<boolean> {
   return baseRemoveOpenCode(options);
 }
 
 export function spawnOpenCode(
   options: SpawnOpenCodeOptions
 ): Promise<CommandRunnerResult> {
-  const args = ["run", options.prompt, ...(options.args ?? [])];
-  return options.runCommand("opencode", args);
+  return baseSpawnOpenCode(options);
 }

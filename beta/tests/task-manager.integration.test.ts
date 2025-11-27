@@ -9,7 +9,7 @@ import type { FSWatcher } from "node:fs";
 import { createCliContainer } from "../src/cli/container.js";
 import { registerSpawnCommand } from "poe-code/dist/cli/commands/spawn.js";
 import type {
-  ProviderAdapter,
+  ProviderService,
   ProviderContext
 } from "../src/cli/service-registry.js";
 import type { CommandRunner, CommandRunnerResult } from "../src/utils/prerequisites.js";
@@ -79,7 +79,7 @@ async function setupEnvironment(options?: {
     tasksDir,
     logsDir,
     logger: () => {},
-    watchFactory: () => createWatcher()
+    watchFactory: createWatcher
   });
 
   const defaultRunner: CommandRunner = vi.fn(async (command, args) => ({
@@ -167,10 +167,17 @@ async function setupEnvironment(options?: {
   };
 
   const registerProvider = (name: string, handler: MockSpawnHandler) => {
-    const adapter: ProviderAdapter = {
+    const adapter: ProviderService = {
+      id: name,
+      summary: name,
+      configureMutations: [],
+      removeMutations: [],
+      async configure() {},
+      async remove() {
+        return false;
+      },
       name,
       label: name,
-      supportsSpawn: true,
       resolvePaths: () => ({}),
       async spawn(context, options) {
         return await handler({

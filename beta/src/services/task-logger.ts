@@ -30,15 +30,18 @@ export class TaskLogger {
   }
 
   info(message: string): void {
-    this.write("INFO", message);
+    const normalized = message.trim();
+    this.write("INFO", normalized);
   }
 
   error(message: string): void {
-    this.write("ERROR", message);
+    const normalized = message.trim();
+    this.write("ERROR", normalized);
   }
 
   debug(message: string): void {
-    this.write("DEBUG", message);
+    const normalized = message.trim();
+    this.write("DEBUG", normalized);
   }
 
   private write(level: string, message: string): void {

@@ -1,6 +1,6 @@
 import path from "node:path";
-import type { ProviderAdapter } from "../cli/service-registry.js";
-import type { ServiceMutationHooks } from "../services/service-manifest.js";
+import type { ProviderService } from "../cli/service-registry.js";
+import type { ServiceRunOptions } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
@@ -14,11 +14,8 @@ import {
 } from "../utils/prerequisites.js";
 import {
   createBackupMutation,
-  ensureDirectory,
-  runServiceConfigure,
-  runServiceRemove,
-  type ServiceManifest,
-  type ServiceRunOptions
+  createServiceManifest,
+  ensureDirectory
 } from "../services/service-manifest.js";
 import {
   parseTomlDocument,
@@ -38,15 +35,25 @@ export interface CodexPaths extends Record<string, string> {
   configPath: string;
 }
 
-export interface CodexConfigureOptions {
+type CodexConfigureManifestOptions = {
+  configPath: string;
   apiKey: string;
   model: string;
   reasoningEffort: string;
-  mutationHooks?: ServiceMutationHooks;
+  timestamp?: () => string;
+};
+
+type CodexRemoveManifestOptions = {
+  configPath: string;
+};
+
+export interface CodexConfigureOptions
+  extends CodexConfigureManifestOptions {
+  fs: FileSystem;
 }
 
-export interface CodexRemoveOptions {
-  mutationHooks?: ServiceMutationHooks;
+export interface CodexRemoveOptions extends CodexRemoveManifestOptions {
+  fs: FileSystem;
 }
 
 export interface CodexSpawnOptions {
@@ -62,10 +69,10 @@ const CODEX_TOP_LEVEL_FIELDS = [
 ] as const;
 const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
 
-const CODEX_MANIFEST: ServiceManifest<
-  ConfigureCodexOptions,
-  RemoveCodexOptions
-> = {
+const codexManifest = createServiceManifest<
+  CodexConfigureManifestOptions,
+  CodexRemoveManifestOptions
+>({
   id: "codex",
   summary: "Configure Codex to use Poe as the model provider.",
   prerequisites: {
@@ -144,12 +151,16 @@ const CODEX_MANIFEST: ServiceManifest<
       }
     }
   ]
-};
+});
 
-const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
+export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
   summary: "Codex CLI",
-  check: createCodexBinaryCheck(),
+  check: createBinaryExistsCheck(
+    "codex",
+    "codex-cli-binary",
+    "Codex CLI binary must exist"
+  ),
   steps: [
     {
       id: "install-codex-cli-npm",
@@ -162,18 +173,13 @@ const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Codex CLI via npm."
 };
 
-export interface ConfigureCodexOptions {
+export interface ConfigureCodexOptions
+  extends CodexConfigureManifestOptions {
   fs: FileSystem;
-  configPath: string;
-  apiKey: string;
-  model: string;
-  reasoningEffort: string;
-  timestamp?: () => string;
 }
 
-export interface RemoveCodexOptions {
+export interface RemoveCodexOptions extends CodexRemoveManifestOptions {
   fs: FileSystem;
-  configPath: string;
 }
 
 export interface SpawnCodexOptions {
@@ -181,6 +187,8 @@ export interface SpawnCodexOptions {
   args?: string[];
   runCommand: CommandRunner;
 }
+
+export type InstallCodexOptions = InstallContext;
 
 function stripCodexConfiguration(
   document: TomlTable
@@ -259,20 +267,6 @@ function isTableEmpty(value: unknown): value is TomlTable {
   return isTomlTable(value) && Object.keys(value).length === 0;
 }
 
-export async function configureCodex(
-  options: ConfigureCodexOptions,
-  runOptions?: ServiceRunOptions
-): Promise<void> {
-  await runServiceConfigure(
-    CODEX_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
 const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
 
 export function buildCodexExecArgs(
@@ -280,47 +274,6 @@ export function buildCodexExecArgs(
   extraArgs: string[] = []
 ): string[] {
   return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
-}
-
-export async function spawnCodex(
-  options: SpawnCodexOptions
-): Promise<CommandRunnerResult> {
-  const args = buildCodexExecArgs(options.prompt, options.args);
-  return options.runCommand("codex", args);
-}
-
-export async function removeCodex(
-  options: RemoveCodexOptions,
-  runOptions?: ServiceRunOptions
-): Promise<boolean> {
-  return runServiceRemove(
-    CODEX_MANIFEST,
-    {
-      fs: options.fs,
-      options
-    },
-    runOptions
-  );
-}
-
-export async function installCodex(
-  context: InstallContext
-): Promise<boolean> {
-  return runServiceInstall(CODEX_INSTALL_DEFINITION, context);
-}
-
-export function registerCodexPrerequisites(
-  prerequisites: PrerequisiteManager
-): void {
-  prerequisites.registerAfter(createCodexCliHealthCheck());
-}
-
-function createCodexBinaryCheck(): PrerequisiteDefinition {
-  return createBinaryExistsCheck(
-    "codex",
-    "codex-cli-binary",
-    "Codex CLI binary must exist"
-  );
 }
 
 function createCodexVersionCheck(): PrerequisiteDefinition {
@@ -343,10 +296,10 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
     id: "codex-cli-health",
     description: "Codex CLI health check must succeed",
     async run({ runCommand }) {
-      const result = await spawnCodex({
-        prompt: "Output exactly: CODEX_OK",
-        runCommand
-      });
+      const result = await runCommand(
+        "codex",
+        buildCodexExecArgs("Output exactly: CODEX_OK")
+      );
       if (result.exitCode !== 0) {
         const detail = formatCommandRunnerResult(result);
         throw new Error(
@@ -370,12 +323,13 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
   };
 }
 
-export const codexAdapter: ProviderAdapter<
+export const codexService: ProviderService<
   CodexPaths,
-  CodexConfigureOptions,
-  CodexRemoveOptions,
+  CodexConfigureManifestOptions,
+  CodexRemoveManifestOptions,
   CodexSpawnOptions
 > = {
+  ...codexManifest,
   name: "codex",
   label: "Codex",
   branding: {
@@ -384,48 +338,23 @@ export const codexAdapter: ProviderAdapter<
       light: "#7A7F86"
     }
   },
-  supportsSpawn: true,
   resolvePaths(env) {
     return {
       configPath: env.resolveHomePath(".codex", "config.toml")
     };
   },
   registerPrerequisites(manager) {
-    registerCodexPrerequisites(manager);
+    manager.registerAfter(createCodexCliHealthCheck());
   },
   async install(context) {
-    await installCodex({
+    await runServiceInstall(CODEX_INSTALL_DEFINITION, {
       isDryRun: context.logger.context.dryRun,
       runCommand: context.command.runCommand,
       logger: (message) => context.logger.info(message)
     });
   },
-  async configure(context, options) {
-    await configureCodex(
-      {
-        fs: context.command.fs,
-        configPath: context.paths.configPath,
-        apiKey: options.apiKey,
-        model: options.model,
-        reasoningEffort: options.reasoningEffort
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
-  },
-  async remove(context, options) {
-    return await removeCodex(
-      {
-        fs: context.command.fs,
-        configPath: context.paths.configPath
-      },
-      options.mutationHooks ? { hooks: options.mutationHooks } : undefined
-    );
-  },
   async spawn(context, options) {
-    return await spawnCodex({
-      prompt: options.prompt,
-      args: options.args,
-      runCommand: context.command.runCommand
-    });
+    const args = buildCodexExecArgs(options.prompt, options.args);
+    return context.command.runCommand("codex", args);
   }
 };

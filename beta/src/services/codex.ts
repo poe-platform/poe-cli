@@ -1,47 +1,69 @@
 import type { CommandRunnerResult } from "../utils/prerequisites.js";
 import {
   buildCodexExecArgs as baseBuildCodexExecArgs,
-  configureCodex as baseConfigureCodex,
-  installCodex as baseInstallCodex,
-  registerCodexPrerequisites as baseRegisterCodexPrerequisites,
-  removeCodex as baseRemoveCodex
+  codexService as baseCodexService,
+  CODEX_INSTALL_DEFINITION
 } from "poe-code/dist/providers/codex.js";
 import type {
   ConfigureCodexOptions,
   RemoveCodexOptions,
-  SpawnCodexOptions
+  SpawnCodexOptions,
+  InstallCodexOptions
 } from "poe-code/dist/providers/codex.js";
 
 export type {
   ConfigureCodexOptions,
   RemoveCodexOptions,
-  SpawnCodexOptions
+  SpawnCodexOptions,
+  InstallCodexOptions
 } from "poe-code/dist/providers/codex.js";
 
-export function configureCodex(
-  options: ConfigureCodexOptions
-): Promise<void> {
-  return baseConfigureCodex(options);
+import { runServiceInstall } from "poe-code/dist/services/service-install.js";
+
+export function installCodex(
+  options: InstallCodexOptions
+): Promise<boolean> {
+  return runServiceInstall(CODEX_INSTALL_DEFINITION, options);
 }
 
-export function installCodex(options: Parameters<typeof baseInstallCodex>[0]) {
-  return baseInstallCodex(options);
+export async function configureCodex(
+  options: ConfigureCodexOptions
+): Promise<void> {
+  await baseCodexService.configure({
+    fs: options.fs,
+    options: {
+      configPath: options.configPath,
+      apiKey: options.apiKey,
+      model: options.model,
+      reasoningEffort: options.reasoningEffort,
+      timestamp: options.timestamp
+    }
+  });
 }
 
 export function registerCodexPrerequisites(
-  manager: Parameters<typeof baseRegisterCodexPrerequisites>[0]
+  manager: Parameters<NonNullable<
+    typeof baseCodexService.registerPrerequisites
+  >>[0]
 ): void {
-  baseRegisterCodexPrerequisites(manager);
+  baseCodexService.registerPrerequisites?.(manager);
 }
 
-export function removeCodex(options: RemoveCodexOptions): Promise<void> {
-  return baseRemoveCodex(options);
+export async function removeCodex(
+  options: RemoveCodexOptions
+): Promise<boolean> {
+  return baseCodexService.remove({
+    fs: options.fs,
+    options: {
+      configPath: options.configPath
+    }
+  });
 }
 
 export function spawnCodex(
   options: SpawnCodexOptions
 ): Promise<CommandRunnerResult> {
-  const args = buildCodexExecArgs(options.prompt, options.args);
+  const args = baseBuildCodexExecArgs(options.prompt, options.args);
   return options.runCommand("codex", args);
 }
 

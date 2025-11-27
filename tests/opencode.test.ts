@@ -29,13 +29,20 @@ describe("opencode service", () => {
     vol.mkdirSync(homeDir, { recursive: true });
   });
 
-  it("creates the opencode config and auth files", async () => {
+  async function configureOpenCode(
+    overrides: Partial<opencodeService.ConfigureOpenCodeOptions> = {}
+  ): Promise<void> {
     await opencodeService.configureOpenCode({
       fs,
       configPath,
       authPath,
-      apiKey: "sk-test"
+      apiKey: "sk-test",
+      ...overrides
     });
+  }
+
+  it("creates the opencode config and auth files", async () => {
+    await configureOpenCode();
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config).toEqual({
@@ -86,12 +93,7 @@ describe("opencode service", () => {
       )
     );
 
-    await opencodeService.configureOpenCode({
-      fs,
-      configPath,
-      authPath,
-      apiKey: "sk-test"
-    });
+    await configureOpenCode();
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config.provider.local).toEqual({
@@ -129,12 +131,7 @@ describe("opencode service", () => {
       )
     );
 
-    await opencodeService.configureOpenCode({
-      fs,
-      configPath,
-      authPath,
-      apiKey: "sk-test"
-    });
+    await configureOpenCode();
 
     const auth = JSON.parse(await fs.readFile(authPath, "utf8"));
     expect(auth).toEqual({

@@ -9,7 +9,7 @@ import {
 import { spawnGitWorktree } from "../../commands/spawn-worktree.js";
 import { simpleGit as createSimpleGit } from "simple-git";
 import type { CommandRunnerResult, CommandRunner } from "../../utils/prerequisites.js";
-import type { ProviderAdapter } from "../service-registry.js";
+import type { ProviderService } from "../service-registry.js";
 
 export interface SpawnWorktreeCommandOptions {
   branch?: string;
@@ -39,7 +39,7 @@ export function registerSpawnWorktreeCommand(
         options: SpawnWorktreeCommandOptions
       ) => {
         const adapter = resolveServiceAdapter(container, service);
-        if (!adapter.supportsSpawn) {
+        if (typeof adapter.spawn !== "function") {
           throw new Error(`${adapter.label} does not support spawn.`);
         }
 
@@ -122,7 +122,7 @@ async function resolveTargetBranch(
 
 async function spawnWithCustomRunner(
   container: CliContainer,
-  adapter: ProviderAdapter,
+  adapter: ProviderService,
   verbose: boolean,
   runner: CommandRunner,
   prompt: string,

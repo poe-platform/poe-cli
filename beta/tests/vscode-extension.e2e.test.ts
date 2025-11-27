@@ -86,9 +86,7 @@ function isTimeoutError(error: unknown): boolean {
     "errors" in error &&
     Array.isArray((error as { errors: unknown[] }).errors)
   ) {
-    return (error as { errors: unknown[] }).errors.some((err) =>
-      isTimeoutError(err)
-    );
+    return (error as { errors: unknown[] }).errors.some(isTimeoutError);
   }
   return false;
 }

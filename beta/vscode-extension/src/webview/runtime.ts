@@ -306,9 +306,10 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
   }
 
   updateNavState(activeView);
+  const showChatView = setView.bind(null, "chat");
 
   if (sendButton) {
-    sendButton.addEventListener("click", () => sendMessage());
+    sendButton.addEventListener("click", sendMessage);
   }
 
   if (stopButton) {
@@ -328,7 +329,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
         sendMessage();
       }
     });
-    messageInput.addEventListener("input", () => adjustInputHeight());
+    messageInput.addEventListener("input", adjustInputHeight);
   }
 
   function adjustInputHeight(): void {
@@ -390,9 +391,7 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
     settingsPanel.models = options.modelOptions;
     settingsPanel.activeModel = activeModel;
 
-    settingsPanel.addEventListener("settings-close", () => {
-      setView("chat");
-    });
+    settingsPanel.addEventListener("settings-close", showChatView);
 
     settingsPanel.addEventListener("model-change", (event) => {
       const detail = (event as CustomEvent<{ model?: string }>).detail;
@@ -418,14 +417,12 @@ export function initializeWebviewApp(options: InitializeOptions): WebviewApp {
 
     settingsPanel.addEventListener("open-mcp", () => {
       options.postMessage({ type: "openSettings" });
-      setView("chat");
+      showChatView();
     });
   }
 
   if (historyCloseButton) {
-    historyCloseButton.addEventListener("click", () => {
-      setView("chat");
-    });
+    historyCloseButton.addEventListener("click", showChatView);
   }
 
   function toggleThinking(active: boolean): void {

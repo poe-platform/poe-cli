@@ -222,7 +222,7 @@ export class ErrorLogger {
       }
 
       return true;
-    } catch (error) {
+    } catch {
       // Silently fail during directory creation - this is expected in test environments
       // where the log directory path may not exist. The logger will still function,
       // just without file logging capability.
