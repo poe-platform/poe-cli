@@ -3,9 +3,7 @@ import type { ProviderService } from "../cli/service-registry.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
-  CommandRunnerResult,
-  PrerequisiteDefinition,
-  PrerequisiteManager
+  PrerequisiteDefinition
 } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,

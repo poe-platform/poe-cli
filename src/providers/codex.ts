@@ -1,12 +1,9 @@
 import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { ServiceRunOptions } from "../services/service-manifest.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
-  CommandRunnerResult,
-  PrerequisiteDefinition,
-  PrerequisiteManager
+  PrerequisiteDefinition
 } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
