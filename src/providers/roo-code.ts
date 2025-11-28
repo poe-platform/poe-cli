@@ -267,13 +267,11 @@ const rooCodeManifest = createServiceManifest<
   summary: "Configure Roo Code auto-import to use the Poe API.",
   configure: [
     ensureDirectory({
-      path: ({ options }) => options.env.resolveHomePath("Documents"),
-      label: "Ensure Roo config directory"
+      path: "~/Documents"
     }),
     {
       kind: "transformFile",
       target: ({ options }) => resolveRooConfigPath(options.env),
-      label: "Merge Roo provider profile",
       async transform({ content, context }) {
         return buildRooConfigContent({
           fs: context.fs,
@@ -284,12 +282,10 @@ const rooCodeManifest = createServiceManifest<
     },
     ensureDirectory({
       path: ({ options }) =>
-        path.dirname(resolveRooSettingsPath(options.env)),
-      label: "Ensure VSCode settings directory"
+        path.dirname(resolveRooSettingsPath(options.env))
     }),
     jsonMergeMutation({
       target: ({ options }) => resolveRooSettingsPath(options.env),
-      label: "Set Roo auto-import path",
       value: ({ options }) => ({
         "roo-cline.autoImportSettingsPath": resolveRooAutoImportPath(
           options.env
@@ -301,7 +297,6 @@ const rooCodeManifest = createServiceManifest<
     {
       kind: "transformFile",
       target: ({ options }) => resolveRooConfigPath(options.env),
-      label: "Remove Roo provider profile",
       async transform({ content, context }) {
         return pruneRooConfigContent({
           fs: context.fs,
@@ -321,8 +316,5 @@ export const rooCodeService: ProviderService<
   ...rooCodeManifest,
   name: "roo-code",
   label: "Roo Code",
-  disabled: true,
-  resolvePaths() {
-    return {};
-  }
+  disabled: true
 };

@@ -63,9 +63,12 @@ export function buildProviderContext(
   adapter: ProviderService,
   resources: ExecutionResources
 ): ProviderContext {
+  const paths = adapter.resolvePaths
+    ? adapter.resolvePaths(container.env)
+    : {};
   return {
     env: container.env,
-    paths: adapter.resolvePaths(container.env),
+    paths,
     command: resources.context,
     logger: resources.logger
   };

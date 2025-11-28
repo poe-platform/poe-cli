@@ -48,14 +48,6 @@ const OPEN_CODE_AUTH_SHAPE: JsonObject = {
   poe: true
 };
 
-function resolveOpenCodeConfigPath(env: CliEnvironment): string {
-  return env.resolveHomePath(".config", "opencode", "config.json");
-}
-
-function resolveOpenCodeAuthPath(env: CliEnvironment): string {
-  return env.resolveHomePath(".local", "share", "opencode", "auth.json");
-}
-
 type OpenCodeConfigureContext = {
   env: CliEnvironment;
   apiKey: string;
@@ -141,22 +133,17 @@ const openCodeManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => options.env.resolveHomePath(".config", "opencode"),
-      label: "Ensure OpenCode config directory"
+      path: "~/.config/opencode"
     }),
     ensureDirectory({
-      path: ({ options }) =>
-        options.env.resolveHomePath(".local", "share", "opencode"),
-      label: "Ensure OpenCode auth directory"
+      path: "~/.local/share/opencode"
     }),
     jsonMergeMutation({
-      target: ({ options }) => resolveOpenCodeConfigPath(options.env),
-      label: "Merge OpenCode config",
+      target: "~/.config/opencode/config.json",
       value: () => OPEN_CODE_CONFIG_TEMPLATE
     }),
     jsonMergeMutation({
-      target: ({ options }) => resolveOpenCodeAuthPath(options.env),
-      label: "Merge OpenCode auth",
+      target: "~/.local/share/opencode/auth.json",
       value: ({ options }) => ({
         poe: {
           type: "api",
@@ -167,13 +154,11 @@ const openCodeManifest = createServiceManifest<
   ],
   remove: [
     jsonPruneMutation({
-      target: ({ options }) => resolveOpenCodeConfigPath(options.env),
-      label: "Prune OpenCode config",
+      target: "~/.config/opencode/config.json",
       shape: () => OPEN_CODE_CONFIG_SHAPE
     }),
     jsonPruneMutation({
-      target: ({ options }) => resolveOpenCodeAuthPath(options.env),
-      label: "Remove OpenCode auth entry",
+      target: "~/.local/share/opencode/auth.json",
       shape: () => OPEN_CODE_AUTH_SHAPE
     })
   ]
@@ -193,9 +178,6 @@ export const openCodeService: ProviderService<
       dark: "#4A4F55",
       light: "#2F3338"
     }
-  },
-  resolvePaths() {
-    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createOpenCodeHealthCheck());

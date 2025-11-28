@@ -91,6 +91,7 @@ export async function executeConfigure(
     await entry.configure(
       {
         fs: providerContext.command.fs,
+        env: providerContext.env,
         options: payload
       }
     );

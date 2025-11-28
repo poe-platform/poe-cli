@@ -22,6 +22,7 @@ export interface ProviderContext<TPaths = Record<string, string>> {
 
 export interface ServiceExecutionContext<Options> {
   fs: FileSystem;
+  env: CliEnvironment;
   options: Options;
 }
 
@@ -47,7 +48,7 @@ export interface ProviderService<
   label: string;
   branding?: ProviderBranding;
   disabled?: boolean;
-  resolvePaths(env: CliEnvironment): TPaths;
+  resolvePaths?: (env: CliEnvironment) => TPaths;
   registerPrerequisites?: (
     manager: CommandContext["prerequisites"]
   ) => void;

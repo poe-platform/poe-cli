@@ -43,10 +43,6 @@ const CODEX_TOP_LEVEL_FIELDS = [
 ] as const;
 const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
 
-function resolveCodexConfigPath(env: CliEnvironment): string {
-  return env.resolveHomePath(".codex", "config.toml");
-}
-
 export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
   summary: "Codex CLI",
@@ -211,18 +207,15 @@ const codexManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => options.env.resolveHomePath(".codex"),
-      label: "Ensure Codex config directory"
+      path: "~/.codex"
     }),
     createBackupMutation({
-      target: ({ options }) => resolveCodexConfigPath(options.env),
-      timestamp: ({ options }) => options.timestamp,
-      label: "Backup Codex config"
+      target: "~/.codex/config.toml",
+      timestamp: ({ options }) => options.timestamp
     }),
     {
       kind: "transformFile",
-      target: ({ options }) => resolveCodexConfigPath(options.env),
-      label: "Merge Codex provider configuration",
+      target: "~/.codex/config.toml",
       async transform({ content, context }) {
         const previous = content ?? "";
         let document: TomlTable = {};
@@ -252,8 +245,7 @@ const codexManifest = createServiceManifest<
   remove: [
     {
       kind: "transformFile",
-      target: ({ options }) => resolveCodexConfigPath(options.env),
-      label: "Prune Codex provider configuration",
+      target: "~/.codex/config.toml",
       async transform({ content }) {
         if (content == null) {
           return { content: null, changed: false };
@@ -298,9 +290,6 @@ export const codexService: ProviderService<
       dark: "#D5D9DF",
       light: "#7A7F86"
     }
-  },
-  resolvePaths() {
-    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createCodexCliHealthCheck());

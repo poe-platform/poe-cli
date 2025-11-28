@@ -51,28 +51,21 @@ const claudeCodeManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => options.env.resolveHomePath(".claude"),
-      label: "Ensure Claude settings directory"
+      path: "~/.claude"
     }),
     writeTemplateMutation({
-      target: ({ options }) =>
-        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
+      target: "~/.claude/anthropic_key.sh",
       templateId: "claude-code/anthropic_key.sh.hbs",
       context: ({ options }) => ({
         credentialsPathLiteral: quoteSinglePath(options.env.credentialsPath)
-      }),
-      label: "Write API key helper script"
+      })
     }),
     makeExecutableMutation({
-      target: ({ options }) =>
-        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
-      label: "Make API key helper executable",
+      target: "~/.claude/anthropic_key.sh",
       mode: 0o700
     }),
     jsonMergeMutation({
-      target: ({ options }) =>
-        options.env.resolveHomePath(".claude", "settings.json"),
-      label: "Merge Claude settings",
+      target: "~/.claude/settings.json",
       value: ({ options }) => ({
         apiKeyHelper: options.env.resolveHomePath(
           ".claude",
@@ -90,9 +83,7 @@ const claudeCodeManifest = createServiceManifest<
   ],
   remove: [
     jsonPruneMutation({
-      target: ({ options }) =>
-        options.env.resolveHomePath(".claude", "settings.json"),
-      label: "Prune Claude settings",
+      target: "~/.claude/settings.json",
       shape: () => ({
         apiKeyHelper: true,
         env: {
@@ -105,9 +96,7 @@ const claudeCodeManifest = createServiceManifest<
       })
     }),
     removeFileMutation({
-      target: ({ options }) =>
-        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
-      label: "Remove API key helper script"
+      target: "~/.claude/anthropic_key.sh"
     })
   ]
 });
@@ -190,9 +179,6 @@ export const claudeCodeService: ProviderService<
       dark: "#C15F3C",
       light: "#C15F3C"
     }
-  },
-  resolvePaths() {
-    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createClaudeCliHealthCheck());

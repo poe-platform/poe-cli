@@ -1,3 +1,5 @@
+import path from "node:path";
+import type { CliEnvironment } from "../cli/environment.js";
 import type { FileSystem } from "../utils/file-system.js";
 import { createBackup } from "../utils/backup.js";
 import { renderTemplate } from "../utils/templates.js";
@@ -15,6 +17,7 @@ type ValueResolver<Options, Value> =
 interface MutationContext<Options> {
   options: Options;
   fs: FileSystem;
+  env: CliEnvironment;
 }
 
 interface TransformResult {
@@ -24,7 +27,7 @@ interface TransformResult {
 
 interface TransformFileMutation<Options> {
   kind: "transformFile";
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
   target: ValueResolver<Options, string>;
   transform(
     input: { content: string | null; context: MutationContext<Options> }
@@ -33,20 +36,20 @@ interface TransformFileMutation<Options> {
 
 interface EnsureDirectoryMutation<Options> {
   kind: "ensureDirectory";
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
   path: ValueResolver<Options, string>;
 }
 
 interface CreateBackupMutation<Options> {
   kind: "createBackup";
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
   target: ValueResolver<Options, string>;
   timestamp?: ValueResolver<Options, (() => string) | undefined>;
 }
 
 interface WriteTemplateMutation<Options> {
   kind: "writeTemplate";
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
   target: ValueResolver<Options, string>;
   templateId: string;
   context?: ValueResolver<Options, JsonObject | undefined>;
@@ -54,7 +57,7 @@ interface WriteTemplateMutation<Options> {
 
 interface RemoveFileMutation<Options> {
   kind: "removeFile";
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
   target: ValueResolver<Options, string>;
   whenEmpty?: boolean;
   whenContentMatches?: RegExp;
@@ -105,6 +108,7 @@ export interface ServiceManifest<
 
 export interface ServiceExecutionContext<Options> {
   fs: FileSystem;
+  env: CliEnvironment;
   options: Options;
 }
 
@@ -146,7 +150,7 @@ export interface ServiceMutationHooks {
 
 export function ensureDirectory<Options>(config: {
   path: ValueResolver<Options, string>;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "ensureDirectory",
@@ -158,7 +162,7 @@ export function ensureDirectory<Options>(config: {
 export function createBackupMutation<Options>(config: {
   target: ValueResolver<Options, string>;
   timestamp?: ValueResolver<Options, (() => string) | undefined>;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "createBackup",
@@ -172,7 +176,7 @@ export function writeTemplateMutation<Options>(config: {
   target: ValueResolver<Options, string>;
   templateId: string;
   context?: ValueResolver<Options, JsonObject | undefined>;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "writeTemplate",
@@ -186,14 +190,15 @@ export function writeTemplateMutation<Options>(config: {
 export function jsonMergeMutation<Options>(config: {
   target: ValueResolver<Options, string>;
   value: ValueResolver<Options, JsonObject>;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
     target: config.target,
     label: config.label,
     async transform({ content, context }) {
-      const targetPath = resolveValue(config.target, context);
+      const rawTarget = resolveValue(config.target, context);
+      const targetPath = expandHomeShortcut(rawTarget, context.env);
       const current = await parseJsonWithRecovery({
         content,
         fs: context.fs,
@@ -213,7 +218,7 @@ export function jsonMergeMutation<Options>(config: {
 export function jsonPruneMutation<Options>(config: {
   target: ValueResolver<Options, string>;
   shape: ValueResolver<Options, JsonObject>;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
@@ -250,7 +255,7 @@ export function removePatternMutation<Options>(config: {
         match: string,
         context: MutationContext<Options>
       ) => string);
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
@@ -281,7 +286,7 @@ export function removeFileMutation<Options>(config: {
   target: ValueResolver<Options, string>;
   whenEmpty?: boolean;
   whenContentMatches?: RegExp;
-  label?: string;
+  label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "removeFile",
@@ -357,8 +362,13 @@ async function applyMutation<Options>(
 ): Promise<boolean> {
   switch (mutation.kind) {
     case "ensureDirectory": {
-      const targetPath = resolveValue(mutation.path, mutationContext(context));
-      const details = createMutationDetails(mutation, manifestId, targetPath);
+      const targetPath = resolvePath(mutation.path, context);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
       hooks?.onStart?.(details);
       try {
         const existed = await pathExists(context.fs, targetPath);
@@ -375,11 +385,16 @@ async function applyMutation<Options>(
       }
     }
     case "createBackup": {
-      const targetPath = resolveValue(mutation.target, mutationContext(context));
+      const targetPath = resolvePath(mutation.target, context);
       const timestamp = mutation.timestamp
         ? resolveValue(mutation.timestamp, mutationContext(context))
         : undefined;
-      const details = createMutationDetails(mutation, manifestId, targetPath);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
       hooks?.onStart?.(details);
       try {
         const backupPath = await createBackup(context.fs, targetPath, timestamp);
@@ -395,7 +410,7 @@ async function applyMutation<Options>(
       return false;
     }
     case "writeTemplate": {
-      const targetPath = resolveValue(mutation.target, mutationContext(context));
+      const targetPath = resolvePath(mutation.target, context);
       const renderContext = mutation.context
         ? resolveValue(mutation.context, mutationContext(context))
         : undefined;
@@ -403,7 +418,12 @@ async function applyMutation<Options>(
         mutation.templateId,
         renderContext ?? {}
       );
-      const details = createMutationDetails(mutation, manifestId, targetPath);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
       hooks?.onStart?.(details);
       try {
         const existed = await pathExists(context.fs, targetPath);
@@ -420,8 +440,13 @@ async function applyMutation<Options>(
       return true;
     }
     case "removeFile": {
-      const targetPath = resolveValue(mutation.target, mutationContext(context));
-      const details = createMutationDetails(mutation, manifestId, targetPath);
+      const targetPath = resolvePath(mutation.target, context);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
       hooks?.onStart?.(details);
       try {
         const raw = await context.fs.readFile(targetPath, "utf8");
@@ -466,9 +491,14 @@ async function applyMutation<Options>(
       }
     }
     case "transformFile": {
-      const targetPath = resolveValue(mutation.target, mutationContext(context));
+      const targetPath = resolvePath(mutation.target, context);
       const current = await readFileIfExists(context.fs, targetPath);
-      const details = createMutationDetails(mutation, manifestId, targetPath);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
       hooks?.onStart?.(details);
       try {
         const result = await mutation.transform({
@@ -500,41 +530,51 @@ function mutationContext<Options>(
 ): MutationContext<Options> {
   return {
     fs: context.fs,
-    options: context.options
+    options: context.options,
+    env: context.env
   };
 }
 
 function createMutationDetails<Options>(
   mutation: ServiceMutation<Options>,
   manifestId: string,
-  targetPath?: string
+  targetPath: string | undefined,
+  context: ServiceExecutionContext<Options>
 ): MutationLogDetails {
-  const subject = (() => {
-    switch (mutation.kind) {
-      case "ensureDirectory":
-        return mutation.label ?? "Ensure directory";
-      case "createBackup":
-        return mutation.label ?? "Create backup";
-      case "writeTemplate":
-        return (
-          mutation.label ??
-          `Write template ${mutation.templateId}`
-        );
-      case "removeFile":
-        return mutation.label ?? "Remove file";
-      case "transformFile":
-        return mutation.label ?? "Transform file";
-      default:
-        return "Operation";
-    }
-  })();
+  const customLabel =
+    mutation.label != null
+      ? resolveValue(mutation.label, mutationContext(context))
+      : undefined;
+  const label =
+    customLabel ?? describeMutationOperation(mutation.kind, targetPath);
 
   return {
     manifestId,
     kind: mutation.kind,
-    label: subject,
+    label,
     targetPath
   };
+}
+
+function describeMutationOperation(
+  kind: ServiceMutationKind,
+  targetPath?: string
+): string {
+  const displayPath = targetPath ?? "target";
+  switch (kind) {
+    case "ensureDirectory":
+      return `Ensure directory ${displayPath}`;
+    case "createBackup":
+      return `Create backup ${displayPath}`;
+    case "writeTemplate":
+      return `Write file ${displayPath}`;
+    case "removeFile":
+      return `Remove file ${displayPath}`;
+    case "transformFile":
+      return `Transform file ${displayPath}`;
+    default:
+      return "Operation";
+  }
 }
 
 function resolveValue<Options, Value>(
@@ -545,6 +585,44 @@ function resolveValue<Options, Value>(
     return (resolver as (ctx: MutationContext<Options>) => Value)(context);
   }
   return resolver;
+}
+
+function resolvePath<Options>(
+  resolver: ValueResolver<Options, string>,
+  context: ServiceExecutionContext<Options>
+): string {
+  const raw = resolveValue(resolver, mutationContext(context));
+  return expandHomeShortcut(raw, context.env);
+}
+
+function expandHomeShortcut(
+  targetPath: string,
+  env?: CliEnvironment
+): string {
+  if (!targetPath?.startsWith("~")) {
+    return targetPath;
+  }
+  if (targetPath.startsWith("~./")) {
+    targetPath = `~/.${targetPath.slice(3)}`;
+  }
+  const homeDir = env?.homeDir ?? process.env.HOME ?? process.env.USERPROFILE;
+  if (!homeDir) {
+    return targetPath;
+  }
+  let remainder = targetPath.slice(1);
+  if (remainder.startsWith("/")) {
+    remainder = remainder.slice(1);
+  } else if (remainder.startsWith("\\")) {
+    remainder = remainder.slice(1);
+  } else if (remainder.startsWith(".")) {
+    remainder = remainder.slice(1);
+    if (remainder.startsWith("/")) {
+      remainder = remainder.slice(1);
+    } else if (remainder.startsWith("\\")) {
+      remainder = remainder.slice(1);
+    }
+  }
+  return remainder.length === 0 ? homeDir : path.join(homeDir, remainder);
 }
 
 function parseJson(content: string | null): JsonObject {

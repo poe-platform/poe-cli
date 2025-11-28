@@ -66,6 +66,7 @@ async function executeRemove(
       return await entry.remove(
         {
           fs: providerContext.command.fs,
+          env: providerContext.env,
           options: payload
         }
       );
@@ -105,7 +106,7 @@ async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
       );
       return {
         env: context.env,
-        configName,
+        configName
       };
     }
     default:

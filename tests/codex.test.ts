@@ -58,6 +58,7 @@ describe("codex service", () => {
   ): Promise<void> {
     await codexService.codexService.configure({
       fs,
+      env,
       options: buildConfigureOptions(overrides)
     });
   }
@@ -67,6 +68,7 @@ describe("codex service", () => {
   ): Promise<boolean> {
     return codexService.codexService.remove({
       fs,
+      env,
       options: buildRemoveOptions(overrides)
     });
   }

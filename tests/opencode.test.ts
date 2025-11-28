@@ -49,6 +49,7 @@ describe("opencode service", () => {
   ): Promise<void> {
     await opencodeService.openCodeService.configure({
       fs,
+      env,
       options: buildConfigureOptions(overrides)
     });
   }

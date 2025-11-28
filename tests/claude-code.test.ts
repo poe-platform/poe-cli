@@ -64,6 +64,7 @@ describe("claude-code service", () => {
   ): Promise<void> {
     await claudeService.claudeCodeService.configure({
       fs,
+      env,
       options: buildConfigureOptions(overrides)
     });
   }
@@ -73,6 +74,7 @@ describe("claude-code service", () => {
   ): Promise<boolean> {
     return claudeService.claudeCodeService.remove({
       fs,
+      env,
       options: buildRemoveOptions(overrides)
     });
   }
