@@ -4,7 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as opencodeService from "../src/providers/opencode.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
-import type { OpenCodeConfigureOptions } from "../src/providers/opencode.js";
+import { createCliEnvironment } from "../src/cli/environment.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -24,24 +24,32 @@ describe("opencode service", () => {
     "opencode",
     "auth.json"
   );
+  let env = createCliEnvironment({ cwd: homeDir, homeDir });
 
   beforeEach(() => {
     ({ fs, vol } = createMemFs());
     vol.mkdirSync(homeDir, { recursive: true });
+    env = createCliEnvironment({ cwd: homeDir, homeDir });
   });
 
-  const baseConfigureOptions: OpenCodeConfigureOptions = {
-    configPath,
-    authPath,
-    apiKey: "sk-test"
-  };
+  type ConfigureOptions = Parameters<
+    typeof opencodeService.openCodeService.configure
+  >[0]["options"];
+
+  const buildConfigureOptions = (
+    overrides: Partial<ConfigureOptions> = {}
+  ): ConfigureOptions => ({
+    env,
+    apiKey: "sk-test",
+    ...overrides
+  });
 
   async function configureOpenCode(
-    overrides: Partial<typeof baseConfigureOptions> = {}
+    overrides: Partial<ConfigureOptions> = {}
   ): Promise<void> {
     await opencodeService.openCodeService.configure({
       fs,
-      options: { ...baseConfigureOptions, ...overrides }
+      options: buildConfigureOptions(overrides)
     });
   }
 
@@ -158,10 +166,7 @@ describe("opencode service", () => {
     }));
     const providerContext = {
       env: {} as any,
-      paths: {
-        configPath,
-        authPath
-      },
+      paths: {},
       command: {
         runCommand,
         fs

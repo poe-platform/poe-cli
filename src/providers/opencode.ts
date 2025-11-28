@@ -1,5 +1,5 @@
-import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
+import type { CliEnvironment } from "../cli/environment.js";
 import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
@@ -48,20 +48,21 @@ const OPEN_CODE_AUTH_SHAPE: JsonObject = {
   poe: true
 };
 
-export interface OpenCodePaths extends Record<string, string> {
-  configPath: string;
-  authPath: string;
+function resolveOpenCodeConfigPath(env: CliEnvironment): string {
+  return env.resolveHomePath(".config", "opencode", "config.json");
 }
 
-export type OpenCodeConfigureOptions = {
-  configPath: string;
-  authPath: string;
+function resolveOpenCodeAuthPath(env: CliEnvironment): string {
+  return env.resolveHomePath(".local", "share", "opencode", "auth.json");
+}
+
+type OpenCodeConfigureContext = {
+  env: CliEnvironment;
   apiKey: string;
 };
 
-export type OpenCodeRemoveOptions = {
-  configPath: string;
-  authPath: string;
+type OpenCodeRemoveContext = {
+  env: CliEnvironment;
 };
 
 export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
@@ -130,8 +131,8 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
 }
 
 const openCodeManifest = createServiceManifest<
-  OpenCodeConfigureOptions,
-  OpenCodeRemoveOptions
+  OpenCodeConfigureContext,
+  OpenCodeRemoveContext
 >({
   id: "opencode",
   summary: "Configure OpenCode CLI to use the Poe API.",
@@ -140,20 +141,21 @@ const openCodeManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
+      path: ({ options }) => options.env.resolveHomePath(".config", "opencode"),
       label: "Ensure OpenCode config directory"
     }),
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.authPath),
+      path: ({ options }) =>
+        options.env.resolveHomePath(".local", "share", "opencode"),
       label: "Ensure OpenCode auth directory"
     }),
     jsonMergeMutation({
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveOpenCodeConfigPath(options.env),
       label: "Merge OpenCode config",
       value: () => OPEN_CODE_CONFIG_TEMPLATE
     }),
     jsonMergeMutation({
-      target: ({ options }) => options.authPath,
+      target: ({ options }) => resolveOpenCodeAuthPath(options.env),
       label: "Merge OpenCode auth",
       value: ({ options }) => ({
         poe: {
@@ -165,12 +167,12 @@ const openCodeManifest = createServiceManifest<
   ],
   remove: [
     jsonPruneMutation({
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveOpenCodeConfigPath(options.env),
       label: "Prune OpenCode config",
       shape: () => OPEN_CODE_CONFIG_SHAPE
     }),
     jsonPruneMutation({
-      target: ({ options }) => options.authPath,
+      target: ({ options }) => resolveOpenCodeAuthPath(options.env),
       label: "Remove OpenCode auth entry",
       shape: () => OPEN_CODE_AUTH_SHAPE
     })
@@ -178,9 +180,9 @@ const openCodeManifest = createServiceManifest<
 });
 
 export const openCodeService: ProviderService<
-  OpenCodePaths,
-  OpenCodeConfigureOptions,
-  OpenCodeRemoveOptions,
+  Record<string, never>,
+  OpenCodeConfigureContext,
+  OpenCodeRemoveContext,
   { prompt: string; args?: string[] }
 > = {
   ...openCodeManifest,
@@ -192,11 +194,8 @@ export const openCodeService: ProviderService<
       light: "#2F3338"
     }
   },
-  resolvePaths(env) {
-    return {
-      configPath: env.resolveHomePath(".config", "opencode", "config.json"),
-      authPath: env.resolveHomePath(".local", "share", "opencode", "auth.json")
-    };
+  resolvePaths() {
+    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createOpenCodeHealthCheck());

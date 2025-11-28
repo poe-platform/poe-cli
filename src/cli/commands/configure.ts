@@ -18,9 +18,6 @@ import {
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
-import type { CodexPaths } from "../../providers/codex.js";
-import type { OpenCodePaths } from "../../providers/opencode.js";
-import type { RooCodePaths } from "../../providers/roo-code.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -140,7 +137,6 @@ async function createConfigurePayload(
       };
     }
     case "codex": {
-      const paths = context.paths as CodexPaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -154,26 +150,23 @@ async function createConfigurePayload(
         DEFAULT_REASONING
       );
       return {
+        env: context.env,
         apiKey,
         model,
-        reasoningEffort,
-        configPath: paths.configPath
+        reasoningEffort
       };
     }
     case "opencode": {
-      const paths = context.paths as OpenCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
       });
       return {
-        apiKey,
-        configPath: paths.configPath,
-        authPath: paths.authPath
+        env: context.env,
+        apiKey
       };
     }
     case "roo-code": {
-      const paths = context.paths as RooCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -188,13 +181,11 @@ async function createConfigurePayload(
       );
       const baseUrl = options.baseUrl ?? DEFAULT_ROO_BASE_URL;
       return {
+        env: context.env,
         apiKey,
         model,
         baseUrl,
-        configName,
-        configPath: paths.configPath,
-        settingsPath: paths.settingsPath,
-        autoImportPath: paths.autoImportPath
+        configName
       };
     }
     default:

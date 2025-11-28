@@ -6,10 +6,7 @@ import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
-import type {
-  CodexConfigureOptions,
-  CodexRemoveOptions
-} from "../src/providers/codex.js";
+import { createCliEnvironment } from "../src/cli/environment.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -23,38 +20,54 @@ describe("codex service", () => {
   const home = "/home/user";
   const configDir = path.join(home, ".codex");
   const configPath = path.join(configDir, "config.toml");
+  let env = createCliEnvironment({ cwd: home, homeDir: home });
 
   beforeEach(async () => {
     ({ fs, vol } = createMemFs());
     vol.mkdirSync(home, { recursive: true });
+    env = createCliEnvironment({ cwd: home, homeDir: home });
   });
 
-  const baseConfigureOptions: CodexConfigureOptions = {
-    configPath,
+  type ConfigureOptions = Parameters<
+    typeof codexService.codexService.configure
+  >[0]["options"];
+
+  type RemoveOptions = Parameters<
+    typeof codexService.codexService.remove
+  >[0]["options"];
+
+  const buildConfigureOptions = (
+    overrides: Partial<ConfigureOptions> = {}
+  ): ConfigureOptions => ({
+    env,
     apiKey: "sk-test",
     model: "GPT-5.1-Codex",
-    reasoningEffort: "medium"
-  };
+    reasoningEffort: "medium",
+    ...overrides
+  });
 
-  const baseRemoveOptions: CodexRemoveOptions = {
-    configPath
-  };
+  const buildRemoveOptions = (
+    overrides: Partial<RemoveOptions> = {}
+  ): RemoveOptions => ({
+    env,
+    ...overrides
+  });
 
   async function configureCodex(
-    overrides: Partial<CodexConfigureOptions> = {}
+    overrides: Partial<ConfigureOptions> = {}
   ): Promise<void> {
     await codexService.codexService.configure({
       fs,
-      options: { ...baseConfigureOptions, ...overrides }
+      options: buildConfigureOptions(overrides)
     });
   }
 
   async function removeCodex(
-    overrides: Partial<CodexRemoveOptions> = {}
+    overrides: Partial<RemoveOptions> = {}
   ): Promise<boolean> {
     return codexService.codexService.remove({
       fs,
-      options: { ...baseRemoveOptions, ...overrides }
+      options: buildRemoveOptions(overrides)
     });
   }
 
@@ -246,7 +259,7 @@ describe("codex service", () => {
     }));
     const providerContext = {
       env: {} as any,
-      paths: { configPath },
+      paths: {},
       command: {
         runCommand,
         fs

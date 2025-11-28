@@ -1,6 +1,7 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import type { ProviderService } from "../cli/service-registry.js";
+import type { CliEnvironment } from "../cli/environment.js";
 import type { FileSystem } from "../utils/file-system.js";
 import { isJsonObject, type JsonObject } from "../utils/json.js";
 import {
@@ -11,36 +12,52 @@ import {
 
 const DEFAULT_RATE_LIMIT_SECONDS = 0;
 
-export interface RooCodePaths extends Record<string, string> {
-  configPath: string;
-  settingsPath: string;
-  autoImportPath: string;
+function resolveRooConfigPath(env: CliEnvironment): string {
+  return env.resolveHomePath("Documents", "roo-config.json");
 }
 
-export type RooCodeConfigureOptions = {
-  configPath: string;
-  settingsPath: string;
+function resolveRooSettingsPath(env: CliEnvironment): string {
+  const settingsPath = resolveVsCodeSettingsPath(
+    env.platform,
+    env.homeDir,
+    env.variables
+  );
+  if (!settingsPath) {
+    throw new Error(
+      "Unable to determine VSCode settings path for the current platform."
+    );
+  }
+  return settingsPath;
+}
+
+function resolveRooAutoImportPath(env: CliEnvironment): string {
+  return formatAutoImportPath(env.homeDir, resolveRooConfigPath(env));
+}
+
+type RooCodeConfigureContext = {
+  env: CliEnvironment;
   configName: string;
   apiKey: string;
   model: string;
   baseUrl: string;
-  autoImportPath: string;
   rateLimitSeconds?: number;
 };
 
-export type RooCodeRemoveOptions = {
-  configPath: string;
-  settingsPath: string;
+type RooCodeRemoveContext = {
+  env: CliEnvironment;
   configName: string;
-  autoImportPath: string;
 };
 
 async function buildRooConfigContent(input: {
   fs: FileSystem;
-  options: RooCodeConfigureOptions;
+  options: RooCodeConfigureContext;
   current: string | null;
 }): Promise<{ content: string; changed: boolean }> {
-  const document = await readJsonDocument(input);
+  const document = await readJsonDocument({
+    fs: input.fs,
+    env: input.options.env,
+    current: input.current
+  });
   const nextConfig = mergeRooProfile(document, input.options);
   const serialized = serializeJson(nextConfig);
   const previous = input.current ?? "";
@@ -52,10 +69,14 @@ async function buildRooConfigContent(input: {
 
 async function pruneRooConfigContent(input: {
   fs: FileSystem;
-  options: RooCodeRemoveOptions;
+  options: RooCodeRemoveContext;
   current: string | null;
 }): Promise<{ content: string | null; changed: boolean }> {
-  const document = await readJsonDocument(input);
+  const document = await readJsonDocument({
+    fs: input.fs,
+    env: input.options.env,
+    current: input.current
+  });
   const result = removeRooProfile(document, input.options);
   if (!result.changed) {
     return { content: input.current, changed: false };
@@ -70,7 +91,7 @@ async function pruneRooConfigContent(input: {
 
 async function readJsonDocument(input: {
   fs: FileSystem;
-  options: { configPath: string };
+  env: CliEnvironment;
   current: string | null;
 }): Promise<JsonObject> {
   if (input.current == null) {
@@ -85,7 +106,7 @@ async function readJsonDocument(input: {
   } catch {
     await backupInvalidJsonDocument(
       input.fs,
-      input.options.configPath,
+      resolveRooConfigPath(input.env),
       input.current
     );
     return {};
@@ -114,7 +135,7 @@ function createTimestamp(): string {
 
 function mergeRooProfile(
   document: JsonObject,
-  options: RooCodeConfigureOptions
+  options: RooCodeConfigureContext
 ): JsonObject {
   const nextConfig: JsonObject = { ...document };
   const providerProfiles = cloneObject(nextConfig.providerProfiles);
@@ -145,7 +166,7 @@ function mergeRooProfile(
 
 function removeRooProfile(
   document: JsonObject,
-  options: RooCodeRemoveOptions
+  options: RooCodeRemoveContext
 ): { changed: boolean; result: JsonObject } {
   if (!isJsonObject(document.providerProfiles)) {
     return { changed: false, result: document };
@@ -239,19 +260,19 @@ function formatAutoImportPath(homeDir: string, targetPath: string): string {
 }
 
 const rooCodeManifest = createServiceManifest<
-  RooCodeConfigureOptions,
-  RooCodeRemoveOptions
+  RooCodeConfigureContext,
+  RooCodeRemoveContext
 >({
   id: "roo-code",
   summary: "Configure Roo Code auto-import to use the Poe API.",
   configure: [
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
+      path: ({ options }) => options.env.resolveHomePath("Documents"),
       label: "Ensure Roo config directory"
     }),
     {
       kind: "transformFile",
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveRooConfigPath(options.env),
       label: "Merge Roo provider profile",
       async transform({ content, context }) {
         return buildRooConfigContent({
@@ -262,21 +283,24 @@ const rooCodeManifest = createServiceManifest<
       }
     },
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.settingsPath),
+      path: ({ options }) =>
+        path.dirname(resolveRooSettingsPath(options.env)),
       label: "Ensure VSCode settings directory"
     }),
     jsonMergeMutation({
-      target: ({ options }) => options.settingsPath,
+      target: ({ options }) => resolveRooSettingsPath(options.env),
       label: "Set Roo auto-import path",
       value: ({ options }) => ({
-        "roo-cline.autoImportSettingsPath": options.autoImportPath
+        "roo-cline.autoImportSettingsPath": resolveRooAutoImportPath(
+          options.env
+        )
       })
     })
   ],
   remove: [
     {
       kind: "transformFile",
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveRooConfigPath(options.env),
       label: "Remove Roo provider profile",
       async transform({ content, context }) {
         return pruneRooConfigContent({
@@ -290,30 +314,15 @@ const rooCodeManifest = createServiceManifest<
 });
 
 export const rooCodeService: ProviderService<
-  RooCodePaths,
-  RooCodeConfigureOptions,
-  RooCodeRemoveOptions
+  Record<string, never>,
+  RooCodeConfigureContext,
+  RooCodeRemoveContext
 > = {
   ...rooCodeManifest,
   name: "roo-code",
   label: "Roo Code",
   disabled: true,
-  resolvePaths(env) {
-    const settingsPath = resolveVsCodeSettingsPath(
-      env.platform,
-      env.homeDir,
-      env.variables
-    );
-    if (!settingsPath) {
-      throw new Error(
-        "Unable to determine VSCode settings path for the current platform."
-      );
-    }
-    const configPath = env.resolveHomePath("Documents", "roo-config.json");
-    return {
-      configPath,
-      settingsPath,
-      autoImportPath: formatAutoImportPath(env.homeDir, configPath)
-    };
+  resolvePaths() {
+    return {};
   }
 };

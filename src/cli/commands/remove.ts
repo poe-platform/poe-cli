@@ -8,9 +8,6 @@ import {
   resolveServiceAdapter
 } from "./shared.js";
 import { DEFAULT_ROO_CONFIG_NAME } from "../constants.js";
-import type { CodexPaths } from "../../providers/codex.js";
-import type { OpenCodePaths } from "../../providers/opencode.js";
-import type { RooCodePaths } from "../../providers/roo-code.js";
 
 export interface RemoveCommandOptions {
   configName?: string;
@@ -97,30 +94,18 @@ async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
   switch (service) {
     case "claude-code":
       return { env: context.env };
-    case "codex": {
-      const paths = context.paths as CodexPaths;
-      return {
-        configPath: paths.configPath
-      };
-    }
-    case "opencode": {
-      const paths = context.paths as OpenCodePaths;
-      return {
-        configPath: paths.configPath,
-        authPath: paths.authPath
-      };
-    }
+    case "codex":
+      return { env: context.env };
+    case "opencode":
+      return { env: context.env };
     case "roo-code": {
-      const paths = context.paths as RooCodePaths;
       const configName = await container.options.resolveConfigName(
         options.configName,
         DEFAULT_ROO_CONFIG_NAME
       );
       return {
+        env: context.env,
         configName,
-        configPath: paths.configPath,
-        settingsPath: paths.settingsPath,
-        autoImportPath: paths.autoImportPath
       };
     }
     default:

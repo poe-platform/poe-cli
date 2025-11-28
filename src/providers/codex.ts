@@ -1,5 +1,5 @@
-import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
+import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
@@ -23,20 +23,16 @@ import {
   ensureDirectory
 } from "../services/service-manifest.js";
 
-export interface CodexPaths extends Record<string, string> {
-  configPath: string;
-}
-
-export type CodexConfigureOptions = {
-  configPath: string;
+type CodexConfigureContext = {
+  env: CliEnvironment;
   apiKey: string;
   model: string;
   reasoningEffort: string;
   timestamp?: () => string;
 };
 
-export type CodexRemoveOptions = {
-  configPath: string;
+type CodexRemoveContext = {
+  env: CliEnvironment;
 };
 
 const CODEX_PROVIDER_ID = "poe";
@@ -46,6 +42,10 @@ const CODEX_TOP_LEVEL_FIELDS = [
   "model_reasoning_effort"
 ] as const;
 const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
+
+function resolveCodexConfigPath(env: CliEnvironment): string {
+  return env.resolveHomePath(".codex", "config.toml");
+}
 
 export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
@@ -201,8 +201,8 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
 }
 
 const codexManifest = createServiceManifest<
-  CodexConfigureOptions,
-  CodexRemoveOptions
+  CodexConfigureContext,
+  CodexRemoveContext
 >({
   id: "codex",
   summary: "Configure Codex to use Poe as the model provider.",
@@ -211,17 +211,17 @@ const codexManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.configPath),
+      path: ({ options }) => options.env.resolveHomePath(".codex"),
       label: "Ensure Codex config directory"
     }),
     createBackupMutation({
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveCodexConfigPath(options.env),
       timestamp: ({ options }) => options.timestamp,
       label: "Backup Codex config"
     }),
     {
       kind: "transformFile",
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveCodexConfigPath(options.env),
       label: "Merge Codex provider configuration",
       async transform({ content, context }) {
         const previous = content ?? "";
@@ -252,7 +252,7 @@ const codexManifest = createServiceManifest<
   remove: [
     {
       kind: "transformFile",
-      target: ({ options }) => options.configPath,
+      target: ({ options }) => resolveCodexConfigPath(options.env),
       label: "Prune Codex provider configuration",
       async transform({ content }) {
         if (content == null) {
@@ -285,9 +285,9 @@ const codexManifest = createServiceManifest<
 });
 
 export const codexService: ProviderService<
-  CodexPaths,
-  CodexConfigureOptions,
-  CodexRemoveOptions,
+  Record<string, never>,
+  CodexConfigureContext,
+  CodexRemoveContext,
   { prompt: string; args?: string[] }
 > = {
   ...codexManifest,
@@ -299,10 +299,8 @@ export const codexService: ProviderService<
       light: "#7A7F86"
     }
   },
-  resolvePaths(env) {
-    return {
-      configPath: env.resolveHomePath(".codex", "config.toml")
-    };
+  resolvePaths() {
+    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createCodexCliHealthCheck());
