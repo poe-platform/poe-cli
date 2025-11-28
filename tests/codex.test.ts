@@ -7,6 +7,7 @@ import { parseTomlDocument } from "../src/utils/toml.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
+import { createTestCommandContext } from "./test-command-context.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -66,6 +67,7 @@ describe("codex service", () => {
     await codexService.codexService.configure({
       fs,
       env,
+      command: createTestCommandContext(fs),
       options: buildConfigureOptions(overrides)
     });
   }
@@ -76,6 +78,7 @@ describe("codex service", () => {
     return codexService.codexService.remove({
       fs,
       env,
+      command: createTestCommandContext(fs),
       options: buildRemoveOptions(overrides)
     });
   }

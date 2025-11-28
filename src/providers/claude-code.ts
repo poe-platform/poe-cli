@@ -22,6 +22,7 @@ import {
 } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
+import { createBinaryVersionResolver } from "./versioned-provider.js";
 
 type ClaudeCodeConfigureContext = {
   env: CliEnvironment;
@@ -110,6 +111,8 @@ export const claudeCodeService = createProvider<
 >({
   name: "claude-code",
   label: "Claude Code",
+  id: "claude-code",
+  summary: "Configure Claude Code to route through Poe.",
   branding: {
     colors: {
       dark: "#C15F3C",
@@ -120,59 +123,57 @@ export const claudeCodeService = createProvider<
     after: [createClaudeCliHealthCheck()]
   },
   manifest: {
-    id: "claude-code",
-    summary: "Configure Claude Code to route through Poe.",
-    prerequisites: {
-      after: ["claude-cli-health"]
-    },
-    configure: [
-      ensureDirectory({
-        path: "~/.claude"
-      }),
-      writeTemplateMutation({
-        target: "~/.claude/anthropic_key.sh",
-        templateId: "claude-code/anthropic_key.sh.hbs",
-        context: ({ env }) => ({
-          credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
+    "*": {
+      configure: [
+        ensureDirectory({
+          path: "~/.claude"
+        }),
+        writeTemplateMutation({
+          target: "~/.claude/anthropic_key.sh",
+          templateId: "claude-code/anthropic_key.sh.hbs",
+          context: ({ env }) => ({
+            credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
+          })
+        }),
+        makeExecutableMutation({
+          target: "~/.claude/anthropic_key.sh",
+          mode: 0o700
+        }),
+        jsonMergeMutation({
+          target: "~/.claude/settings.json",
+          value: ({ options, env }) => ({
+            apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
+            env: {
+              ANTHROPIC_BASE_URL: "https://api.poe.com",
+              ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+              ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+              ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
+            },
+            model: options.defaultModel
+          })
         })
-      }),
-      makeExecutableMutation({
-        target: "~/.claude/anthropic_key.sh",
-        mode: 0o700
-      }),
-      jsonMergeMutation({
-        target: "~/.claude/settings.json",
-        value: ({ options, env }) => ({
-          apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
-          env: {
-            ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
-            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
-            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
-          },
-          model: options.defaultModel
+      ],
+      remove: [
+        jsonPruneMutation({
+          target: "~/.claude/settings.json",
+          shape: () => ({
+            apiKeyHelper: true,
+            env: {
+              ANTHROPIC_BASE_URL: true,
+              ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
+              ANTHROPIC_DEFAULT_SONNET_MODEL: true,
+              ANTHROPIC_DEFAULT_OPUS_MODEL: true
+            },
+            model: true
+          })
+        }),
+        removeFileMutation({
+          target: "~/.claude/anthropic_key.sh"
         })
-      })
-    ],
-    remove: [
-      jsonPruneMutation({
-        target: "~/.claude/settings.json",
-        shape: () => ({
-          apiKeyHelper: true,
-          env: {
-            ANTHROPIC_BASE_URL: true,
-            ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
-            ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-            ANTHROPIC_DEFAULT_OPUS_MODEL: true
-          },
-          model: true
-        })
-      }),
-      removeFileMutation({
-        target: "~/.claude/anthropic_key.sh"
-      })
-    ]
+      ]
+    }
   },
+  versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildClaudeArgs(options.prompt, options.args);

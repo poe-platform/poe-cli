@@ -5,6 +5,7 @@ import type { FileSystem } from "../src/utils/file-system.js";
 import * as opencodeService from "../src/providers/opencode.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
+import { createTestCommandContext } from "./test-command-context.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -57,7 +58,19 @@ describe("opencode service", () => {
     await opencodeService.openCodeService.configure({
       fs,
       env,
+      command: createTestCommandContext(fs),
       options: buildConfigureOptions(overrides)
+    });
+  }
+
+  async function removeOpenCode(
+    overrides: Partial<RemoveOptions> = {}
+  ): Promise<boolean> {
+    return opencodeService.openCodeService.remove({
+      fs,
+      env,
+      command: createTestCommandContext(fs),
+      options: buildRemoveOptions(overrides)
     });
   }
 

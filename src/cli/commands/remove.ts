@@ -1,11 +1,13 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
 import type { ProviderContext } from "../service-registry.js";
+import { removeConfiguredService } from "../../services/credentials.js";
 import {
   buildProviderContext,
   createExecutionResources,
   resolveCommandFlags,
-  resolveServiceAdapter
+  resolveServiceAdapter,
+  resolveProviderHandler
 } from "./shared.js";
 
 export interface RemoveCommandOptions {
@@ -28,7 +30,7 @@ export function registerRemoveCommand(
     });
 }
 
-async function executeRemove(
+ export async function executeRemove(
   program: Command,
   container: CliContainer,
   service: string,
@@ -61,15 +63,28 @@ async function executeRemove(
       if (!entry.remove) {
         throw new Error(`Service "${service}" does not support remove.`);
       }
-      return await entry.remove(
+      const resolution = await resolveProviderHandler(entry, providerContext);
+      if (!resolution.adapter.remove) {
+        return false;
+      }
+      return await resolution.adapter.remove(
         {
           fs: providerContext.command.fs,
           env: providerContext.env,
+          command: providerContext.command,
           options: payload
         }
       );
     }
   );
+
+  if (!flags.dryRun) {
+    await removeConfiguredService({
+      fs: container.fs,
+      filePath: providerContext.env.credentialsPath,
+      service
+    });
+  }
 
   const messages = formatRemovalMessages(
     service,
@@ -89,7 +104,7 @@ interface RemovePayloadInit {
 }
 
 async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
-  const { service } = init;
+  const { service, context } = init;
   switch (service) {
     case "claude-code":
       return { env: context.env };

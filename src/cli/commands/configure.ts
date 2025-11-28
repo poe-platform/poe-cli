@@ -6,7 +6,8 @@ import {
   createExecutionResources,
   type CommandFlags,
   resolveCommandFlags,
-  resolveServiceAdapter
+  resolveServiceAdapter,
+  resolveProviderHandler
 } from "./shared.js";
 import {
   DEFAULT_MODEL,
@@ -15,6 +16,8 @@ import {
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
+import { saveConfiguredService } from "../../services/credentials.js";
+import type { ServiceMutationHooks } from "../../services/service-manifest.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -81,13 +84,29 @@ export async function executeConfigure(
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
     }
-    await entry.configure(
+    const resolution = await resolveProviderHandler(entry, providerContext);
+    const tracker = createMutationTracker();
+    await resolution.adapter.configure(
       {
         fs: providerContext.command.fs,
         env: providerContext.env,
+        command: providerContext.command,
         options: payload
-      }
+      },
+      { hooks: tracker.hooks }
     );
+
+    if (!flags.dryRun) {
+      await saveConfiguredService({
+        fs: container.fs,
+        filePath: providerContext.env.credentialsPath,
+        service,
+        metadata: {
+          version: resolution.version,
+          files: tracker.files()
+        }
+      });
+    }
   });
 
   const dryMessage =
@@ -163,6 +182,31 @@ async function createConfigurePayload(
     default:
       throw new Error(`Unknown service "${service}".`);
   }
+}
+
+function createMutationTracker(): {
+  hooks: ServiceMutationHooks;
+  files(): string[];
+} {
+  const targets = new Set<string>();
+  const hooks: ServiceMutationHooks = {
+    onComplete(details, outcome) {
+      if (!outcome.changed || !details.targetPath) {
+        return;
+      }
+      if (outcome.effect !== "write" && outcome.effect !== "delete") {
+        return;
+      }
+      targets.add(details.targetPath);
+    }
+  };
+
+  return {
+    hooks,
+    files() {
+      return Array.from(targets).sort();
+    }
+  };
 }
 
 export async function resolveServiceArgument(

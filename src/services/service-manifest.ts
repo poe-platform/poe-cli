@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { CliEnvironment } from "../cli/environment.js";
+import type { CommandContext } from "../cli/context.js";
 import type { FileSystem } from "../utils/file-system.js";
 import { createBackup } from "../utils/backup.js";
 import { renderTemplate } from "../utils/templates.js";
@@ -115,6 +116,7 @@ export interface ServiceManifest<
 export interface ServiceExecutionContext<Options> {
   fs: FileSystem;
   env: CliEnvironment;
+  command: CommandContext;
   options: Options;
 }
 

@@ -4,7 +4,10 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import {
   loadCredentials,
-  saveCredentials
+  saveCredentials,
+  loadConfiguredServices,
+  saveConfiguredService,
+  removeConfiguredService
 } from "../src/services/credentials.js";
 
 function createMemFs(): FileSystem {
@@ -34,6 +37,87 @@ describe("credentials store", () => {
     });
 
     expect(apiKey).toBe("test-key");
+  });
+
+  it("preserves configured services when updating the api key", async () => {
+    const initial = {
+      apiKey: "initial",
+      configured_services: {
+        codex: {
+          version: "1.0.0",
+          files: ["/home/user/.codex/config.toml"]
+        }
+      }
+    };
+    await fs.writeFile(credentialsPath, JSON.stringify(initial, null, 2), {
+      encoding: "utf8"
+    });
+
+    await saveCredentials({
+      fs,
+      filePath: credentialsPath,
+      apiKey: "updated"
+    });
+
+    const updated = JSON.parse(
+      await fs.readFile(credentialsPath, "utf8")
+    );
+    expect(updated.apiKey).toBe("updated");
+    expect(updated.configured_services).toEqual(initial.configured_services);
+  });
+
+  it("stores configured service metadata and returns it on load", async () => {
+    await saveConfiguredService({
+      fs,
+      filePath: credentialsPath,
+      service: "opencode",
+      metadata: {
+        version: "2.3.4",
+        files: [
+          "/home/user/.config/opencode/config.json",
+          "/home/user/.local/share/opencode/auth.json"
+        ]
+      }
+    });
+
+    const services = await loadConfiguredServices({
+      fs,
+      filePath: credentialsPath
+    });
+
+    expect(services).toEqual({
+      opencode: {
+        version: "2.3.4",
+        files: [
+          "/home/user/.config/opencode/config.json",
+          "/home/user/.local/share/opencode/auth.json"
+        ]
+      }
+    });
+  });
+
+  it("removes configured service metadata", async () => {
+    await saveConfiguredService({
+      fs,
+      filePath: credentialsPath,
+      service: "claude-code",
+      metadata: {
+        version: "3.1.0",
+        files: ["/home/user/.claude/settings.json"]
+      }
+    });
+
+    await removeConfiguredService({
+      fs,
+      filePath: credentialsPath,
+      service: "claude-code"
+    });
+
+    const services = await loadConfiguredServices({
+      fs,
+      filePath: credentialsPath
+    });
+    expect(services).toEqual({});
   });
 
   it("backs up and resets invalid json content", async () => {

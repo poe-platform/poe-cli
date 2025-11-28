@@ -87,6 +87,7 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
+      { command: "claude", args: ["--version"] },
       {
         command: "claude",
         args: [
@@ -130,6 +131,7 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
+      { command: "codex", args: ["--version"] },
       {
         command: "codex",
         args: ["exec", "Summarize the diff", "--full-auto"]
@@ -164,6 +166,7 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
+      { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
         args: ["run", "List files"]

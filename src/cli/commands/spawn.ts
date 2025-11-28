@@ -7,6 +7,8 @@ import {
   resolveServiceAdapter,
   type CommandFlags,
   type ExecutionResources
+,
+  resolveProviderHandler
 } from "./shared.js";
 import type { CommandRunnerResult } from "../../utils/prerequisites.js";
 
@@ -100,7 +102,11 @@ export function registerSpawnCommand(
           if (!entry.spawn) {
             throw new Error(`${adapter.label} does not support spawn.`);
           }
-          const output = await entry.spawn(providerContext, {
+          const resolution = await resolveProviderHandler(entry, providerContext);
+          if (!resolution.adapter.spawn) {
+            throw new Error(`${adapter.label} does not support spawn.`);
+          }
+          const output = await resolution.adapter.spawn(providerContext, {
             prompt: promptText,
             args: agentArgs
           });

@@ -24,7 +24,18 @@ export interface ProviderContext<TPaths = Record<string, string>> {
 export interface ServiceExecutionContext<Options> {
   fs: FileSystem;
   env: CliEnvironment;
+  command: CommandContext;
   options: Options;
+}
+
+export interface ProviderVersionResolution<
+  TPaths extends Record<string, string>,
+  TConfigure,
+  TRemove,
+  TSpawn
+> {
+  version: string | null;
+  adapter: ProviderService<TPaths, TConfigure, TRemove, TSpawn>;
 }
 
 export interface ProviderService<
@@ -55,6 +66,9 @@ export interface ProviderService<
     context: ProviderContext<TPaths>,
     options: TSpawn
   ) => Promise<unknown>;
+  resolveVersion?(
+    context: ProviderContext<TPaths>
+  ): Promise<ProviderVersionResolution<TPaths, TConfigure, TRemove, TSpawn>>;
 }
 
 export interface ServiceRegistry {

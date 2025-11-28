@@ -74,6 +74,24 @@ export function buildProviderContext(
   };
 }
 
+export interface ProviderResolution {
+  adapter: ProviderService;
+  version: string | null;
+}
+
+export async function resolveProviderHandler(
+  adapter: ProviderService,
+  context: ProviderContext
+): Promise<ProviderResolution> {
+  if (adapter.resolveVersion) {
+    return adapter.resolveVersion(context);
+  }
+  return {
+    adapter,
+    version: null
+  };
+}
+
 export function registerProviderHooks(
   adapter: ProviderService,
   resources: ExecutionResources

@@ -13,6 +13,7 @@ import {
   tomlPruneMutation
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
+import { createBinaryVersionResolver } from "./versioned-provider.js";
 
 type CodexConfigureContext = {
   env: CliEnvironment;
@@ -193,6 +194,8 @@ export const codexService = createProvider<
 >({
   name: "codex",
   label: "Codex",
+  id: "codex",
+  summary: "Configure Codex to use Poe as the model provider.",
   branding: {
     colors: {
       dark: "#D5D9DF",
@@ -203,43 +206,41 @@ export const codexService = createProvider<
     after: [createCodexCliHealthCheck()]
   },
   manifest: {
-    id: "codex",
-    summary: "Configure Codex to use Poe as the model provider.",
-    prerequisites: {
-      after: ["codex-cli-health"]
-    },
-    configure: [
-      ensureDirectory({ path: "~/.codex" }),
-      createBackupMutation({
-        target: "~/.codex/config.toml",
-        timestamp: ({ options }) => options.timestamp
-      }),
-      tomlTemplateMergeMutation({
-        target: "~/.codex/config.toml",
-        templateId: "codex/config.toml.hbs",
-        context: ({ options }) => ({
-          apiKey: options.apiKey,
-          model: options.model,
-          reasoningEffort: options.reasoningEffort
+    "*": {
+      configure: [
+        ensureDirectory({ path: "~/.codex" }),
+        createBackupMutation({
+          target: "~/.codex/config.toml",
+          timestamp: ({ options }) => options.timestamp
+        }),
+        tomlTemplateMergeMutation({
+          target: "~/.codex/config.toml",
+          templateId: "codex/config.toml.hbs",
+          context: ({ options }) => ({
+            apiKey: options.apiKey,
+            model: options.model,
+            reasoningEffort: options.reasoningEffort
+          })
         })
-      })
-    ],
-    remove: [
-      tomlPruneMutation({
-        target: "~/.codex/config.toml",
-        prune: (document) => {
-          const result = stripCodexConfiguration(document);
-          if (!result.changed) {
-            return { changed: false, result: document };
+      ],
+      remove: [
+        tomlPruneMutation({
+          target: "~/.codex/config.toml",
+          prune: (document) => {
+            const result = stripCodexConfiguration(document);
+            if (!result.changed) {
+              return { changed: false, result: document };
+            }
+            return {
+              changed: true,
+              result: result.empty ? null : document
+            };
           }
-          return {
-            changed: true,
-            result: result.empty ? null : document
-          };
-        }
-      })
-    ]
+        })
+      ]
+    }
   },
+  versionResolver: createBinaryVersionResolver("codex"),
   install: CODEX_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildCodexExecArgs(options.prompt, options.args);

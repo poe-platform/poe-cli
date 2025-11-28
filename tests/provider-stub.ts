@@ -2,6 +2,7 @@ import type {
   ProviderService,
   ServiceExecutionContext
 } from "../src/cli/service-registry.js";
+import type { ServiceRunOptions } from "../src/services/service-manifest.js";
 
 export function createProviderStub<
   Paths extends Record<string, string> = Record<string, string>,
@@ -19,11 +20,13 @@ export function createProviderStub<
   const summary = overrides.summary ?? overrides.label;
 
   const defaultConfigure = async (
-    _context: ServiceExecutionContext<ConfigureOptions>
+    _context: ServiceExecutionContext<ConfigureOptions>,
+    _runOptions?: ServiceRunOptions
   ): Promise<void> => {};
 
   const defaultRemove = async (
-    _context: ServiceExecutionContext<RemoveOptions>
+    _context: ServiceExecutionContext<RemoveOptions>,
+    _runOptions?: ServiceRunOptions
   ): Promise<boolean> => false;
 
   return {

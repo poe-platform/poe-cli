@@ -1,3 +1,4 @@
+import { detectBinaryVersion } from "./binary-version.js";
 export interface CommandRunnerResult {
   stdout: string;
   stderr: string;
@@ -142,6 +143,7 @@ export function createBinaryExistsCheck(
       for (const detector of detectors) {
         const result = await runCommand(detector.command, detector.args);
         if (detector.validate(result)) {
+          await detectBinaryVersion(runCommand, binaryName);
           return;
         }
       }
