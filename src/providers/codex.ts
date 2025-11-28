@@ -246,8 +246,8 @@ export const codexService: ProviderService<
       light: "#7A7F86"
     }
   },
-  registerPrerequisites(manager) {
-    manager.registerAfter(createCodexCliHealthCheck());
+  hooks: {
+    after: [createCodexCliHealthCheck()]
   },
   async install(context) {
     await runServiceInstall(CODEX_INSTALL_DEFINITION, {

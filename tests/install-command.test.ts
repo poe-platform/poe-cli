@@ -47,8 +47,16 @@ describe("install command", () => {
       resolvePaths() {
         return {};
       },
-      registerPrerequisites() {
-        callOrder.push("register-prerequisites");
+      hooks: {
+        after: [
+          {
+            id: "noop",
+            description: "Should not run during install",
+            async run() {
+              callOrder.push("hook");
+            }
+          }
+        ]
       },
       async install() {
         callOrder.push("install");

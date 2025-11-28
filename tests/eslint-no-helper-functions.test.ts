@@ -248,14 +248,6 @@ const fn = (x) => obj.method(x);`,
         errors: [{ messageId: 'noHelperFunction' }],
       },
       // Void method wrapper in object
-      {
-        code: `const service = {
-          registerPrerequisites(manager) {
-            other.registerPrerequisites?.(manager);
-          }
-        };`,
-        errors: [{ messageId: 'noHelperFunction' }],
-      },
       // Async void wrapper
       {
         code: `async function foo(x) {

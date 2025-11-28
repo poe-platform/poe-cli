@@ -74,11 +74,16 @@ export function buildProviderContext(
   };
 }
 
-export function registerProviderPrerequisites(
+export function registerProviderHooks(
   adapter: ProviderService,
   resources: ExecutionResources
 ): void {
-  adapter.registerPrerequisites?.(resources.context.prerequisites);
+  adapter.hooks?.before?.forEach((hook) =>
+    resources.context.prerequisites.registerBefore(hook)
+  );
+  adapter.hooks?.after?.forEach((hook) =>
+    resources.context.prerequisites.registerAfter(hook)
+  );
 }
 
 export async function runPrerequisites(

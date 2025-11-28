@@ -12,6 +12,13 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
   return { fs: fs.promises as unknown as FileSystem, vol };
 }
 
+function registerAfterHooks(
+  service: typeof opencodeService.openCodeService,
+  manager: ReturnType<typeof createPrerequisiteManager>
+): void {
+  service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
+}
+
 describe("opencode service", () => {
   let fs: FileSystem;
   let vol: Volume;
@@ -209,7 +216,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.openCodeService.registerPrerequisites?.(manager);
+    registerAfterHooks(opencodeService.openCodeService, manager);
     await manager.run("after");
 
     expect(calls.map((entry) => entry.command)).toEqual(["opencode"]);
@@ -230,7 +237,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.openCodeService.registerPrerequisites?.(manager);
+    registerAfterHooks(opencodeService.openCodeService, manager);
 
     let caught: Error | undefined;
     try {
@@ -255,7 +262,7 @@ describe("opencode service", () => {
       runCommand
     });
 
-    opencodeService.openCodeService.registerPrerequisites?.(manager);
+    registerAfterHooks(opencodeService.openCodeService, manager);
 
     let caught: Error | undefined;
     try {

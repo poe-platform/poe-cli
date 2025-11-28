@@ -3,6 +3,7 @@ import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 import type { FileSystem } from "../utils/file-system.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -34,9 +35,9 @@ export interface ProviderService<
 > {
   id: string;
   summary: string;
-  prerequisites?: {
-    before?: string[];
-    after?: string[];
+  hooks?: {
+    before?: PrerequisiteDefinition[];
+    after?: PrerequisiteDefinition[];
   };
   configure(
     context: ServiceExecutionContext<TConfigure>
@@ -49,9 +50,6 @@ export interface ProviderService<
   branding?: ProviderBranding;
   disabled?: boolean;
   resolvePaths?: (env: CliEnvironment) => TPaths;
-  registerPrerequisites?: (
-    manager: CommandContext["prerequisites"]
-  ) => void;
   install?: (context: ProviderContext<TPaths>) => Promise<void> | void;
   spawn?: (
     context: ProviderContext<TPaths>,

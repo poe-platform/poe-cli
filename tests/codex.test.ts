@@ -14,6 +14,13 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
   return { fs: fs.promises as unknown as FileSystem, vol };
 }
 
+function registerAfterHooks(
+  service: typeof codexService.codexService,
+  manager: ReturnType<typeof createPrerequisiteManager>
+): void {
+  service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
+}
+
 describe("codex service", () => {
   let fs: FileSystem;
   let vol: Volume;
@@ -306,7 +313,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.codexService.registerPrerequisites?.(manager);
+    registerAfterHooks(codexService.codexService, manager);
     await manager.run("after");
 
     expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
@@ -327,7 +334,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.codexService.registerPrerequisites?.(manager);
+    registerAfterHooks(codexService.codexService, manager);
 
     let caught: Error | undefined;
     try {
@@ -352,7 +359,7 @@ describe("codex service", () => {
       runCommand
     });
 
-    codexService.codexService.registerPrerequisites?.(manager);
+    registerAfterHooks(codexService.codexService, manager);
 
     let caught: Error | undefined;
     try {

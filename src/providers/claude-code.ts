@@ -46,7 +46,7 @@ const claudeCodeManifest = createServiceManifest<
 >({
   id: "claude-code",
   summary: "Configure Claude Code to route through Poe.",
-  prerequisites: {
+  hooks: {
     after: ["claude-cli-health"]
   },
   configure: [
@@ -177,8 +177,8 @@ export const claudeCodeService: ProviderService<
       light: "#C15F3C"
     }
   },
-  registerPrerequisites(manager) {
-    manager.registerAfter(createClaudeCliHealthCheck());
+  hooks: {
+    after: [createClaudeCliHealthCheck()]
   },
   async install(context) {
     await runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, {

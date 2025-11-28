@@ -179,8 +179,8 @@ export const openCodeService: ProviderService<
       light: "#2F3338"
     }
   },
-  registerPrerequisites(manager) {
-    manager.registerAfter(createOpenCodeHealthCheck());
+  hooks: {
+    after: [createOpenCodeHealthCheck()]
   },
   async install(context) {
     await runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, {
