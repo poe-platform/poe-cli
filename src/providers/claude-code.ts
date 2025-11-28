@@ -5,7 +5,6 @@ import {
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import {
-  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
   jsonPruneMutation,
@@ -38,64 +37,6 @@ type ClaudeCodeSpawnOptions = {
   prompt: string;
   args?: string[];
 };
-
-const claudeCodeManifest = createServiceManifest<
-  ClaudeCodeConfigureContext,
-  ClaudeCodeRemoveContext
->({
-  id: "claude-code",
-  summary: "Configure Claude Code to route through Poe.",
-  hooks: {
-    after: ["claude-cli-health"]
-  },
-  configure: [
-    ensureDirectory({
-      path: "~/.claude"
-    }),
-    writeTemplateMutation({
-      target: "~/.claude/anthropic_key.sh",
-      templateId: "claude-code/anthropic_key.sh.hbs",
-      context: ({ env }) => ({
-        credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
-      })
-    }),
-    makeExecutableMutation({
-      target: "~/.claude/anthropic_key.sh",
-      mode: 0o700
-    }),
-    jsonMergeMutation({
-      target: "~/.claude/settings.json",
-      value: ({ options, env }) => ({
-        apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
-        env: {
-          ANTHROPIC_BASE_URL: "https://api.poe.com",
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
-          ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
-          ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
-        },
-        model: options.defaultModel
-      })
-    })
-  ],
-  remove: [
-    jsonPruneMutation({
-      target: "~/.claude/settings.json",
-      shape: () => ({
-        apiKeyHelper: true,
-        env: {
-          ANTHROPIC_BASE_URL: true,
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
-          ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-          ANTHROPIC_DEFAULT_OPUS_MODEL: true
-        },
-        model: true
-      })
-    }),
-    removeFileMutation({
-      target: "~/.claude/anthropic_key.sh"
-    })
-  ]
-});
 
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
@@ -178,7 +119,60 @@ export const claudeCodeService = createProvider<
   hooks: {
     after: [createClaudeCliHealthCheck()]
   },
-  manifest: claudeCodeManifest,
+  manifest: {
+    id: "claude-code",
+    summary: "Configure Claude Code to route through Poe.",
+    prerequisites: {
+      after: ["claude-cli-health"]
+    },
+    configure: [
+      ensureDirectory({
+        path: "~/.claude"
+      }),
+      writeTemplateMutation({
+        target: "~/.claude/anthropic_key.sh",
+        templateId: "claude-code/anthropic_key.sh.hbs",
+        context: ({ env }) => ({
+          credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
+        })
+      }),
+      makeExecutableMutation({
+        target: "~/.claude/anthropic_key.sh",
+        mode: 0o700
+      }),
+      jsonMergeMutation({
+        target: "~/.claude/settings.json",
+        value: ({ options, env }) => ({
+          apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
+          env: {
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
+          },
+          model: options.defaultModel
+        })
+      })
+    ],
+    remove: [
+      jsonPruneMutation({
+        target: "~/.claude/settings.json",
+        shape: () => ({
+          apiKeyHelper: true,
+          env: {
+            ANTHROPIC_BASE_URL: true,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: true,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: true
+          },
+          model: true
+        })
+      }),
+      removeFileMutation({
+        target: "~/.claude/anthropic_key.sh"
+      })
+    ]
+  },
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildClaudeArgs(options.prompt, options.args);

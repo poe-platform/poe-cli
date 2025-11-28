@@ -7,7 +7,6 @@ import {
 } from "../utils/prerequisites.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
-  createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
   jsonPruneMutation
@@ -119,48 +118,6 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
   };
 }
 
-const openCodeManifest = createServiceManifest<
-  OpenCodeConfigureContext,
-  OpenCodeRemoveContext
->({
-  id: "opencode",
-  summary: "Configure OpenCode CLI to use the Poe API.",
-  prerequisites: {
-    after: ["opencode-cli-health"]
-  },
-  configure: [
-    ensureDirectory({
-      path: "~/.config/opencode"
-    }),
-    ensureDirectory({
-      path: "~/.local/share/opencode"
-    }),
-    jsonMergeMutation({
-      target: "~/.config/opencode/config.json",
-      value: () => OPEN_CODE_CONFIG_TEMPLATE
-    }),
-    jsonMergeMutation({
-      target: "~/.local/share/opencode/auth.json",
-      value: ({ options }) => ({
-        poe: {
-          type: "api",
-          key: options.apiKey
-        }
-      })
-    })
-  ],
-  remove: [
-    jsonPruneMutation({
-      target: "~/.config/opencode/config.json",
-      shape: () => OPEN_CODE_CONFIG_SHAPE
-    }),
-    jsonPruneMutation({
-      target: "~/.local/share/opencode/auth.json",
-      shape: () => OPEN_CODE_AUTH_SHAPE
-    })
-  ]
-});
-
 export const openCodeService = createProvider<
   Record<string, never>,
   OpenCodeConfigureContext,
@@ -178,7 +135,44 @@ export const openCodeService = createProvider<
   hooks: {
     after: [createOpenCodeHealthCheck()]
   },
-  manifest: openCodeManifest,
+  manifest: {
+    id: "opencode",
+    summary: "Configure OpenCode CLI to use the Poe API.",
+    prerequisites: {
+      after: ["opencode-cli-health"]
+    },
+    configure: [
+      ensureDirectory({
+        path: "~/.config/opencode"
+      }),
+      ensureDirectory({
+        path: "~/.local/share/opencode"
+      }),
+      jsonMergeMutation({
+        target: "~/.config/opencode/config.json",
+        value: () => OPEN_CODE_CONFIG_TEMPLATE
+      }),
+      jsonMergeMutation({
+        target: "~/.local/share/opencode/auth.json",
+        value: ({ options }) => ({
+          poe: {
+            type: "api",
+            key: options.apiKey
+          }
+        })
+      })
+    ],
+    remove: [
+      jsonPruneMutation({
+        target: "~/.config/opencode/config.json",
+        shape: () => OPEN_CODE_CONFIG_SHAPE
+      }),
+      jsonPruneMutation({
+        target: "~/.local/share/opencode/auth.json",
+        shape: () => OPEN_CODE_AUTH_SHAPE
+      })
+    ]
+  },
   install: OPEN_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = ["run", options.prompt, ...(options.args ?? [])];

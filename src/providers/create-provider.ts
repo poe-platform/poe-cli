@@ -4,7 +4,10 @@ import type {
   ProviderBranding
 } from "../cli/service-registry.js";
 import type { CliEnvironment } from "../cli/environment.js";
-import type { ServiceManifest } from "../services/service-manifest.js";
+import {
+  createServiceManifest,
+  type ServiceManifestDefinition
+} from "../services/service-manifest.js";
 import {
   runServiceInstall,
   type ServiceInstallDefinition
@@ -26,7 +29,7 @@ interface CreateProviderOptions<
   label: string;
   branding?: ProviderBranding;
   disabled?: boolean;
-  manifest: ServiceManifest<ConfigureOptions, RemoveOptions>;
+  manifest: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>;
   install?: ServiceInstallDefinition;
   hooks?: ProviderHooksConfig;
   resolvePaths?: (env: CliEnvironment) => TPaths;
@@ -51,13 +54,16 @@ export function createProvider<
     SpawnOptions
   >
 ): ProviderService<TPaths, ConfigureOptions, RemoveOptions, SpawnOptions> {
+  const manifest = createServiceManifest<ConfigureOptions, RemoveOptions>(
+    options.manifest
+  );
   const provider: ProviderService<
     TPaths,
     ConfigureOptions,
     RemoveOptions,
     SpawnOptions
   > = {
-    ...options.manifest,
+    ...manifest,
     name: options.name,
     label: options.label,
     branding: options.branding,
