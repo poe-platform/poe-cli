@@ -1,4 +1,3 @@
-import type { ProviderService } from "../cli/service-registry.js";
 import type { CliEnvironment } from "../cli/environment.js";
 import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
@@ -6,16 +5,14 @@ import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
-import {
-  runServiceInstall,
-  type ServiceInstallDefinition
-} from "../services/service-install.js";
+import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   createServiceManifest,
   ensureDirectory,
   jsonMergeMutation,
   jsonPruneMutation
 } from "../services/service-manifest.js";
+import { createProvider } from "./create-provider.js";
 
 const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
   $schema: "https://opencode.ai/config.json",
@@ -164,13 +161,12 @@ const openCodeManifest = createServiceManifest<
   ]
 });
 
-export const openCodeService: ProviderService<
+export const openCodeService = createProvider<
   Record<string, never>,
   OpenCodeConfigureContext,
   OpenCodeRemoveContext,
   { prompt: string; args?: string[] }
-> = {
-  ...openCodeManifest,
+>({
   name: "opencode",
   label: "OpenCode CLI",
   branding: {
@@ -182,15 +178,10 @@ export const openCodeService: ProviderService<
   hooks: {
     after: [createOpenCodeHealthCheck()]
   },
-  async install(context) {
-    await runServiceInstall(OPEN_CODE_INSTALL_DEFINITION, {
-      isDryRun: context.logger.context.dryRun,
-      runCommand: context.command.runCommand,
-      logger: (message) => context.logger.info(message)
-    });
-  },
-  async spawn(context, options) {
+  manifest: openCodeManifest,
+  install: OPEN_CODE_INSTALL_DEFINITION,
+  spawn(context, options) {
     const args = ["run", options.prompt, ...(options.args ?? [])];
     return context.command.runCommand("opencode", args);
   }
-};
+});

@@ -1,4 +1,3 @@
-import type { ProviderService } from "../cli/service-registry.js";
 import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
@@ -14,7 +13,6 @@ import {
   writeTemplateMutation
 } from "../services/service-manifest.js";
 import {
-  runServiceInstall,
   type InstallContext,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
@@ -24,6 +22,7 @@ import {
   CLAUDE_MODEL_HAIKU
 } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
+import { createProvider } from "./create-provider.js";
 
 type ClaudeCodeConfigureContext = {
   env: CliEnvironment;
@@ -162,13 +161,12 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
   };
 }
 
-export const claudeCodeService: ProviderService<
+export const claudeCodeService = createProvider<
   Record<string, never>,
   ClaudeCodeConfigureContext,
   ClaudeCodeRemoveContext,
   ClaudeCodeSpawnOptions
-> = {
-  ...claudeCodeManifest,
+>({
   name: "claude-code",
   label: "Claude Code",
   branding: {
@@ -180,15 +178,10 @@ export const claudeCodeService: ProviderService<
   hooks: {
     after: [createClaudeCliHealthCheck()]
   },
-  async install(context) {
-    await runServiceInstall(CLAUDE_CODE_INSTALL_DEFINITION, {
-      isDryRun: context.logger.context.dryRun,
-      runCommand: context.command.runCommand,
-      logger: (message) => context.logger.info(message)
-    });
-  },
-  async spawn(context, options) {
+  manifest: claudeCodeManifest,
+  install: CLAUDE_CODE_INSTALL_DEFINITION,
+  spawn(context, options) {
     const args = buildClaudeArgs(options.prompt, options.args);
     return context.command.runCommand("claude", args);
   }
-};
+});

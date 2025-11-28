@@ -101,7 +101,7 @@ describe("spawn command", () => {
         ]
       }
     ]);
-    expect(logs).toContain("Agent output");
+    expect(logs.some((message) => message.includes("Agent output"))).toBe(true);
   });
 
   it("spawns a codex agent", async () => {
@@ -135,7 +135,7 @@ describe("spawn command", () => {
         args: ["exec", "Summarize the diff", "--full-auto"]
       }
     ]);
-    expect(logs).toContain("Codex output");
+    expect(logs.some((message) => message.includes("Codex output"))).toBe(true);
   });
 
   it("spawns an opencode agent", async () => {
@@ -169,7 +169,9 @@ describe("spawn command", () => {
         args: ["run", "List files"]
       }
     ]);
-    expect(logs).toContain("OpenCode output");
+    expect(logs.some((message) => message.includes("OpenCode output"))).toBe(
+      true
+    );
   });
 
   it("fails when spawn command exits with error", async () => {

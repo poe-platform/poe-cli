@@ -44,9 +44,11 @@ describe("login command", () => {
     const raw = await fs.readFile(credentialsPath, "utf8");
     expect(JSON.parse(raw)).toEqual({ apiKey: "test-key" });
     expect(prompts).not.toHaveBeenCalled();
-    expect(logs).toContain(
-      `Poe API key stored at ${credentialsPath}.`
-    );
+    expect(
+      logs.some((message) =>
+        message.includes(`Poe API key stored at ${credentialsPath}.`)
+      )
+    ).toBe(true);
   });
 
   it("prompts for an api key when flag missing", async () => {
@@ -89,8 +91,10 @@ describe("login command", () => {
     ]);
 
     await expect(fs.readFile(credentialsPath, "utf8")).rejects.toThrow();
-    expect(logs).toContain(
-      `Dry run: would store Poe API key at ${credentialsPath}.`
-    );
+    expect(
+      logs.some((message) =>
+        message.includes(`Dry run: would store Poe API key at ${credentialsPath}.`)
+      )
+    ).toBe(true);
   });
 });

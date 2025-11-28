@@ -1,4 +1,3 @@
-import type { ProviderService } from "../cli/service-registry.js";
 import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
@@ -6,10 +5,7 @@ import {
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
-import {
-  runServiceInstall,
-  type ServiceInstallDefinition
-} from "../services/service-install.js";
+import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   createBackupMutation,
   createServiceManifest,
@@ -17,6 +13,7 @@ import {
   tomlTemplateMergeMutation,
   tomlPruneMutation
 } from "../services/service-manifest.js";
+import { createProvider } from "./create-provider.js";
 
 type CodexConfigureContext = {
   env: CliEnvironment;
@@ -231,13 +228,12 @@ const codexManifest = createServiceManifest<
   ]
 });
 
-export const codexService: ProviderService<
+export const codexService = createProvider<
   Record<string, never>,
   CodexConfigureContext,
   CodexRemoveContext,
   { prompt: string; args?: string[] }
-> = {
-  ...codexManifest,
+>({
   name: "codex",
   label: "Codex",
   branding: {
@@ -249,15 +245,10 @@ export const codexService: ProviderService<
   hooks: {
     after: [createCodexCliHealthCheck()]
   },
-  async install(context) {
-    await runServiceInstall(CODEX_INSTALL_DEFINITION, {
-      isDryRun: context.logger.context.dryRun,
-      runCommand: context.command.runCommand,
-      logger: (message) => context.logger.info(message)
-    });
-  },
-  async spawn(context, options) {
+  manifest: codexManifest,
+  install: CODEX_INSTALL_DEFINITION,
+  spawn(context, options) {
     const args = buildCodexExecArgs(options.prompt, options.args);
     return context.command.runCommand("codex", args);
   }
-};
+});
