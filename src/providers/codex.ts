@@ -5,22 +5,17 @@ import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
 } from "../utils/prerequisites.js";
-import {
-  parseTomlDocument,
-  serializeTomlDocument,
-  mergeTomlTables,
-  isTomlTable,
-  type TomlTable
-} from "../utils/toml.js";
+import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import {
   runServiceInstall,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
-import { renderTemplate } from "../utils/templates.js";
 import {
   createBackupMutation,
   createServiceManifest,
-  ensureDirectory
+  ensureDirectory,
+  tomlTemplateMergeMutation,
+  tomlPruneMutation
 } from "../services/service-manifest.js";
 
 type CodexConfigureContext = {
@@ -41,8 +36,6 @@ const CODEX_TOP_LEVEL_FIELDS = [
   "model",
   "model_reasoning_effort"
 ] as const;
-const CODEX_CONFIG_TEMPLATE_ID = "codex/config.toml.hbs";
-
 export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
   summary: "Codex CLI",
@@ -206,73 +199,35 @@ const codexManifest = createServiceManifest<
     after: ["codex-cli-health"]
   },
   configure: [
-    ensureDirectory({
-      path: "~/.codex"
-    }),
+    ensureDirectory({ path: "~/.codex" }),
     createBackupMutation({
       target: "~/.codex/config.toml",
       timestamp: ({ options }) => options.timestamp
     }),
-    {
-      kind: "transformFile",
+    tomlTemplateMergeMutation({
       target: "~/.codex/config.toml",
-      async transform({ content, context }) {
-        const previous = content ?? "";
-        let document: TomlTable = {};
-        if (content != null) {
-          try {
-            document = parseTomlDocument(content);
-          } catch {
-            document = {};
-          }
-        }
-
-        const rendered = await renderTemplate(CODEX_CONFIG_TEMPLATE_ID, {
-          apiKey: context.options.apiKey,
-          model: context.options.model,
-          reasoningEffort: context.options.reasoningEffort
-        });
-        const templateDocument = parseTomlDocument(rendered);
-        const merged = mergeTomlTables(document, templateDocument);
-        const serialized = serializeTomlDocument(merged);
-        return {
-          content: serialized,
-          changed: serialized !== previous
-        };
-      }
-    }
+      templateId: "codex/config.toml.hbs",
+      context: ({ options }) => ({
+        apiKey: options.apiKey,
+        model: options.model,
+        reasoningEffort: options.reasoningEffort
+      })
+    })
   ],
   remove: [
-    {
-      kind: "transformFile",
+    tomlPruneMutation({
       target: "~/.codex/config.toml",
-      async transform({ content }) {
-        if (content == null) {
-          return { content: null, changed: false };
-        }
-
-        let document: TomlTable;
-        try {
-          document = parseTomlDocument(content);
-        } catch {
-          return { content, changed: false };
-        }
-
+      prune: (document) => {
         const result = stripCodexConfiguration(document);
         if (!result.changed) {
-          return { content, changed: false };
+          return { changed: false, result: document };
         }
-        if (result.empty) {
-          return { content: null, changed: true };
-        }
-
-        const serialized = serializeTomlDocument(document);
         return {
-          content: serialized,
-          changed: serialized !== content
+          changed: true,
+          result: result.empty ? null : document
         };
       }
-    }
+    })
   ]
 });
 

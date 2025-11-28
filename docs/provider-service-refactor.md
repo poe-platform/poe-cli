@@ -10,7 +10,7 @@
 ## Tasks
 
 1. **Declarative configure/remove**
-   - For each provider (Claude Code, Codex, OpenCode, Roo Code) describe filesystem, template, JSON, and script work as `ServiceMutation[]` definitions.
+   - For each provider (Claude Code, Codex, OpenCode) describe filesystem, template, JSON, and script work as `ServiceMutation[]` definitions.
    - Feed those definitions into `createServiceManifest` so the provider exports `configure`/`remove` directly from the manifest without extra wrappers.
 
 2. **Single service entity**

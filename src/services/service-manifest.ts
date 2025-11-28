@@ -9,6 +9,12 @@ import {
   pruneJsonByShape,
   type JsonObject
 } from "../utils/json.js";
+import {
+  parseTomlDocument,
+  serializeTomlDocument,
+  mergeTomlTables,
+  type TomlTable
+} from "../utils/toml.js";
 
 type ValueResolver<Options, Value> =
   | Value
@@ -241,6 +247,110 @@ export function jsonPruneMutation<Options>(config: {
       return {
         content: serialized,
         changed: serialized !== content
+      };
+    }
+  };
+}
+
+export function tomlMergeMutation<Options>(config: {
+  target: ValueResolver<Options, string>;
+  value: ValueResolver<Options, TomlTable>;
+  label?: ValueResolver<Options, string | undefined>;
+}): ServiceMutation<Options> {
+  return {
+    kind: "transformFile",
+    target: config.target,
+    label: config.label,
+    async transform({ content, context }) {
+      const rawTarget = resolveValue(config.target, context);
+      const targetPath = expandHomeShortcut(rawTarget, context.env);
+      const current = await parseTomlWithRecovery({
+        content,
+        fs: context.fs,
+        targetPath
+      });
+      const desired = resolveValue(config.value, context);
+      const merged = mergeTomlTables(current, desired);
+      const serialized = serializeTomlDocument(merged);
+      const previous = content ?? "";
+      return {
+        content: serialized,
+        changed: serialized !== previous
+      };
+    }
+  };
+}
+
+export function tomlPruneMutation<Options>(config: {
+  target: ValueResolver<Options, string>;
+  prune: (
+    document: TomlTable,
+    context: MutationContext<Options>
+  ) => { changed: boolean; result: TomlTable | null };
+  label?: ValueResolver<Options, string | undefined>;
+}): ServiceMutation<Options> {
+  return {
+    kind: "transformFile",
+    target: config.target,
+    label: config.label,
+    async transform({ content, context }) {
+      if (content == null) {
+        return { content: null, changed: false };
+      }
+      let document: TomlTable;
+      try {
+        document = parseTomlDocument(content);
+      } catch {
+        return { content, changed: false };
+      }
+      const outcome = config.prune(document, context);
+      if (!outcome.changed) {
+        return { content, changed: false };
+      }
+      if (!outcome.result || Object.keys(outcome.result).length === 0) {
+        return { content: null, changed: true };
+      }
+      const serialized = serializeTomlDocument(outcome.result);
+      return {
+        content: serialized,
+        changed: serialized !== content
+      };
+    }
+  };
+}
+
+export function tomlTemplateMergeMutation<Options>(config: {
+  target: ValueResolver<Options, string>;
+  templateId: string;
+  context?: ValueResolver<Options, JsonObject | undefined>;
+  label?: ValueResolver<Options, string | undefined>;
+}): ServiceMutation<Options> {
+  return {
+    kind: "transformFile",
+    target: config.target,
+    label: config.label,
+    async transform({ content, context }) {
+      const rawTarget = resolveValue(config.target, context);
+      const targetPath = expandHomeShortcut(rawTarget, context.env);
+      const current = await parseTomlWithRecovery({
+        content,
+        fs: context.fs,
+        targetPath
+      });
+      const templateContext = config.context
+        ? resolveValue(config.context, context)
+        : undefined;
+      const rendered = await renderTemplate(
+        config.templateId,
+        templateContext ?? {}
+      );
+      const templateDocument = parseTomlDocument(rendered);
+      const merged = mergeTomlTables(current, templateDocument);
+      const serialized = serializeTomlDocument(merged);
+      const previous = content ?? "";
+      return {
+        content: serialized,
+        changed: serialized !== previous
       };
     }
   };
@@ -649,7 +759,35 @@ async function parseJsonWithRecovery(input: {
   }
 }
 
+async function parseTomlWithRecovery(input: {
+  content: string | null;
+  fs: FileSystem;
+  targetPath: string;
+}): Promise<TomlTable> {
+  if (input.content == null) {
+    return {};
+  }
+  try {
+    return parseTomlDocument(input.content);
+  } catch {
+    await backupInvalidTomlDocument(input);
+    return {};
+  }
+}
+
 async function backupInvalidJsonDocument(input: {
+  content: string | null;
+  fs: FileSystem;
+  targetPath: string;
+}): Promise<void> {
+  if (input.content == null) {
+    return;
+  }
+  const backupPath = createInvalidDocumentBackupPath(input.targetPath);
+  await input.fs.writeFile(backupPath, input.content, { encoding: "utf8" });
+}
+
+async function backupInvalidTomlDocument(input: {
   content: string | null;
   fs: FileSystem;
   targetPath: string;

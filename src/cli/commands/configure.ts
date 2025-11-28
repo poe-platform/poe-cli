@@ -11,9 +11,6 @@ import {
 import {
   DEFAULT_MODEL,
   DEFAULT_REASONING,
-  DEFAULT_ROO_BASE_URL,
-  DEFAULT_ROO_CONFIG_NAME,
-  DEFAULT_ROO_MODEL,
   DEFAULT_CLAUDE_MODEL
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
@@ -23,8 +20,6 @@ export interface ConfigureCommandOptions {
   apiKey?: string;
   model?: string;
   reasoningEffort?: string;
-  configName?: string;
-  baseUrl?: string;
 }
 
 export function registerConfigureCommand(
@@ -41,8 +36,6 @@ export function registerConfigureCommand(
     .option("--api-key <key>", "Poe API key")
     .option("--model <model>", "Model identifier")
     .option("--reasoning-effort <level>", "Reasoning effort level")
-    .option("--config-name <name>", "Configuration profile name")
-    .option("--base-url <url>", "API base URL")
     .action(
       async (service: string | undefined, options: ConfigureCommandOptions) => {
         const resolved = await resolveServiceArgument(
@@ -165,28 +158,6 @@ async function createConfigurePayload(
       return {
         env: context.env,
         apiKey
-      };
-    }
-    case "roo-code": {
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
-      const model = await container.options.resolveModel(
-        options.model,
-        DEFAULT_ROO_MODEL
-      );
-      const configName = await container.options.resolveConfigName(
-        options.configName,
-        DEFAULT_ROO_CONFIG_NAME
-      );
-      const baseUrl = options.baseUrl ?? DEFAULT_ROO_BASE_URL;
-      return {
-        env: context.env,
-        apiKey,
-        model,
-        baseUrl,
-        configName
       };
     }
     default:

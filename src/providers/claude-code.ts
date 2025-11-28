@@ -56,8 +56,8 @@ const claudeCodeManifest = createServiceManifest<
     writeTemplateMutation({
       target: "~/.claude/anthropic_key.sh",
       templateId: "claude-code/anthropic_key.sh.hbs",
-      context: ({ options }) => ({
-        credentialsPathLiteral: quoteSinglePath(options.env.credentialsPath)
+      context: ({ env }) => ({
+        credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
       })
     }),
     makeExecutableMutation({
@@ -66,11 +66,8 @@ const claudeCodeManifest = createServiceManifest<
     }),
     jsonMergeMutation({
       target: "~/.claude/settings.json",
-      value: ({ options }) => ({
-        apiKeyHelper: options.env.resolveHomePath(
-          ".claude",
-          "anthropic_key.sh"
-        ),
+      value: ({ options, env }) => ({
+        apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
         env: {
           ANTHROPIC_BASE_URL: "https://api.poe.com",
           ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,

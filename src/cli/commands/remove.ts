@@ -7,7 +7,6 @@ import {
   resolveCommandFlags,
   resolveServiceAdapter
 } from "./shared.js";
-import { DEFAULT_ROO_CONFIG_NAME } from "../constants.js";
 
 export interface RemoveCommandOptions {
   configName?: string;
@@ -22,9 +21,8 @@ export function registerRemoveCommand(
     .description("Remove existing Poe API tooling configuration.")
     .argument(
       "<service>",
-      "Service to remove (claude-code | codex | opencode | roo-code)"
+      "Service to remove (claude-code | codex | opencode)"
     )
-    .option("--config-name <name>", "Configuration profile name")
     .action(async (service: string, options: RemoveCommandOptions) => {
       await executeRemove(program, container, service, options);
     });
@@ -91,7 +89,7 @@ interface RemovePayloadInit {
 }
 
 async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
-  const { service, container, options, context } = init;
+  const { service } = init;
   switch (service) {
     case "claude-code":
       return { env: context.env };
@@ -99,16 +97,6 @@ async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
       return { env: context.env };
     case "opencode":
       return { env: context.env };
-    case "roo-code": {
-      const configName = await container.options.resolveConfigName(
-        options.configName,
-        DEFAULT_ROO_CONFIG_NAME
-      );
-      return {
-        env: context.env,
-        configName
-      };
-    }
     default:
       return {};
     }
@@ -118,7 +106,7 @@ function formatRemovalMessages(
   service: string,
   label: string,
   removed: unknown,
-  payload: unknown
+  _payload: unknown
 ): { success: string; dry: string } {
   const didRemove = typeof removed === "boolean" ? removed : Boolean(removed);
   switch (service) {
@@ -143,18 +131,6 @@ function formatRemovalMessages(
           : "No OpenCode CLI configuration found.",
         dry: "Dry run: would remove OpenCode CLI configuration."
       };
-    case "roo-code": {
-      const configName =
-        typeof (payload as { configName?: string }).configName === "string"
-          ? (payload as { configName?: string }).configName!
-          : DEFAULT_ROO_CONFIG_NAME;
-      return {
-        success: didRemove
-          ? `Removed Roo Code configuration "${configName}".`
-          : `No Roo Code configuration named "${configName}" found.`,
-        dry: "Dry run: would remove Roo Code configuration."
-      };
-    }
     default:
       return {
         success: didRemove

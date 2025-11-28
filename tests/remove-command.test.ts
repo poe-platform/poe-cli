@@ -5,7 +5,6 @@ import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
 import type { ProviderService } from "../src/cli/service-registry.js";
 import { registerRemoveCommand } from "../src/cli/commands/remove.js";
-import { DEFAULT_ROO_CONFIG_NAME } from "../src/cli/constants.js";
 import { createProviderStub } from "./provider-stub.js";
 
 const cwd = "/repo";
@@ -79,55 +78,4 @@ describe("remove command", () => {
     ).toBe(true);
   });
 
-  it("resolves Roo Code config names and passes mutation hooks", async () => {
-    const fs = createMemFs();
-    const container = createCliContainer({
-      fs,
-      prompts: vi.fn().mockResolvedValue({}),
-      env: { cwd, homeDir },
-      logger: () => {}
-    });
-    const removeSpy = vi.fn();
-
-    const rooAdapter: ProviderService = createProviderStub({
-      name: "roo-code",
-      label: "Roo Code",
-      resolvePaths() {
-        return {};
-      },
-      async remove(context) {
-        removeSpy(context.options);
-        return true;
-      }
-    });
-
-    container.registry.register(rooAdapter);
-
-    const resolveConfigNameSpy = vi
-      .spyOn(container.options, "resolveConfigName")
-      .mockResolvedValue("custom-profile");
-
-    const program = createBaseProgram();
-    registerRemoveCommand(program, container);
-
-    await program.parseAsync([
-      "node",
-      "cli",
-      "--dry-run",
-      "remove",
-      "roo-code",
-      "--config-name",
-      "my-profile"
-    ]);
-
-    expect(resolveConfigNameSpy).toHaveBeenCalledWith(
-      "my-profile",
-      DEFAULT_ROO_CONFIG_NAME
-    );
-
-    expect(removeSpy).toHaveBeenCalledTimes(1);
-    const [options] = removeSpy.mock.calls[0]!;
-    expect(options?.configName).toBe("custom-profile");
-    expect(options).toBeDefined();
-  });
 });
