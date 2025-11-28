@@ -8,7 +8,6 @@ import {
   resolveServiceAdapter
 } from "./shared.js";
 import { DEFAULT_ROO_CONFIG_NAME } from "../constants.js";
-import type { ClaudeCodePaths } from "../../providers/claude-code.js";
 import type { CodexPaths } from "../../providers/codex.js";
 import type { OpenCodePaths } from "../../providers/opencode.js";
 import type { RooCodePaths } from "../../providers/roo-code.js";
@@ -96,13 +95,8 @@ interface RemovePayloadInit {
 async function createRemovePayload(init: RemovePayloadInit): Promise<unknown> {
   const { service, container, options, context } = init;
   switch (service) {
-    case "claude-code": {
-      const paths = context.paths as ClaudeCodePaths;
-      return {
-        settingsPath: paths.settingsPath,
-        keyHelperPath: paths.keyHelperPath
-      };
-    }
+    case "claude-code":
+      return { env: context.env };
     case "codex": {
       const paths = context.paths as CodexPaths;
       return {

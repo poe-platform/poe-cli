@@ -1,10 +1,6 @@
-import path from "node:path";
 import type { ProviderService } from "../cli/service-registry.js";
-import type { FileSystem } from "../utils/file-system.js";
-import type {
-  CommandRunner,
-  PrerequisiteDefinition
-} from "../utils/prerequisites.js";
+import type { CliEnvironment } from "../cli/environment.js";
+import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
   formatCommandRunnerResult
@@ -29,56 +25,24 @@ import {
 } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 
-export interface ClaudeCodePaths extends Record<string, string> {
-  settingsPath: string;
-  keyHelperPath: string;
-  credentialsPath: string;
-}
-
-export type ClaudeCodeConfigureManifestOptions = {
+type ClaudeCodeConfigureContext = {
+  env: CliEnvironment;
   apiKey: string;
-  settingsPath: string;
-  keyHelperPath: string;
-  credentialsPath: string;
   defaultModel: string;
 };
 
-export type ClaudeCodeRemoveManifestOptions = {
-  settingsPath: string;
-  keyHelperPath: string;
+type ClaudeCodeRemoveContext = {
+  env: CliEnvironment;
 };
 
-export interface ConfigureClaudeCodeOptions
-  extends ClaudeCodeConfigureManifestOptions {
-  fs: FileSystem;
-}
-
-export interface RemoveClaudeCodeOptions
-  extends ClaudeCodeRemoveManifestOptions {
-  fs: FileSystem;
-}
-
-export interface ClaudeCodeSpawnOptions {
+type ClaudeCodeSpawnOptions = {
   prompt: string;
-  args: string[];
-}
-
-const KEY_HELPER_TEMPLATE_ID = "claude-code/anthropic_key.sh.hbs";
-const KEY_HELPER_MODE = 0o700;
-const CLAUDE_ENV_SHAPE = {
-  apiKeyHelper: true,
-  env: {
-    ANTHROPIC_BASE_URL: true,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: true
-  },
-  model: true
-} as const;
+  args?: string[];
+};
 
 const claudeCodeManifest = createServiceManifest<
-  ClaudeCodeConfigureManifestOptions,
-  ClaudeCodeRemoveManifestOptions
+  ClaudeCodeConfigureContext,
+  ClaudeCodeRemoveContext
 >({
   id: "claude-code",
   summary: "Configure Claude Code to route through Poe.",
@@ -87,27 +51,33 @@ const claudeCodeManifest = createServiceManifest<
   },
   configure: [
     ensureDirectory({
-      path: ({ options }) => path.dirname(options.settingsPath),
+      path: ({ options }) => options.env.resolveHomePath(".claude"),
       label: "Ensure Claude settings directory"
     }),
     writeTemplateMutation({
-      target: ({ options }) => options.keyHelperPath,
-      templateId: KEY_HELPER_TEMPLATE_ID,
+      target: ({ options }) =>
+        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
+      templateId: "claude-code/anthropic_key.sh.hbs",
       context: ({ options }) => ({
-        credentialsPathLiteral: quoteSinglePath(options.credentialsPath)
+        credentialsPathLiteral: quoteSinglePath(options.env.credentialsPath)
       }),
       label: "Write API key helper script"
     }),
     makeExecutableMutation({
-      target: ({ options }) => options.keyHelperPath,
+      target: ({ options }) =>
+        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
       label: "Make API key helper executable",
-      mode: KEY_HELPER_MODE
+      mode: 0o700
     }),
     jsonMergeMutation({
-      target: ({ options }) => options.settingsPath,
+      target: ({ options }) =>
+        options.env.resolveHomePath(".claude", "settings.json"),
       label: "Merge Claude settings",
       value: ({ options }) => ({
-        apiKeyHelper: options.keyHelperPath,
+        apiKeyHelper: options.env.resolveHomePath(
+          ".claude",
+          "anthropic_key.sh"
+        ),
         env: {
           ANTHROPIC_BASE_URL: "https://api.poe.com",
           ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
@@ -120,12 +90,23 @@ const claudeCodeManifest = createServiceManifest<
   ],
   remove: [
     jsonPruneMutation({
-      target: ({ options }) => options.settingsPath,
+      target: ({ options }) =>
+        options.env.resolveHomePath(".claude", "settings.json"),
       label: "Prune Claude settings",
-      shape: () => CLAUDE_ENV_SHAPE
+      shape: () => ({
+        apiKeyHelper: true,
+        env: {
+          ANTHROPIC_BASE_URL: true,
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
+          ANTHROPIC_DEFAULT_SONNET_MODEL: true,
+          ANTHROPIC_DEFAULT_OPUS_MODEL: true
+        },
+        model: true
+      })
     }),
     removeFileMutation({
-      target: ({ options }) => options.keyHelperPath,
+      target: ({ options }) =>
+        options.env.resolveHomePath(".claude", "anthropic_key.sh"),
       label: "Remove API key helper script"
     })
   ]
@@ -151,12 +132,6 @@ export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
 };
 
 export type InstallClaudeCodeOptions = InstallContext;
-
-export interface SpawnClaudeCodeOptions {
-  prompt: string;
-  args?: string[];
-  runCommand: CommandRunner;
-}
 
 const CLAUDE_SPAWN_DEFAULTS = [
   "--allowedTools",
@@ -202,9 +177,9 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
 }
 
 export const claudeCodeService: ProviderService<
-  ClaudeCodePaths,
-  ClaudeCodeConfigureManifestOptions,
-  ClaudeCodeRemoveManifestOptions,
+  Record<string, never>,
+  ClaudeCodeConfigureContext,
+  ClaudeCodeRemoveContext,
   ClaudeCodeSpawnOptions
 > = {
   ...claudeCodeManifest,
@@ -216,12 +191,8 @@ export const claudeCodeService: ProviderService<
       light: "#C15F3C"
     }
   },
-  resolvePaths(env) {
-    return {
-      settingsPath: env.resolveHomePath(".claude", "settings.json"),
-      keyHelperPath: env.resolveHomePath(".claude", "anthropic_key.sh"),
-      credentialsPath: env.credentialsPath
-    };
+  resolvePaths() {
+    return {};
   },
   registerPrerequisites(manager) {
     manager.registerAfter(createClaudeCliHealthCheck());

@@ -18,7 +18,6 @@ import {
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
-import type { ClaudeCodePaths } from "../../providers/claude-code.js";
 import type { CodexPaths } from "../../providers/codex.js";
 import type { OpenCodePaths } from "../../providers/opencode.js";
 import type { RooCodePaths } from "../../providers/roo-code.js";
@@ -125,7 +124,6 @@ async function createConfigurePayload(
   const { service, container, flags, options, context } = init;
   switch (service) {
     case "claude-code": {
-      const paths = context.paths as ClaudeCodePaths;
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
@@ -136,11 +134,9 @@ async function createConfigurePayload(
         assumeDefault: flags.assumeYes
       });
       return {
+        env: context.env,
         apiKey,
-        defaultModel,
-        settingsPath: paths.settingsPath,
-        keyHelperPath: paths.keyHelperPath,
-        credentialsPath: paths.credentialsPath
+        defaultModel
       };
     }
     case "codex": {

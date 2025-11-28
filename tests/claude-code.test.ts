@@ -5,10 +5,7 @@ import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/providers/claude-code.js";
 import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
-import type {
-  ClaudeCodeConfigureOptions,
-  ClaudeCodeRemoveOptions
-} from "../src/providers/claude-code.js";
+import { createCliEnvironment } from "../src/cli/environment.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -24,40 +21,59 @@ describe("claude-code service", () => {
   const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
   const credentialsPath = path.join(home, ".poe-code", "credentials.json");
   const apiKey = "sk-test";
+  let env = createCliEnvironment({
+    cwd: home,
+    homeDir: home
+  });
 
   beforeEach(async () => {
     ({ fs, vol } = createMemFs());
     vol.mkdirSync(home, { recursive: true });
+    env = createCliEnvironment({
+      cwd: home,
+      homeDir: home
+    });
   });
 
-  const baseConfigureOptions: ClaudeCodeConfigureOptions = {
-    apiKey,
-    settingsPath,
-    keyHelperPath,
-    credentialsPath,
-    defaultModel: "Claude-Sonnet-4.5"
-  };
+  type ConfigureOptions = Parameters<
+    typeof claudeService.claudeCodeService.configure
+  >[0]["options"];
 
-  const baseRemoveOptions: ClaudeCodeRemoveOptions = {
-    settingsPath,
-    keyHelperPath
-  };
+  type RemoveOptions = Parameters<
+    typeof claudeService.claudeCodeService.remove
+  >[0]["options"];
+
+  const buildConfigureOptions = (
+    overrides: Partial<ConfigureOptions> = {}
+  ): ConfigureOptions => ({
+    env,
+    apiKey,
+    defaultModel: "Claude-Sonnet-4.5",
+    ...overrides
+  });
+
+  const buildRemoveOptions = (
+    overrides: Partial<RemoveOptions> = {}
+  ): RemoveOptions => ({
+    env,
+    ...overrides
+  });
 
   async function configureClaude(
-    overrides: Partial<ClaudeCodeConfigureOptions> = {}
+    overrides: Partial<ConfigureOptions> = {}
   ): Promise<void> {
     await claudeService.claudeCodeService.configure({
       fs,
-      options: { ...baseConfigureOptions, ...overrides }
+      options: buildConfigureOptions(overrides)
     });
   }
 
   async function removeClaude(
-    overrides: Partial<ClaudeCodeRemoveOptions> = {}
+    overrides: Partial<RemoveOptions> = {}
   ): Promise<boolean> {
     return claudeService.claudeCodeService.remove({
       fs,
-      options: { ...baseRemoveOptions, ...overrides }
+      options: buildRemoveOptions(overrides)
     });
   }
 
