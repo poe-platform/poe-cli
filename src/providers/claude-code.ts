@@ -22,6 +22,18 @@ import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 
+type ClaudeConfigureOptions = {
+  defaultModel: string;
+};
+
+type ClaudeRemoveOptions = Record<string, never>;
+
+type ClaudeSpawnOptions = {
+  prompt: string;
+  args?: string[];
+  model?: string;
+};
+
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
   summary: "Claude CLI",
@@ -72,7 +84,12 @@ function createClaudeCliHealthCheck(): HookDefinition {
   });
 }
 
-export const claudeCodeService = createProvider({
+export const claudeCodeService = createProvider<
+  Record<string, any>,
+  ClaudeConfigureOptions,
+  ClaudeRemoveOptions,
+  ClaudeSpawnOptions
+>({
   name: "claude-code",
   label: "Claude Code",
   id: "claude-code",
@@ -150,15 +167,10 @@ export const claudeCodeService = createProvider({
   versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
-    const resolved = (options ?? {}) as {
-      prompt: string;
-      args?: string[];
-      model?: string;
-    };
     const args = buildClaudeArgs(
-      resolved.prompt,
-      resolved.args,
-      resolved.model
+      options.prompt,
+      options.args,
+      options.model
     );
     return context.command.runCommand("claude", args);
   }

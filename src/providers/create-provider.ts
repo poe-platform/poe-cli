@@ -30,7 +30,7 @@ interface ManifestVersionDefinition<ConfigureOptions, RemoveOptions> {
 }
 
 interface CreateProviderOptions<
-  TPaths extends Record<string, string>,
+  TPaths extends Record<string, unknown>,
   ConfigureOptions,
   RemoveOptions,
   SpawnOptions
@@ -65,10 +65,10 @@ interface ManifestEntry<ConfigureOptions, RemoveOptions> {
 }
 
 export function createProvider<
-  TPaths extends Record<string, string> = Record<string, string>,
-  ConfigureOptions = unknown,
+  TPaths extends Record<string, unknown> = Record<string, any>,
+  ConfigureOptions = any,
   RemoveOptions = ConfigureOptions,
-  SpawnOptions = unknown
+  SpawnOptions = any
 >(
   options: CreateProviderOptions<
     TPaths,
@@ -136,11 +136,17 @@ export function createProvider<
 }
 
 function buildManifestEntries<
-  TPaths extends Record<string, string>,
+  TPaths extends Record<string, unknown>,
   ConfigureOptions,
-  RemoveOptions
+  RemoveOptions,
+  SpawnOptions
 >(
-  options: CreateProviderOptions<TPaths, ConfigureOptions, RemoveOptions, unknown>
+  options: CreateProviderOptions<
+    TPaths,
+    ConfigureOptions,
+    RemoveOptions,
+    SpawnOptions
+  >
 ): ManifestEntry<ConfigureOptions, RemoveOptions>[] {
   const input = options.manifest;
   const map = isVersionedManifest(input)
@@ -168,7 +174,7 @@ function buildManifestEntries<
 
 function isVersionedManifest<ConfigureOptions, RemoveOptions>(
   value: CreateProviderOptions<
-    Record<string, string>,
+    Record<string, unknown>,
     ConfigureOptions,
     RemoveOptions,
     unknown
@@ -183,7 +189,7 @@ function isVersionedManifest<ConfigureOptions, RemoveOptions>(
   return !("id" in value && "summary" in value);
 }
 
-async function safeResolveVersion<TPaths extends Record<string, string>>(
+async function safeResolveVersion<TPaths extends Record<string, unknown>>(
   resolver: ProviderVersionResolver<TPaths>,
   context: ProviderContext<TPaths>
 ): Promise<string | null> {
@@ -217,7 +223,7 @@ function selectManifest<ConfigureOptions, RemoveOptions>(
 }
 
 function bindManifest<
-  TPaths extends Record<string, string>,
+  TPaths extends Record<string, unknown>,
   ConfigureOptions,
   RemoveOptions,
   SpawnOptions
@@ -246,7 +252,7 @@ function bindManifest<
   };
 }
 
-function createInstallRunner<TPaths extends Record<string, string>>(
+function createInstallRunner<TPaths extends Record<string, unknown>>(
   definition: ServiceInstallDefinition
 ) {
   return async (context: ProviderContext<TPaths>): Promise<void> => {

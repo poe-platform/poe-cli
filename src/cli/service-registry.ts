@@ -8,6 +8,7 @@ import type {
   ModelPromptInput,
   ReasoningPromptInput
 } from "./prompts.js";
+import type { ServiceRunOptions } from "../services/service-manifest.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -23,7 +24,9 @@ export interface ProviderConfigurePrompts {
   reasoningEffort?: ReasoningPromptInput;
 }
 
-export interface ProviderContext<TPaths = Record<string, string>> {
+export interface ProviderContext<
+  TPaths extends Record<string, unknown> = Record<string, any>
+> {
   env: CliEnvironment;
   paths: TPaths;
   command: CommandContext;
@@ -38,7 +41,7 @@ export interface ServiceExecutionContext<Options> {
 }
 
 export interface ProviderVersionResolution<
-  TPaths extends Record<string, string>,
+  TPaths extends Record<string, unknown>,
   TConfigure,
   TRemove,
   TSpawn
@@ -48,10 +51,10 @@ export interface ProviderVersionResolution<
 }
 
 export interface ProviderService<
-  TPaths = Record<string, string>,
-  TConfigure = unknown,
-  TRemove = unknown,
-  TSpawn = unknown
+  TPaths extends Record<string, unknown> = Record<string, any>,
+  TConfigure = any,
+  TRemove = TConfigure,
+  TSpawn = any
 > {
   id: string;
   summary: string;
@@ -60,10 +63,12 @@ export interface ProviderService<
     after?: HookDefinition[];
   };
   configure(
-    context: ServiceExecutionContext<TConfigure>
+    context: ServiceExecutionContext<TConfigure>,
+    runOptions?: ServiceRunOptions
   ): Promise<void>;
   remove(
-    context: ServiceExecutionContext<TRemove>
+    context: ServiceExecutionContext<TRemove>,
+    runOptions?: ServiceRunOptions
   ): Promise<boolean>;
   name: string;
   label: string;
@@ -71,11 +76,11 @@ export interface ProviderService<
   disabled?: boolean;
   configurePrompts?: ProviderConfigurePrompts;
   resolvePaths?: (env: CliEnvironment) => TPaths;
-  install?: (context: ProviderContext<TPaths>) => Promise<void> | void;
-  spawn?: (
+  install?(context: ProviderContext<TPaths>): Promise<void> | void;
+  spawn?(
     context: ProviderContext<TPaths>,
     options: TSpawn
-  ) => Promise<unknown>;
+  ): Promise<unknown>;
   resolveVersion?(
     context: ProviderContext<TPaths>
   ): Promise<ProviderVersionResolution<TPaths, TConfigure, TRemove, TSpawn>>;
