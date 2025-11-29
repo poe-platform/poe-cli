@@ -67,7 +67,6 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   steps: [
     {
       id: "install-opencode-cli-npm",
-      description: "Install OpenCode CLI via npm",
       command: "npm",
       args: ["install", "-g", "opencode-ai"]
     }
@@ -79,7 +78,6 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
 function createOpenCodeVersionCheck(): PrerequisiteDefinition {
   return {
     id: "opencode-cli-version",
-    description: "OpenCode CLI responds to --version",
     async run({ runCommand }) {
       const result = await runCommand("opencode", ["--version"]);
       if (result.exitCode !== 0) {

@@ -44,7 +44,6 @@ export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   steps: [
     {
       id: "install-codex-cli-npm",
-      description: "Install Codex CLI via npm",
       command: "npm",
       args: ["install", "-g", "@openai/codex"]
     }
@@ -142,7 +141,6 @@ export function buildCodexExecArgs(
 function createCodexVersionCheck(): PrerequisiteDefinition {
   return {
     id: "codex-cli-version",
-    description: "Codex CLI responds to --version",
     async run({ runCommand }) {
       const result = await runCommand("codex", ["--version"]);
       if (result.exitCode !== 0) {
