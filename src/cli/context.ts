@@ -7,12 +7,12 @@ import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
   CommandRunnerResult,
-  PrerequisiteDefinition,
-  PrerequisiteManager,
-  PrerequisitePhase,
-  PrerequisiteRunHooks
-} from "../utils/prerequisites.js";
-import { createPrerequisiteManager } from "../utils/prerequisites.js";
+  HookDefinition,
+  HookManager,
+  HookPhase,
+  HookRunHooks
+} from "../utils/hooks.js";
+import { createHookManager } from "../utils/hooks.js";
 import type { ScopedLogger } from "./logger.js";
 
 export interface CommandContextOptions {
@@ -28,7 +28,7 @@ export interface CommandContextComplete {
 
 export interface CommandContext {
   fs: FileSystem;
-  prerequisites: PrerequisiteManager;
+  hooks: HookManager;
   runCommand: CommandRunner;
   flushDryRun(options?: { emitIfEmpty?: boolean }): void;
   complete(messages: CommandContextComplete): void;
@@ -48,7 +48,7 @@ export function createCommandContextFactory(
   const { fs } = init;
 
   const create = (options: CommandContextOptions): CommandContext => {
-    const prerequisites = createPrerequisiteManager({
+    const hooks = createHookManager({
       isDryRun: options.dryRun,
       runCommand: options.runner,
       logDryRun: (message) => options.logger.dryRun(message)
@@ -57,7 +57,7 @@ export function createCommandContextFactory(
     if (!options.dryRun) {
       return {
         fs,
-        prerequisites,
+        hooks,
         runCommand: options.runner,
         flushDryRun() {},
         complete(messages) {
@@ -95,7 +95,7 @@ export function createCommandContextFactory(
 
     return {
       fs: proxyFs,
-      prerequisites,
+      hooks,
       runCommand: options.runner,
       flushDryRun({ emitIfEmpty }: { emitIfEmpty?: boolean } = {}) {
         flush(Boolean(emitIfEmpty));
@@ -121,32 +121,30 @@ export function createLoggingCommandRunner(
   };
 }
 
-export function createPrerequisiteHooks(
-  phase: PrerequisitePhase,
+export function createHookTracer(
+  phase: HookPhase,
   logger: ScopedLogger
-): PrerequisiteRunHooks | undefined {
+): HookRunHooks | undefined {
   if (!logger.context.verbose) {
     return undefined;
   }
 
   return {
-    onStart(prerequisite) {
-      logger.verbose(
-        `Running ${phase} prerequisite ${formatPrerequisiteDisplay(prerequisite)}`
-      );
+    onStart(hook) {
+      logger.verbose(`Running ${phase} hook ${formatHookDisplay(hook)}`);
     },
-    onSuccess(prerequisite) {
-      logger.verbose(`✓ ${formatPrerequisiteDisplay(prerequisite)}`);
+    onSuccess(hook) {
+      logger.verbose(`✓ ${formatHookDisplay(hook)}`);
     },
-    onFailure(prerequisite, error) {
+    onFailure(hook, error) {
       const detail =
         error instanceof Error ? error.message : String(error ?? "Unknown error");
-      logger.error(`✖ ${formatPrerequisiteDisplay(prerequisite)}: ${detail}`);
+      logger.error(`✖ ${formatHookDisplay(hook)}: ${detail}`);
     }
   };
 }
 
-export function normalizePhase(value: string): PrerequisitePhase {
+export function normalizeHookPhase(value: string): HookPhase {
   const normalized = value.toLowerCase();
   if (normalized === "before" || normalized === "after") {
     return normalized;
@@ -164,11 +162,9 @@ function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
 }
 
-function formatPrerequisiteDisplay(
-  prerequisite: PrerequisiteDefinition
-): string {
-  const description = prerequisite.description?.trim();
+function formatHookDisplay(hook: HookDefinition): string {
+  const description = hook.description?.trim();
   return description?.length
-    ? `[${prerequisite.id}] ${description}`
-    : `[${prerequisite.id}]`;
+    ? `[${hook.id}] ${description}`
+    : `[${hook.id}]`;
 }

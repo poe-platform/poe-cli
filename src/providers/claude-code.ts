@@ -1,9 +1,9 @@
 import type { CliEnvironment } from "../cli/environment.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { HookDefinition } from "../utils/hooks.js";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationPrerequisite
-} from "../utils/prerequisites.js";
+  createCommandExpectationHook
+} from "../utils/hooks.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -72,9 +72,9 @@ function buildClaudeArgs(prompt: string, extraArgs?: string[]): string[] {
   return ["-p", prompt, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
 
-function createClaudeCliHealthCheck(): PrerequisiteDefinition {
+function createClaudeCliHealthCheck(): HookDefinition {
   const args = buildClaudeArgs("Output exactly: CLAUDE_CODE_OK");
-  return createCommandExpectationPrerequisite({
+  return createCommandExpectationHook({
     id: "claude-cli-health",
     command: "claude",
     args,

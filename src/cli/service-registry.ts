@@ -3,7 +3,7 @@ import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 import type { FileSystem } from "../utils/file-system.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { HookDefinition } from "../utils/hooks.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -47,8 +47,8 @@ export interface ProviderService<
   id: string;
   summary: string;
   hooks?: {
-    before?: PrerequisiteDefinition[];
-    after?: PrerequisiteDefinition[];
+    before?: HookDefinition[];
+    after?: HookDefinition[];
   };
   configure(
     context: ServiceExecutionContext<TConfigure>

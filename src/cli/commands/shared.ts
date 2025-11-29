@@ -6,12 +6,12 @@ import type {
 } from "../service-registry.js";
 import {
   createLoggingCommandRunner,
-  createPrerequisiteHooks,
-  normalizePhase,
+  createHookTracer,
+  normalizeHookPhase,
   type CommandContext
 } from "../context.js";
 import type { ScopedLogger } from "../logger.js";
-import type { PrerequisitePhase } from "../../utils/prerequisites.js";
+import type { HookPhase } from "../../utils/hooks.js";
 
 export interface CommandFlags {
   dryRun: boolean;
@@ -93,23 +93,23 @@ export function registerProviderHooks(
   resources: ExecutionResources
 ): void {
   adapter.hooks?.before?.forEach((hook) =>
-    resources.context.prerequisites.registerBefore(hook)
+    resources.context.hooks.registerBefore(hook)
   );
   adapter.hooks?.after?.forEach((hook) =>
-    resources.context.prerequisites.registerAfter(hook)
+    resources.context.hooks.registerAfter(hook)
   );
 }
 
-export async function runPrerequisites(
+export async function runProviderHooks(
   adapter: ProviderService,
   resources: ExecutionResources,
-  phase: PrerequisitePhase
+  phase: HookPhase
 ): Promise<void> {
-  const hooks = createPrerequisiteHooks(phase, resources.logger);
+  const hooks = createHookTracer(phase, resources.logger);
   if (hooks) {
-    await resources.context.prerequisites.run(phase, hooks);
+    await resources.context.hooks.run(phase, hooks);
   } else {
-    await resources.context.prerequisites.run(phase);
+    await resources.context.hooks.run(phase);
   }
 }
 
@@ -124,4 +124,4 @@ export function resolveServiceAdapter(
   return adapter;
 }
 
-export { normalizePhase };
+export { normalizeHookPhase };

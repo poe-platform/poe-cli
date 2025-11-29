@@ -5,9 +5,9 @@ import type { CommandContext } from "../src/cli/context.js";
 import { createServiceManifest, ensureDirectory } from "../src/services/service-manifest.js";
 import type { FileSystem } from "../src/utils/file-system.js";
 import {
-  createPrerequisiteManager,
+  createHookManager,
   type CommandRunner
-} from "../src/utils/prerequisites.js";
+} from "../src/utils/hooks.js";
 
 function createMemFs(): FileSystem {
   const vol = new Volume();
@@ -25,7 +25,7 @@ function createStubCommand(fs: FileSystem): CommandContext {
   return {
     fs,
     runCommand: runner,
-    prerequisites: createPrerequisiteManager({
+    hooks: createHookManager({
       isDryRun: true,
       runCommand: runner
     }),

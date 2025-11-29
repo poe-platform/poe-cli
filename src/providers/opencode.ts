@@ -1,11 +1,11 @@
 import type { CliEnvironment } from "../cli/environment.js";
 import { OPEN_CODE_DEFAULT_MODEL } from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { HookDefinition } from "../utils/hooks.js";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationPrerequisite
-} from "../utils/prerequisites.js";
+  createCommandExpectationHook
+} from "../utils/hooks.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   ensureDirectory,
@@ -75,7 +75,7 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed OpenCode CLI via npm."
 };
 
-function createOpenCodeVersionCheck(): PrerequisiteDefinition {
+function createOpenCodeVersionCheck(): HookDefinition {
   return {
     id: "opencode-cli-version",
     async run({ runCommand }) {
@@ -93,13 +93,13 @@ function getModelArgs(model = OPEN_CODE_DEFAULT_MODEL): string[] {
   return ["--model", model];
 }
 
-function createOpenCodeHealthCheck(): PrerequisiteDefinition {
+function createOpenCodeHealthCheck(): HookDefinition {
   const args = [
     ...getModelArgs(),
     "run",
     "Output exactly: OPEN_CODE_OK"
   ];
-  return createCommandExpectationPrerequisite({
+  return createCommandExpectationHook({
     id: "opencode-cli-health",
     command: "opencode",
     args,

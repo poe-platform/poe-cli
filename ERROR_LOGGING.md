@@ -117,12 +117,12 @@ throw new CommandExecutionError("Command failed", {
 });
 ```
 
-#### `PrerequisiteError`
-Prerequisite check failures.
+#### `HookError`
+Hook execution failures.
 
 ```typescript
-throw new PrerequisiteError("Prerequisites not met", {
-  checks: ["node", "npm"]
+throw new HookError("Hooks not met", {
+  hooks: ["node", "npm"]
 });
 ```
 

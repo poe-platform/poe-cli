@@ -5,7 +5,7 @@ import { createProgram } from "../src/cli/program.js";
 import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
 import { createCliContainer, type CliDependencies } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { CommandRunner, CommandRunnerResult } from "../src/utils/prerequisites.js";
+import type { CommandRunner, CommandRunnerResult } from "../src/utils/hooks.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";

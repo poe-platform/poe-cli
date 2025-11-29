@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectBinaryVersion } from "../src/utils/binary-version.js";
-import type { CommandRunner } from "../src/utils/prerequisites.js";
+import type { CommandRunner } from "../src/utils/hooks.js";
 
 describe("binary version detection", () => {
   it("extracts the first semver from stdout", async () => {

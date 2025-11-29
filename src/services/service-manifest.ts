@@ -83,7 +83,7 @@ export interface ServiceManifestDefinition<
 > {
   id: string;
   summary: string;
-  prerequisites?: {
+  hooks?: {
     before?: string[];
     after?: string[];
   };
@@ -97,7 +97,7 @@ export interface ServiceManifest<
 > {
   id: string;
   summary: string;
-  prerequisites?: {
+  hooks?: {
     before?: string[];
     after?: string[];
   };
@@ -419,7 +419,7 @@ export function createServiceManifest<
   return {
     id: definition.id,
     summary: definition.summary,
-    prerequisites: definition.prerequisites,
+    hooks: definition.hooks,
     configureMutations,
     removeMutations,
     async configure(context, runOptions) {

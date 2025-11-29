@@ -1,4 +1,4 @@
-import type { CommandRunner } from "./prerequisites.js";
+import type { CommandRunner } from "./hooks.js";
 import { coerce } from "semver";
 
 export interface BinaryVersionDetectionResult {

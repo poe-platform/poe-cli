@@ -3,7 +3,7 @@ import { executeDoctor } from "../src/cli/commands/doctor.js";
 import { executeConfigure } from "../src/cli/commands/configure.js";
 import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { CommandRunner } from "../src/utils/prerequisites.js";
+import type { CommandRunner } from "../src/utils/hooks.js";
 import {
   saveConfiguredService,
   loadConfiguredServices

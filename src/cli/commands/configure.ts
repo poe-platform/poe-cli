@@ -9,7 +9,7 @@ import {
   resolveServiceAdapter,
   resolveProviderHandler,
   registerProviderHooks,
-  runPrerequisites
+  runProviderHooks
 } from "./shared.js";
 import {
   DEFAULT_MODEL,
@@ -92,7 +92,7 @@ export async function executeConfigure(
     }
     const resolution = await resolveProviderHandler(entry, providerContext);
     registerProviderHooks(resolution.adapter, resources);
-    await runPrerequisites(resolution.adapter, resources, "before");
+    await runProviderHooks(resolution.adapter, resources, "before");
     const tracker = createMutationTracker();
     const mutationLogger = createMutationLogger(resources.logger);
     const hooks = combineMutationHooks(tracker.hooks, mutationLogger);
@@ -109,7 +109,7 @@ export async function executeConfigure(
           }
         : undefined
     );
-    await runPrerequisites(resolution.adapter, resources, "after");
+    await runProviderHooks(resolution.adapter, resources, "after");
 
     if (!flags.dryRun) {
       await saveConfiguredService({

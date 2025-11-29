@@ -3,7 +3,7 @@ import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/providers/claude-code.js";
-import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
@@ -16,7 +16,7 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
 
 function registerAfterHooks(
   service: typeof claudeService.claudeCodeService,
-  manager: ReturnType<typeof createPrerequisiteManager>
+  manager: ReturnType<typeof createHookManager>
 ): void {
   service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
@@ -349,7 +349,7 @@ describe("claude-code service", () => {
     });
   });
 
-  it("registers prerequisite checks for the Claude CLI", async () => {
+  it("registers hook checks for the Claude CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       calls.push({ command, args });
@@ -358,7 +358,7 @@ describe("claude-code service", () => {
       }
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -385,7 +385,7 @@ describe("claude-code service", () => {
   it("skips the Claude health check during dry runs", async () => {
     const runCommand = vi.fn();
     const logDryRun = vi.fn();
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: true,
       runCommand,
       logDryRun
@@ -409,7 +409,7 @@ describe("claude-code service", () => {
       stderr: "FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -434,7 +434,7 @@ describe("claude-code service", () => {
       stderr: "WARN\n",
       exitCode: 0
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });

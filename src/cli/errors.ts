@@ -118,23 +118,23 @@ export class CommandExecutionError extends CliError {
 }
 
 /**
- * Prerequisite check failures
+ * Hook execution failures
  */
-export class PrerequisiteError extends CliError {
-  public readonly checks?: string[];
+export class HookError extends CliError {
+  public readonly hooks?: string[];
 
   constructor(
     message: string,
     options?: {
-      checks?: string[];
+      hooks?: string[];
       context?: ErrorContext;
     }
   ) {
     super(message, {
       ...options?.context,
-      failedChecks: options?.checks
+      failedHooks: options?.hooks
     });
-    this.checks = options?.checks;
+    this.hooks = options?.hooks;
   }
 }
 

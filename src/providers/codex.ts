@@ -1,9 +1,9 @@
 import type { CliEnvironment } from "../cli/environment.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { HookDefinition } from "../utils/hooks.js";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationPrerequisite
-} from "../utils/prerequisites.js";
+  createCommandExpectationHook
+} from "../utils/hooks.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
@@ -138,7 +138,7 @@ export function buildCodexExecArgs(
   return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
-function createCodexVersionCheck(): PrerequisiteDefinition {
+function createCodexVersionCheck(): HookDefinition {
   return {
     id: "codex-cli-version",
     async run({ runCommand }) {
@@ -152,9 +152,9 @@ function createCodexVersionCheck(): PrerequisiteDefinition {
   };
 }
 
-function createCodexCliHealthCheck(): PrerequisiteDefinition {
+function createCodexCliHealthCheck(): HookDefinition {
   const args = buildCodexExecArgs("Output exactly: CODEX_OK");
-  return createCommandExpectationPrerequisite({
+  return createCommandExpectationHook({
     id: "codex-cli-health",
     command: "codex",
     args,

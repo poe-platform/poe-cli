@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import type {
   CommandRunner,
   CommandRunnerResult
-} from "../utils/prerequisites.js";
+} from "../utils/hooks.js";
 
 export function createDefaultCommandRunner(): CommandRunner {
   return async (command, args): Promise<CommandRunnerResult> =>

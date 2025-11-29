@@ -4,7 +4,7 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
-import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
@@ -17,7 +17,7 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
 
 function registerAfterHooks(
   service: typeof codexService.codexService,
-  manager: ReturnType<typeof createPrerequisiteManager>
+  manager: ReturnType<typeof createHookManager>
 ): void {
   service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
@@ -302,7 +302,7 @@ describe("codex service", () => {
     });
   });
 
-  it("registers prerequisite checks for the Codex CLI", async () => {
+  it("registers hook checks for the Codex CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       calls.push({ command, args });
@@ -311,7 +311,7 @@ describe("codex service", () => {
       }
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -329,7 +329,7 @@ describe("codex service", () => {
   it("skips the Codex health check during dry runs", async () => {
     const runCommand = vi.fn();
     const logDryRun = vi.fn();
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: true,
       runCommand,
       logDryRun
@@ -357,7 +357,7 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -374,7 +374,7 @@ describe("codex service", () => {
       stderr: "FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -399,7 +399,7 @@ describe("codex service", () => {
       stderr: "WARN\n",
       exitCode: 0
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });

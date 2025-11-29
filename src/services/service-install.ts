@@ -1,4 +1,4 @@
-import type { CommandRunner, PrerequisiteContext, PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { CommandRunner, HookContext, HookDefinition } from "../utils/hooks.js";
 
 export interface InstallContext {
   isDryRun: boolean;
@@ -15,9 +15,9 @@ export interface InstallCommand {
 export interface ServiceInstallDefinition {
   id: string;
   summary: string;
-  check: PrerequisiteDefinition;
+  check: HookDefinition;
   steps: InstallCommand[];
-  postChecks?: PrerequisiteDefinition[];
+  postChecks?: HookDefinition[];
   successMessage?: string;
 }
 
@@ -25,7 +25,7 @@ export async function runServiceInstall(
   definition: ServiceInstallDefinition,
   context: InstallContext
 ): Promise<boolean> {
-  const checkContext: PrerequisiteContext = {
+  const checkContext: HookContext = {
     isDryRun: context.isDryRun,
     runCommand: context.runCommand
   };

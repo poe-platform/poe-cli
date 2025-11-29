@@ -27,7 +27,7 @@ function createBaseProgram(): Command {
 }
 
 describe("install command", () => {
-  it("installs a registered provider without running prerequisites", async () => {
+  it("installs a registered provider without running hooks", async () => {
     const fs = createMemFs();
     const logs: string[] = [];
     const container = createCliContainer({

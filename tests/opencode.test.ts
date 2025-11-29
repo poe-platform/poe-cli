@@ -3,7 +3,7 @@ import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as opencodeService from "../src/providers/opencode.js";
-import { createPrerequisiteManager } from "../src/utils/prerequisites.js";
+import { createHookManager } from "../src/utils/hooks.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
 
@@ -15,7 +15,7 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
 
 function registerAfterHooks(
   service: typeof opencodeService.openCodeService,
-  manager: ReturnType<typeof createPrerequisiteManager>
+  manager: ReturnType<typeof createHookManager>
 ): void {
   service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
@@ -218,7 +218,7 @@ describe("opencode service", () => {
     });
   });
 
-  it("registers prerequisite checks for the OpenCode CLI", async () => {
+  it("registers hook checks for the OpenCode CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       calls.push({ command, args });
@@ -227,7 +227,7 @@ describe("opencode service", () => {
       }
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -249,7 +249,7 @@ describe("opencode service", () => {
 
   it("skips the OpenCode health check during dry runs", async () => {
     const runCommand = vi.fn();
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: true,
       runCommand
     });
@@ -266,7 +266,7 @@ describe("opencode service", () => {
       stderr: "OPEN_FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });
@@ -291,7 +291,7 @@ describe("opencode service", () => {
       stderr: "ALERT\n",
       exitCode: 0
     }));
-    const manager = createPrerequisiteManager({
+    const manager = createHookManager({
       isDryRun: false,
       runCommand
     });

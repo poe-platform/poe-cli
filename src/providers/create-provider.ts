@@ -14,16 +14,16 @@ import {
   runServiceInstall,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
-import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
+import type { HookDefinition } from "../utils/hooks.js";
 import type { ProviderVersionResolver } from "./versioned-provider.js";
 
 interface ProviderHooksConfig {
-  before?: PrerequisiteDefinition[];
-  after?: PrerequisiteDefinition[];
+  before?: HookDefinition[];
+  after?: HookDefinition[];
 }
 
 interface ManifestVersionDefinition<ConfigureOptions, RemoveOptions> {
-  prerequisites?: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["prerequisites"];
+  hooks?: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["hooks"];
   configure: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["configure"];
   remove?: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["remove"];
 }
@@ -150,7 +150,7 @@ function buildManifestEntries<
         ? {
             id: options.id,
             summary: options.summary,
-            prerequisites: definition.prerequisites,
+            hooks: definition.hooks,
             configure: definition.configure,
             remove: definition.remove
           }

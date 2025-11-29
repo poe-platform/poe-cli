@@ -14,8 +14,8 @@
    - Pass those definitions to `createProvider` so it builds the manifest and surfaces configure/remove without extra wrappers.
 
 2. **Single service entity**
-   - Export exactly one `ProviderService` per provider; eliminate `configureFoo`, `spawnFoo`, `registerFooPrerequisites`, or similar proxy exports.
-   - Keep install/spawn/prerequisite logic colocated with the service so there is no second layer of indirection.
+   - Export exactly one `ProviderService` per provider; eliminate `configureFoo`, `spawnFoo`, `registerFooHooks`, or similar proxy exports.
+   - Keep install/spawn/hook logic colocated with the service so there is no second layer of indirection.
 
 3. **Shared helpers only when generic**
    - Keep reusable helpers such as chmod mutations or single-quoted path rendering inside `src/providers/provider-helpers.ts`.

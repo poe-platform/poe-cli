@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { executeConfigure } from "../src/cli/commands/configure.js";
 import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { CommandRunner } from "../src/utils/prerequisites.js";
+import type { CommandRunner } from "../src/utils/hooks.js";
 import { createHomeFs, createTestProgram } from "./test-helpers.js";
 
 const cwd = "/repo";
@@ -98,7 +98,7 @@ describe("configure command", () => {
     await expect(fs.readFile(credentialsPath, "utf8")).rejects.toThrow();
   });
 
-  it("runs provider prerequisites during configure", async () => {
+  it("runs provider hooks during configure", async () => {
     const commands: Array<{ command: string; args: string[] }> = [];
     const commandRunner: CommandRunner = vi.fn(async (command, args) => {
       commands.push({ command, args });
