@@ -31,6 +31,21 @@ const expectedFrontierModels = FRONTIER_MODELS.reduce<
   return acc;
 }, {});
 
+const PROVIDER_NAME = "poe";
+
+const normalizeModel = (model: string): string => {
+  const matched = FRONTIER_MODELS.find((entry) => entry.id === model);
+  if (matched) {
+    return matched.providerId;
+  }
+  if (model.startsWith("poe/")) {
+    return model.slice("poe/".length);
+  }
+  return model;
+};
+
+const DEFAULT_PROVIDER_MODEL = normalizeModel(DEFAULT_FRONTIER_MODEL);
+
 describe("opencode service", () => {
   let fs: FileSystem;
   let vol: Volume;
@@ -92,9 +107,9 @@ describe("opencode service", () => {
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config).toEqual({
       $schema: "https://opencode.ai/config.json",
-      model: DEFAULT_FRONTIER_MODEL,
+      model: DEFAULT_PROVIDER_MODEL,
       provider: {
-        poe: {
+        [PROVIDER_NAME]: {
           npm: "@ai-sdk/openai-compatible",
           name: "poe.com",
           options: {
@@ -107,7 +122,7 @@ describe("opencode service", () => {
 
     const auth = JSON.parse(await fs.readFile(authPath, "utf8"));
     expect(auth).toEqual({
-      poe: {
+      [PROVIDER_NAME]: {
         type: "api",
         key: "sk-test"
       }
@@ -120,7 +135,7 @@ describe("opencode service", () => {
     await configureOpenCode({ model: alternate });
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
-    expect(config.model).toBe(alternate);
+    expect(config.model).toBe(normalizeModel(alternate));
   });
 
   it("merges with existing config and preserves other providers", async () => {
@@ -148,7 +163,7 @@ describe("opencode service", () => {
       name: "local",
       models: ["foo"]
     });
-    expect(config.provider.poe).toMatchObject({
+    expect(config.provider[PROVIDER_NAME]).toMatchObject({
       npm: "@ai-sdk/openai-compatible",
       models: expectedFrontierModels
     });
@@ -179,7 +194,7 @@ describe("opencode service", () => {
 
     const auth = JSON.parse(await fs.readFile(authPath, "utf8"));
     expect(auth).toEqual({
-      poe: {
+      [PROVIDER_NAME]: {
         type: "api",
         key: "sk-test"
       },
@@ -215,7 +230,7 @@ describe("opencode service", () => {
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
       "--model",
-      DEFAULT_FRONTIER_MODEL,
+      DEFAULT_PROVIDER_MODEL,
       "run",
       "List all files",
       "--format",
@@ -255,7 +270,7 @@ describe("opencode service", () => {
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
       "--model",
-      customModel,
+      normalizeModel(customModel),
       "run",
       "List all files"
     ]);
@@ -283,7 +298,7 @@ describe("opencode service", () => {
       command: "opencode",
       args: [
         "--model",
-        DEFAULT_FRONTIER_MODEL,
+        DEFAULT_PROVIDER_MODEL,
         "run",
         "Output exactly: OPEN_CODE_OK"
       ]

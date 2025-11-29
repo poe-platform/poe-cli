@@ -18,6 +18,8 @@ import {
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 
+const PROVIDER_NAME = "poe";
+
 const OPEN_CODE_PROVIDER_MODELS: Record<string, { name: string }> =
   FRONTIER_MODELS.reduce<Record<string, { name: string }>>(
     (acc, entry) => {
@@ -27,12 +29,40 @@ const OPEN_CODE_PROVIDER_MODELS: Record<string, { name: string }> =
     {}
   );
 
+const DEFAULT_PROVIDER_MODEL = (() => {
+  const matched = FRONTIER_MODELS.find(
+    (entry) => entry.id === DEFAULT_FRONTIER_MODEL
+  );
+  if (matched) {
+    return matched.providerId;
+  }
+  if (DEFAULT_FRONTIER_MODEL.startsWith("poe/")) {
+    return DEFAULT_FRONTIER_MODEL.slice("poe/".length);
+  }
+  return DEFAULT_FRONTIER_MODEL;
+})();
+
+function resolveProviderModel(model?: string): string {
+  if (!model) {
+    return DEFAULT_PROVIDER_MODEL;
+  }
+  const matched = FRONTIER_MODELS.find((entry) => entry.id === model);
+  if (matched) {
+    return matched.providerId;
+  }
+  if (model.startsWith("poe/")) {
+    return model.slice("poe/".length);
+  }
+  return model;
+}
+
 function buildOpenCodeConfig(model: string): JsonObject {
+  const resolvedModel = resolveProviderModel(model);
   return {
     $schema: "https://opencode.ai/config.json",
-    model,
+    model: resolvedModel,
     provider: {
-      poe: {
+      [PROVIDER_NAME]: {
         npm: "@ai-sdk/openai-compatible",
         name: "poe.com",
         options: {
@@ -46,12 +76,12 @@ function buildOpenCodeConfig(model: string): JsonObject {
 
 const OPEN_CODE_CONFIG_SHAPE: JsonObject = {
   provider: {
-    poe: true
+    [PROVIDER_NAME]: true
   }
 };
 
 const OPEN_CODE_AUTH_SHAPE: JsonObject = {
-  poe: true
+  [PROVIDER_NAME]: true
 };
 
 type OpenCodeConfigureContext = {
@@ -97,8 +127,8 @@ function createOpenCodeVersionCheck(): HookDefinition {
   };
 }
 
-function getModelArgs(model = DEFAULT_FRONTIER_MODEL): string[] {
-  return ["--model", model];
+function getModelArgs(model?: string): string[] {
+  return ["--model", resolveProviderModel(model)];
 }
 
 function createOpenCodeHealthCheck(): HookDefinition {
@@ -150,7 +180,7 @@ export const openCodeService = createProvider<
         jsonMergeMutation({
           target: "~/.local/share/opencode/auth.json",
           value: ({ options }) => ({
-            poe: {
+            [PROVIDER_NAME]: {
               type: "api",
               key: options.apiKey
             }
