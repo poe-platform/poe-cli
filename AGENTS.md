@@ -6,6 +6,10 @@
 - Never copy/paste more than 5 lines of code
 - Never revert code that you didn't create
 
+## Bad habits that I want to avoid
+- Functions that do nothing just proxy to another functions are not allowed
+- Do not overuse constants, only for "business logic" not for things like concatenate two constants
+
 # github workflows
 
 Do not write unit tests
