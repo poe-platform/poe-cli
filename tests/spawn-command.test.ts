@@ -170,7 +170,12 @@ describe("spawn command", () => {
       { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
-        args: ["--model", FRONTIER_MODELS[0]!.id, "run", "List files"]
+        args: [
+          "--model",
+          `poe/${FRONTIER_MODELS[0]!}`,
+          "run",
+          "List files"
+        ]
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(
@@ -297,8 +302,7 @@ describe("spawn command", () => {
       }
     });
 
-    const override =
-      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+    const override = FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!;
 
     await program.parseAsync([
       "node",
@@ -314,7 +318,7 @@ describe("spawn command", () => {
       { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
-        args: ["--model", override, "run", "List files"]
+        args: ["--model", `poe/${override}`, "run", "List files"]
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);

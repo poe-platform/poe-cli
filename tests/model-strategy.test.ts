@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  CLAUDE_MODEL_SONNET,
+  DEFAULT_CLAUDE_CODE_MODEL,
   DEFAULT_CODEX_MODEL
 } from "../src/cli/constants.js";
+
+const CLAUDE_MODEL_SONNET = DEFAULT_CLAUDE_CODE_MODEL;
 import {
   MixedStrategy,
   SmartStrategy,

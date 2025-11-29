@@ -2,15 +2,17 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import {
-  CLAUDE_MODEL_SONNET,
+  DEFAULT_CLAUDE_CODE_MODEL,
   DEFAULT_CODEX_MODEL
 } from "../cli/constants.js";
+
+const CLAUDE_DEFAULT_MODEL = DEFAULT_CLAUDE_CODE_MODEL;
 
 /**
  * Available model identifiers
  */
 export const AVAILABLE_MODELS = [
-  CLAUDE_MODEL_SONNET,
+  CLAUDE_DEFAULT_MODEL,
   "GPT-5.1",
   "GPT-4o",
   "Claude-3.5-Sonnet",
@@ -53,11 +55,11 @@ export interface ModelContext {
 }
 
 /**
- * Mixed strategy: alternates between GPT-5.1 and CLAUDE_MODEL_SONNET
+ * Mixed strategy: alternates between GPT-5.1 and the default Claude model
  */
 export class MixedStrategy implements ModelStrategy {
   private currentIndex = 0;
-  private models: ModelIdentifier[] = ["GPT-5.1", CLAUDE_MODEL_SONNET];
+  private models: ModelIdentifier[] = ["GPT-5.1", CLAUDE_DEFAULT_MODEL];
 
   getNextModel(): ModelIdentifier {
     const model = this.models[this.currentIndex];
@@ -70,7 +72,7 @@ export class MixedStrategy implements ModelStrategy {
   }
 
   getDescription(): string {
-    return `Alternates between GPT-5.1 and ${CLAUDE_MODEL_SONNET} on each call`;
+    return `Alternates between GPT-5.1 and ${CLAUDE_DEFAULT_MODEL} on each call`;
   }
 
   reset(): void {
@@ -82,11 +84,11 @@ export class MixedStrategy implements ModelStrategy {
  * Smart strategy: selects model based on task type
  */
 export class SmartStrategy implements ModelStrategy {
-  private lastModel: ModelIdentifier = CLAUDE_MODEL_SONNET;
+  private lastModel: ModelIdentifier = CLAUDE_DEFAULT_MODEL;
 
   getNextModel(context?: ModelContext): ModelIdentifier {
     if (!context) {
-      return CLAUDE_MODEL_SONNET;
+      return CLAUDE_DEFAULT_MODEL;
     }
 
     // Smart selection based on context
@@ -97,8 +99,8 @@ export class SmartStrategy implements ModelStrategy {
         return "GPT-5.1";
       }
       // Use Claude for medium complexity code
-      this.lastModel = CLAUDE_MODEL_SONNET;
-      return CLAUDE_MODEL_SONNET;
+      this.lastModel = CLAUDE_DEFAULT_MODEL;
+      return CLAUDE_DEFAULT_MODEL;
     }
 
     if (context.messageType === "chat") {
@@ -108,8 +110,8 @@ export class SmartStrategy implements ModelStrategy {
     }
 
     // Default to Claude
-    this.lastModel = CLAUDE_MODEL_SONNET;
-    return CLAUDE_MODEL_SONNET;
+    this.lastModel = CLAUDE_DEFAULT_MODEL;
+    return CLAUDE_DEFAULT_MODEL;
   }
 
   getName(): string {
@@ -121,7 +123,7 @@ export class SmartStrategy implements ModelStrategy {
   }
 
   reset(): void {
-    this.lastModel = CLAUDE_MODEL_SONNET;
+    this.lastModel = CLAUDE_DEFAULT_MODEL;
   }
 }
 
@@ -129,7 +131,7 @@ export class SmartStrategy implements ModelStrategy {
  * Fixed strategy: always uses the same model
  */
 export class FixedStrategy implements ModelStrategy {
-  constructor(private model: ModelIdentifier = CLAUDE_MODEL_SONNET) {}
+  constructor(private model: ModelIdentifier = CLAUDE_DEFAULT_MODEL) {}
 
   getNextModel(): ModelIdentifier {
     return this.model;
@@ -208,7 +210,7 @@ export class ModelStrategyFactory {
     return [
       {
         type: "mixed",
-        description: `Alternate between GPT-5.1 and ${CLAUDE_MODEL_SONNET}`
+        description: `Alternate between GPT-5.1 and ${CLAUDE_DEFAULT_MODEL}`
       },
       { type: "smart", description: "Intelligently select based on task type" },
       { type: "fixed", description: "Always use the same model" },
@@ -249,7 +251,7 @@ export class StrategyConfigManager {
   static getDefaultConfig(): StrategyConfig {
     return {
       type: "fixed",
-      fixedModel: CLAUDE_MODEL_SONNET,
+      fixedModel: CLAUDE_DEFAULT_MODEL,
     };
   }
 }

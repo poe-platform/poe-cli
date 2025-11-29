@@ -8,11 +8,17 @@ import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
 import {
-  CLAUDE_MODEL_HAIKU,
-  CLAUDE_MODEL_OPUS,
-  CLAUDE_MODEL_SONNET,
+  CLAUDE_CODE_VARIANTS,
   DEFAULT_CLAUDE_CODE_MODEL
 } from "../src/cli/constants.js";
+
+const resolveVariantModel = (
+  variant: keyof typeof CLAUDE_CODE_VARIANTS
+): string => CLAUDE_CODE_VARIANTS[variant];
+
+const CLAUDE_MODEL_HAIKU = resolveVariantModel("haiku");
+const CLAUDE_MODEL_SONNET = resolveVariantModel("sonnet");
+const CLAUDE_MODEL_OPUS = resolveVariantModel("opus");
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
