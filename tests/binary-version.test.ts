@@ -26,4 +26,16 @@ describe("binary version detection", () => {
       /Unable to parse version/i
     );
   });
+
+  it("includes stderr details when detection fails", async () => {
+    const runCommand: CommandRunner = async () => ({
+      stdout: "",
+      stderr: "spawn claude ENOENT",
+      exitCode: -2
+    });
+
+    await expect(detectBinaryVersion(runCommand, "claude")).rejects.toThrow(
+      /spawn claude ENOENT/
+    );
+  });
 });

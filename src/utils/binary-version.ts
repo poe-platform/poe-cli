@@ -1,4 +1,4 @@
-import type { CommandRunner } from "./hooks.js";
+import type { CommandRunner, CommandRunnerResult } from "./hooks.js";
 import { coerce } from "semver";
 
 export interface BinaryVersionDetectionResult {
@@ -13,8 +13,10 @@ export async function detectBinaryVersion(
 ): Promise<BinaryVersionDetectionResult> {
   const result = await runCommand(binaryName, args);
   if (result.exitCode !== 0) {
+    const detail = formatFailureDetail(result);
+    const suffix = detail.length > 0 ? ` (${detail})` : "";
     throw new Error(
-      `${binaryName} ${args.join(" ")} exited with code ${result.exitCode}`
+      `${formatCommand(binaryName, args)} exited with code ${result.exitCode}${suffix}`
     );
   }
   const raw = `${result.stdout}\n${result.stderr}`.trim();
@@ -26,4 +28,22 @@ export async function detectBinaryVersion(
     version: parsed.version,
     rawOutput: raw
   };
+}
+
+function formatCommand(binaryName: string, args: string[]): string {
+  return [binaryName, ...args].join(" ").trim();
+}
+
+function formatFailureDetail(result: CommandRunnerResult): string {
+  const hints: string[] = [];
+  if (result.exitCode < 0) {
+    hints.push("process failed to start (is the binary installed?)");
+  }
+  const detail = [result.stderr, result.stdout]
+    .map((value) => value.trim())
+    .find((value) => value.length > 0);
+  if (detail) {
+    hints.push(detail);
+  }
+  return hints.join("; ");
 }

@@ -1,14 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createLoggerFactory } from "../src/cli/logger.js";
 import { createProvider } from "../src/providers/create-provider.js";
+import { createBinaryVersionResolver } from "../src/providers/versioned-provider.js";
 import {
   ensureDirectory,
   jsonMergeMutation
 } from "../src/services/service-manifest.js";
 import { createTestCommandContext } from "./test-command-context.js";
 import type { FileSystem } from "../src/utils/file-system.js";
+import type { ProviderContext } from "../src/cli/service-registry.js";
 
 type DemoConfigure = { env: ReturnType<typeof createCliEnvironment> };
 
@@ -106,5 +108,38 @@ describe("versioned manifest providers", () => {
       await fs.readFile("/home/user/.demo/config.json", "utf8")
     );
     expect(written.version).toBe("wildcard");
+  });
+
+  it("logs the detected binary version", async () => {
+    const fs = createFs();
+    const command = createTestCommandContext(fs);
+    const runCommand = vi.fn(async () => ({
+      stdout: "demo 2.5.1",
+      stderr: "",
+      exitCode: 0
+    }));
+    command.runCommand = runCommand;
+    const logs: string[] = [];
+    const logger = createLoggerFactory((message) => {
+      logs.push(message);
+    }).create({ scope: "test", verbose: true });
+    const resolver = createBinaryVersionResolver("demo");
+    const env = createCliEnvironment({ cwd: "/repo", homeDir: "/home/user" });
+    const context: ProviderContext = {
+      env,
+      paths: {},
+      command,
+      logger
+    };
+
+    const version = await resolver(context);
+
+    expect(version).toBe("2.5.1");
+    expect(
+      logs.some((line) =>
+        line.includes("Detected demo version 2.5.1") &&
+        line.includes("demo 2.5.1")
+      )
+    ).toBe(true);
   });
 });
