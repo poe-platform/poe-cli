@@ -384,15 +384,23 @@ describe("claude-code service", () => {
 
   it("skips the Claude health check during dry runs", async () => {
     const runCommand = vi.fn();
+    const logDryRun = vi.fn();
     const manager = createPrerequisiteManager({
       isDryRun: true,
-      runCommand
+      runCommand,
+      logDryRun
     });
 
     registerAfterHooks(claudeService.claudeCodeService, manager);
     await manager.run("after");
 
     expect(runCommand).not.toHaveBeenCalled();
+    expect(logDryRun).toHaveBeenCalledWith(
+      expect.stringContaining('claude -p "Output exactly: CLAUDE_CODE_OK"')
+    );
+    expect(logDryRun).toHaveBeenCalledWith(
+      expect.stringContaining('expecting "CLAUDE_CODE_OK"')
+    );
   });
 
   it("includes stdout and stderr when the Claude health check command fails", async () => {

@@ -48,7 +48,8 @@ export function createCommandContextFactory(
   const create = (options: CommandContextOptions): CommandContext => {
     const prerequisites = createPrerequisiteManager({
       isDryRun: options.dryRun,
-      runCommand: options.runner
+      runCommand: options.runner,
+      logDryRun: (message) => options.logger.dryRun(message)
     });
 
     if (!options.dryRun) {

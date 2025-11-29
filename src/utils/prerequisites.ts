@@ -33,6 +33,12 @@ export async function runAndMatchOutput(
   options: RunAndMatchOutputOptions
 ): Promise<void> {
   if (options.skipOnDryRun !== false && context.isDryRun) {
+    if (context.logDryRun) {
+      const rendered = renderCommandLine(options.command, options.args);
+      context.logDryRun(
+        `Dry run: ${rendered} (expecting "${options.expectedOutput}")`
+      );
+    }
     return;
   }
 
@@ -69,11 +75,34 @@ function stdoutMatchesExpected(stdout: string, expected: string): boolean {
     .some((line) => line === expected);
 }
 
+function renderCommandLine(command: string, args: string[]): string {
+  return [command, ...args].map(quoteIfNeeded).join(" ").trim();
+}
+
+function quoteIfNeeded(value: string): string {
+  if (value.length === 0) {
+    return '""';
+  }
+  if (needsQuoting(value)) {
+    return `"${value.replaceAll('"', '\\"')}"`;
+  }
+  return value;
+}
+
+function needsQuoting(value: string): boolean {
+  return (
+    value.includes(" ") ||
+    value.includes("\t") ||
+    value.includes("\n")
+  );
+}
+
 export type PrerequisitePhase = "before" | "after";
 
 export interface PrerequisiteContext {
   isDryRun: boolean;
   runCommand: CommandRunner;
+  logDryRun?: (message: string) => void;
 }
 
 export interface PrerequisiteDefinition {
@@ -100,6 +129,7 @@ export interface PrerequisiteRunHooks {
 export function createPrerequisiteManager(init: {
   isDryRun: boolean;
   runCommand: CommandRunner;
+  logDryRun?: (message: string) => void;
 }): PrerequisiteManager {
   const store: Record<PrerequisitePhase, PrerequisiteDefinition[]> = {
     before: [],
@@ -123,7 +153,8 @@ export function createPrerequisiteManager(init: {
         try {
           await prerequisite.run({
             isDryRun: init.isDryRun,
-            runCommand: init.runCommand
+            runCommand: init.runCommand,
+            logDryRun: init.logDryRun
           });
           hooks?.onSuccess?.(prerequisite);
         } catch (error) {

@@ -328,15 +328,23 @@ describe("codex service", () => {
 
   it("skips the Codex health check during dry runs", async () => {
     const runCommand = vi.fn();
+    const logDryRun = vi.fn();
     const manager = createPrerequisiteManager({
       isDryRun: true,
-      runCommand
+      runCommand,
+      logDryRun
     });
 
     registerAfterHooks(codexService.codexService, manager);
     await manager.run("after");
 
     expect(runCommand).not.toHaveBeenCalled();
+    expect(logDryRun).toHaveBeenCalledWith(
+      expect.stringContaining('codex exec "Output exactly: CODEX_OK"')
+    );
+    expect(logDryRun).toHaveBeenCalledWith(
+      expect.stringContaining('expecting "CODEX_OK"')
+    );
   });
 
   it("accepts additional stdout lines as long as the expected marker is present", async () => {
