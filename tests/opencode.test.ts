@@ -31,7 +31,7 @@ const withProviderPrefix = (model: string): string =>
 const expectedFrontierModels = FRONTIER_MODELS.reduce<
   Record<string, { name: string }>
 >((acc, id) => {
-  acc[withProviderPrefix(id)] = { name: id };
+  acc[id] = { name: id };
   return acc;
 }, {});
 

@@ -25,7 +25,7 @@ function providerModel(model?: string): string {
 const FRONTIER_MODEL_RECORD = FRONTIER_MODELS.reduce<
   Record<string, { name: string }>
 >((acc, id) => {
-  acc[providerModel(id)] = { name: id };
+  acc[id] = { name: id };
   return acc;
 }, {});
 
