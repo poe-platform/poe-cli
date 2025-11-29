@@ -20,6 +20,55 @@ export function formatCommandRunnerResult(
   return `stdout:\n${stdout}\nstderr:\n${stderr}`;
 }
 
+export interface RunAndMatchOutputOptions {
+  command: string;
+  args: string[];
+  expectedOutput: string;
+  label: string;
+  skipOnDryRun?: boolean;
+}
+
+export async function runAndMatchOutput(
+  context: PrerequisiteContext,
+  options: RunAndMatchOutputOptions
+): Promise<void> {
+  if (options.skipOnDryRun !== false && context.isDryRun) {
+    return;
+  }
+
+  const result = await context.runCommand(options.command, options.args);
+  if (result.exitCode !== 0) {
+    const detail = formatCommandRunnerResult(result);
+    throw new Error(
+      [`${options.label} failed with exit code ${result.exitCode}.`, detail].join("\n")
+    );
+  }
+
+  if (!stdoutMatchesExpected(result.stdout, options.expectedOutput)) {
+    const detail = formatCommandRunnerResult(result);
+    const received = result.stdout.trim();
+    throw new Error(
+      [
+        `${options.label} failed: expected "${options.expectedOutput}" but received "${received}".`,
+        detail
+      ].join("\n")
+    );
+  }
+}
+
+function stdoutMatchesExpected(stdout: string, expected: string): boolean {
+  const trimmed = stdout.trim();
+  if (trimmed === expected) {
+    return true;
+  }
+
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .some((line) => line === expected);
+}
+
 export type PrerequisitePhase = "before" | "after";
 
 export interface PrerequisiteContext {

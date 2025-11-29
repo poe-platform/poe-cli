@@ -2,7 +2,7 @@ import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
-  formatCommandRunnerResult
+  runAndMatchOutput
 } from "../utils/prerequisites.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
@@ -158,30 +158,13 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
   return {
     id: "codex-cli-health",
     description: "Codex CLI health check must succeed",
-    async run({ runCommand }) {
-      const result = await runCommand(
-        "codex",
-        buildCodexExecArgs("Output exactly: CODEX_OK")
-      );
-      if (result.exitCode !== 0) {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `Codex CLI health check failed with exit code ${result.exitCode}.`,
-            detail
-          ].join("\n")
-        );
-      }
-      const output = result.stdout.trim();
-      if (output !== "CODEX_OK") {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `Codex CLI health check failed: expected "CODEX_OK" but received "${output}".`,
-            detail
-          ].join("\n")
-        );
-      }
+    async run(context) {
+      await runAndMatchOutput(context, {
+        command: "codex",
+        args: buildCodexExecArgs("Output exactly: CODEX_OK"),
+        expectedOutput: "CODEX_OK",
+        label: "Codex CLI health check"
+      });
     }
   };
 }

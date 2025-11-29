@@ -2,7 +2,7 @@ import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
-  formatCommandRunnerResult
+  runAndMatchOutput
 } from "../utils/prerequisites.js";
 import {
   ensureDirectory,
@@ -77,28 +77,13 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
   return {
     id: "claude-cli-health",
     description: "Claude CLI health check must succeed",
-    async run({ runCommand }) {
-      const args = buildClaudeArgs("Output exactly: CLAUDE_CODE_OK");
-      const result = await runCommand("claude", args);
-      if (result.exitCode !== 0) {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `Claude CLI health check failed with exit code ${result.exitCode}.`,
-            detail
-          ].join("\n")
-        );
-      }
-      const output = result.stdout.trim();
-      if (output !== "CLAUDE_CODE_OK") {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `Claude CLI health check failed: expected "CLAUDE_CODE_OK" but received "${output}".`,
-            detail
-          ].join("\n")
-        );
-      }
+    async run(context) {
+      await runAndMatchOutput(context, {
+        command: "claude",
+        args: buildClaudeArgs("Output exactly: CLAUDE_CODE_OK"),
+        expectedOutput: "CLAUDE_CODE_OK",
+        label: "Claude CLI health check"
+      });
     }
   };
 }

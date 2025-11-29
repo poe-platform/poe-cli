@@ -382,6 +382,19 @@ describe("claude-code service", () => {
     });
   });
 
+  it("skips the Claude health check during dry runs", async () => {
+    const runCommand = vi.fn();
+    const manager = createPrerequisiteManager({
+      isDryRun: true,
+      runCommand
+    });
+
+    registerAfterHooks(claudeService.claudeCodeService, manager);
+    await manager.run("after");
+
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it("includes stdout and stderr when the Claude health check command fails", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: "FAIL_STDOUT\n",

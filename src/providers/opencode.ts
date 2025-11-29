@@ -4,7 +4,7 @@ import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
-  formatCommandRunnerResult
+  runAndMatchOutput
 } from "../utils/prerequisites.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
@@ -99,35 +99,17 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
   return {
     id: "opencode-cli-health",
     description: "OpenCode CLI health check must succeed",
-    async run({ runCommand, isDryRun }) {
-      if (isDryRun) {
-        return;
-      }
-      const args = [
-        ...getModelArgs(),
-        "run",
-        "Output exactly: OPEN_CODE_OK"
-      ];
-      const result = await runCommand("opencode", args);
-      if (result.exitCode !== 0) {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `OpenCode CLI health check failed with exit code ${result.exitCode}.`,
-            detail
-          ].join("\n")
-        );
-      }
-      const output = result.stdout.trim();
-      if (output !== "OPEN_CODE_OK") {
-        const detail = formatCommandRunnerResult(result);
-        throw new Error(
-          [
-            `OpenCode CLI health check failed: expected "OPEN_CODE_OK" but received "${output}".`,
-            detail
-          ].join("\n")
-        );
-      }
+    async run(context) {
+      await runAndMatchOutput(context, {
+        command: "opencode",
+        args: [
+          ...getModelArgs(),
+          "run",
+          "Output exactly: OPEN_CODE_OK"
+        ],
+        expectedOutput: "OPEN_CODE_OK",
+        label: "OpenCode CLI health check"
+      });
     }
   };
 }

@@ -326,6 +326,40 @@ describe("codex service", () => {
     });
   });
 
+  it("skips the Codex health check during dry runs", async () => {
+    const runCommand = vi.fn();
+    const manager = createPrerequisiteManager({
+      isDryRun: true,
+      runCommand
+    });
+
+    registerAfterHooks(codexService.codexService, manager);
+    await manager.run("after");
+
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("accepts additional stdout lines as long as the expected marker is present", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: [
+        "[2025-11-29T15:05:32] OpenAI Codex v0.40.0 (research preview)",
+        "--------",
+        "CODEX_OK"
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    }));
+    const manager = createPrerequisiteManager({
+      isDryRun: false,
+      runCommand
+    });
+
+    registerAfterHooks(codexService.codexService, manager);
+    await manager.run("after");
+
+    expect(runCommand).toHaveBeenCalledTimes(1);
+  });
+
   it("includes stdout and stderr when the health check command fails", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: "FAIL_STDOUT\n",
