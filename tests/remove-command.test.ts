@@ -26,7 +26,6 @@ function createBaseProgram(): Command {
     .name("poe-code")
     .option("-y, --yes")
     .option("--dry-run")
-    .option("--verbose")
     .exitOverride();
   return program;
 }

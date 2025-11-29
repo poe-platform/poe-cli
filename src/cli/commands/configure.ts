@@ -239,7 +239,7 @@ export async function resolveServiceArgument(
   const flags = resolveCommandFlags(program);
   const logger = container.loggerFactory.create({
     dryRun: flags.dryRun,
-    verbose: flags.verbose,
+    verbose: true,
     scope: "configure"
   });
   const menuTheme = createMenuTheme(container.env);

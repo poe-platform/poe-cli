@@ -15,7 +15,6 @@ import type { PrerequisitePhase } from "../../utils/prerequisites.js";
 
 export interface CommandFlags {
   dryRun: boolean;
-  verbose: boolean;
   assumeYes: boolean;
 }
 
@@ -28,7 +27,6 @@ export function resolveCommandFlags(program: Command): CommandFlags {
   const opts = program.optsWithGlobals();
   return {
     dryRun: Boolean(opts.dryRun),
-    verbose: Boolean(opts.verbose),
     assumeYes: Boolean(opts.yes)
   };
 }
@@ -40,12 +38,10 @@ export function createExecutionResources(
 ): ExecutionResources {
   const baseLogger = container.loggerFactory.create({
     dryRun: flags.dryRun,
-    verbose: flags.verbose,
+    verbose: true,
     scope
   });
-  const runner = flags.verbose
-    ? createLoggingCommandRunner(container.commandRunner, baseLogger)
-    : container.commandRunner;
+  const runner = createLoggingCommandRunner(container.commandRunner, baseLogger);
   const context = container.contextFactory.create({
     dryRun: flags.dryRun,
     logger: baseLogger,

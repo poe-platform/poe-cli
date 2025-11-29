@@ -277,7 +277,7 @@ describe("codex service", () => {
         fs
       },
       logger: {
-        context: { dryRun: false, verbose: false }
+        context: { dryRun: false, verbose: true }
       }
     } as unknown as ProviderContext;
 

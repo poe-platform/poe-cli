@@ -36,8 +36,7 @@ function bootstrapProgram(container: CliContainer): Command {
     .name("poe-code")
     .description("Configure Poe API integrations for local developer tooling.")
     .option("-y, --yes", "Accept defaults without prompting.")
-    .option("--dry-run", "Simulate commands without writing changes.")
-    .option("--verbose", "Enable verbose logging.");
+    .option("--dry-run", "Simulate commands without writing changes.");
 
   registerInstallCommand(program, container);
   registerConfigureCommand(program, container);

@@ -14,15 +14,15 @@ from typing import List
 COMMAND_GROUPS: List[List[str]] = [
   [
     "poe-code install claude-code",
-    "poe-code configure claude-code --verbose --yes",
+    "poe-code configure claude-code --yes",
   ],
   [
     "poe-code install codex",
-    "poe-code configure codex --verbose --yes",
+    "poe-code configure codex --yes",
   ],
   [
     "poe-code install opencode",
-    "poe-code configure opencode --verbose --yes",
+    "poe-code configure opencode --yes",
   ],
 ]
 

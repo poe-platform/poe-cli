@@ -308,7 +308,7 @@ describe("claude-code service", () => {
       logger: {
         context: {
           dryRun: false,
-          verbose: false
+          verbose: true
         },
         info: vi.fn(),
         success: vi.fn(),

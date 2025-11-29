@@ -49,4 +49,23 @@ describe("root command", () => {
       {}
     );
   });
+
+  it("does not register a --verbose flag", () => {
+    const fs = createMemFs();
+    const prompts = vi.fn().mockResolvedValue({});
+    const program = createProgram({
+      fs,
+      prompts,
+      env: {
+        cwd: "/repo",
+        homeDir: "/home/test"
+      },
+      logger: () => {}
+    });
+
+    const hasVerbose = program.options.some(
+      (option) => option.long === "--verbose"
+    );
+    expect(hasVerbose).toBe(false);
+  });
 });

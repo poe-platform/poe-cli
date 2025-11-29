@@ -14,8 +14,7 @@ export function createTestProgram(argv: string[] = ["node", "cli"]): Command {
   program
     .name("poe-code")
     .option("-y, --yes")
-    .option("--dry-run")
-    .option("--verbose");
+    .option("--dry-run");
   program.parse(argv);
   return program;
 }
