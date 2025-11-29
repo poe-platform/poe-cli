@@ -50,7 +50,7 @@ def run_commands() -> None:
     print(f"\n=== Command group {index} ===", flush=True)
     for command in commands:
       print(f"\n>>> {command}", flush=True)
-      subprocess.run([runner, command], check=True, env=env)
+    subprocess.run([runner, *commands], check=True, env=env)
 
 
 def main() -> int:
