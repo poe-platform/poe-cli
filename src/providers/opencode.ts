@@ -99,7 +99,10 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
   return {
     id: "opencode-cli-health",
     description: "OpenCode CLI health check must succeed",
-    async run({ runCommand }) {
+    async run({ runCommand, isDryRun }) {
+      if (isDryRun) {
+        return;
+      }
       const args = [
         ...getModelArgs(),
         "run",

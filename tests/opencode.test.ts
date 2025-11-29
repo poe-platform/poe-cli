@@ -80,6 +80,7 @@ describe("opencode service", () => {
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config).toEqual({
       $schema: "https://opencode.ai/config.json",
+      model: "poe/Claude-Sonnet-4.5",
       provider: {
         poe: {
           npm: "@ai-sdk/openai-compatible",
@@ -244,6 +245,19 @@ describe("opencode service", () => {
         "Output exactly: OPEN_CODE_OK"
       ]
     });
+  });
+
+  it("skips the OpenCode health check during dry runs", async () => {
+    const runCommand = vi.fn();
+    const manager = createPrerequisiteManager({
+      isDryRun: true,
+      runCommand
+    });
+
+    registerAfterHooks(opencodeService.openCodeService, manager);
+    await manager.run("after");
+
+    expect(runCommand).not.toHaveBeenCalled();
   });
 
   it("includes stdout and stderr when the OpenCode health check command fails", async () => {
