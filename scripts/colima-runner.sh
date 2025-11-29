@@ -91,7 +91,7 @@ container_commands=(
   "trap cleanup_build_dir EXIT"
   "tar -C \"\${workspace_dir}\" --exclude=node_modules --exclude=.git -cf - . | tar -C \"\${build_dir}\" -xf -"
   "cd \"\${build_dir}\""
-  "npm ci"
+  "npm install"
   "npm run build"
   "npm install -g ."
   "cd \"\${workspace_dir}\""
