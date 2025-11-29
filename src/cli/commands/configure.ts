@@ -7,7 +7,9 @@ import {
   type CommandFlags,
   resolveCommandFlags,
   resolveServiceAdapter,
-  resolveProviderHandler
+  resolveProviderHandler,
+  registerProviderHooks,
+  runPrerequisites
 } from "./shared.js";
 import {
   DEFAULT_MODEL,
@@ -17,6 +19,10 @@ import {
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
 import { saveConfiguredService } from "../../services/credentials.js";
+import {
+  combineMutationHooks,
+  createMutationLogger
+} from "../../services/mutation-hooks.js";
 import type { ServiceMutationHooks } from "../../services/service-manifest.js";
 
 export interface ConfigureCommandOptions {
@@ -85,7 +91,11 @@ export async function executeConfigure(
       throw new Error(`Service "${service}" does not support configure.`);
     }
     const resolution = await resolveProviderHandler(entry, providerContext);
+    registerProviderHooks(resolution.adapter, resources);
+    await runPrerequisites(resolution.adapter, resources, "before");
     const tracker = createMutationTracker();
+    const mutationLogger = createMutationLogger(resources.logger);
+    const hooks = combineMutationHooks(tracker.hooks, mutationLogger);
     await resolution.adapter.configure(
       {
         fs: providerContext.command.fs,
@@ -93,8 +103,13 @@ export async function executeConfigure(
         command: providerContext.command,
         options: payload
       },
-      { hooks: tracker.hooks }
+      hooks
+        ? {
+            hooks
+          }
+        : undefined
     );
+    await runPrerequisites(resolution.adapter, resources, "after");
 
     if (!flags.dryRun) {
       await saveConfiguredService({
