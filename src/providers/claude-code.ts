@@ -1,4 +1,3 @@
-import type { CliEnvironment } from "../cli/environment.js";
 import type { HookDefinition } from "../utils/hooks.js";
 import {
   createBinaryExistsCheck,
@@ -16,30 +15,12 @@ import {
   type ServiceInstallDefinition
 } from "../services/service-install.js";
 import {
-  CLAUDE_MODEL_OPUS,
-  CLAUDE_MODEL_SONNET,
-  CLAUDE_MODEL_HAIKU,
+  CLAUDE_CODE_VARIANTS,
   DEFAULT_CLAUDE_CODE_MODEL
 } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
-
-type ClaudeCodeConfigureContext = {
-  env: CliEnvironment;
-  apiKey: string;
-  defaultModel: string;
-};
-
-type ClaudeCodeRemoveContext = {
-  env: CliEnvironment;
-};
-
-type ClaudeCodeSpawnOptions = {
-  prompt: string;
-  args?: string[];
-  model?: string;
-};
 
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
@@ -58,8 +39,6 @@ export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   ],
   successMessage: "Installed Claude CLI via npm."
 };
-
-export type InstallClaudeCodeOptions = InstallContext;
 
 const CLAUDE_SPAWN_DEFAULTS = [
   "--allowedTools",
@@ -93,12 +72,7 @@ function createClaudeCliHealthCheck(): HookDefinition {
   });
 }
 
-export const claudeCodeService = createProvider<
-  Record<string, never>,
-  ClaudeCodeConfigureContext,
-  ClaudeCodeRemoveContext,
-  ClaudeCodeSpawnOptions
->({
+export const claudeCodeService = createProvider({
   name: "claude-code",
   label: "Claude Code",
   id: "claude-code",
@@ -107,6 +81,16 @@ export const claudeCodeService = createProvider<
     colors: {
       dark: "#C15F3C",
       light: "#C15F3C"
+    }
+  },
+  configurePrompts: {
+    model: {
+      label: "Claude Code default model",
+      defaultValue: DEFAULT_CLAUDE_CODE_MODEL,
+      choices: Object.values(CLAUDE_CODE_VARIANTS).map((id) => ({
+        title: id,
+        value: id
+      }))
     }
   },
   hooks: {
@@ -135,9 +119,9 @@ export const claudeCodeService = createProvider<
             apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
             env: {
               ANTHROPIC_BASE_URL: "https://api.poe.com",
-              ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
-              ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
-              ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
+              ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
+              ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_CODE_VARIANTS.sonnet,
+              ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_CODE_VARIANTS.opus
             },
             model: options.defaultModel
           })
@@ -166,10 +150,15 @@ export const claudeCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
+    const resolved = (options ?? {}) as {
+      prompt: string;
+      args?: string[];
+      model?: string;
+    };
     const args = buildClaudeArgs(
-      options.prompt,
-      options.args,
-      options.model
+      resolved.prompt,
+      resolved.args,
+      resolved.model
     );
     return context.command.runCommand("claude", args);
   }

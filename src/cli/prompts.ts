@@ -6,18 +6,22 @@ export interface PromptDescriptor<TName extends string = string> {
   readonly choices?: Array<{ title: string; value: string }>;
 }
 
-import { CLAUDE_CODE_MODELS } from "./constants.js";
+export interface ModelPromptInput {
+  label: string;
+  defaultValue: string;
+  choices: Array<{ title: string; value: string }>;
+}
+
+export interface ReasoningPromptInput {
+  label: string;
+  defaultValue: string;
+}
 
 export interface PromptLibrary {
-  apiKey(): PromptDescriptor<"apiKey">;
   loginApiKey(): PromptDescriptor<"apiKey">;
-  model(input: {
-    defaultValue: string;
-    choices: Array<{ title: string; value: string }>;
-  }): PromptDescriptor<"model">;
-  claudeModel(defaultValue: string): PromptDescriptor<"model">;
+  model(input: ModelPromptInput): PromptDescriptor<"model">;
   reasoningEffort(
-    defaultValue: string
+    input: ReasoningPromptInput
   ): PromptDescriptor<"reasoningEffort">;
   configName(defaultName: string): PromptDescriptor<"configName">;
   serviceSelection(): PromptDescriptor<"serviceSelection"> & { type: "number" };
@@ -30,52 +34,29 @@ export function createPromptLibrary(): PromptLibrary {
   ): PromptDescriptor<TName> => descriptor;
 
   return {
-    apiKey: () =>
-      describe({
-        name: "apiKey",
-        message: "POE API key",
-        type: "text"
-      }),
     loginApiKey: () =>
       describe({
         name: "apiKey",
         message: "Enter your Poe API key (get one at https://poe.com/api_key)",
         type: "password"
       }),
-    model: ({ defaultValue, choices }) => {
+    model: ({ label, defaultValue, choices }) => {
       const initial = Math.max(
         choices.findIndex((choice) => choice.value === defaultValue),
         0
       );
       return describe({
         name: "model",
-        message: "Model",
+        message: label,
         type: "select",
         initial,
         choices
       });
     },
-    claudeModel: (defaultValue: string) => {
-      const choices = CLAUDE_CODE_MODELS.map((entry) => ({
-        title: entry.label,
-        value: entry.id
-      }));
-      const initial = Math.max(
-        choices.findIndex((choice) => choice.value === defaultValue),
-        0
-      );
-      return describe({
-        name: "model",
-        message: "Default Model",
-        type: "select",
-        initial,
-        choices
-      });
-    },
-    reasoningEffort: (defaultValue: string) =>
+    reasoningEffort: ({ label, defaultValue }) =>
       describe({
         name: "reasoningEffort",
-        message: "Reasoning effort",
+        message: label,
         type: "text",
         initial: defaultValue
       }),

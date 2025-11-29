@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
-import type { ProviderContext } from "../service-registry.js";
+import type { ProviderContext, ProviderService } from "../service-registry.js";
 import {
   buildProviderContext,
   createExecutionResources,
@@ -11,14 +11,6 @@ import {
   registerProviderHooks,
   runProviderHooks
 } from "./shared.js";
-import {
-  CODEX_MODELS,
-  DEFAULT_CODEX_MODEL,
-  DEFAULT_CLAUDE_CODE_MODEL,
-  DEFAULT_FRONTIER_MODEL,
-  DEFAULT_REASONING,
-  FRONTIER_MODELS
-} from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
 import { saveConfiguredService } from "../../services/credentials.js";
@@ -27,6 +19,10 @@ import {
   createMutationLogger
 } from "../../services/mutation-hooks.js";
 import type { ServiceMutationHooks } from "../../services/service-manifest.js";
+import type {
+  ModelPromptInput,
+  ReasoningPromptInput
+} from "../prompts.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -86,7 +82,8 @@ export async function executeConfigure(
     container,
     flags,
     options,
-    context: providerContext
+    context: providerContext,
+    adapter
   });
 
   await container.registry.invoke(service, "configure", async (entry) => {
@@ -144,22 +141,26 @@ interface ConfigurePayloadInit {
   flags: CommandFlags;
   options: ConfigureCommandOptions;
   context: ProviderContext;
+  adapter: ProviderService;
 }
 
 async function createConfigurePayload(
   init: ConfigurePayloadInit
 ): Promise<unknown> {
-  const { service, container, flags, options, context } = init;
+  const { service, container, flags, options, context, adapter } = init;
   switch (service) {
     case "claude-code": {
       const apiKey = await container.options.resolveApiKey({
         value: options.apiKey,
         dryRun: flags.dryRun
       });
-      const defaultModel = await container.options.resolveClaudeModel({
+      const modelPrompt = requireModelPrompt(adapter);
+      const defaultModel = await container.options.resolveModel({
         value: options.model,
-        defaultValue: DEFAULT_CLAUDE_CODE_MODEL,
-        assumeDefault: flags.assumeYes
+        assumeDefault: flags.assumeYes,
+        defaultValue: modelPrompt.defaultValue,
+        choices: modelPrompt.choices,
+        label: modelPrompt.label
       });
       return {
         env: context.env,
@@ -172,19 +173,20 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
+      const modelPrompt = requireModelPrompt(adapter);
       const model = await container.options.resolveModel({
         value: options.model,
-        defaultValue: DEFAULT_CODEX_MODEL,
         assumeDefault: flags.assumeYes,
-        choices: CODEX_MODELS.map((entry) => ({
-          title: entry.label,
-          value: entry.id
-        }))
+        defaultValue: modelPrompt.defaultValue,
+        choices: modelPrompt.choices,
+        label: modelPrompt.label
       });
-      const reasoningEffort = await container.options.resolveReasoning(
-        options.reasoningEffort,
-        DEFAULT_REASONING
-      );
+      const reasoningPrompt = requireReasoningPrompt(adapter);
+      const reasoningEffort = await container.options.resolveReasoning({
+        value: options.reasoningEffort,
+        defaultValue: reasoningPrompt.defaultValue,
+        label: reasoningPrompt.label
+      });
       return {
         env: context.env,
         apiKey,
@@ -197,14 +199,13 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
+      const modelPrompt = requireModelPrompt(adapter);
       const model = await container.options.resolveModel({
         value: options.model,
-        defaultValue: DEFAULT_FRONTIER_MODEL,
         assumeDefault: flags.assumeYes,
-        choices: FRONTIER_MODELS.map((entry) => ({
-          title: entry.label,
-          value: entry.id
-        }))
+        defaultValue: modelPrompt.defaultValue,
+        choices: modelPrompt.choices,
+        label: modelPrompt.label
       });
       return {
         env: context.env,
@@ -240,6 +241,26 @@ function createMutationTracker(): {
       return Array.from(targets).sort();
     }
   };
+}
+
+function requireModelPrompt(
+  adapter: ProviderService
+): ModelPromptInput {
+  const prompt = adapter.configurePrompts?.model;
+  if (!prompt) {
+    throw new Error(`${adapter.label} must define a model prompt.`);
+  }
+  return prompt;
+}
+
+function requireReasoningPrompt(
+  adapter: ProviderService
+): ReasoningPromptInput {
+  const prompt = adapter.configurePrompts?.reasoningEffort;
+  if (!prompt) {
+    throw new Error(`${adapter.label} must define a reasoning prompt.`);
+  }
+  return prompt;
 }
 
 export async function resolveServiceArgument(

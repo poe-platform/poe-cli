@@ -3,7 +3,8 @@ import { satisfies } from "semver";
 import type {
   ProviderService,
   ProviderContext,
-  ProviderBranding
+  ProviderBranding,
+  ProviderConfigurePrompts
 } from "../cli/service-registry.js";
 import type { CliEnvironment } from "../cli/environment.js";
 import {
@@ -40,6 +41,7 @@ interface CreateProviderOptions<
   summary: string;
   branding?: ProviderBranding;
   disabled?: boolean;
+  configurePrompts?: ProviderConfigurePrompts;
   manifest:
     | ServiceManifestDefinition<ConfigureOptions, RemoveOptions>
     | Record<string, ManifestVersionDefinition<ConfigureOptions, RemoveOptions>>;
@@ -92,6 +94,7 @@ export function createProvider<
     label: options.label,
     branding: options.branding,
     disabled: options.disabled,
+    configurePrompts: options.configurePrompts,
     hooks: options.hooks,
     resolvePaths:
       options.resolvePaths ??

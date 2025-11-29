@@ -136,4 +136,42 @@ describe("configure command", () => {
     );
     expect(healthCheckCall).toBeDefined();
   });
+
+  it("uses provider-defined prompt metadata for configure flows", async () => {
+    const { container } = createContainer({ codex: null });
+    const provider = container.registry.require("codex") as any;
+    provider.configurePrompts = {
+      model: {
+        label: "Custom Codex model",
+        defaultValue: "custom-model",
+        choices: [{ title: "Custom", value: "custom-model" }]
+      },
+      reasoningEffort: {
+        label: "Custom reasoning label",
+        defaultValue: "extra"
+      }
+    };
+
+    const resolveModel = vi
+      .spyOn(container.options, "resolveModel")
+      .mockImplementation(async (input) => {
+        expect(input.label).toBe("Custom Codex model");
+        expect(input.defaultValue).toBe("custom-model");
+        return input.defaultValue;
+      });
+    const resolveReasoning = vi
+      .spyOn(container.options, "resolveReasoning")
+      .mockImplementation(async (input) => {
+        expect(input.label).toBe("Custom reasoning label");
+        expect(input.defaultValue).toBe("extra");
+        return input.defaultValue;
+      });
+    vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-test");
+
+    const program = createTestProgram();
+    await executeConfigure(program, container, "codex", {});
+
+    expect(resolveModel).toHaveBeenCalled();
+    expect(resolveReasoning).toHaveBeenCalled();
+  });
 });

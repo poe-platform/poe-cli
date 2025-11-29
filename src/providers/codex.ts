@@ -14,7 +14,11 @@ import {
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
-import { DEFAULT_CODEX_MODEL } from "../cli/constants.js";
+import {
+  CODEX_MODELS,
+  DEFAULT_CODEX_MODEL,
+  DEFAULT_REASONING
+} from "../cli/constants.js";
 
 type CodexConfigureContext = {
   env: CliEnvironment;
@@ -183,6 +187,20 @@ export const codexService = createProvider<
     colors: {
       dark: "#D5D9DF",
       light: "#7A7F86"
+    }
+  },
+  configurePrompts: {
+    model: {
+      label: "Codex model",
+      defaultValue: DEFAULT_CODEX_MODEL,
+      choices: CODEX_MODELS.map((id) => ({
+        title: id,
+        value: id
+      }))
+    },
+    reasoningEffort: {
+      label: "Codex reasoning effort",
+      defaultValue: DEFAULT_REASONING
     }
   },
   hooks: {

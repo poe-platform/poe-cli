@@ -1,7 +1,7 @@
-import type { CliEnvironment } from "../cli/environment.js";
 import {
   DEFAULT_FRONTIER_MODEL,
-  FRONTIER_MODELS
+  FRONTIER_MODELS,
+  PROVIDER_NAME
 } from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
 import type { HookDefinition } from "../utils/hooks.js";
@@ -18,81 +18,9 @@ import {
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 
-const PROVIDER_NAME = "poe";
-
-const OPEN_CODE_PROVIDER_MODELS: Record<string, { name: string }> =
-  FRONTIER_MODELS.reduce<Record<string, { name: string }>>(
-    (acc, entry) => {
-      acc[entry.providerId] = { name: entry.label };
-      return acc;
-    },
-    {}
-  );
-
-const DEFAULT_PROVIDER_MODEL = (() => {
-  const matched = FRONTIER_MODELS.find(
-    (entry) => entry.id === DEFAULT_FRONTIER_MODEL
-  );
-  if (matched) {
-    return matched.providerId;
-  }
-  if (DEFAULT_FRONTIER_MODEL.startsWith("poe/")) {
-    return DEFAULT_FRONTIER_MODEL.slice("poe/".length);
-  }
-  return DEFAULT_FRONTIER_MODEL;
-})();
-
-function resolveProviderModel(model?: string): string {
-  if (!model) {
-    return DEFAULT_PROVIDER_MODEL;
-  }
-  const matched = FRONTIER_MODELS.find((entry) => entry.id === model);
-  if (matched) {
-    return matched.providerId;
-  }
-  if (model.startsWith("poe/")) {
-    return model.slice("poe/".length);
-  }
-  return model;
+function providerModel(model?: string): string {
+  return `${PROVIDER_NAME}/${model ?? DEFAULT_FRONTIER_MODEL}`;
 }
-
-function buildOpenCodeConfig(model: string): JsonObject {
-  const resolvedModel = resolveProviderModel(model);
-  return {
-    $schema: "https://opencode.ai/config.json",
-    model: resolvedModel,
-    provider: {
-      [PROVIDER_NAME]: {
-        npm: "@ai-sdk/openai-compatible",
-        name: "poe.com",
-        options: {
-          baseURL: "https://api.poe.com/v1"
-        },
-        models: OPEN_CODE_PROVIDER_MODELS
-      }
-    }
-  };
-}
-
-const OPEN_CODE_CONFIG_SHAPE: JsonObject = {
-  provider: {
-    [PROVIDER_NAME]: true
-  }
-};
-
-const OPEN_CODE_AUTH_SHAPE: JsonObject = {
-  [PROVIDER_NAME]: true
-};
-
-type OpenCodeConfigureContext = {
-  env: CliEnvironment;
-  apiKey: string;
-  model: string;
-};
-
-type OpenCodeRemoveContext = {
-  env: CliEnvironment;
-};
 
 export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "opencode",
@@ -128,7 +56,7 @@ function createOpenCodeVersionCheck(): HookDefinition {
 }
 
 function getModelArgs(model?: string): string[] {
-  return ["--model", resolveProviderModel(model)];
+  return ["--model", providerModel(model)];
 }
 
 function createOpenCodeHealthCheck(): HookDefinition {
@@ -145,12 +73,7 @@ function createOpenCodeHealthCheck(): HookDefinition {
   });
 }
 
-export const openCodeService = createProvider<
-  Record<string, never>,
-  OpenCodeConfigureContext,
-  OpenCodeRemoveContext,
-  { prompt: string; args?: string[]; model?: string }
->({
+export const openCodeService = createProvider({
   name: "opencode",
   label: "OpenCode CLI",
   id: "opencode",
@@ -159,6 +82,16 @@ export const openCodeService = createProvider<
     colors: {
       dark: "#4A4F55",
       light: "#2F3338"
+    }
+  },
+  configurePrompts: {
+    model: {
+      label: "OpenCode model",
+      defaultValue: DEFAULT_FRONTIER_MODEL,
+      choices: FRONTIER_MODELS.map((id) => ({
+        title: id,
+        value: id
+      }))
     }
   },
   hooks: {
@@ -175,26 +108,53 @@ export const openCodeService = createProvider<
         }),
         jsonMergeMutation({
           target: "~/.config/opencode/config.json",
-          value: ({ options }) => buildOpenCodeConfig(options.model)
+          value: ({ options }) => {
+            const { model } = (options ?? {}) as { model?: string };
+            return {
+              $schema: "https://opencode.ai/config.json",
+              model: providerModel(model),
+              provider: {
+                [PROVIDER_NAME]: {
+                  npm: "@ai-sdk/openai-compatible",
+                  name: "poe.com",
+                  options: {
+                    baseURL: "https://api.poe.com/v1"
+                  },
+                  models: FRONTIER_MODELS.map(
+                    (id) => `${PROVIDER_NAME}/${id}`
+                  )
+                }
+              }
+            };
+          }
         }),
         jsonMergeMutation({
           target: "~/.local/share/opencode/auth.json",
-          value: ({ options }) => ({
-            [PROVIDER_NAME]: {
-              type: "api",
-              key: options.apiKey
-            }
-          })
+          value: ({ options }) => {
+            const { apiKey } = (options ?? {}) as { apiKey?: string };
+            return {
+              [PROVIDER_NAME]: {
+                type: "api",
+                key: apiKey ?? ""
+              }
+            };
+          }
         })
       ],
       remove: [
         jsonPruneMutation({
           target: "~/.config/opencode/config.json",
-          shape: () => OPEN_CODE_CONFIG_SHAPE
+          shape: (): JsonObject => ({
+            provider: {
+              [PROVIDER_NAME]: true
+            }
+          })
         }),
         jsonPruneMutation({
           target: "~/.local/share/opencode/auth.json",
-          shape: () => OPEN_CODE_AUTH_SHAPE
+          shape: (): JsonObject => ({
+            [PROVIDER_NAME]: true
+          })
         })
       ]
     }
@@ -202,11 +162,16 @@ export const openCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("opencode"),
   install: OPEN_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
+    const opts = (options ?? {}) as {
+      prompt: string;
+      args?: string[];
+      model?: string;
+    };
     const args = [
-      ...getModelArgs(options.model ?? DEFAULT_FRONTIER_MODEL),
+      ...getModelArgs(opts.model),
       "run",
-      options.prompt,
-      ...(options.args ?? [])
+      opts.prompt,
+      ...(opts.args ?? [])
     ];
     return context.command.runCommand("opencode", args);
   }

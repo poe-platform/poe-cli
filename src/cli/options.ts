@@ -22,12 +22,13 @@ export interface ResolveModelInput {
   assumeDefault?: boolean;
   defaultValue: string;
   choices: Array<{ title: string; value: string }>;
+  label: string;
 }
 
-export interface ResolveClaudeModelInput {
+export interface ResolveReasoningInput {
   value?: string;
-  assumeDefault?: boolean;
   defaultValue: string;
+  label: string;
 }
 
 export interface OptionResolvers {
@@ -37,11 +38,7 @@ export interface OptionResolvers {
   resolveModel(
     input: ResolveModelInput
   ): Promise<string>;
-  resolveClaudeModel(input: ResolveClaudeModelInput): Promise<string>;
-  resolveReasoning(
-    value: string | undefined,
-    defaultValue: string
-  ): Promise<string>;
+  resolveReasoning(input: ResolveReasoningInput): Promise<string>;
   resolveConfigName(
     value: string | undefined,
     defaultValue: string
@@ -100,7 +97,7 @@ export function createOptionResolvers(
       return normalizeApiKey(stored);
     }
 
-    const descriptor = init.promptLibrary.apiKey();
+    const descriptor = init.promptLibrary.loginApiKey();
     const response = await init.prompts(descriptor);
     const result = response[descriptor.name];
     if (typeof result !== "string") {
@@ -117,7 +114,8 @@ export function createOptionResolvers(
     value,
     assumeDefault,
     defaultValue,
-    choices
+    choices,
+    label
   }: ResolveModelInput): Promise<string> => {
     if (value != null) {
       return value;
@@ -126,6 +124,7 @@ export function createOptionResolvers(
       return defaultValue;
     }
     const descriptor = init.promptLibrary.model({
+      label,
       defaultValue,
       choices
     });
@@ -137,33 +136,17 @@ export function createOptionResolvers(
     return result;
   };
 
-  const resolveClaudeModel = async ({
+  const resolveReasoning = async ({
     value,
-    assumeDefault,
-    defaultValue
-  }: ResolveClaudeModelInput): Promise<string> => {
-    if (value != null) {
-      return value;
-    }
-    if (assumeDefault) {
-      return defaultValue;
-    }
-    const descriptor = init.promptLibrary.claudeModel(defaultValue);
-    const response = await init.prompts(descriptor);
-    const result = response[descriptor.name];
-    if (typeof result !== "string" || result.trim() === "") {
-      throw new Error(`Missing value for "${descriptor.name}".`);
-    }
-    return result;
-  };
-
-  const resolveReasoning = async (
-    value: string | undefined,
-    defaultValue: string
-  ): Promise<string> =>
+    defaultValue,
+    label
+  }: ResolveReasoningInput): Promise<string> =>
     await ensure({
       value,
-      descriptor: init.promptLibrary.reasoningEffort(defaultValue),
+      descriptor: init.promptLibrary.reasoningEffort({
+        label,
+        defaultValue
+      }),
       fallback: defaultValue
     });
 
@@ -180,7 +163,6 @@ export function createOptionResolvers(
   return {
     ensure,
     resolveModel,
-    resolveClaudeModel,
     resolveReasoning,
     resolveConfigName,
     resolveApiKey,

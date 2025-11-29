@@ -4,6 +4,10 @@ import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type { HookDefinition } from "../utils/hooks.js";
+import type {
+  ModelPromptInput,
+  ReasoningPromptInput
+} from "./prompts.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -12,6 +16,11 @@ export interface ProviderColorSet {
 
 export interface ProviderBranding {
   colors?: ProviderColorSet;
+}
+
+export interface ProviderConfigurePrompts {
+  model?: ModelPromptInput;
+  reasoningEffort?: ReasoningPromptInput;
 }
 
 export interface ProviderContext<TPaths = Record<string, string>> {
@@ -60,6 +69,7 @@ export interface ProviderService<
   label: string;
   branding?: ProviderBranding;
   disabled?: boolean;
+  configurePrompts?: ProviderConfigurePrompts;
   resolvePaths?: (env: CliEnvironment) => TPaths;
   install?: (context: ProviderContext<TPaths>) => Promise<void> | void;
   spawn?: (
