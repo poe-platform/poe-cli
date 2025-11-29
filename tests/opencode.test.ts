@@ -4,7 +4,8 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import {
   DEFAULT_FRONTIER_MODEL,
-  FRONTIER_MODELS
+  FRONTIER_MODELS,
+  PROVIDER_NAME
 } from "../src/cli/constants.js";
 import * as opencodeService from "../src/providers/opencode.js";
 import { createHookManager } from "../src/utils/hooks.js";
@@ -24,27 +25,17 @@ function registerAfterHooks(
   service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
 
+const withProviderPrefix = (model: string): string =>
+  `${PROVIDER_NAME}/${model}`;
+
 const expectedFrontierModels = FRONTIER_MODELS.reduce<
   Record<string, { name: string }>
->((acc, entry) => {
-  acc[entry.providerId] = { name: entry.label };
+>((acc, id) => {
+  acc[withProviderPrefix(id)] = { name: id };
   return acc;
 }, {});
 
-const PROVIDER_NAME = "poe";
-
-const normalizeModel = (model: string): string => {
-  const matched = FRONTIER_MODELS.find((entry) => entry.id === model);
-  if (matched) {
-    return matched.providerId;
-  }
-  if (model.startsWith("poe/")) {
-    return model.slice("poe/".length);
-  }
-  return model;
-};
-
-const DEFAULT_PROVIDER_MODEL = normalizeModel(DEFAULT_FRONTIER_MODEL);
+const DEFAULT_PROVIDER_MODEL = withProviderPrefix(DEFAULT_FRONTIER_MODEL);
 
 describe("opencode service", () => {
   let fs: FileSystem;
@@ -130,12 +121,11 @@ describe("opencode service", () => {
   });
 
   it("writes the selected frontier model to the config", async () => {
-    const alternate =
-      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+    const alternate = FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!;
     await configureOpenCode({ model: alternate });
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
-    expect(config.model).toBe(normalizeModel(alternate));
+    expect(config.model).toBe(withProviderPrefix(alternate));
   });
 
   it("merges with existing config and preserves other providers", async () => {
@@ -249,8 +239,7 @@ describe("opencode service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const customModel =
-      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+    const customModel = FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!;
     const providerContext = {
       env: {} as any,
       paths: {},
@@ -270,7 +259,7 @@ describe("opencode service", () => {
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
       "--model",
-      normalizeModel(customModel),
+      withProviderPrefix(customModel),
       "run",
       "List all files"
     ]);

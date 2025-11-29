@@ -22,6 +22,13 @@ function providerModel(model?: string): string {
   return `${PROVIDER_NAME}/${model ?? DEFAULT_FRONTIER_MODEL}`;
 }
 
+const FRONTIER_MODEL_RECORD = FRONTIER_MODELS.reduce<
+  Record<string, { name: string }>
+>((acc, id) => {
+  acc[providerModel(id)] = { name: id };
+  return acc;
+}, {});
+
 export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "opencode",
   summary: "OpenCode CLI",
@@ -120,9 +127,7 @@ export const openCodeService = createProvider({
                   options: {
                     baseURL: "https://api.poe.com/v1"
                   },
-                  models: FRONTIER_MODELS.map(
-                    (id) => `${PROVIDER_NAME}/${id}`
-                  )
+                  models: FRONTIER_MODEL_RECORD
                 }
               }
             };
