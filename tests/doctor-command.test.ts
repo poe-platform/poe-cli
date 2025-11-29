@@ -46,6 +46,9 @@ describe("doctor command", () => {
       commandRunner
     });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-test");
+    vi.spyOn(container.options, "resolveModel").mockImplementation(
+      async ({ defaultValue }) => defaultValue
+    );
     return container;
   }
 

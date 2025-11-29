@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  CLAUDE_MODEL_SONNET,
+  DEFAULT_CODEX_MODEL
+} from "../src/cli/constants.js";
+import {
   MixedStrategy,
   SmartStrategy,
   FixedStrategy,
@@ -16,21 +20,21 @@ describe("MixedStrategy", () => {
     strategy = new MixedStrategy();
   });
 
-  it("alternates between GPT-5.1 and Claude-Sonnet-4.5", () => {
+  it(`alternates between GPT-5.1 and ${CLAUDE_MODEL_SONNET}`, () => {
     const model1 = strategy.getNextModel();
     const model2 = strategy.getNextModel();
     const model3 = strategy.getNextModel();
     const model4 = strategy.getNextModel();
 
     expect(model1).toBe("GPT-5.1");
-    expect(model2).toBe("Claude-Sonnet-4.5");
+    expect(model2).toBe(CLAUDE_MODEL_SONNET);
     expect(model3).toBe("GPT-5.1");
-    expect(model4).toBe("Claude-Sonnet-4.5");
+    expect(model4).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("resets to first model when reset() is called", () => {
     strategy.getNextModel(); // GPT-5.1
-    strategy.getNextModel(); // Claude-Sonnet-4.5
+    strategy.getNextModel(); // Default Claude model
 
     strategy.reset();
 
@@ -68,7 +72,7 @@ describe("SmartStrategy", () => {
     };
 
     const model = strategy.getNextModel(context);
-    expect(model).toBe("Claude-Sonnet-4.5");
+    expect(model).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("selects GPT-5.1 for complex reasoning tasks", () => {
@@ -93,7 +97,7 @@ describe("SmartStrategy", () => {
 
   it("defaults to Claude when no context provided", () => {
     const model = strategy.getNextModel();
-    expect(model).toBe("Claude-Sonnet-4.5");
+    expect(model).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("defaults to Claude for general tasks", () => {
@@ -103,7 +107,7 @@ describe("SmartStrategy", () => {
     };
 
     const model = strategy.getNextModel(context);
-    expect(model).toBe("Claude-Sonnet-4.5");
+    expect(model).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("returns correct name and description", () => {
@@ -121,10 +125,10 @@ describe("FixedStrategy", () => {
     expect(strategy.getNextModel()).toBe("GPT-5.1");
   });
 
-  it("defaults to Claude-Sonnet-4.5 when no model specified", () => {
+  it(`defaults to ${CLAUDE_MODEL_SONNET} when no model specified`, () => {
     const strategy = new FixedStrategy();
 
-    expect(strategy.getNextModel()).toBe("Claude-Sonnet-4.5");
+    expect(strategy.getNextModel()).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("can change the model", () => {
@@ -154,16 +158,16 @@ describe("RoundRobinStrategy", () => {
     const model5 = strategy.getNextModel();
     const model6 = strategy.getNextModel(); // Should wrap around
 
-    expect(model1).toBe("Claude-Sonnet-4.5");
+    expect(model1).toBe(CLAUDE_MODEL_SONNET);
     expect(model2).toBe("GPT-5.1");
     expect(model3).toBe("GPT-4o");
     expect(model4).toBe("Claude-3.5-Sonnet");
-    expect(model5).toBe("GPT-5.1-Codex");
-    expect(model6).toBe("Claude-Sonnet-4.5"); // Wrapped around
+    expect(model5).toBe(DEFAULT_CODEX_MODEL);
+    expect(model6).toBe(CLAUDE_MODEL_SONNET); // Wrapped around
   });
 
   it("cycles through custom model order", () => {
-    const customOrder = ["GPT-5.1", "Claude-Sonnet-4.5"];
+    const customOrder = ["GPT-5.1", CLAUDE_MODEL_SONNET];
     const strategy = new RoundRobinStrategy(customOrder);
 
     const model1 = strategy.getNextModel();
@@ -171,16 +175,16 @@ describe("RoundRobinStrategy", () => {
     const model3 = strategy.getNextModel();
 
     expect(model1).toBe("GPT-5.1");
-    expect(model2).toBe("Claude-Sonnet-4.5");
+    expect(model2).toBe(CLAUDE_MODEL_SONNET);
     expect(model3).toBe("GPT-5.1"); // Wrapped around
   });
 
   it("resets to first model when reset() is called", () => {
-    const customOrder = ["GPT-5.1", "Claude-Sonnet-4.5"];
+    const customOrder = ["GPT-5.1", CLAUDE_MODEL_SONNET];
     const strategy = new RoundRobinStrategy(customOrder);
 
     strategy.getNextModel(); // GPT-5.1
-    strategy.getNextModel(); // Claude-Sonnet-4.5
+    strategy.getNextModel(); // Default Claude model
 
     strategy.reset();
 
@@ -189,11 +193,11 @@ describe("RoundRobinStrategy", () => {
   });
 
   it("returns correct name and description", () => {
-    const strategy = new RoundRobinStrategy(["GPT-5.1", "Claude-Sonnet-4.5"]);
+    const strategy = new RoundRobinStrategy(["GPT-5.1", CLAUDE_MODEL_SONNET]);
 
     expect(strategy.getName()).toBe("round-robin");
     expect(strategy.getDescription()).toContain("GPT-5.1");
-    expect(strategy.getDescription()).toContain("Claude-Sonnet-4.5");
+    expect(strategy.getDescription()).toContain(CLAUDE_MODEL_SONNET);
   });
 });
 
@@ -228,13 +232,13 @@ describe("ModelStrategyFactory", () => {
   it("creates RoundRobinStrategy with custom order", () => {
     const config: StrategyConfig = {
       type: "round-robin",
-      customOrder: ["GPT-5.1", "Claude-Sonnet-4.5"],
+      customOrder: ["GPT-5.1", CLAUDE_MODEL_SONNET],
     };
     const strategy = ModelStrategyFactory.createStrategy(config);
 
     expect(strategy).toBeInstanceOf(RoundRobinStrategy);
     expect(strategy.getNextModel()).toBe("GPT-5.1");
-    expect(strategy.getNextModel()).toBe("Claude-Sonnet-4.5");
+    expect(strategy.getNextModel()).toBe(CLAUDE_MODEL_SONNET);
   });
 
   it("lists all available strategies", () => {

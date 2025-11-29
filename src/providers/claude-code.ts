@@ -18,7 +18,8 @@ import {
 import {
   CLAUDE_MODEL_OPUS,
   CLAUDE_MODEL_SONNET,
-  CLAUDE_MODEL_HAIKU
+  CLAUDE_MODEL_HAIKU,
+  DEFAULT_CLAUDE_CODE_MODEL
 } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
@@ -37,6 +38,7 @@ type ClaudeCodeRemoveContext = {
 type ClaudeCodeSpawnOptions = {
   prompt: string;
   args?: string[];
+  model?: string;
 };
 
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
@@ -68,12 +70,21 @@ const CLAUDE_SPAWN_DEFAULTS = [
   "text"
 ] as const;
 
-function buildClaudeArgs(prompt: string, extraArgs?: string[]): string[] {
-  return ["-p", prompt, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
+function buildClaudeArgs(
+  prompt: string,
+  extraArgs?: string[],
+  model?: string
+): string[] {
+  const modelArgs = model ? ["--model", model] : [];
+  return ["-p", prompt, ...modelArgs, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
 
 function createClaudeCliHealthCheck(): HookDefinition {
-  const args = buildClaudeArgs("Output exactly: CLAUDE_CODE_OK");
+  const args = buildClaudeArgs(
+    "Output exactly: CLAUDE_CODE_OK",
+    undefined,
+    DEFAULT_CLAUDE_CODE_MODEL
+  );
   return createCommandExpectationHook({
     id: "claude-cli-health",
     command: "claude",
@@ -155,7 +166,11 @@ export const claudeCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
-    const args = buildClaudeArgs(options.prompt, options.args);
+    const args = buildClaudeArgs(
+      options.prompt,
+      options.args,
+      options.model
+    );
     return context.command.runCommand("claude", args);
   }
 });

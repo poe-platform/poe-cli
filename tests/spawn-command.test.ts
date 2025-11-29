@@ -6,6 +6,7 @@ import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
 import { createCliContainer, type CliDependencies } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
 import type { CommandRunner, CommandRunnerResult } from "../src/utils/hooks.js";
+import { FRONTIER_MODELS } from "../src/cli/constants.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";
@@ -169,7 +170,7 @@ describe("spawn command", () => {
       { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
-        args: ["--model", "poe/Claude-Sonnet-4.5", "run", "List files"]
+        args: ["--model", FRONTIER_MODELS[0]!.id, "run", "List files"]
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(
@@ -277,5 +278,45 @@ describe("spawn command", () => {
     const help = spawnCommand?.helpInformation() ?? "";
     expect(help).toContain("poe-code");
     expect(help).toContain("beta-agent");
+  });
+
+  it("passes through model override via CLI flag", async () => {
+    const logs: string[] = [];
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "OpenCode output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    const override =
+      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "--model",
+      override,
+      "opencode",
+      "List files"
+    ]);
+
+    expect(calls).toEqual([
+      { command: "opencode", args: ["--version"] },
+      {
+        command: "opencode",
+        args: ["--model", override, "run", "List files"]
+      }
+    ]);
+    expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);
   });
 });

@@ -40,49 +40,6 @@ jobs:
         env:
           ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
         run: node scripts/workflows/select-service.cjs
-      - name: Announce Poe Code bot
-        uses: actions/github-script@v7
-        env:
-          SERVICE: ${{ steps.select_service.outputs.service }}
-          SERVICES: ${{ steps.select_service.outputs.services }}
-          MENU_LABEL: ${{ steps.select_service.outputs.menu_label }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          LOGO_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/docs/assets/poe-logo.png
-        with:
-          script: |-
-            const issueNumber = Number(process.env.ISSUE_NUMBER);
-            const selectedService = process.env.SERVICE;
-            if (!issueNumber || !selectedService) {
-              return;
-            }
-            const services = (process.env.SERVICES ?? "")
-              .split(",")
-              .filter(Boolean);
-            const labelList = services
-              .map((name, index) => {
-                const marker = index === 0 ? " *(default)*" : "";
-                return `- \`agent:${name}\`${marker}`;
-              })
-              .join("\n");
-            const note =
-              process.env.MENU_LABEL === "true"
-                ? "\n\nAdd an `agent:<service>` label to switch agents."
-                : "";
-            const body = [
-              `![Poe Code](${process.env.LOGO_URL})`,
-              "",
-              `Poe Code bot selected \`${selectedService}\`.`,
-              labelList ? `\nAvailable agents:\n${labelList}` : "",
-              note
-            ]
-              .filter(Boolean)
-              .join("\n");
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body
-            });
       - name: Cache Poe API token
         run: poe-code login --api-key "${POE_API_TOKEN}"
       - name: Install provider tooling
@@ -97,21 +54,13 @@ jobs:
         env:
           SERVICE: ${{ steps.select_service.outputs.service }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          MODEL: ${{ steps.select_service.outputs.model }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |-
-          PROMPT=$(node <<'NODE'
-            const number = process.env.ISSUE_NUMBER;
-            const title = process.env.ISSUE_TITLE ?? "";
-            const body = process.env.ISSUE_BODY ?? "";
-            const lines = [
-              `You are resolving GitHub issue #${number}: ${title}.`,
-              "Implement the required changes and commit them."
-            ];
-            if (body.trim()) {
-              lines.push("Issue details:\n" + body);
-            }
-            process.stdout.write(lines.join("\n\n"));
-          NODE
-          )
-          poe-code spawn "$SERVICE" "$PROMPT"
+          PROMPT=$(node scripts/workflows/build-issue-prompt.cjs)
+          if [ -n "$MODEL" ]; then
+            poe-code spawn "$SERVICE" "$PROMPT" --model "$MODEL"
+          else
+            poe-code spawn "$SERVICE" "$PROMPT"
+          fi

@@ -36,6 +36,7 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABEL_NAME: ${{ github.event.label.name }}
+          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
         run: node scripts/workflows/determine-provider.cjs
       - name: Cache Poe API key
         env:
@@ -80,25 +81,17 @@ jobs:
       - name: Run issue resolver agent
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
           SERVICE: ${{ steps.provider.outputs.service }}
+          MODEL: ${{ steps.provider.outputs.model }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |-
-          PROMPT=$(node <<'NODE'
-            const title = process.env.ISSUE_TITLE ?? "";
-            const body = process.env.ISSUE_BODY ?? "";
-            const number = process.env.ISSUE_NUMBER;
-            const lines = [
-              `You are resolving GitHub issue #${number}: ${title}.`,
-              "You must implement the fix and commit all changes."
-            ];
-            if (body.trim()) {
-              lines.push("Issue details:\n" + body);
-            }
-            process.stdout.write(lines.join("\n\n"));
-          NODE
-            )
-          poe-code spawn "$SERVICE" "$PROMPT"
+          PROMPT=$(node scripts/workflows/build-issue-prompt.cjs)
+          if [ -n "$MODEL" ]; then
+            poe-code spawn "$SERVICE" "$PROMPT" --model "$MODEL"
+          else
+            poe-code spawn "$SERVICE" "$PROMPT"
+          fi
       - name: Generate pull request metadata
         id: pr_metadata
         env:

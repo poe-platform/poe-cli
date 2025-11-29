@@ -31,7 +31,7 @@ describe("configure command", () => {
             exitCode: 0
           };
         }
-        if (command === "codex" && args[0] === "exec") {
+        if (command === "codex" && args.includes("exec")) {
           return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
         }
         if (command === "opencode" && args.includes("run")) {
@@ -74,6 +74,9 @@ describe("configure command", () => {
   it("stores configured service metadata with detected version", async () => {
     const { container } = createContainer({ opencode: "2.3.4" });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-opencode");
+    vi.spyOn(container.options, "resolveModel").mockImplementation(
+      async ({ defaultValue }) => defaultValue
+    );
 
     const program = createTestProgram();
     await executeConfigure(program, container, "opencode", {});
@@ -91,6 +94,9 @@ describe("configure command", () => {
   it("skips metadata persistence during dry run", async () => {
     const { container } = createContainer({ opencode: "2.3.4" });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-opencode");
+    vi.spyOn(container.options, "resolveModel").mockImplementation(
+      async ({ defaultValue }) => defaultValue
+    );
 
     const program = createTestProgram(["node", "cli", "--dry-run"]);
     await executeConfigure(program, container, "opencode", {});
@@ -105,7 +111,7 @@ describe("configure command", () => {
       if (command === "codex" && args[0] === "--version") {
         return { stdout: "codex 1.0.0", stderr: "", exitCode: 0 };
       }
-      if (command === "codex" && args[0] === "exec") {
+      if (command === "codex" && args.includes("exec")) {
         return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
       }
       return { stdout: "", stderr: "", exitCode: 0 };
@@ -126,7 +132,7 @@ describe("configure command", () => {
     await executeConfigure(program, container, "codex", {});
 
     const healthCheckCall = commands.find(
-      ({ command, args }) => command === "codex" && args[0] === "exec"
+      ({ command, args }) => command === "codex" && args.includes("exec")
     );
     expect(healthCheckCall).toBeDefined();
   });

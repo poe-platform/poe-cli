@@ -14,6 +14,7 @@ import {
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
+import { DEFAULT_CODEX_MODEL } from "../cli/constants.js";
 
 type CodexConfigureContext = {
   env: CliEnvironment;
@@ -133,9 +134,11 @@ const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
 
 export function buildCodexExecArgs(
   prompt: string,
-  extraArgs: string[] = []
+  extraArgs: string[] = [],
+  model?: string
 ): string[] {
-  return ["exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
+  const modelArgs = model ? ["--model", model] : [];
+  return [...modelArgs, "exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
 function createCodexVersionCheck(): HookDefinition {
@@ -153,7 +156,11 @@ function createCodexVersionCheck(): HookDefinition {
 }
 
 function createCodexCliHealthCheck(): HookDefinition {
-  const args = buildCodexExecArgs("Output exactly: CODEX_OK");
+  const args = buildCodexExecArgs(
+    "Output exactly: CODEX_OK",
+    [],
+    DEFAULT_CODEX_MODEL
+  );
   return createCommandExpectationHook({
     id: "codex-cli-health",
     command: "codex",
@@ -166,7 +173,7 @@ export const codexService = createProvider<
   Record<string, never>,
   CodexConfigureContext,
   CodexRemoveContext,
-  { prompt: string; args?: string[] }
+  { prompt: string; args?: string[]; model?: string }
 >({
   name: "codex",
   label: "Codex",
@@ -219,7 +226,11 @@ export const codexService = createProvider<
   versionResolver: createBinaryVersionResolver("codex"),
   install: CODEX_INSTALL_DEFINITION,
   spawn(context, options) {
-    const args = buildCodexExecArgs(options.prompt, options.args);
+    const args = buildCodexExecArgs(
+      options.prompt,
+      options.args,
+      options.model
+    );
     return context.command.runCommand("codex", args);
   }
 });

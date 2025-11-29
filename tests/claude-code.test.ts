@@ -7,6 +7,12 @@ import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
+import {
+  CLAUDE_MODEL_HAIKU,
+  CLAUDE_MODEL_OPUS,
+  CLAUDE_MODEL_SONNET,
+  DEFAULT_CLAUDE_CODE_MODEL
+} from "../src/cli/constants.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -56,7 +62,7 @@ describe("claude-code service", () => {
   ): ConfigureOptions => ({
     env,
     apiKey,
-    defaultModel: "Claude-Sonnet-4.5",
+    defaultModel: CLAUDE_MODEL_SONNET,
     ...overrides
   });
 
@@ -104,12 +110,12 @@ describe("claude-code service", () => {
           theme: "dark",
           env: {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
-            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS,
             CUSTOM: "value"
           },
-          model: "Claude-Sonnet-4.5",
+          model: CLAUDE_MODEL_SONNET,
           customField: "should-remain"
         },
         null,
@@ -147,11 +153,11 @@ describe("claude-code service", () => {
           apiKeyHelper: keyHelperPath,
           env: {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
-            ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
-            ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-            ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
           },
-          model: "Claude-Sonnet-4.5"
+          model: CLAUDE_MODEL_SONNET
         },
         null,
         2
@@ -180,11 +186,11 @@ describe("claude-code service", () => {
       apiKeyHelper: keyHelperPath,
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
       },
-      model: "Claude-Sonnet-4.5"
+      model: CLAUDE_MODEL_SONNET
     });
     const script = await fs.readFile(keyHelperPath, "utf8");
     expect(script).toBe(
@@ -223,12 +229,12 @@ describe("claude-code service", () => {
       theme: "dark",
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS,
         CUSTOM: "value"
       },
-      model: "Claude-Sonnet-4.5"
+      model: CLAUDE_MODEL_SONNET
     });
     const script = await fs.readFile(keyHelperPath, "utf8");
     expect(script).toBe(
@@ -261,11 +267,11 @@ describe("claude-code service", () => {
       apiKeyHelper: keyHelperPath,
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Claude-Haiku-4.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "Claude-Sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Claude-Opus-4.1"
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_MODEL_SONNET,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_MODEL_OPUS
       },
-      model: "Claude-Sonnet-4.5"
+      model: CLAUDE_MODEL_SONNET
     });
     const script = await fs.readFile(keyHelperPath, "utf8");
     expect(script).toBe(
@@ -277,15 +283,15 @@ describe("claude-code service", () => {
   });
 
   it("creates settings with custom defaultModel value", async () => {
-    await configureClaude({ defaultModel: "Claude-Haiku-4.5" });
+    await configureClaude({ defaultModel: CLAUDE_MODEL_HAIKU });
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
-    expect(parsed.model).toBe("Claude-Haiku-4.5");
+    expect(parsed.model).toBe(CLAUDE_MODEL_HAIKU);
     // Environment variables remain the same (not dynamically changed)
-    expect(parsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("Claude-Haiku-4.5");
-    expect(parsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("Claude-Sonnet-4.5");
-    expect(parsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("Claude-Opus-4.1");
+    expect(parsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(CLAUDE_MODEL_HAIKU);
+    expect(parsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe(CLAUDE_MODEL_SONNET);
+    expect(parsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(CLAUDE_MODEL_OPUS);
   });
 
   it("spawns the claude CLI with the provided prompt and args", async () => {
@@ -349,6 +355,59 @@ describe("claude-code service", () => {
     });
   });
 
+  it("spawns the claude CLI with a custom model", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "hello\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const providerContext = {
+      env: {} as any,
+      paths: {
+        settingsPath,
+        keyHelperPath,
+        credentialsPath
+      },
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: {
+          dryRun: false,
+          verbose: true
+        },
+        info: vi.fn(),
+        success: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        errorWithStack: vi.fn(),
+        logException: vi.fn(),
+        dryRun: vi.fn(),
+        verbose: vi.fn(),
+        child: vi.fn()
+      }
+    } as unknown as ProviderContext;
+
+    await claudeService.claudeCodeService.spawn(providerContext, {
+      prompt: "Test prompt",
+      model: CLAUDE_MODEL_HAIKU
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("claude", [
+      "-p",
+      "Test prompt",
+      "--model",
+      CLAUDE_MODEL_HAIKU,
+      "--allowedTools",
+      "Bash,Read",
+      "--permission-mode",
+      "acceptEdits",
+      "--output-format",
+      "text"
+    ]);
+  });
+
   it("registers hook checks for the Claude CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
@@ -372,6 +431,8 @@ describe("claude-code service", () => {
       args: [
         "-p",
         "Output exactly: CLAUDE_CODE_OK",
+        "--model",
+        DEFAULT_CLAUDE_CODE_MODEL,
         "--allowedTools",
         "Bash,Read",
         "--permission-mode",
@@ -396,7 +457,9 @@ describe("claude-code service", () => {
 
     expect(runCommand).not.toHaveBeenCalled();
     expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining('claude -p "Output exactly: CLAUDE_CODE_OK"')
+      expect.stringContaining(
+        `claude -p "Output exactly: CLAUDE_CODE_OK" --model ${DEFAULT_CLAUDE_CODE_MODEL}`
+      )
     );
     expect(logDryRun).toHaveBeenCalledWith(
       expect.stringContaining('expecting "CLAUDE_CODE_OK"')

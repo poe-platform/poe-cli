@@ -8,6 +8,7 @@ import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
+import { DEFAULT_CODEX_MODEL } from "../src/cli/constants.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
@@ -49,7 +50,7 @@ describe("codex service", () => {
   ): ConfigureOptions => ({
     env,
     apiKey: "sk-test",
-    model: "GPT-5.1-Codex",
+    model: DEFAULT_CODEX_MODEL,
     reasoningEffort: "medium",
     ...overrides
   });
@@ -89,7 +90,9 @@ describe("codex service", () => {
     });
 
     const content = await fs.readFile(configPath, "utf8");
-    expect(content.trim()).toContain('model = "GPT-5.1-Codex"');
+    expect(content.trim()).toContain(
+      `model = "${DEFAULT_CODEX_MODEL}"`
+    );
     expect(content.trim()).toContain('model_reasoning_effort = "medium"');
     expect(content.trim()).toContain(
       'experimental_bearer_token = "sk-test"'
@@ -151,7 +154,7 @@ describe("codex service", () => {
       configPath,
       [
         'model_provider="poe"',
-        'model="GPT-5.1-Codex"',
+        `model="${DEFAULT_CODEX_MODEL}"`,
         'model_reasoning_effort="medium"',
         "",
         "[model_providers.poe]",
@@ -181,7 +184,7 @@ describe("codex service", () => {
       configPath,
       [
         'model_provider="poe"',
-        'model="GPT-5.1-Codex"',
+        `model="${DEFAULT_CODEX_MODEL}"`,
         'model_reasoning_effort="medium"',
         "",
         "[model_providers.poe]",
@@ -238,7 +241,7 @@ describe("codex service", () => {
 
     const doc = parseTomlDocument(await fs.readFile(configPath, "utf8"));
     expect(doc["model_provider"]).toBe("poe");
-    expect(doc["model"]).toBe("GPT-5.1-Codex");
+    expect(doc["model"]).toBe(DEFAULT_CODEX_MODEL);
     expect(doc["model_reasoning_effort"]).toBe("medium");
     expect(doc["features"]).toEqual({ foo: true });
 
@@ -302,6 +305,39 @@ describe("codex service", () => {
     });
   });
 
+  it("spawns the codex CLI with a custom model", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "codex-output\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const providerContext = {
+      env: {} as any,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: { dryRun: false, verbose: true }
+      }
+    } as ProviderContext;
+    const override = `${DEFAULT_CODEX_MODEL}-alt`;
+
+    await codexService.codexService.spawn(providerContext, {
+      prompt: "Summarize the diff",
+      model: override
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("codex", [
+      "--model",
+      override,
+      "exec",
+      "Summarize the diff",
+      "--full-auto"
+    ]);
+  });
+
   it("registers hook checks for the Codex CLI", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
@@ -322,7 +358,11 @@ describe("codex service", () => {
     expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
     expect(calls[0]).toEqual({
       command: "codex",
-      args: codexService.buildCodexExecArgs("Output exactly: CODEX_OK")
+      args: codexService.buildCodexExecArgs(
+        "Output exactly: CODEX_OK",
+        [],
+        DEFAULT_CODEX_MODEL
+      )
     });
   });
 
@@ -340,7 +380,9 @@ describe("codex service", () => {
 
     expect(runCommand).not.toHaveBeenCalled();
     expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining('codex exec "Output exactly: CODEX_OK"')
+      expect.stringContaining(
+        `codex --model ${DEFAULT_CODEX_MODEL} exec "Output exactly: CODEX_OK"`
+      )
     );
     expect(logDryRun).toHaveBeenCalledWith(
       expect.stringContaining('expecting "CODEX_OK"')

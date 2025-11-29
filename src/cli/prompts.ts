@@ -6,11 +6,16 @@ export interface PromptDescriptor<TName extends string = string> {
   readonly choices?: Array<{ title: string; value: string }>;
 }
 
+import { CLAUDE_CODE_MODELS } from "./constants.js";
+
 export interface PromptLibrary {
   apiKey(): PromptDescriptor<"apiKey">;
   loginApiKey(): PromptDescriptor<"apiKey">;
-  model(defaultModel: string): PromptDescriptor<"model">;
-  claudeModel(): PromptDescriptor<"model">;
+  model(input: {
+    defaultValue: string;
+    choices: Array<{ title: string; value: string }>;
+  }): PromptDescriptor<"model">;
+  claudeModel(defaultValue: string): PromptDescriptor<"model">;
   reasoningEffort(
     defaultValue: string
   ): PromptDescriptor<"reasoningEffort">;
@@ -37,25 +42,36 @@ export function createPromptLibrary(): PromptLibrary {
         message: "Enter your Poe API key (get one at https://poe.com/api_key)",
         type: "password"
       }),
-    model: (defaultModel: string) =>
-      describe({
+    model: ({ defaultValue, choices }) => {
+      const initial = Math.max(
+        choices.findIndex((choice) => choice.value === defaultValue),
+        0
+      );
+      return describe({
         name: "model",
         message: "Model",
-        type: "text",
-        initial: defaultModel
-      }),
-    claudeModel: () =>
-      describe({
+        type: "select",
+        initial,
+        choices
+      });
+    },
+    claudeModel: (defaultValue: string) => {
+      const choices = CLAUDE_CODE_MODELS.map((entry) => ({
+        title: entry.label,
+        value: entry.id
+      }));
+      const initial = Math.max(
+        choices.findIndex((choice) => choice.value === defaultValue),
+        0
+      );
+      return describe({
         name: "model",
         message: "Default Model",
         type: "select",
-        initial: 1,
-        choices: [
-          { title: "Claude-Haiku-4.5", value: "Claude-Haiku-4.5" },
-          { title: "Claude-Sonnet-4.5", value: "Claude-Sonnet-4.5" },
-          { title: "Claude-Opus-4.1", value: "Claude-Opus-4.1" }
-        ]
-      }),
+        initial,
+        choices
+      });
+    },
     reasoningEffort: (defaultValue: string) =>
       describe({
         name: "reasoningEffort",

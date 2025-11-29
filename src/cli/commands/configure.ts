@@ -12,9 +12,12 @@ import {
   runProviderHooks
 } from "./shared.js";
 import {
-  DEFAULT_MODEL,
+  CODEX_MODELS,
+  DEFAULT_CODEX_MODEL,
+  DEFAULT_CLAUDE_CODE_MODEL,
+  DEFAULT_FRONTIER_MODEL,
   DEFAULT_REASONING,
-  DEFAULT_CLAUDE_MODEL
+  FRONTIER_MODELS
 } from "../constants.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
@@ -155,7 +158,7 @@ async function createConfigurePayload(
       });
       const defaultModel = await container.options.resolveClaudeModel({
         value: options.model,
-        defaultValue: DEFAULT_CLAUDE_MODEL,
+        defaultValue: DEFAULT_CLAUDE_CODE_MODEL,
         assumeDefault: flags.assumeYes
       });
       return {
@@ -169,10 +172,15 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
-      const model = await container.options.resolveModel(
-        options.model,
-        DEFAULT_MODEL
-      );
+      const model = await container.options.resolveModel({
+        value: options.model,
+        defaultValue: DEFAULT_CODEX_MODEL,
+        assumeDefault: flags.assumeYes,
+        choices: CODEX_MODELS.map((entry) => ({
+          title: entry.label,
+          value: entry.id
+        }))
+      });
       const reasoningEffort = await container.options.resolveReasoning(
         options.reasoningEffort,
         DEFAULT_REASONING
@@ -189,9 +197,19 @@ async function createConfigurePayload(
         value: options.apiKey,
         dryRun: flags.dryRun
       });
+      const model = await container.options.resolveModel({
+        value: options.model,
+        defaultValue: DEFAULT_FRONTIER_MODEL,
+        assumeDefault: flags.assumeYes,
+        choices: FRONTIER_MODELS.map((entry) => ({
+          title: entry.label,
+          value: entry.id
+        }))
+      });
       return {
         env: context.env,
-        apiKey
+        apiKey,
+        model
       };
     }
     default:

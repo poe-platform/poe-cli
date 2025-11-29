@@ -1,5 +1,8 @@
 import type { CliEnvironment } from "../cli/environment.js";
-import { OPEN_CODE_DEFAULT_MODEL } from "../cli/constants.js";
+import {
+  DEFAULT_FRONTIER_MODEL,
+  FRONTIER_MODELS
+} from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
 import type { HookDefinition } from "../utils/hooks.js";
 import {
@@ -15,27 +18,31 @@ import {
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 
-const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
-  $schema: "https://opencode.ai/config.json",
-  model: OPEN_CODE_DEFAULT_MODEL,
-  provider: {
-    poe: {
-      npm: "@ai-sdk/openai-compatible",
-      name: "poe.com",
-      options: {
-        baseURL: "https://api.poe.com/v1"
-      },
-      models: {
-        "Claude-Sonnet-4.5": {
-          name: "Claude Sonnet 4.5"
+const OPEN_CODE_PROVIDER_MODELS: Record<string, { name: string }> =
+  FRONTIER_MODELS.reduce<Record<string, { name: string }>>(
+    (acc, entry) => {
+      acc[entry.providerId] = { name: entry.label };
+      return acc;
+    },
+    {}
+  );
+
+function buildOpenCodeConfig(model: string): JsonObject {
+  return {
+    $schema: "https://opencode.ai/config.json",
+    model,
+    provider: {
+      poe: {
+        npm: "@ai-sdk/openai-compatible",
+        name: "poe.com",
+        options: {
+          baseURL: "https://api.poe.com/v1"
         },
-        "GPT-5.1-Codex": {
-          name: "GPT-5.1-Codex"
-        }
+        models: OPEN_CODE_PROVIDER_MODELS
       }
     }
-  }
-};
+  };
+}
 
 const OPEN_CODE_CONFIG_SHAPE: JsonObject = {
   provider: {
@@ -50,6 +57,7 @@ const OPEN_CODE_AUTH_SHAPE: JsonObject = {
 type OpenCodeConfigureContext = {
   env: CliEnvironment;
   apiKey: string;
+  model: string;
 };
 
 type OpenCodeRemoveContext = {
@@ -89,13 +97,13 @@ function createOpenCodeVersionCheck(): HookDefinition {
   };
 }
 
-function getModelArgs(model = OPEN_CODE_DEFAULT_MODEL): string[] {
+function getModelArgs(model = DEFAULT_FRONTIER_MODEL): string[] {
   return ["--model", model];
 }
 
 function createOpenCodeHealthCheck(): HookDefinition {
   const args = [
-    ...getModelArgs(),
+    ...getModelArgs(DEFAULT_FRONTIER_MODEL),
     "run",
     "Output exactly: OPEN_CODE_OK"
   ];
@@ -111,7 +119,7 @@ export const openCodeService = createProvider<
   Record<string, never>,
   OpenCodeConfigureContext,
   OpenCodeRemoveContext,
-  { prompt: string; args?: string[] }
+  { prompt: string; args?: string[]; model?: string }
 >({
   name: "opencode",
   label: "OpenCode CLI",
@@ -137,7 +145,7 @@ export const openCodeService = createProvider<
         }),
         jsonMergeMutation({
           target: "~/.config/opencode/config.json",
-          value: () => OPEN_CODE_CONFIG_TEMPLATE
+          value: ({ options }) => buildOpenCodeConfig(options.model)
         }),
         jsonMergeMutation({
           target: "~/.local/share/opencode/auth.json",
@@ -165,7 +173,7 @@ export const openCodeService = createProvider<
   install: OPEN_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = [
-      ...getModelArgs(),
+      ...getModelArgs(options.model ?? DEFAULT_FRONTIER_MODEL),
       "run",
       options.prompt,
       ...(options.args ?? [])

@@ -17,6 +17,7 @@ export interface CustomSpawnHandlerContext {
   service: string;
   prompt: string;
   args: string[];
+  model?: string;
   flags: CommandFlags;
   resources: ExecutionResources;
 }
@@ -45,6 +46,7 @@ export function registerSpawnCommand(
   program
     .command("spawn")
     .description("Run a single prompt through a configured service CLI.")
+    .option("--model <model>", "Model identifier override passed to the service CLI")
     .argument(
       "<service>",
       serviceDescription
@@ -54,13 +56,20 @@ export function registerSpawnCommand(
       "[agentArgs...]",
       "Additional arguments forwarded to the service CLI"
     )
-    .action(async (service: string, promptText: string, agentArgs: string[] = []) => {
+    .action(async function (
+      this: Command,
+      service: string,
+      promptText: string,
+      agentArgs: string[] = []
+    ) {
       const flags = resolveCommandFlags(program);
       const resources = createExecutionResources(
         container,
         flags,
         `spawn:${service}`
       );
+      const commandOptions = this.opts<{ model?: string }>();
+      const modelOverride = commandOptions.model;
 
       const customHandler = options.handlers?.[service];
       if (customHandler) {
@@ -69,6 +78,7 @@ export function registerSpawnCommand(
           service,
           prompt: promptText,
           args: agentArgs,
+          model: modelOverride,
           flags,
           resources
         });
@@ -108,7 +118,8 @@ export function registerSpawnCommand(
           }
           const output = await resolution.adapter.spawn(providerContext, {
             prompt: promptText,
-            args: agentArgs
+            args: agentArgs,
+            model: modelOverride
           });
           return output as CommandRunnerResult | void;
         }

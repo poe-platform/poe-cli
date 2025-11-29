@@ -17,6 +17,13 @@ export interface ResolveApiKeyInput {
   dryRun: boolean;
 }
 
+export interface ResolveModelInput {
+  value?: string;
+  assumeDefault?: boolean;
+  defaultValue: string;
+  choices: Array<{ title: string; value: string }>;
+}
+
 export interface ResolveClaudeModelInput {
   value?: string;
   assumeDefault?: boolean;
@@ -28,8 +35,7 @@ export interface OptionResolvers {
     input: EnsureOptionInput<TName>
   ): Promise<string>;
   resolveModel(
-    value: string | undefined,
-    defaultModel: string
+    input: ResolveModelInput
   ): Promise<string>;
   resolveClaudeModel(input: ResolveClaudeModelInput): Promise<string>;
   resolveReasoning(
@@ -107,15 +113,29 @@ export function createOptionResolvers(
     return apiKey;
   };
 
-  const resolveModel = async (
-    value: string | undefined,
-    defaultModel: string
-  ): Promise<string> =>
-    await ensure({
-      value,
-      descriptor: init.promptLibrary.model(defaultModel),
-      fallback: defaultModel
+  const resolveModel = async ({
+    value,
+    assumeDefault,
+    defaultValue,
+    choices
+  }: ResolveModelInput): Promise<string> => {
+    if (value != null) {
+      return value;
+    }
+    if (assumeDefault) {
+      return defaultValue;
+    }
+    const descriptor = init.promptLibrary.model({
+      defaultValue,
+      choices
     });
+    const response = await init.prompts(descriptor);
+    const result = response[descriptor.name];
+    if (typeof result !== "string" || result.trim() === "") {
+      throw new Error(`Missing value for "${descriptor.name}".`);
+    }
+    return result;
+  };
 
   const resolveClaudeModel = async ({
     value,
@@ -128,7 +148,7 @@ export function createOptionResolvers(
     if (assumeDefault) {
       return defaultValue;
     }
-    const descriptor = init.promptLibrary.claudeModel();
+    const descriptor = init.promptLibrary.claudeModel(defaultValue);
     const response = await init.prompts(descriptor);
     const result = response[descriptor.name];
     if (typeof result !== "string" || result.trim() === "") {

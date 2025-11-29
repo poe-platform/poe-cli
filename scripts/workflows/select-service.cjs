@@ -29,13 +29,15 @@ for (const label of labels) {
 const menuRequested = labels.some(
   (label) => toLabelName(label) === MENU_LABEL
 );
+const modelOverride = extractModelOverride(labels);
 
 const outputs = [
   `service=${selectedService}`,
   `default_service=${DEFAULT_SERVICES[0]}`,
   `services=${DEFAULT_SERVICES.join(",")}`,
   `selected_label=${selectedLabel}`,
-  `menu_label=${menuRequested ? "true" : "false"}`
+  `menu_label=${menuRequested ? "true" : "false"}`,
+  `model=${modelOverride ?? ""}`
 ];
 
 appendFileSync(outputPath, `${outputs.join("\n")}\n`);
@@ -71,4 +73,18 @@ function toLabelName(label) {
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
+}
+
+function extractModelOverride(foundLabels) {
+  for (const label of foundLabels) {
+    const name = toLabelName(label);
+    const normalized = name.toLowerCase();
+    if (normalized.startsWith("model:")) {
+      const value = name.slice(name.indexOf(":") + 1).trim();
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return null;
 }

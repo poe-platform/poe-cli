@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
+import {
+  DEFAULT_FRONTIER_MODEL,
+  FRONTIER_MODELS
+} from "../src/cli/constants.js";
 import * as opencodeService from "../src/providers/opencode.js";
 import { createHookManager } from "../src/utils/hooks.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
@@ -19,6 +23,13 @@ function registerAfterHooks(
 ): void {
   service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
+
+const expectedFrontierModels = FRONTIER_MODELS.reduce<
+  Record<string, { name: string }>
+>((acc, entry) => {
+  acc[entry.providerId] = { name: entry.label };
+  return acc;
+}, {});
 
 describe("opencode service", () => {
   let fs: FileSystem;
@@ -49,6 +60,7 @@ describe("opencode service", () => {
   ): ConfigureOptions => ({
     env,
     apiKey: "sk-test",
+    model: DEFAULT_FRONTIER_MODEL,
     ...overrides
   });
 
@@ -80,7 +92,7 @@ describe("opencode service", () => {
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config).toEqual({
       $schema: "https://opencode.ai/config.json",
-      model: "poe/Claude-Sonnet-4.5",
+      model: DEFAULT_FRONTIER_MODEL,
       provider: {
         poe: {
           npm: "@ai-sdk/openai-compatible",
@@ -88,14 +100,7 @@ describe("opencode service", () => {
           options: {
             baseURL: "https://api.poe.com/v1"
           },
-          models: {
-            "Claude-Sonnet-4.5": {
-              name: "Claude Sonnet 4.5"
-            },
-            "GPT-5.1-Codex": {
-              name: "GPT-5.1-Codex"
-            }
-          }
+          models: expectedFrontierModels
         }
       }
     });
@@ -107,6 +112,15 @@ describe("opencode service", () => {
         key: "sk-test"
       }
     });
+  });
+
+  it("writes the selected frontier model to the config", async () => {
+    const alternate =
+      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+    await configureOpenCode({ model: alternate });
+
+    const config = JSON.parse(await fs.readFile(configPath, "utf8"));
+    expect(config.model).toBe(alternate);
   });
 
   it("merges with existing config and preserves other providers", async () => {
@@ -136,11 +150,7 @@ describe("opencode service", () => {
     });
     expect(config.provider.poe).toMatchObject({
       npm: "@ai-sdk/openai-compatible",
-      models: {
-        "Claude-Sonnet-4.5": {
-          name: "Claude Sonnet 4.5"
-        }
-      }
+      models: expectedFrontierModels
     });
     expect(config.$schema).toBe("https://opencode.ai/config.json");
   });
@@ -205,7 +215,7 @@ describe("opencode service", () => {
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
       "--model",
-      "poe/Claude-Sonnet-4.5",
+      DEFAULT_FRONTIER_MODEL,
       "run",
       "List all files",
       "--format",
@@ -216,6 +226,39 @@ describe("opencode service", () => {
       stderr: "",
       exitCode: 0
     });
+  });
+
+  it("spawns the opencode CLI with a custom model", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "opencode-output\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const customModel =
+      FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!.id;
+    const providerContext = {
+      env: {} as any,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: { dryRun: false, verbose: true }
+      }
+    } as unknown as import("../src/cli/service-registry.js").ProviderContext;
+
+    await opencodeService.openCodeService.spawn(providerContext, {
+      prompt: "List all files",
+      model: customModel
+    });
+
+    expect(runCommand).toHaveBeenCalledWith("opencode", [
+      "--model",
+      customModel,
+      "run",
+      "List all files"
+    ]);
   });
 
   it("registers hook checks for the OpenCode CLI", async () => {
@@ -240,7 +283,7 @@ describe("opencode service", () => {
       command: "opencode",
       args: [
         "--model",
-        "poe/Claude-Sonnet-4.5",
+        DEFAULT_FRONTIER_MODEL,
         "run",
         "Output exactly: OPEN_CODE_OK"
       ]
