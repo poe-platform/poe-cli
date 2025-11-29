@@ -27,6 +27,15 @@ describe("doctor command", () => {
       if (args[0] === "--version" && versionMap[command]) {
         return { stdout: `${command} ${versionMap[command]}`, stderr: "", exitCode: 0 };
       }
+      if (command === "opencode" && args.includes("run")) {
+        return { stdout: "OPEN_CODE_OK\n", stderr: "", exitCode: 0 };
+      }
+      if (command === "codex" && args[0] === "exec") {
+        return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
+      }
+      if (command === "claude" && args[0] === "-p") {
+        return { stdout: "CLAUDE_CODE_OK\n", stderr: "", exitCode: 0 };
+      }
       return { stdout: "", stderr: "", exitCode: 1 };
     });
     const container = createCliContainer({

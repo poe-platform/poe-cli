@@ -169,7 +169,7 @@ describe("spawn command", () => {
       { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
-        args: ["run", "List files"]
+        args: ["--model", "poe/Claude-Sonnet-4.5", "run", "List files"]
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(

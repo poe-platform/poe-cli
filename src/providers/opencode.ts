@@ -89,12 +89,22 @@ function createOpenCodeVersionCheck(): PrerequisiteDefinition {
   };
 }
 
+const OPEN_CODE_DEFAULT_MODEL = "poe/Claude-Sonnet-4.5";
+
+function getModelArgs(model = OPEN_CODE_DEFAULT_MODEL): string[] {
+  return ["--model", model];
+}
+
 function createOpenCodeHealthCheck(): PrerequisiteDefinition {
   return {
     id: "opencode-cli-health",
     description: "OpenCode CLI health check must succeed",
     async run({ runCommand }) {
-      const args = ["run", "Output exactly: OPEN_CODE_OK"];
+      const args = [
+        ...getModelArgs(),
+        "run",
+        "Output exactly: OPEN_CODE_OK"
+      ];
       const result = await runCommand("opencode", args);
       if (result.exitCode !== 0) {
         const detail = formatCommandRunnerResult(result);
@@ -176,7 +186,12 @@ export const openCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("opencode"),
   install: OPEN_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
-    const args = ["run", options.prompt, ...(options.args ?? [])];
+    const args = [
+      ...getModelArgs(),
+      "run",
+      options.prompt,
+      ...(options.args ?? [])
+    ];
     return context.command.runCommand("opencode", args);
   }
 });

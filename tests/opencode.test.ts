@@ -193,7 +193,7 @@ describe("opencode service", () => {
         fs
       },
       logger: {
-        context: { dryRun: false, verbose: false }
+        context: { dryRun: false, verbose: true }
       }
     } as unknown as import("../src/cli/service-registry.js").ProviderContext;
 
@@ -203,6 +203,8 @@ describe("opencode service", () => {
     });
 
     expect(runCommand).toHaveBeenCalledWith("opencode", [
+      "--model",
+      "poe/Claude-Sonnet-4.5",
       "run",
       "List all files",
       "--format",
@@ -235,7 +237,12 @@ describe("opencode service", () => {
     expect(calls.map((entry) => entry.command)).toEqual(["opencode"]);
     expect(calls[0]).toEqual({
       command: "opencode",
-      args: ["run", "Output exactly: OPEN_CODE_OK"]
+      args: [
+        "--model",
+        "poe/Claude-Sonnet-4.5",
+        "run",
+        "Output exactly: OPEN_CODE_OK"
+      ]
     });
   });
 

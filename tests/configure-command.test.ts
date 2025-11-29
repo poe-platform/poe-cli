@@ -16,14 +16,32 @@ describe("configure command", () => {
     fs = createHomeFs(homeDir);
   });
 
-  function createContainer(versionMap: Record<string, string | null>) {
+  function createContainer(
+    versionMap: Record<string, string | null>,
+    overrides: { commandRunner?: CommandRunner } = {}
+  ) {
     const prompts = vi.fn().mockResolvedValue({});
-    const commandRunner: CommandRunner = vi.fn(async (command, args) => {
-      if (args[0] === "--version" && versionMap[command]) {
-        return { stdout: `${command} ${versionMap[command]}`, stderr: "", exitCode: 0 };
-      }
-      return { stdout: "", stderr: "", exitCode: 1 };
-    });
+    const commandRunner: CommandRunner =
+      overrides.commandRunner ??
+      vi.fn(async (command, args) => {
+        if (args[0] === "--version" && versionMap[command]) {
+          return {
+            stdout: `${command} ${versionMap[command]}`,
+            stderr: "",
+            exitCode: 0
+          };
+        }
+        if (command === "codex" && args[0] === "exec") {
+          return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
+        }
+        if (command === "opencode" && args.includes("run")) {
+          return { stdout: "OPEN_CODE_OK\n", stderr: "", exitCode: 0 };
+        }
+        if (command === "claude" && args[0] === "-p") {
+          return { stdout: "CLAUDE_CODE_OK\n", stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      });
     const container = createCliContainer({
       fs,
       prompts,
@@ -31,7 +49,7 @@ describe("configure command", () => {
       logger: () => {},
       commandRunner
     });
-    return { container, prompts };
+    return { container, prompts, commandRunner };
   }
 
   it("does not invoke install when configuring a service", async () => {
@@ -78,5 +96,38 @@ describe("configure command", () => {
     await executeConfigure(program, container, "opencode", {});
 
     await expect(fs.readFile(credentialsPath, "utf8")).rejects.toThrow();
+  });
+
+  it("runs provider prerequisites during configure", async () => {
+    const commands: Array<{ command: string; args: string[] }> = [];
+    const commandRunner: CommandRunner = vi.fn(async (command, args) => {
+      commands.push({ command, args });
+      if (command === "codex" && args[0] === "--version") {
+        return { stdout: "codex 1.0.0", stderr: "", exitCode: 0 };
+      }
+      if (command === "codex" && args[0] === "exec") {
+        return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const { container } = createContainer(
+      { codex: "1.0.0" },
+      { commandRunner }
+    );
+
+    vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-test");
+    vi.spyOn(container.options, "resolveModel").mockResolvedValue(
+      "codex-model"
+    );
+    vi.spyOn(container.options, "resolveReasoning").mockResolvedValue("none");
+
+    const program = createTestProgram();
+    await executeConfigure(program, container, "codex", {});
+
+    const healthCheckCall = commands.find(
+      ({ command, args }) => command === "codex" && args[0] === "exec"
+    );
+    expect(healthCheckCall).toBeDefined();
   });
 });
