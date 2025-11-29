@@ -1,4 +1,5 @@
 import type { CliEnvironment } from "../cli/environment.js";
+import { OPEN_CODE_DEFAULT_MODEL } from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
@@ -16,6 +17,7 @@ import { createBinaryVersionResolver } from "./versioned-provider.js";
 
 const OPEN_CODE_CONFIG_TEMPLATE: JsonObject = {
   $schema: "https://opencode.ai/config.json",
+  model: OPEN_CODE_DEFAULT_MODEL,
   provider: {
     poe: {
       npm: "@ai-sdk/openai-compatible",
@@ -88,8 +90,6 @@ function createOpenCodeVersionCheck(): PrerequisiteDefinition {
     }
   };
 }
-
-const OPEN_CODE_DEFAULT_MODEL = "poe/Claude-Sonnet-4.5";
 
 function getModelArgs(model = OPEN_CODE_DEFAULT_MODEL): string[] {
   return ["--model", model];

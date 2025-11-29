@@ -6,3 +6,4 @@ export const DEFAULT_MODEL = "GPT-5.1-Codex";
 export const DEFAULT_REASONING = "medium";
 export const DEFAULT_QUERY_MODEL = CLAUDE_MODEL_SONNET;
 export const DEFAULT_CLAUDE_MODEL = CLAUDE_MODEL_SONNET;
+export const OPEN_CODE_DEFAULT_MODEL = "poe/Claude-Sonnet-4.5";
