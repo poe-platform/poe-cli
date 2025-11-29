@@ -1,53 +1,48 @@
-import modelsConfig from "../config/models.json" assert { type: "json" };
-
-type FrontierModel = {
-  id: string;
-  providerId: string;
-  label: string;
-};
-
-type ClaudeVariant = "haiku" | "sonnet" | "opus";
-
-type ClaudeCodeModel = {
-  id: string;
-  label: string;
-  variant: ClaudeVariant;
-};
-
-type CodexModel = {
-  id: string;
-  label: string;
-};
-
-const frontierModels = modelsConfig.frontier.models as FrontierModel[];
-const claudeCodeModels = modelsConfig.claudeCode.models as ClaudeCodeModel[];
-const codexModels = modelsConfig.codex.models as CodexModel[];
-
-export const FRONTIER_MODELS = frontierModels as ReadonlyArray<FrontierModel>;
-export const DEFAULT_FRONTIER_MODEL = modelsConfig.frontier.default;
-
-export const CLAUDE_CODE_MODELS =
-  claudeCodeModels as ReadonlyArray<ClaudeCodeModel>;
-export const DEFAULT_CLAUDE_CODE_MODEL = modelsConfig.claudeCode.default;
-
-const claudeModelMap = claudeCodeModels.reduce<Record<ClaudeVariant, string>>(
-  (acc, model) => {
-    acc[model.variant] = model.id;
-    return acc;
+export const FRONTIER_MODELS = [
+  {
+    id: "poe/Claude-Sonnet-4.5",
+    providerId: "Claude-Sonnet-4.5",
+    label: "Claude Sonnet 4.5"
   },
   {
-    haiku: claudeCodeModels[0]!.id,
-    sonnet: claudeCodeModels[0]!.id,
-    opus: claudeCodeModels[0]!.id
+    id: "poe/GPT-5.1-Contex",
+    providerId: "GPT-5.1-Contex",
+    label: "GPT-5.1 Contex"
   }
-);
+] as const;
 
-export const CLAUDE_MODEL_HAIKU = claudeModelMap.haiku;
-export const CLAUDE_MODEL_SONNET = claudeModelMap.sonnet;
-export const CLAUDE_MODEL_OPUS = claudeModelMap.opus;
+export const DEFAULT_FRONTIER_MODEL = "poe/Claude-Sonnet-4.5";
 
-export const CODEX_MODELS = codexModels as ReadonlyArray<CodexModel>;
-export const DEFAULT_CODEX_MODEL = modelsConfig.codex.default;
+export const CLAUDE_CODE_MODELS = [
+  {
+    id: "Claude-Haiku-4.5",
+    label: "Claude Haiku 4.5",
+    variant: "haiku"
+  },
+  {
+    id: "Claude-Sonnet-4.5",
+    label: "Claude Sonnet 4.5",
+    variant: "sonnet"
+  },
+  {
+    id: "Claude-Opus-4.1",
+    label: "Claude Opus 4.1",
+    variant: "opus"
+  }
+] as const;
+
+export const DEFAULT_CLAUDE_CODE_MODEL = "Claude-Sonnet-4.5";
+export const CLAUDE_MODEL_HAIKU = "Claude-Haiku-4.5";
+export const CLAUDE_MODEL_SONNET = "Claude-Sonnet-4.5";
+export const CLAUDE_MODEL_OPUS = "Claude-Opus-4.1";
+
+export const CODEX_MODELS = [
+  {
+    id: "gpt-5.1-contex",
+    label: "GPT-5.1 Contex"
+  }
+] as const;
+export const DEFAULT_CODEX_MODEL = "gpt-5.1-contex";
 
 export const DEFAULT_REASONING = "medium";
 export const DEFAULT_QUERY_MODEL = CLAUDE_MODEL_SONNET;

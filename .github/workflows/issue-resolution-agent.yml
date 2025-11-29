@@ -37,7 +37,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABEL_NAME: ${{ github.event.label.name }}
           ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
-        run: node scripts/workflows/determine-provider.cjs
+        run: npx tsx scripts/workflows/determine-provider.ts
       - name: Cache Poe API key
         env:
           POE_API_KEY: ${{ secrets.POE_API_KEY }}
