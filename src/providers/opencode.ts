@@ -107,8 +107,7 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
           "run",
           "Output exactly: OPEN_CODE_OK"
         ],
-        expectedOutput: "OPEN_CODE_OK",
-        label: "OpenCode CLI health check"
+        expectedOutput: "OPEN_CODE_OK"
       });
     }
   };

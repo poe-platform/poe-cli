@@ -24,7 +24,6 @@ export interface RunAndMatchOutputOptions {
   command: string;
   args: string[];
   expectedOutput: string;
-  label: string;
   skipOnDryRun?: boolean;
 }
 
@@ -32,9 +31,9 @@ export async function runAndMatchOutput(
   context: PrerequisiteContext,
   options: RunAndMatchOutputOptions
 ): Promise<void> {
+  const rendered = renderCommandLine(options.command, options.args);
   if (options.skipOnDryRun !== false && context.isDryRun) {
     if (context.logDryRun) {
-      const rendered = renderCommandLine(options.command, options.args);
       context.logDryRun(
         `Dry run: ${rendered} (expecting "${options.expectedOutput}")`
       );
@@ -46,7 +45,7 @@ export async function runAndMatchOutput(
   if (result.exitCode !== 0) {
     const detail = formatCommandRunnerResult(result);
     throw new Error(
-      [`${options.label} failed with exit code ${result.exitCode}.`, detail].join("\n")
+      [`Command ${rendered} failed with exit code ${result.exitCode}.`, detail].join("\n")
     );
   }
 
@@ -55,7 +54,7 @@ export async function runAndMatchOutput(
     const received = result.stdout.trim();
     throw new Error(
       [
-        `${options.label} failed: expected "${options.expectedOutput}" but received "${received}".`,
+        `Command ${rendered} failed: expected "${options.expectedOutput}" but received "${received}".`,
         detail
       ].join("\n")
     );

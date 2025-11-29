@@ -81,8 +81,7 @@ function createClaudeCliHealthCheck(): PrerequisiteDefinition {
       await runAndMatchOutput(context, {
         command: "claude",
         args: buildClaudeArgs("Output exactly: CLAUDE_CODE_OK"),
-        expectedOutput: "CLAUDE_CODE_OK",
-        label: "Claude CLI health check"
+        expectedOutput: "CLAUDE_CODE_OK"
       });
     }
   };

@@ -162,8 +162,7 @@ function createCodexCliHealthCheck(): PrerequisiteDefinition {
       await runAndMatchOutput(context, {
         command: "codex",
         args: buildCodexExecArgs("Output exactly: CODEX_OK"),
-        expectedOutput: "CODEX_OK",
-        label: "Codex CLI health check"
+        expectedOutput: "CODEX_OK"
       });
     }
   };
