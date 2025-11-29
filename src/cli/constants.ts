@@ -1,6 +1,6 @@
 export const FRONTIER_MODELS = [
   "Claude-Sonnet-4.5",
-  "GPT-5.1-Contex"
+  "GPT-5.1-Codex"
 ] as const;
 
 export const DEFAULT_FRONTIER_MODEL = "Claude-Sonnet-4.5";
@@ -13,7 +13,7 @@ export const CLAUDE_CODE_VARIANTS = {
 
 export const DEFAULT_CLAUDE_CODE_MODEL = CLAUDE_CODE_VARIANTS.sonnet;
 
-export const CODEX_MODELS = ["gpt-5.1-contex"] as const;
+export const CODEX_MODELS = ["gpt-5.1-codex"] as const;
 export const DEFAULT_CODEX_MODEL = CODEX_MODELS[0];
 
 export const DEFAULT_REASONING = "medium";
