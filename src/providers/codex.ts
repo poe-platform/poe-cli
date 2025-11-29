@@ -2,6 +2,7 @@ import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
+  describeCommandExpectation,
   runAndMatchOutput
 } from "../utils/prerequisites.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
@@ -155,13 +156,14 @@ function createCodexVersionCheck(): PrerequisiteDefinition {
 }
 
 function createCodexCliHealthCheck(): PrerequisiteDefinition {
+  const args = buildCodexExecArgs("Output exactly: CODEX_OK");
   return {
     id: "codex-cli-health",
-    description: "Codex CLI health check must succeed",
+    description: describeCommandExpectation("codex", args, "CODEX_OK"),
     async run(context) {
       await runAndMatchOutput(context, {
         command: "codex",
-        args: buildCodexExecArgs("Output exactly: CODEX_OK"),
+        args,
         expectedOutput: "CODEX_OK"
       });
     }

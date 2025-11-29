@@ -7,6 +7,7 @@ import type { FileSystem } from "../utils/file-system.js";
 import type {
   CommandRunner,
   CommandRunnerResult,
+  PrerequisiteDefinition,
   PrerequisiteManager,
   PrerequisitePhase,
   PrerequisiteRunHooks
@@ -113,16 +114,16 @@ export function createPrerequisiteHooks(
   return {
     onStart(prerequisite) {
       logger.verbose(
-        `Running ${phase} prerequisite: ${prerequisite.description}`
+        `Running ${phase} prerequisite ${formatPrerequisiteDisplay(prerequisite)}`
       );
     },
     onSuccess(prerequisite) {
-      logger.verbose(`✓ ${prerequisite.description}`);
+      logger.verbose(`✓ ${formatPrerequisiteDisplay(prerequisite)}`);
     },
     onFailure(prerequisite, error) {
       const detail =
         error instanceof Error ? error.message : String(error ?? "Unknown error");
-      logger.error(`✖ ${prerequisite.description}: ${detail}`);
+      logger.error(`✖ ${formatPrerequisiteDisplay(prerequisite)}: ${detail}`);
     }
   };
 }
@@ -143,4 +144,13 @@ function extractBaseCommand(message: string): string {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
+function formatPrerequisiteDisplay(
+  prerequisite: PrerequisiteDefinition
+): string {
+  const description = prerequisite.description?.trim();
+  return description?.length
+    ? `[${prerequisite.id}] ${description}`
+    : `[${prerequisite.id}]`;
 }

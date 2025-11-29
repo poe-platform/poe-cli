@@ -27,6 +27,14 @@ export interface RunAndMatchOutputOptions {
   skipOnDryRun?: boolean;
 }
 
+export function describeCommandExpectation(
+  command: string,
+  args: string[],
+  expectedOutput: string
+): string {
+  return `${renderCommandLine(command, args)} (expecting "${expectedOutput}")`;
+}
+
 export async function runAndMatchOutput(
   context: PrerequisiteContext,
   options: RunAndMatchOutputOptions
@@ -159,7 +167,7 @@ export function createPrerequisiteManager(init: {
         } catch (error) {
           const detail =
             error instanceof Error ? error.message : String(error);
-          failures.push(`${prerequisite.description}: ${detail}`);
+          failures.push(`${formatPrerequisiteLabel(prerequisite)}: ${detail}`);
           hooks?.onFailure?.(prerequisite, error);
         }
       }
@@ -171,6 +179,12 @@ export function createPrerequisiteManager(init: {
       }
     }
   };
+}
+
+function formatPrerequisiteLabel(prerequisite: PrerequisiteDefinition): string {
+  const description = prerequisite.description?.trim();
+  const suffix = description?.length ? ` ${description}` : "";
+  return `[${prerequisite.id}]${suffix}`;
 }
 
 /**

@@ -2,6 +2,7 @@ import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
+  describeCommandExpectation,
   runAndMatchOutput
 } from "../utils/prerequisites.js";
 import {
@@ -74,13 +75,18 @@ function buildClaudeArgs(prompt: string, extraArgs?: string[]): string[] {
 }
 
 function createClaudeCliHealthCheck(): PrerequisiteDefinition {
+  const args = buildClaudeArgs("Output exactly: CLAUDE_CODE_OK");
   return {
     id: "claude-cli-health",
-    description: "Claude CLI health check must succeed",
+    description: describeCommandExpectation(
+      "claude",
+      args,
+      "CLAUDE_CODE_OK"
+    ),
     async run(context) {
       await runAndMatchOutput(context, {
         command: "claude",
-        args: buildClaudeArgs("Output exactly: CLAUDE_CODE_OK"),
+        args,
         expectedOutput: "CLAUDE_CODE_OK"
       });
     }

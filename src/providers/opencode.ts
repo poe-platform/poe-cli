@@ -4,6 +4,7 @@ import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
+  describeCommandExpectation,
   runAndMatchOutput
 } from "../utils/prerequisites.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
@@ -96,17 +97,22 @@ function getModelArgs(model = OPEN_CODE_DEFAULT_MODEL): string[] {
 }
 
 function createOpenCodeHealthCheck(): PrerequisiteDefinition {
+  const args = [
+    ...getModelArgs(),
+    "run",
+    "Output exactly: OPEN_CODE_OK"
+  ];
   return {
     id: "opencode-cli-health",
-    description: "OpenCode CLI health check must succeed",
+    description: describeCommandExpectation(
+      "opencode",
+      args,
+      "OPEN_CODE_OK"
+    ),
     async run(context) {
       await runAndMatchOutput(context, {
         command: "opencode",
-        args: [
-          ...getModelArgs(),
-          "run",
-          "Output exactly: OPEN_CODE_OK"
-        ],
+        args,
         expectedOutput: "OPEN_CODE_OK"
       });
     }
