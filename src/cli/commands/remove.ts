@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
 import type { ProviderContext } from "../service-registry.js";
 import { removeConfiguredService } from "../../services/credentials.js";
-import { createMutationLogger } from "../../services/mutation-hooks.js";
+import { createMutationReporter } from "../../services/mutation-events.js";
 import {
   buildProviderContext,
   createExecutionResources,
@@ -49,7 +49,7 @@ export function registerRemoveCommand(
     adapter,
     resources
   );
-  const mutationLogger = createMutationLogger(resources.logger);
+  const mutationLogger = createMutationReporter(resources.logger);
 
   const payload = await createRemovePayload({
     service,
@@ -76,7 +76,7 @@ export function registerRemoveCommand(
           command: providerContext.command,
           options: payload
         },
-        { hooks: mutationLogger }
+        { observers: mutationLogger }
       );
     }
   );

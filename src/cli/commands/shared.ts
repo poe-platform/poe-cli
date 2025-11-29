@@ -6,12 +6,10 @@ import type {
 } from "../service-registry.js";
 import {
   createLoggingCommandRunner,
-  createHookTracer,
-  normalizeHookPhase,
   type CommandContext
 } from "../context.js";
 import type { ScopedLogger } from "../logger.js";
-import type { HookPhase } from "../../utils/hooks.js";
+import type { CommandCheck } from "../../utils/command-checks.js";
 
 export interface CommandFlags {
   dryRun: boolean;
@@ -62,11 +60,25 @@ export function buildProviderContext(
   const paths = adapter.resolvePaths
     ? adapter.resolvePaths(container.env)
     : {};
+  const runCheck = createCheckRunner(resources);
   return {
     env: container.env,
     paths,
     command: resources.context,
-    logger: resources.logger
+    logger: resources.logger,
+    runCheck
+  };
+}
+
+function createCheckRunner(
+  resources: ExecutionResources
+): (check: CommandCheck) => Promise<void> {
+  return async (check) => {
+    await check.run({
+      isDryRun: resources.logger.context.dryRun,
+      runCommand: resources.context.runCommand,
+      logDryRun: (message) => resources.logger.dryRun(message)
+    });
   };
 }
 
@@ -88,31 +100,6 @@ export async function resolveProviderHandler(
   };
 }
 
-export function registerProviderHooks(
-  adapter: ProviderService,
-  resources: ExecutionResources
-): void {
-  adapter.hooks?.before?.forEach((hook) =>
-    resources.context.hooks.registerBefore(hook)
-  );
-  adapter.hooks?.after?.forEach((hook) =>
-    resources.context.hooks.registerAfter(hook)
-  );
-}
-
-export async function runProviderHooks(
-  adapter: ProviderService,
-  resources: ExecutionResources,
-  phase: HookPhase
-): Promise<void> {
-  const hooks = createHookTracer(phase, resources.logger);
-  if (hooks) {
-    await resources.context.hooks.run(phase, hooks);
-  } else {
-    await resources.context.hooks.run(phase);
-  }
-}
-
 export function resolveServiceAdapter(
   container: CliContainer,
   service: string
@@ -123,5 +110,3 @@ export function resolveServiceAdapter(
   }
   return adapter;
 }
-
-export { normalizeHookPhase };

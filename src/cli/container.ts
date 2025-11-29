@@ -28,7 +28,7 @@ import { createTelemetryClient } from "./telemetry.js";
 import { createDefaultCommandRunner } from "./command-runner.js";
 import type { PromptFn, LoggerFn } from "./types.js";
 import type { HttpClient } from "./http.js";
-import type { CommandRunner } from "../utils/hooks.js";
+import type { CommandRunner } from "../utils/command-checks.js";
 import { getDefaultProviders } from "../providers/index.js";
 
 export interface CliDependencies {

@@ -1,13 +1,13 @@
 import type { ScopedLogger } from "../cli/logger.js";
 import type {
   MutationLogDetails,
-  ServiceMutationHooks,
+  ServiceMutationObservers,
   ServiceMutationOutcome
 } from "./service-manifest.js";
 
-export function createMutationLogger(
+export function createMutationReporter(
   logger: ScopedLogger
-): ServiceMutationHooks {
+): ServiceMutationObservers {
   return {
     onStart(details) {
       logger.verbose(`Starting mutation: ${details.label}`);
@@ -23,29 +23,29 @@ export function createMutationLogger(
   };
 }
 
-export function combineMutationHooks(
-  ...hooks: Array<ServiceMutationHooks | undefined>
-): ServiceMutationHooks | undefined {
-  const active = hooks.filter(
-    (hook): hook is ServiceMutationHooks => hook != null
+export function combineMutationObservers(
+  ...observers: Array<ServiceMutationObservers | undefined>
+): ServiceMutationObservers | undefined {
+  const active = observers.filter(
+    (observer): observer is ServiceMutationObservers => observer != null
   );
   if (active.length === 0) {
     return undefined;
   }
   return {
     onStart(details) {
-      for (const hook of active) {
-        hook.onStart?.(details);
+      for (const observer of active) {
+        observer.onStart?.(details);
       }
     },
     onComplete(details, outcome) {
-      for (const hook of active) {
-        hook.onComplete?.(details, outcome);
+      for (const observer of active) {
+        observer.onComplete?.(details, outcome);
       }
     },
     onError(details, error) {
-      for (const hook of active) {
-        hook.onError?.(details, error);
+      for (const observer of active) {
+        observer.onError?.(details, error);
       }
     }
   };

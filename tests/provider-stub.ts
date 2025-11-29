@@ -33,7 +33,6 @@ export function createProviderStub<
     ...overrides,
     id,
     summary,
-    hooks: overrides.hooks,
     resolvePaths:
       overrides.resolvePaths ?? ((() => ({} as Paths)) as ProviderService<
         Paths,

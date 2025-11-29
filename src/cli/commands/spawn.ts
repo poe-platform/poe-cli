@@ -10,7 +10,7 @@ import {
 ,
   resolveProviderHandler
 } from "./shared.js";
-import type { CommandRunnerResult } from "../../utils/hooks.js";
+import type { CommandRunnerResult } from "../../utils/command-checks.js";
 
 export interface CustomSpawnHandlerContext {
   container: CliContainer;

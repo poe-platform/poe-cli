@@ -109,7 +109,7 @@ describe("remove command", () => {
       name: "test-service",
       label: "Test Service",
       async remove(_context, runOptions) {
-        runOptions?.hooks?.onComplete?.(details, outcome);
+        runOptions?.observers?.onComplete?.(details, outcome);
         return true;
       }
     });

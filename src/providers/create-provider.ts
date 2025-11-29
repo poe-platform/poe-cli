@@ -15,16 +15,9 @@ import {
   runServiceInstall,
   type ServiceInstallDefinition
 } from "../services/service-install.js";
-import type { HookDefinition } from "../utils/hooks.js";
 import type { ProviderVersionResolver } from "./versioned-provider.js";
 
-interface ProviderHooksConfig {
-  before?: HookDefinition[];
-  after?: HookDefinition[];
-}
-
 interface ManifestVersionDefinition<ConfigureOptions, RemoveOptions> {
-  hooks?: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["hooks"];
   configure: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["configure"];
   remove?: ServiceManifestDefinition<ConfigureOptions, RemoveOptions>["remove"];
 }
@@ -46,8 +39,13 @@ interface CreateProviderOptions<
     | ServiceManifestDefinition<ConfigureOptions, RemoveOptions>
     | Record<string, ManifestVersionDefinition<ConfigureOptions, RemoveOptions>>;
   install?: ServiceInstallDefinition;
-  hooks?: ProviderHooksConfig;
   resolvePaths?: (env: CliEnvironment) => TPaths;
+  test?: ProviderService<
+    TPaths,
+    ConfigureOptions,
+    RemoveOptions,
+    SpawnOptions
+  >["test"];
   spawn?: ProviderService<
     TPaths,
     ConfigureOptions,
@@ -95,7 +93,6 @@ export function createProvider<
     branding: options.branding,
     disabled: options.disabled,
     configurePrompts: options.configurePrompts,
-    hooks: options.hooks,
     resolvePaths:
       options.resolvePaths ??
       ((() => ({} as TPaths)) as ProviderService<
@@ -114,6 +111,10 @@ export function createProvider<
 
   if (options.install) {
     provider.install = createInstallRunner(options.install);
+  }
+
+  if (options.test) {
+    provider.test = options.test;
   }
 
   if (options.spawn) {
@@ -159,7 +160,6 @@ function buildManifestEntries<
         ? {
             id: options.id,
             summary: options.summary,
-            hooks: definition.hooks,
             configure: definition.configure,
             remove: definition.remove
           }

@@ -1,6 +1,6 @@
 # Roadmap
 
-- [x] Standardize lifecycle hooks naming across filenames, variables, tests, docs
+- [x] Standardize lifecycle wiring across filenames, variables, tests, docs
 - [x] Model management in constants 
     - list: frontier models (used by opencode in the list)
     - string: default frontier model (used by opencode)
@@ -10,11 +10,16 @@
     - string: default codex model - gpt-5.1-contex
     - no other raw string mentions of models should exist
 - [x] spawn --model <model> cli option, that would be passed through to the agent
-    - claude --model claude-sonnet-4-5
-    - codex --model o3
-    - opencode --model poe/claude-sonnet-4-5
+    - Good: claude --model claude-sonnet-4-5
+    - Good: codex --model o3
+    - Wrong: opencode --model poe/claude-sonnet-4-5
+    - [x] fix the opencode, it shoudld automatically prepend the model poe/ 
 - [x] claude-code has this interactive selection, all configurations should support it, respect the default, but offer options. Based on the model management in constants
+- [] configure should also support --model that would set the model as default
 - [x] github issue resolver
     - [x] it does post some weird comment on the Issue Poe Code bot selected. Remove this comment
     - [x] agent shold get the whole conversation in issue, not just the title/description. Make this a script that will format it
     - [x] add tags model:<model> so the model can be overwritten and passed to agent, optional
+- [x] Move the health check to separate command `test` poe-code test claude-code
+    - remove the concept of lifecycle interceptors altogether
+    - don't overengineer

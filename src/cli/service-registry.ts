@@ -3,7 +3,7 @@ import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
 import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 import type { FileSystem } from "../utils/file-system.js";
-import type { HookDefinition } from "../utils/hooks.js";
+import type { CommandCheck } from "../utils/command-checks.js";
 import type {
   ModelPromptInput,
   ReasoningPromptInput
@@ -31,6 +31,7 @@ export interface ProviderContext<
   paths: TPaths;
   command: CommandContext;
   logger: ScopedLogger;
+  runCheck(check: CommandCheck): Promise<void>;
 }
 
 export interface ServiceExecutionContext<Options> {
@@ -58,10 +59,6 @@ export interface ProviderService<
 > {
   id: string;
   summary: string;
-  hooks?: {
-    before?: HookDefinition[];
-    after?: HookDefinition[];
-  };
   configure(
     context: ServiceExecutionContext<TConfigure>,
     runOptions?: ServiceRunOptions
@@ -81,6 +78,7 @@ export interface ProviderService<
     context: ProviderContext<TPaths>,
     options: TSpawn
   ): Promise<unknown>;
+  test?(context: ProviderContext<TPaths>): Promise<void>;
   resolveVersion?(
     context: ProviderContext<TPaths>
   ): Promise<ProviderVersionResolution<TPaths, TConfigure, TRemove, TSpawn>>;

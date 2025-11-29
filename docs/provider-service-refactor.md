@@ -14,8 +14,8 @@
    - Pass those definitions to `createProvider` so it builds the manifest and surfaces configure/remove without extra wrappers.
 
 2. **Single service entity**
-   - Export exactly one `ProviderService` per provider; eliminate `configureFoo`, `spawnFoo`, `registerFooHooks`, or similar proxy exports.
-   - Keep install/spawn/hook logic colocated with the service so there is no second layer of indirection.
+   - Export exactly one `ProviderService` per provider; eliminate `configureFoo`, `spawnFoo`, or similar proxy exports.
+   - Keep install/spawn/test logic colocated with the service so there is no second layer of indirection.
 
 3. **Shared helpers only when generic**
    - Keep reusable helpers such as chmod mutations or single-quoted path rendering inside `src/providers/provider-helpers.ts`.
@@ -23,4 +23,4 @@
 
 4. **CLI + registry alignment**
    - Make sure CLI commands and the service registry call the provider services directly.
-   - Let the manifest executor surface logging/instrumentation so providers do not replicate boilerplate for hooks or dry-run reporting.
+   - Let the manifest executor surface logging/instrumentation so providers do not replicate boilerplate for diagnostics or dry-run reporting.

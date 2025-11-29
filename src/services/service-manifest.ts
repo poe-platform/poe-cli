@@ -83,10 +83,6 @@ export interface ServiceManifestDefinition<
 > {
   id: string;
   summary: string;
-  hooks?: {
-    before?: string[];
-    after?: string[];
-  };
   configure: ServiceMutation<ConfigureOptions>[];
   remove?: ServiceMutation<RemoveOptions>[];
 }
@@ -97,10 +93,6 @@ export interface ServiceManifest<
 > {
   id: string;
   summary: string;
-  hooks?: {
-    before?: string[];
-    after?: string[];
-  };
   configureMutations: ServiceMutation<ConfigureOptions>[];
   removeMutations?: ServiceMutation<RemoveOptions>[];
   configure(
@@ -147,7 +139,7 @@ export type MutationEffect =
   | "write"
   | "delete";
 
-export interface ServiceMutationHooks {
+export interface ServiceMutationObservers {
   onStart?(details: MutationLogDetails): void;
   onComplete?(
     details: MutationLogDetails,
@@ -419,13 +411,12 @@ export function createServiceManifest<
   return {
     id: definition.id,
     summary: definition.summary,
-    hooks: definition.hooks,
     configureMutations,
     removeMutations,
     async configure(context, runOptions) {
       await runMutations(configureMutations, context, {
         trackChanges: false,
-        hooks: runOptions?.hooks,
+        observers: runOptions?.observers,
         manifestId: definition.id
       });
     },
@@ -435,7 +426,7 @@ export function createServiceManifest<
       }
       return runMutations(removeMutations, context, {
         trackChanges: true,
-        hooks: runOptions?.hooks,
+        observers: runOptions?.observers,
         manifestId: definition.id
       });
     }
@@ -447,7 +438,7 @@ async function runMutations<Options>(
   context: ServiceExecutionContext<Options>,
   options: {
     trackChanges: boolean;
-    hooks?: ServiceMutationHooks;
+    observers?: ServiceMutationObservers;
     manifestId: string;
   }
 ): Promise<boolean> {
@@ -457,7 +448,7 @@ async function runMutations<Options>(
       mutation,
       context,
       options.manifestId,
-      options.hooks
+      options.observers
     );
     if (options.trackChanges && changed) {
       touched = true;
@@ -470,7 +461,7 @@ async function applyMutation<Options>(
   mutation: ServiceMutation<Options>,
   context: ServiceExecutionContext<Options>,
   manifestId: string,
-  hooks?: ServiceMutationHooks
+  observers?: ServiceMutationObservers
 ): Promise<boolean> {
   switch (mutation.kind) {
     case "ensureDirectory": {
@@ -481,11 +472,11 @@ async function applyMutation<Options>(
         targetPath,
         context
       );
-      hooks?.onStart?.(details);
+      observers?.onStart?.(details);
       try {
         const existed = await pathExists(context.fs, targetPath);
         await context.fs.mkdir(targetPath, { recursive: true });
-        hooks?.onComplete?.(details, {
+        observers?.onComplete?.(details, {
           changed: !existed,
           effect: "mkdir",
           detail: existed ? "noop" : "create"
@@ -493,7 +484,7 @@ async function applyMutation<Options>(
         flushCommandDryRun(context);
         return !existed;
       } catch (error) {
-        hooks?.onError?.(details, error);
+        observers?.onError?.(details, error);
         throw error;
       }
     }
@@ -508,17 +499,17 @@ async function applyMutation<Options>(
         targetPath,
         context
       );
-      hooks?.onStart?.(details);
+      observers?.onStart?.(details);
       try {
         const backupPath = await createBackup(context.fs, targetPath, timestamp);
-        hooks?.onComplete?.(details, {
+        observers?.onComplete?.(details, {
           changed: backupPath != null,
           effect: backupPath ? "copy" : "none",
           detail: backupPath ? "backup" : "noop"
         });
         flushCommandDryRun(context);
       } catch (error) {
-        hooks?.onError?.(details, error);
+        observers?.onError?.(details, error);
         throw error;
       }
       return false;
@@ -538,18 +529,18 @@ async function applyMutation<Options>(
         targetPath,
         context
       );
-      hooks?.onStart?.(details);
+      observers?.onStart?.(details);
       try {
         const existed = await pathExists(context.fs, targetPath);
         await context.fs.writeFile(targetPath, rendered, { encoding: "utf8" });
-        hooks?.onComplete?.(details, {
+        observers?.onComplete?.(details, {
           changed: true,
           effect: "write",
           detail: existed ? "update" : "create"
         });
         flushCommandDryRun(context);
       } catch (error) {
-        hooks?.onError?.(details, error);
+        observers?.onError?.(details, error);
         throw error;
       }
       return true;
@@ -562,7 +553,7 @@ async function applyMutation<Options>(
         targetPath,
         context
       );
-      hooks?.onStart?.(details);
+      observers?.onStart?.(details);
       try {
         const raw = await context.fs.readFile(targetPath, "utf8");
         const trimmed = raw.trim();
@@ -570,7 +561,7 @@ async function applyMutation<Options>(
           mutation.whenContentMatches &&
           !mutation.whenContentMatches.test(trimmed)
         ) {
-          hooks?.onComplete?.(details, {
+          observers?.onComplete?.(details, {
             changed: false,
             effect: "none",
             detail: "noop"
@@ -579,7 +570,7 @@ async function applyMutation<Options>(
           return false;
         }
         if (mutation.whenEmpty && trimmed.length > 0) {
-          hooks?.onComplete?.(details, {
+          observers?.onComplete?.(details, {
             changed: false,
             effect: "none",
             detail: "noop"
@@ -588,7 +579,7 @@ async function applyMutation<Options>(
           return false;
         }
         await context.fs.unlink(targetPath);
-        hooks?.onComplete?.(details, {
+        observers?.onComplete?.(details, {
           changed: true,
           effect: "delete",
           detail: "delete"
@@ -597,7 +588,7 @@ async function applyMutation<Options>(
         return true;
       } catch (error) {
         if (isNotFound(error)) {
-          hooks?.onComplete?.(details, {
+          observers?.onComplete?.(details, {
             changed: false,
             effect: "none",
             detail: "noop"
@@ -605,7 +596,7 @@ async function applyMutation<Options>(
           flushCommandDryRun(context);
           return false;
         }
-        hooks?.onError?.(details, error);
+        observers?.onError?.(details, error);
         throw error;
       }
     }
@@ -618,7 +609,7 @@ async function applyMutation<Options>(
         targetPath,
         context
       );
-      hooks?.onStart?.(details);
+      observers?.onStart?.(details);
       try {
         const result = await mutation.transform({
           content: current,
@@ -630,11 +621,11 @@ async function applyMutation<Options>(
           previousContent: current,
           result
         });
-        hooks?.onComplete?.(details, transformOutcome);
+        observers?.onComplete?.(details, transformOutcome);
         flushCommandDryRun(context);
         return transformOutcome.changed;
       } catch (error) {
-        hooks?.onError?.(details, error);
+        observers?.onError?.(details, error);
         throw error;
       }
     }
@@ -892,7 +883,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 export interface ServiceRunOptions {
-  hooks?: ServiceMutationHooks;
+  observers?: ServiceMutationObservers;
 }
 
 export type ServiceMutationKind = ServiceMutation<unknown>["kind"];

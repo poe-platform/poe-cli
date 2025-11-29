@@ -1,4 +1,7 @@
-import type { CommandRunner, CommandRunnerResult } from "./hooks.js";
+import type {
+  CommandRunner,
+  CommandRunnerResult
+} from "./command-checks.js";
 import { coerce } from "semver";
 
 export interface BinaryVersionDetectionResult {

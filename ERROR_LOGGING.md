@@ -117,15 +117,6 @@ throw new CommandExecutionError("Command failed", {
 });
 ```
 
-#### `HookError`
-Hook execution failures.
-
-```typescript
-throw new HookError("Hooks not met", {
-  hooks: ["node", "npm"]
-});
-```
-
 #### `ServiceError`
 Service provider errors.
 

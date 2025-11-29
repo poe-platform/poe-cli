@@ -15,14 +15,17 @@ COMMAND_GROUPS: List[List[str]] = [
   [
     "poe-code install claude-code",
     "poe-code configure claude-code --yes",
+    "poe-code test claude-code",
   ],
   [
     "poe-code install codex",
     "poe-code configure codex --yes",
+    "poe-code test codex",
   ],
   [
     "poe-code install opencode",
     "poe-code configure opencode --yes",
+    "poe-code test opencode",
   ],
 ]
 

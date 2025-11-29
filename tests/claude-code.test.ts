@@ -3,7 +3,6 @@ import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as claudeService from "../src/providers/claude-code.js";
-import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
@@ -11,6 +10,7 @@ import {
   CLAUDE_CODE_VARIANTS,
   DEFAULT_CLAUDE_CODE_MODEL
 } from "../src/cli/constants.js";
+import { createLoggerFactory } from "../src/cli/logger.js";
 
 const resolveVariantModel = (
   variant: keyof typeof CLAUDE_CODE_VARIANTS
@@ -24,13 +24,6 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
   const fs = createFsFromVolume(vol);
   return { fs: fs.promises as unknown as FileSystem, vol };
-}
-
-function registerAfterHooks(
-  service: typeof claudeService.claudeCodeService,
-  manager: ReturnType<typeof createHookManager>
-): void {
-  service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
 
 describe("claude-code service", () => {
@@ -54,6 +47,39 @@ describe("claude-code service", () => {
       homeDir: home
     });
   });
+
+  function createProviderTestContext(
+    runCommand: ReturnType<typeof vi.fn>,
+    options: { dryRun?: boolean } = {}
+  ): { context: ProviderContext; logs: string[] } {
+    const logs: string[] = [];
+    const logger = createLoggerFactory((message) => {
+      logs.push(message);
+    }).create({
+      dryRun: options.dryRun ?? false,
+      verbose: true,
+      scope: "test:claude"
+    });
+
+    const context = {
+      env,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger,
+      async runCheck(check) {
+        await check.run({
+          isDryRun: logger.context.dryRun,
+          runCommand,
+          logDryRun: (message) => logger.dryRun(message)
+        });
+      }
+    } as ProviderContext;
+
+    return { context, logs };
+  }
 
   type ConfigureOptions = Parameters<
     typeof claudeService.claudeCodeService.configure
@@ -331,6 +357,20 @@ describe("claude-code service", () => {
         dryRun: vi.fn(),
         verbose: vi.fn(),
         child: vi.fn()
+      },
+      async runCheck(check) {
+        await check.run({
+          isDryRun: false,
+          runCommand,
+          logDryRun: () => {}
+        });
+      },
+      async runCheck(check) {
+        await check.run({
+          isDryRun: false,
+          runCommand,
+          logDryRun: () => {}
+        });
       }
     } as unknown as ProviderContext;
 
@@ -414,62 +454,46 @@ describe("claude-code service", () => {
     ]);
   });
 
-  it("registers hook checks for the Claude CLI", async () => {
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const runCommand = vi.fn(async (command: string, args: string[]) => {
-      calls.push({ command, args });
-      if (command === "claude") {
-        return { stdout: "CLAUDE_CODE_OK\n", stderr: "", exitCode: 0 };
-      }
-      return { stdout: "", stderr: "", exitCode: 0 };
-    });
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+  it("runs the Claude CLI health check when invoking the provider test", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "CLAUDE_CODE_OK\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(claudeService.claudeCodeService, manager);
-    await manager.run("after");
+    await claudeService.claudeCodeService.test?.(context);
 
-    expect(calls.map((entry) => entry.command)).toEqual(["claude"]);
-    expect(calls[0]).toEqual({
-      command: "claude",
-      args: [
-        "-p",
-        "Output exactly: CLAUDE_CODE_OK",
-        "--model",
-        DEFAULT_CLAUDE_CODE_MODEL,
-        "--allowedTools",
-        "Bash,Read",
-        "--permission-mode",
-        "acceptEdits",
-        "--output-format",
-        "text"
-      ]
-    });
+    expect(runCommand).toHaveBeenCalledWith("claude", [
+      "-p",
+      "Output exactly: CLAUDE_CODE_OK",
+      "--model",
+      DEFAULT_CLAUDE_CODE_MODEL,
+      "--allowedTools",
+      "Bash,Read",
+      "--permission-mode",
+      "acceptEdits",
+      "--output-format",
+      "text"
+    ]);
   });
 
   it("skips the Claude health check during dry runs", async () => {
     const runCommand = vi.fn();
-    const logDryRun = vi.fn();
-    const manager = createHookManager({
-      isDryRun: true,
-      runCommand,
-      logDryRun
+    const { context, logs } = createProviderTestContext(runCommand, {
+      dryRun: true
     });
 
-    registerAfterHooks(claudeService.claudeCodeService, manager);
-    await manager.run("after");
+    await claudeService.claudeCodeService.test?.(context);
 
     expect(runCommand).not.toHaveBeenCalled();
-    expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `claude -p "Output exactly: CLAUDE_CODE_OK" --model ${DEFAULT_CLAUDE_CODE_MODEL}`
+    expect(
+      logs.find((line) =>
+        line.includes(
+          `claude -p "Output exactly: CLAUDE_CODE_OK" --model ${DEFAULT_CLAUDE_CODE_MODEL}`
+        )
       )
-    );
-    expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining('expecting "CLAUDE_CODE_OK"')
-    );
+    ).toBeTruthy();
   });
 
   it("includes stdout and stderr when the Claude health check command fails", async () => {
@@ -478,23 +502,11 @@ describe("claude-code service", () => {
       stderr: "FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(claudeService.claudeCodeService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain("stdout:\nFAIL_STDOUT\n");
-    expect(caught?.message).toContain("stderr:\nFAIL_STDERR\n");
+    await expect(
+      claudeService.claudeCodeService.test?.(context)
+    ).rejects.toThrow(/FAIL_STDOUT/);
   });
 
   it("includes stdout and stderr when the Claude health check output is unexpected", async () => {
@@ -503,24 +515,11 @@ describe("claude-code service", () => {
       stderr: "WARN\n",
       exitCode: 0
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(claudeService.claudeCodeService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain('expected "CLAUDE_CODE_OK" but received "WRONG"');
-    expect(caught?.message).toContain("stdout:\nWRONG\n");
-    expect(caught?.message).toContain("stderr:\nWARN\n");
+    await expect(
+      claudeService.claudeCodeService.test?.(context)
+    ).rejects.toThrow(/expected "CLAUDE_CODE_OK" but received "WRONG"/i);
   });
 
   it("falls back to Windows path lookup when which is unavailable", async () => {

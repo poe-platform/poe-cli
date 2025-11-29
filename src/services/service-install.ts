@@ -1,4 +1,8 @@
-import type { CommandRunner, HookContext, HookDefinition } from "../utils/hooks.js";
+import type {
+  CommandRunner,
+  CommandCheckContext,
+  CommandCheck
+} from "../utils/command-checks.js";
 
 export interface InstallContext {
   isDryRun: boolean;
@@ -15,9 +19,9 @@ export interface InstallCommand {
 export interface ServiceInstallDefinition {
   id: string;
   summary: string;
-  check: HookDefinition;
+  check: CommandCheck;
   steps: InstallCommand[];
-  postChecks?: HookDefinition[];
+  postChecks?: CommandCheck[];
   successMessage?: string;
 }
 
@@ -25,7 +29,7 @@ export async function runServiceInstall(
   definition: ServiceInstallDefinition,
   context: InstallContext
 ): Promise<boolean> {
-  const checkContext: HookContext = {
+  const checkContext: CommandCheckContext = {
     isDryRun: context.isDryRun,
     runCommand: context.runCommand
   };

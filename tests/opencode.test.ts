@@ -8,21 +8,15 @@ import {
   PROVIDER_NAME
 } from "../src/cli/constants.js";
 import * as opencodeService from "../src/providers/opencode.js";
-import { createHookManager } from "../src/utils/hooks.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
+import type { ProviderContext } from "../src/cli/service-registry.js";
+import { createLoggerFactory } from "../src/cli/logger.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
   const fs = createFsFromVolume(vol);
   return { fs: fs.promises as unknown as FileSystem, vol };
-}
-
-function registerAfterHooks(
-  service: typeof opencodeService.openCodeService,
-  manager: ReturnType<typeof createHookManager>
-): void {
-  service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
 
 const withProviderPrefix = (model: string): string =>
@@ -57,6 +51,39 @@ describe("opencode service", () => {
     env = createCliEnvironment({ cwd: homeDir, homeDir });
   });
 
+  function createProviderTestContext(
+    runCommand: ReturnType<typeof vi.fn>,
+    options: { dryRun?: boolean } = {}
+  ): { context: ProviderContext; logs: string[] } {
+    const logs: string[] = [];
+    const logger = createLoggerFactory((message) => {
+      logs.push(message);
+    }).create({
+      dryRun: options.dryRun ?? false,
+      verbose: true,
+      scope: "test:opencode"
+    });
+
+    const context = {
+      env,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger,
+      async runCheck(check) {
+        await check.run({
+          isDryRun: logger.context.dryRun,
+          runCommand,
+          logDryRun: (message) => logger.dryRun(message)
+        });
+      }
+    } as ProviderContext;
+
+    return { context, logs };
+  }
+
   type ConfigureOptions = Parameters<
     typeof opencodeService.openCodeService.configure
   >[0]["options"];
@@ -67,6 +94,17 @@ describe("opencode service", () => {
     env,
     apiKey: "sk-test",
     model: DEFAULT_FRONTIER_MODEL,
+    ...overrides
+  });
+
+  type RemoveOptions = Parameters<
+    typeof opencodeService.openCodeService.remove
+  >[0]["options"];
+
+  const buildRemoveOptions = (
+    overrides: Partial<RemoveOptions> = {}
+  ): RemoveOptions => ({
+    env,
     ...overrides
   });
 
@@ -265,46 +303,79 @@ describe("opencode service", () => {
     ]);
   });
 
-  it("registers hook checks for the OpenCode CLI", async () => {
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const runCommand = vi.fn(async (command: string, args: string[]) => {
-      calls.push({ command, args });
-      if (command === "opencode") {
-        return { stdout: "OPEN_CODE_OK\n", stderr: "", exitCode: 0 };
+  it("avoids duplicating the provider prefix for prefixed models", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "opencode-output\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const prefixed = withProviderPrefix("Custom-Model");
+    const providerContext = {
+      env: {} as any,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: { dryRun: false, verbose: true }
+      },
+      async runCheck(check) {
+        await check.run({
+          isDryRun: false,
+          runCommand,
+          logDryRun: () => {}
+        });
       }
-      return { stdout: "", stderr: "", exitCode: 0 };
-    });
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
+    } as ProviderContext;
+
+    await opencodeService.openCodeService.spawn(providerContext, {
+      prompt: "Describe the change",
+      model: prefixed
     });
 
-    registerAfterHooks(opencodeService.openCodeService, manager);
-    await manager.run("after");
+    expect(runCommand).toHaveBeenCalledWith("opencode", [
+      "--model",
+      prefixed,
+      "run",
+      "Describe the change"
+    ]);
+  });
 
-    expect(calls.map((entry) => entry.command)).toEqual(["opencode"]);
-    expect(calls[0]).toEqual({
-      command: "opencode",
-      args: [
-        "--model",
-        DEFAULT_PROVIDER_MODEL,
-        "run",
-        "Output exactly: OPEN_CODE_OK"
-      ]
-    });
+  it("runs the OpenCode health check when test is invoked", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "OPEN_CODE_OK\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const { context } = createProviderTestContext(runCommand);
+
+    await opencodeService.openCodeService.test?.(context);
+
+    expect(runCommand).toHaveBeenCalledWith("opencode", [
+      "--model",
+      DEFAULT_PROVIDER_MODEL,
+      "run",
+      "Output exactly: OPEN_CODE_OK"
+    ]);
   });
 
   it("skips the OpenCode health check during dry runs", async () => {
     const runCommand = vi.fn();
-    const manager = createHookManager({
-      isDryRun: true,
-      runCommand
+    const { context, logs } = createProviderTestContext(runCommand, {
+      dryRun: true
     });
 
-    registerAfterHooks(opencodeService.openCodeService, manager);
-    await manager.run("after");
+    await opencodeService.openCodeService.test?.(context);
 
     expect(runCommand).not.toHaveBeenCalled();
+    expect(
+      logs.find((line) =>
+        line.includes(
+          `opencode --model ${DEFAULT_PROVIDER_MODEL} run "Output exactly: OPEN_CODE_OK"`
+        )
+      )
+    ).toBeTruthy();
   });
 
   it("includes stdout and stderr when the OpenCode health check command fails", async () => {
@@ -313,23 +384,11 @@ describe("opencode service", () => {
       stderr: "OPEN_FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(opencodeService.openCodeService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain("stdout:\nOPEN_FAIL_STDOUT\n");
-    expect(caught?.message).toContain("stderr:\nOPEN_FAIL_STDERR\n");
+    await expect(
+      opencodeService.openCodeService.test?.(context)
+    ).rejects.toThrow(/OPEN_FAIL_STDOUT/);
   });
 
   it("includes stdout and stderr when the OpenCode health check output is unexpected", async () => {
@@ -338,23 +397,10 @@ describe("opencode service", () => {
       stderr: "ALERT\n",
       exitCode: 0
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(opencodeService.openCodeService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain('expected "OPEN_CODE_OK" but received "MISCONFIG"');
-    expect(caught?.message).toContain("stdout:\nMISCONFIG\n");
-    expect(caught?.message).toContain("stderr:\nALERT\n");
+    await expect(
+      opencodeService.openCodeService.test?.(context)
+    ).rejects.toThrow(/expected "OPEN_CODE_OK" but received "MISCONFIG"/i);
   });
 });

@@ -7,18 +7,16 @@ import {
   type CommandFlags,
   resolveCommandFlags,
   resolveServiceAdapter,
-  resolveProviderHandler,
-  registerProviderHooks,
-  runProviderHooks
+  resolveProviderHandler
 } from "./shared.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
 import { saveConfiguredService } from "../../services/credentials.js";
 import {
-  combineMutationHooks,
-  createMutationLogger
-} from "../../services/mutation-hooks.js";
-import type { ServiceMutationHooks } from "../../services/service-manifest.js";
+  combineMutationObservers,
+  createMutationReporter
+} from "../../services/mutation-events.js";
+import type { ServiceMutationObservers } from "../../services/service-manifest.js";
 import type {
   ModelPromptInput,
   ReasoningPromptInput
@@ -91,11 +89,9 @@ export async function executeConfigure(
       throw new Error(`Service "${service}" does not support configure.`);
     }
     const resolution = await resolveProviderHandler(entry, providerContext);
-    registerProviderHooks(resolution.adapter, resources);
-    await runProviderHooks(resolution.adapter, resources, "before");
     const tracker = createMutationTracker();
-    const mutationLogger = createMutationLogger(resources.logger);
-    const hooks = combineMutationHooks(tracker.hooks, mutationLogger);
+    const mutationLogger = createMutationReporter(resources.logger);
+    const observers = combineMutationObservers(tracker.observers, mutationLogger);
     await resolution.adapter.configure(
       {
         fs: providerContext.command.fs,
@@ -103,13 +99,12 @@ export async function executeConfigure(
         command: providerContext.command,
         options: payload
       },
-      hooks
+      observers
         ? {
-            hooks
+            observers
           }
         : undefined
     );
-    await runProviderHooks(resolution.adapter, resources, "after");
 
     if (!flags.dryRun) {
       await saveConfiguredService({
@@ -219,11 +214,11 @@ async function createConfigurePayload(
 }
 
 function createMutationTracker(): {
-  hooks: ServiceMutationHooks;
+  observers: ServiceMutationObservers;
   files(): string[];
 } {
   const targets = new Set<string>();
-  const hooks: ServiceMutationHooks = {
+  const observers: ServiceMutationObservers = {
     onComplete(details, outcome) {
       if (!outcome.changed || !details.targetPath) {
         return;
@@ -236,7 +231,7 @@ function createMutationTracker(): {
   };
 
   return {
-    hooks,
+    observers,
     files() {
       return Array.from(targets).sort();
     }

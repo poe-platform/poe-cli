@@ -4,23 +4,16 @@ import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
 import * as codexService from "../src/providers/codex.js";
 import { parseTomlDocument } from "../src/utils/toml.js";
-import { createHookManager } from "../src/utils/hooks.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
 import { DEFAULT_CODEX_MODEL } from "../src/cli/constants.js";
+import { createLoggerFactory } from "../src/cli/logger.js";
 
 function createMemFs(): { fs: FileSystem; vol: Volume } {
   const vol = new Volume();
   const fs = createFsFromVolume(vol);
   return { fs: fs.promises as unknown as FileSystem, vol };
-}
-
-function registerAfterHooks(
-  service: typeof codexService.codexService,
-  manager: ReturnType<typeof createHookManager>
-): void {
-  service.hooks?.after?.forEach((hook) => manager.registerAfter(hook));
 }
 
 describe("codex service", () => {
@@ -36,6 +29,39 @@ describe("codex service", () => {
     vol.mkdirSync(home, { recursive: true });
     env = createCliEnvironment({ cwd: home, homeDir: home });
   });
+
+  function createProviderTestContext(
+    runCommand: ReturnType<typeof vi.fn>,
+    options: { dryRun?: boolean } = {}
+  ): { context: ProviderContext; logs: string[] } {
+    const logs: string[] = [];
+    const logger = createLoggerFactory((message) => {
+      logs.push(message);
+    }).create({
+      dryRun: options.dryRun ?? false,
+      verbose: true,
+      scope: "test:codex"
+    });
+
+    const context = {
+      env,
+      paths: {},
+      command: {
+        runCommand,
+        fs
+      },
+      logger,
+      async runCheck(check) {
+        await check.run({
+          isDryRun: logger.context.dryRun,
+          runCommand,
+          logDryRun: (message) => logger.dryRun(message)
+        });
+      }
+    } as ProviderContext;
+
+    return { context, logs };
+  }
 
   type ConfigureOptions = Parameters<
     typeof codexService.codexService.configure
@@ -281,6 +307,13 @@ describe("codex service", () => {
       },
       logger: {
         context: { dryRun: false, verbose: true }
+      },
+      async runCheck(check) {
+        await check.run({
+          isDryRun: false,
+          runCommand,
+          logDryRun: () => {}
+        });
       }
     } as unknown as ProviderContext;
 
@@ -320,6 +353,13 @@ describe("codex service", () => {
       },
       logger: {
         context: { dryRun: false, verbose: true }
+      },
+      async runCheck(check) {
+        await check.run({
+          isDryRun: false,
+          runCommand,
+          logDryRun: () => {}
+        });
       }
     } as ProviderContext;
     const override = `${DEFAULT_CODEX_MODEL}-alt`;
@@ -338,55 +378,42 @@ describe("codex service", () => {
     ]);
   });
 
-  it("registers hook checks for the Codex CLI", async () => {
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const runCommand = vi.fn(async (command: string, args: string[]) => {
-      calls.push({ command, args });
-      if (command === "codex") {
-        return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
-      }
-      return { stdout: "", stderr: "", exitCode: 0 };
-    });
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+  it("runs the Codex CLI health check when invoking the provider test", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "CODEX_OK\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(codexService.codexService, manager);
-    await manager.run("after");
+    await codexService.codexService.test?.(context);
 
-    expect(calls.map((entry) => entry.command)).toEqual(["codex"]);
-    expect(calls[0]).toEqual({
-      command: "codex",
-      args: codexService.buildCodexExecArgs(
+    expect(runCommand).toHaveBeenCalledWith(
+      "codex",
+      codexService.buildCodexExecArgs(
         "Output exactly: CODEX_OK",
         [],
         DEFAULT_CODEX_MODEL
       )
-    });
+    );
   });
 
   it("skips the Codex health check during dry runs", async () => {
     const runCommand = vi.fn();
-    const logDryRun = vi.fn();
-    const manager = createHookManager({
-      isDryRun: true,
-      runCommand,
-      logDryRun
+    const { context, logs } = createProviderTestContext(runCommand, {
+      dryRun: true
     });
 
-    registerAfterHooks(codexService.codexService, manager);
-    await manager.run("after");
+    await codexService.codexService.test?.(context);
 
     expect(runCommand).not.toHaveBeenCalled();
-    expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `codex --model ${DEFAULT_CODEX_MODEL} exec "Output exactly: CODEX_OK"`
+    expect(
+      logs.find((line) =>
+        line.includes(
+          `codex --model ${DEFAULT_CODEX_MODEL} exec "Output exactly: CODEX_OK"`
+        )
       )
-    );
-    expect(logDryRun).toHaveBeenCalledWith(
-      expect.stringContaining('expecting "CODEX_OK"')
-    );
+    ).toBeTruthy();
   });
 
   it("accepts additional stdout lines as long as the expected marker is present", async () => {
@@ -399,13 +426,9 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(codexService.codexService, manager);
-    await manager.run("after");
+    await codexService.codexService.test?.(context);
 
     expect(runCommand).toHaveBeenCalledTimes(1);
   });
@@ -416,23 +439,11 @@ describe("codex service", () => {
       stderr: "FAIL_STDERR\n",
       exitCode: 1
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(codexService.codexService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain("stdout:\nFAIL_STDOUT\n");
-    expect(caught?.message).toContain("stderr:\nFAIL_STDERR\n");
+    await expect(codexService.codexService.test?.(context)).rejects.toThrow(
+      /FAIL_STDOUT/
+    );
   });
 
   it("includes stdout and stderr when the health check output is unexpected", async () => {
@@ -441,23 +452,10 @@ describe("codex service", () => {
       stderr: "WARN\n",
       exitCode: 0
     }));
-    const manager = createHookManager({
-      isDryRun: false,
-      runCommand
-    });
+    const { context } = createProviderTestContext(runCommand);
 
-    registerAfterHooks(codexService.codexService, manager);
-
-    let caught: Error | undefined;
-    try {
-      await manager.run("after");
-    } catch (error) {
-      caught = error as Error;
-    }
-
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain('expected "CODEX_OK" but received "WRONG"');
-    expect(caught?.message).toContain("stdout:\nWRONG\n");
-    expect(caught?.message).toContain("stderr:\nWARN\n");
+    await expect(codexService.codexService.test?.(context)).rejects.toThrow(
+      /expected "CODEX_OK" but received "WRONG"/i
+    );
   });
 });

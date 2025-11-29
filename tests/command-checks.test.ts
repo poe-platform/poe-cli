@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationHook
-} from "../src/utils/hooks.js";
+  createCommandExpectationCheck
+} from "../src/utils/command-checks.js";
 
 function createRunner(responses: Record<string, { stdout?: string; stderr?: string; exitCode: number }>) {
   return vi.fn(async (command: string, args: string[]) => {
@@ -46,9 +46,9 @@ describe("createBinaryExistsCheck", () => {
   });
 });
 
-describe("createCommandExpectationHook", () => {
+describe("createCommandExpectationCheck", () => {
   it("derives a description based on the command and expected output", () => {
-    const check = createCommandExpectationHook({
+    const check = createCommandExpectationCheck({
       id: "demo-health",
       command: "demo",
       args: ["run", 'Output exactly: "DEMO_OK"'],

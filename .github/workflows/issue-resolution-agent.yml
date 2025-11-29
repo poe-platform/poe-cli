@@ -49,9 +49,6 @@ jobs:
             claude-code|codex|opencode)
               poe-code install "$SERVICE" --yes
               ;;
-            "poe-code agent")
-              echo "Skipping install for $SERVICE"
-              ;;
             *)
               echo "::error::Unsupported provider $SERVICE"
               exit 1
@@ -66,8 +63,17 @@ jobs:
             claude-code|codex|opencode)
               poe-code configure "$SERVICE" --yes
               ;;
-            "poe-code agent")
-              poe-code configure "poe-code agent" --yes
+            *)
+              echo "::error::Unsupported provider $SERVICE"
+              exit 1
+              ;;
+          esac
+      - name: Test provider
+        run: |-
+          SERVICE="${{ steps.provider.outputs.service }}"
+          case "$SERVICE" in
+            claude-code|codex|opencode)
+              poe-code test "$SERVICE"
               ;;
             *)
               echo "::error::Unsupported provider $SERVICE"

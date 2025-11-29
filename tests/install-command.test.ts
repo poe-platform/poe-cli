@@ -27,7 +27,7 @@ function createBaseProgram(): Command {
 }
 
 describe("install command", () => {
-  it("installs a registered provider without running hooks", async () => {
+  it("installs a registered provider", async () => {
     const fs = createMemFs();
     const logs: string[] = [];
     const container = createCliContainer({
@@ -45,17 +45,6 @@ describe("install command", () => {
       label: "Test Service",
       resolvePaths() {
         return {};
-      },
-      hooks: {
-        after: [
-          {
-            id: "noop",
-            description: "Should not run during install",
-            async run() {
-              callOrder.push("hook");
-            }
-          }
-        ]
       },
       async install() {
         callOrder.push("install");

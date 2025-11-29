@@ -5,8 +5,8 @@ import { createProgram } from "../src/cli/program.js";
 import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
 import { createCliContainer, type CliDependencies } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { CommandRunner, CommandRunnerResult } from "../src/utils/hooks.js";
-import { FRONTIER_MODELS } from "../src/cli/constants.js";
+import type { CommandRunner, CommandRunnerResult } from "../src/utils/command-checks.js";
+import { FRONTIER_MODELS, PROVIDER_NAME } from "../src/cli/constants.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";
@@ -319,6 +319,45 @@ describe("spawn command", () => {
       {
         command: "opencode",
         args: ["--model", `poe/${override}`, "run", "List files"]
+      }
+    ]);
+    expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);
+  });
+
+  it("avoids duplicating provider prefixes for CLI model overrides", async () => {
+    const logs: string[] = [];
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "OpenCode output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    const prefixed = `${PROVIDER_NAME}/${FRONTIER_MODELS[0]!}`;
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "--model",
+      prefixed,
+      "opencode",
+      "List files"
+    ]);
+
+    expect(calls).toEqual([
+      { command: "opencode", args: ["--version"] },
+      {
+        command: "opencode",
+        args: ["--model", prefixed, "run", "List files"]
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);

@@ -5,7 +5,7 @@ export type ProviderOperation =
   | "configure"
   | "remove"
   | "spawn"
-  | "hooks";
+  | "test";
 
 export type TelemetryStatus = "success" | "failure";
 

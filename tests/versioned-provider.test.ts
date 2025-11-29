@@ -129,7 +129,14 @@ describe("versioned manifest providers", () => {
       env,
       paths: {},
       command,
-      logger
+      logger,
+      async runCheck(check) {
+        await check.run({
+          isDryRun: logger.context.dryRun,
+          runCommand: command.runCommand,
+          logDryRun: (message) => logger.dryRun(message)
+        });
+      }
     };
 
     const version = await resolver(context);

@@ -118,27 +118,6 @@ export class CommandExecutionError extends CliError {
 }
 
 /**
- * Hook execution failures
- */
-export class HookError extends CliError {
-  public readonly hooks?: string[];
-
-  constructor(
-    message: string,
-    options?: {
-      hooks?: string[];
-      context?: ErrorContext;
-    }
-  ) {
-    super(message, {
-      ...options?.context,
-      failedHooks: options?.hooks
-    });
-    this.hooks = options?.hooks;
-  }
-}
-
-/**
  * Service provider errors (MCP, Codex, etc.)
  */
 export class ServiceError extends CliError {

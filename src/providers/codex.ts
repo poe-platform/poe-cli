@@ -1,9 +1,9 @@
 import type { CliEnvironment } from "../cli/environment.js";
-import type { HookDefinition } from "../utils/hooks.js";
+import type { CommandCheck } from "../utils/command-checks.js";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationHook
-} from "../utils/hooks.js";
+  createCommandExpectationCheck
+} from "../utils/command-checks.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
@@ -145,7 +145,7 @@ export function buildCodexExecArgs(
   return [...modelArgs, "exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
-function createCodexVersionCheck(): HookDefinition {
+function createCodexVersionCheck(): CommandCheck {
   return {
     id: "codex-cli-version",
     async run({ runCommand }) {
@@ -159,13 +159,13 @@ function createCodexVersionCheck(): HookDefinition {
   };
 }
 
-function createCodexCliHealthCheck(): HookDefinition {
+function createCodexCliHealthCheck(): CommandCheck {
   const args = buildCodexExecArgs(
     "Output exactly: CODEX_OK",
     [],
     DEFAULT_CODEX_MODEL
   );
-  return createCommandExpectationHook({
+  return createCommandExpectationCheck({
     id: "codex-cli-health",
     command: "codex",
     args,
@@ -203,8 +203,8 @@ export const codexService = createProvider<
       defaultValue: DEFAULT_REASONING
     }
   },
-  hooks: {
-    after: [createCodexCliHealthCheck()]
+  test(context) {
+    return context.runCheck(createCodexCliHealthCheck());
   },
   manifest: {
     "*": {

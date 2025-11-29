@@ -1,8 +1,8 @@
-import type { HookDefinition } from "../utils/hooks.js";
+import type { CommandCheck } from "../utils/command-checks.js";
 import {
   createBinaryExistsCheck,
-  createCommandExpectationHook
-} from "../utils/hooks.js";
+  createCommandExpectationCheck
+} from "../utils/command-checks.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -70,13 +70,13 @@ function buildClaudeArgs(
   return ["-p", prompt, ...modelArgs, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
 
-function createClaudeCliHealthCheck(): HookDefinition {
+function createClaudeCliHealthCheck(): CommandCheck {
   const args = buildClaudeArgs(
     "Output exactly: CLAUDE_CODE_OK",
     undefined,
     DEFAULT_CLAUDE_CODE_MODEL
   );
-  return createCommandExpectationHook({
+  return createCommandExpectationCheck({
     id: "claude-cli-health",
     command: "claude",
     args,
@@ -110,8 +110,8 @@ export const claudeCodeService = createProvider<
       }))
     }
   },
-  hooks: {
-    after: [createClaudeCliHealthCheck()]
+  test(context) {
+    return context.runCheck(createClaudeCliHealthCheck());
   },
   manifest: {
     "*": {

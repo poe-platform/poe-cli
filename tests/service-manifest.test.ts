@@ -4,10 +4,7 @@ import { createCliEnvironment } from "../src/cli/environment.js";
 import type { CommandContext } from "../src/cli/context.js";
 import { createServiceManifest, ensureDirectory } from "../src/services/service-manifest.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import {
-  createHookManager,
-  type CommandRunner
-} from "../src/utils/hooks.js";
+import { type CommandRunner } from "../src/utils/command-checks.js";
 
 function createMemFs(): FileSystem {
   const vol = new Volume();
@@ -25,10 +22,6 @@ function createStubCommand(fs: FileSystem): CommandContext {
   return {
     fs,
     runCommand: runner,
-    hooks: createHookManager({
-      isDryRun: true,
-      runCommand: runner
-    }),
     flushDryRun: vi.fn(),
     complete: vi.fn()
   };
