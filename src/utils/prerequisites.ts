@@ -35,6 +35,27 @@ export function describeCommandExpectation(
   return `${renderCommandLine(command, args)} (expecting "${expectedOutput}")`;
 }
 
+export interface CommandExpectationPrerequisiteOptions
+  extends RunAndMatchOutputOptions {
+  id: string;
+}
+
+export function createCommandExpectationPrerequisite(
+  options: CommandExpectationPrerequisiteOptions
+): PrerequisiteDefinition {
+  return {
+    id: options.id,
+    description: describeCommandExpectation(
+      options.command,
+      options.args,
+      options.expectedOutput
+    ),
+    async run(context) {
+      await runAndMatchOutput(context, options);
+    }
+  };
+}
+
 export async function runAndMatchOutput(
   context: PrerequisiteContext,
   options: RunAndMatchOutputOptions
@@ -114,7 +135,7 @@ export interface PrerequisiteContext {
 
 export interface PrerequisiteDefinition {
   id: string;
-  description: string;
+  description?: string;
   run(context: PrerequisiteContext): Promise<void>;
 }
 

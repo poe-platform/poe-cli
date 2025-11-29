@@ -4,8 +4,7 @@ import type { JsonObject } from "../utils/json.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
-  describeCommandExpectation,
-  runAndMatchOutput
+  createCommandExpectationPrerequisite
 } from "../utils/prerequisites.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
@@ -102,21 +101,12 @@ function createOpenCodeHealthCheck(): PrerequisiteDefinition {
     "run",
     "Output exactly: OPEN_CODE_OK"
   ];
-  return {
+  return createCommandExpectationPrerequisite({
     id: "opencode-cli-health",
-    description: describeCommandExpectation(
-      "opencode",
-      args,
-      "OPEN_CODE_OK"
-    ),
-    async run(context) {
-      await runAndMatchOutput(context, {
-        command: "opencode",
-        args,
-        expectedOutput: "OPEN_CODE_OK"
-      });
-    }
-  };
+    command: "opencode",
+    args,
+    expectedOutput: "OPEN_CODE_OK"
+  });
 }
 
 export const openCodeService = createProvider<

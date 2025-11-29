@@ -2,8 +2,7 @@ import type { CliEnvironment } from "../cli/environment.js";
 import type { PrerequisiteDefinition } from "../utils/prerequisites.js";
 import {
   createBinaryExistsCheck,
-  describeCommandExpectation,
-  runAndMatchOutput
+  createCommandExpectationPrerequisite
 } from "../utils/prerequisites.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
@@ -157,17 +156,12 @@ function createCodexVersionCheck(): PrerequisiteDefinition {
 
 function createCodexCliHealthCheck(): PrerequisiteDefinition {
   const args = buildCodexExecArgs("Output exactly: CODEX_OK");
-  return {
+  return createCommandExpectationPrerequisite({
     id: "codex-cli-health",
-    description: describeCommandExpectation("codex", args, "CODEX_OK"),
-    async run(context) {
-      await runAndMatchOutput(context, {
-        command: "codex",
-        args,
-        expectedOutput: "CODEX_OK"
-      });
-    }
-  };
+    command: "codex",
+    args,
+    expectedOutput: "CODEX_OK"
+  });
 }
 
 export const codexService = createProvider<

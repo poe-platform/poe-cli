@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { createBinaryExistsCheck } from "../src/utils/prerequisites.js";
+import {
+  createBinaryExistsCheck,
+  createCommandExpectationPrerequisite
+} from "../src/utils/prerequisites.js";
 
 function createRunner(responses: Record<string, { stdout?: string; stderr?: string; exitCode: number }>) {
   return vi.fn(async (command: string, args: string[]) => {
@@ -40,5 +43,20 @@ describe("createBinaryExistsCheck", () => {
     await expect(
       check.run({ isDryRun: false, runCommand })
     ).rejects.toThrow(/Unable to parse version/i);
+  });
+});
+
+describe("createCommandExpectationPrerequisite", () => {
+  it("derives a description based on the command and expected output", () => {
+    const check = createCommandExpectationPrerequisite({
+      id: "demo-health",
+      command: "demo",
+      args: ["run", 'Output exactly: "DEMO_OK"'],
+      expectedOutput: "DEMO_OK"
+    });
+
+    expect(check.description).toBe(
+      'demo run "Output exactly: \\"DEMO_OK\\"" (expecting "DEMO_OK")'
+    );
   });
 });
