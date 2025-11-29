@@ -68,20 +68,6 @@ function getModelArgs(model?: string): string[] {
   return ["--model", providerModel(model)];
 }
 
-function createOpenCodeHealthCheck(): CommandCheck {
-  const args = [
-    ...getModelArgs(DEFAULT_FRONTIER_MODEL),
-    "run",
-    "Output exactly: OPEN_CODE_OK"
-  ];
-  return createCommandExpectationCheck({
-    id: "opencode-cli-health",
-    command: "opencode",
-    args,
-    expectedOutput: "OPEN_CODE_OK"
-  });
-}
-
 export const openCodeService = createProvider({
   name: "opencode",
   label: "OpenCode CLI",
@@ -166,7 +152,18 @@ export const openCodeService = createProvider({
   versionResolver: createBinaryVersionResolver("opencode"),
   install: OPEN_CODE_INSTALL_DEFINITION,
   test(context) {
-    return context.runCheck(createOpenCodeHealthCheck());
+    return context.runCheck(
+      createCommandExpectationCheck({
+        id: "opencode-cli-health",
+        command: "opencode",
+        args: [
+          ...getModelArgs(DEFAULT_FRONTIER_MODEL),
+          "run",
+          "Output exactly: OPEN_CODE_OK"
+        ],
+        expectedOutput: "OPEN_CODE_OK"
+      })
+    );
   },
   spawn(context, options) {
     const opts = (options ?? {}) as {

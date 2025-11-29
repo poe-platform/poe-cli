@@ -159,20 +159,6 @@ function createCodexVersionCheck(): CommandCheck {
   };
 }
 
-function createCodexCliHealthCheck(): CommandCheck {
-  const args = buildCodexExecArgs(
-    "Output exactly: CODEX_OK",
-    [],
-    DEFAULT_CODEX_MODEL
-  );
-  return createCommandExpectationCheck({
-    id: "codex-cli-health",
-    command: "codex",
-    args,
-    expectedOutput: "CODEX_OK"
-  });
-}
-
 export const codexService = createProvider<
   Record<string, never>,
   CodexConfigureContext,
@@ -204,7 +190,18 @@ export const codexService = createProvider<
     }
   },
   test(context) {
-    return context.runCheck(createCodexCliHealthCheck());
+    return context.runCheck(
+      createCommandExpectationCheck({
+        id: "codex-cli-health",
+        command: "codex",
+        args: buildCodexExecArgs(
+          "Output exactly: CODEX_OK",
+          [],
+          DEFAULT_CODEX_MODEL
+        ),
+        expectedOutput: "CODEX_OK"
+      })
+    );
   },
   manifest: {
     "*": {

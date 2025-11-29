@@ -1,4 +1,3 @@
-import type { CommandCheck } from "../utils/command-checks.js";
 import {
   createBinaryExistsCheck,
   createCommandExpectationCheck
@@ -70,20 +69,6 @@ function buildClaudeArgs(
   return ["-p", prompt, ...modelArgs, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
 
-function createClaudeCliHealthCheck(): CommandCheck {
-  const args = buildClaudeArgs(
-    "Output exactly: CLAUDE_CODE_OK",
-    undefined,
-    DEFAULT_CLAUDE_CODE_MODEL
-  );
-  return createCommandExpectationCheck({
-    id: "claude-cli-health",
-    command: "claude",
-    args,
-    expectedOutput: "CLAUDE_CODE_OK"
-  });
-}
-
 export const claudeCodeService = createProvider<
   Record<string, any>,
   ClaudeConfigureOptions,
@@ -111,7 +96,18 @@ export const claudeCodeService = createProvider<
     }
   },
   test(context) {
-    return context.runCheck(createClaudeCliHealthCheck());
+    return context.runCheck(
+      createCommandExpectationCheck({
+        id: "claude-cli-health",
+        command: "claude",
+        args: buildClaudeArgs(
+          "Output exactly: CLAUDE_CODE_OK",
+          undefined,
+          DEFAULT_CLAUDE_CODE_MODEL
+        ),
+        expectedOutput: "CLAUDE_CODE_OK"
+      })
+    );
   },
   manifest: {
     "*": {
