@@ -77,7 +77,7 @@ export type ServiceMutation<Options> =
   | WriteTemplateMutation<Options>
   | RemoveFileMutation<Options>;
 
-interface ServiceManifestDefinition<
+export interface ServiceManifestDefinition<
   ConfigureOptions,
   RemoveOptions = ConfigureOptions
 > {
@@ -490,6 +490,7 @@ async function applyMutation<Options>(
           effect: "mkdir",
           detail: existed ? "noop" : "create"
         });
+        flushCommandDryRun(context);
         return !existed;
       } catch (error) {
         hooks?.onError?.(details, error);
@@ -515,6 +516,7 @@ async function applyMutation<Options>(
           effect: backupPath ? "copy" : "none",
           detail: backupPath ? "backup" : "noop"
         });
+        flushCommandDryRun(context);
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
@@ -545,6 +547,7 @@ async function applyMutation<Options>(
           effect: "write",
           detail: existed ? "update" : "create"
         });
+        flushCommandDryRun(context);
       } catch (error) {
         hooks?.onError?.(details, error);
         throw error;
@@ -572,6 +575,7 @@ async function applyMutation<Options>(
             effect: "none",
             detail: "noop"
           });
+          flushCommandDryRun(context);
           return false;
         }
         if (mutation.whenEmpty && trimmed.length > 0) {
@@ -580,6 +584,7 @@ async function applyMutation<Options>(
             effect: "none",
             detail: "noop"
           });
+          flushCommandDryRun(context);
           return false;
         }
         await context.fs.unlink(targetPath);
@@ -588,6 +593,7 @@ async function applyMutation<Options>(
           effect: "delete",
           detail: "delete"
         });
+        flushCommandDryRun(context);
         return true;
       } catch (error) {
         if (isNotFound(error)) {
@@ -596,6 +602,7 @@ async function applyMutation<Options>(
             effect: "none",
             detail: "noop"
           });
+          flushCommandDryRun(context);
           return false;
         }
         hooks?.onError?.(details, error);
@@ -624,6 +631,7 @@ async function applyMutation<Options>(
           result
         });
         hooks?.onComplete?.(details, transformOutcome);
+        flushCommandDryRun(context);
         return transformOutcome.changed;
       } catch (error) {
         hooks?.onError?.(details, error);
@@ -705,6 +713,12 @@ function resolvePath<Options>(
 ): string {
   const raw = resolveValue(resolver, mutationContext(context));
   return expandHomeShortcut(raw, context.env);
+}
+
+function flushCommandDryRun<Options>(
+  context: ServiceExecutionContext<Options>
+): void {
+  context.command.flushDryRun({ emitIfEmpty: false });
 }
 
 function expandHomeShortcut(

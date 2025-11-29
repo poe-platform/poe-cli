@@ -19,6 +19,7 @@ export function createTestCommandContext(fs: FileSystem): CommandContext {
       isDryRun: false,
       runCommand: runner
     }),
+    flushDryRun() {},
     complete: () => {}
   };
 }

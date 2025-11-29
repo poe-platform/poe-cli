@@ -30,6 +30,7 @@ export interface CommandContext {
   fs: FileSystem;
   prerequisites: PrerequisiteManager;
   runCommand: CommandRunner;
+  flushDryRun(options?: { emitIfEmpty?: boolean }): void;
   complete(messages: CommandContextComplete): void;
 }
 
@@ -58,6 +59,7 @@ export function createCommandContextFactory(
         fs,
         prerequisites,
         runCommand: options.runner,
+        flushDryRun() {},
         complete(messages) {
           options.logger.info(messages.success);
         }
@@ -67,9 +69,22 @@ export function createCommandContextFactory(
     const recorder = new DryRunRecorder();
     const proxyFs = createDryRunFileSystem(fs, recorder);
     const recordedCommands = new Set<string>();
+    let hasEmittedOperations = false;
 
-    const flush = (): void => {
-      for (const line of formatDryRunOperations(recorder.drain())) {
+    const flush = (emitIfEmpty = false): void => {
+      const operations = recorder.drain();
+      if (operations.length === 0) {
+        if (emitIfEmpty && !hasEmittedOperations) {
+          const lines = formatDryRunOperations(operations);
+          for (const line of lines) {
+            options.logger.info(line);
+          }
+        }
+        return;
+      }
+      hasEmittedOperations = true;
+
+      for (const line of formatDryRunOperations(operations)) {
         const base = extractBaseCommand(line);
         if (!recordedCommands.has(base)) {
           options.logger.info(line);
@@ -82,9 +97,12 @@ export function createCommandContextFactory(
       fs: proxyFs,
       prerequisites,
       runCommand: options.runner,
+      flushDryRun({ emitIfEmpty }: { emitIfEmpty?: boolean } = {}) {
+        flush(Boolean(emitIfEmpty));
+      },
       complete(messages) {
         options.logger.dryRun(messages.dry);
-        flush();
+        flush(true);
       }
     };
   };
