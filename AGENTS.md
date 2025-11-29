@@ -9,6 +9,7 @@
 ## Bad habits that I want to avoid
 - Functions that do nothing just proxy to another functions are not allowed
 - Do not overuse constants, only for "business logic" not for things like concatenate two constants
+- The tests should not be causing complexity.
 
 # github workflows
 
@@ -28,9 +29,11 @@ Use `npm run lint:workflows`
 - If the workspace is dirty, commit the old changes first so you can start clean
 - Commit specific files that you edited, never blanket git add -A
 
-# Configure commands
+# Configure commands / Providers
 
 Regexes are not allowed. When modifying existing files, you must parse them and deep merge them. If you run into unsupported file e.g. yaml, install parser library. 
+
+The Providers should have as little as possible boilerplate, keep them simple. They should not know anything about logging, dry run. 
 
 # Readme
 
