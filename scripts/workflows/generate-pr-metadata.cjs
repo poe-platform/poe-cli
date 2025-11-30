@@ -15,13 +15,20 @@ function parseMetadata(payload) {
   const start = payload.indexOf("{");
   const end = payload.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
+    console.error("Full payload received:", payload);
     throw new Error("Agent response did not include JSON payload.");
   }
 
+  const jsonCandidate = payload.slice(start, end + 1);
   let metadata;
   try {
-    metadata = JSON.parse(payload.slice(start, end + 1));
+    metadata = JSON.parse(jsonCandidate);
   } catch (error) {
+    console.error("Failed to parse JSON. Raw payload:");
+    console.error(payload);
+    console.error("\nExtracted JSON candidate:");
+    console.error(jsonCandidate);
+    console.error("\nJSON parse error:", error.message);
     throw new Error(`Failed to parse agent response: ${error.message}`);
   }
 
