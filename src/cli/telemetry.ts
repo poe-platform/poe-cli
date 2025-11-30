@@ -26,26 +26,9 @@ export interface TelemetryClient {
   ): Promise<T>;
 }
 
-export function createTelemetryClient(logger: ScopedLogger): TelemetryClient {
-  const record = (event: TelemetryEvent): void => {
-    const prefix = `${event.operation}:${event.service}`;
-    const suffix =
-      event.status === "success"
-        ? `completed in ${event.durationMs.toFixed(0)}ms`
-        : `failed in ${event.durationMs.toFixed(0)}ms`;
-    const message = `${prefix} ${suffix}`;
-    if (event.status === "success") {
-      logger.verbose(message);
-    } else {
-      logger.error(message);
-      if (event.error) {
-        logger.error(
-          event.error instanceof Error
-            ? event.error.message
-            : String(event.error)
-        );
-      }
-    }
+export function createTelemetryClient(_logger: ScopedLogger): TelemetryClient {
+  const record = (_event: TelemetryEvent): void => {
+    // Telemetry events are recorded but not logged
   };
 
   const wrap = async <T>(
