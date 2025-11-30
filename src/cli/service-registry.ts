@@ -1,7 +1,6 @@
 import type { CliEnvironment } from "./environment.js";
 import type { CommandContext } from "./context.js";
 import type { ScopedLogger } from "./logger.js";
-import type { ProviderOperation, TelemetryClient } from "./telemetry.js";
 import type { FileSystem } from "../utils/file-system.js";
 import type { CommandCheck } from "../utils/command-checks.js";
 import type {
@@ -84,6 +83,13 @@ export interface ProviderService<
   ): Promise<ProviderVersionResolution<TPaths, TConfigure, TRemove, TSpawn>>;
 }
 
+export type ProviderOperation =
+  | "install"
+  | "configure"
+  | "remove"
+  | "spawn"
+  | "test";
+
 export interface ServiceRegistry {
   register(adapter: ProviderService): void;
   discover(adapters: ProviderService[]): void;
@@ -97,13 +103,7 @@ export interface ServiceRegistry {
   ): Promise<T>;
 }
 
-export interface ServiceRegistryInit {
-  telemetry?: TelemetryClient;
-}
-
-export function createServiceRegistry(
-  init: ServiceRegistryInit = {}
-): ServiceRegistry {
+export function createServiceRegistry(): ServiceRegistry {
   const adapters = new Map<string, ProviderService>();
 
   const register = (adapter: ProviderService): void => {
@@ -140,11 +140,6 @@ export function createServiceRegistry(
     runner: (adapter: ProviderService) => Promise<T>
   ): Promise<T> => {
     const adapter = require(serviceName);
-    if (init.telemetry) {
-      return await init.telemetry.wrap(serviceName, operation, () =>
-        runner(adapter)
-      );
-    }
     return await runner(adapter);
   };
 

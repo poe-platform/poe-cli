@@ -58,7 +58,6 @@ export interface CliContainer {
   readonly registry: ReturnType<typeof createServiceRegistry>;
   readonly httpClient: HttpClient;
   readonly commandRunner: CommandRunner;
-  readonly telemetryLogger: ScopedLogger;
   readonly providers: ProviderService[];
   readonly dependencies: CliDependencies;
 }
@@ -125,14 +124,7 @@ export function createCliContainer(
     }
   });
 
-  const telemetryLogger = loggerFactory.create({
-    scope: "telemetry",
-    verbose: true
-  });
-
-  const registry = createServiceRegistry({
-    telemetry: createTelemetryClient(telemetryLogger)
-  });
+  const registry = createServiceRegistry();
 
   const providers = getDefaultProviders().filter(
     (adapter) => !adapter.disabled
@@ -153,7 +145,6 @@ export function createCliContainer(
     registry,
     httpClient,
     commandRunner,
-    telemetryLogger,
     providers,
     dependencies
   };
