@@ -11,15 +11,66 @@ function truncate(text, limit) {
   return text.length <= limit ? text : `${text.slice(0, limit)}\n...`;
 }
 
+function extractJsonCandidate(payload) {
+  for (let index = 0; index < payload.length; index += 1) {
+    if (payload[index] !== "{") {
+      continue;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let cursor = index; cursor < payload.length; cursor += 1) {
+      const character = payload[cursor];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (character === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (character === "{") {
+        depth += 1;
+        continue;
+      }
+
+      if (character === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return payload.slice(index, cursor + 1);
+        }
+        if (depth < 0) {
+          break;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 function parseMetadata(payload) {
-  const start = payload.indexOf("{");
-  const end = payload.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
+  const jsonCandidate = extractJsonCandidate(payload);
+  if (!jsonCandidate) {
     console.error("Full payload received:", payload);
     throw new Error("Agent response did not include JSON payload.");
   }
 
-  const jsonCandidate = payload.slice(start, end + 1);
   let metadata;
   try {
     metadata = JSON.parse(jsonCandidate);
@@ -108,4 +159,10 @@ function main() {
   );
 }
 
-main();
+module.exports = {
+  parseMetadata
+};
+
+if (require.main === module) {
+  main();
+}
