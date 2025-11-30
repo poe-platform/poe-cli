@@ -141,4 +141,27 @@ describe("configure command", () => {
     expect(resolveModel).toHaveBeenCalled();
     expect(resolveReasoning).toHaveBeenCalled();
   });
+
+  it("accepts --model option to set default model without prompting", async () => {
+    const { container } = createContainer({ "claude-code": "1.2.3" });
+    const customModel = "Claude-Opus-4.5";
+
+    const resolveModel = vi.spyOn(container.options, "resolveModel");
+    vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-test");
+
+    const program = createTestProgram();
+    await executeConfigure(program, container, "claude-code", {
+      model: customModel
+    });
+
+    expect(resolveModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: customModel
+      })
+    );
+
+    const settingsPath = homeDir + "/.claude/settings.json";
+    const settings = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    expect(settings.model).toBe(customModel);
+  });
 });

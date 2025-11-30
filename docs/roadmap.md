@@ -15,7 +15,7 @@
     - Wrong: opencode --model poe/claude-sonnet-4-5
     - [x] fix the opencode, it shoudld automatically prepend the model poe/ 
 - [x] claude-code has this interactive selection, all configurations should support it, respect the default, but offer options. Based on the model management in constants
-- [] configure should also support --model that would set the model as default
+- [x] configure should also support --model that would set the model as default
 - [x] github issue resolver
     - [x] it does post some weird comment on the Issue Poe Code bot selected. Remove this comment
     - [x] agent shold get the whole conversation in issue, not just the title/description. Make this a script that will format it
