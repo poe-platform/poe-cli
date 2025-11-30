@@ -1,7 +1,4 @@
-export const FRONTIER_MODELS = [
-  "Claude-Sonnet-4.5",
-  "GPT-5.1-Codex"
-] as const;
+export const FRONTIER_MODELS = ["Claude-Sonnet-4.5", "GPT-5.1-Codex"] as const;
 
 export const DEFAULT_FRONTIER_MODEL = "Claude-Sonnet-4.5";
 
@@ -19,3 +16,6 @@ export const DEFAULT_CODEX_MODEL = CODEX_MODELS[0];
 export const DEFAULT_REASONING = "medium";
 export const DEFAULT_QUERY_MODEL = FRONTIER_MODELS[0];
 export const PROVIDER_NAME = "poe";
+
+export const KIMI_MODELS = ["Kimi-Claude-Sonnet-4.5", "Kimi-GPT-5.1-Codex"] as const;
+export const DEFAULT_KIMI_MODEL = KIMI_MODELS[0];
