@@ -2,7 +2,6 @@ import js from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
-// import noHelperFunctions from './eslint-rules/no-helper-functions.ts';
 
 const tsFiles = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'];
 const jsFiles = ['**/*.js', '**/*.cjs', '**/*.mjs'];
