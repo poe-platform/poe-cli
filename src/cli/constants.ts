@@ -16,6 +16,16 @@ export const DEFAULT_CLAUDE_CODE_MODEL = CLAUDE_CODE_VARIANTS.sonnet;
 export const CODEX_MODELS = ["GPT-5.1-Codex", "GPT-5.1", "GPT-5.1-Codex-Mini"] as const;
 export const DEFAULT_CODEX_MODEL = CODEX_MODELS[0];
 
+export const KIMI_MODELS = [
+  "Kimi-K2",
+  "Kimi-K2-Thinking",
+  "Kimi-K2-T",
+  "Kimi-K2-Instruct",
+  "Kimi-K2-0905-T",
+  "Kimi-K2-Think-T"
+] as const;
+export const DEFAULT_KIMI_MODEL = KIMI_MODELS[0];
+
 export const DEFAULT_REASONING = "medium";
 export const DEFAULT_QUERY_MODEL = FRONTIER_MODELS[0];
 export const PROVIDER_NAME = "poe";
