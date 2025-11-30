@@ -15,6 +15,7 @@ import { registerInstallCommand } from "./commands/install.js";
 import { registerRemoveCommand } from "./commands/remove.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerTestCommand } from "./commands/test.js";
+import { registerQueryCommand } from "./commands/query.js";
 
 export function createProgram(dependencies: CliDependencies): Command {
   const container = createCliContainer(dependencies);
@@ -42,6 +43,7 @@ function bootstrapProgram(container: CliContainer): Command {
   registerInstallCommand(program, container);
   registerConfigureCommand(program, container);
   registerSpawnCommand(program, container);
+  registerQueryCommand(program, container);
   registerTestCommand(program, container);
   registerRemoveCommand(program, container);
   registerDoctorCommand(program, container);

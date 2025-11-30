@@ -85,6 +85,7 @@ jobs:
           git config user.name "poe-code-bot"
           git config user.email "bot@poe-code.invalid"
       - name: Run issue resolver agent
+        id: agent_run
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           SERVICE: ${{ steps.provider.outputs.service }}
@@ -94,17 +95,22 @@ jobs:
         run: |-
           PROMPT=$(node scripts/workflows/build-issue-prompt.cjs)
           if [ -n "$MODEL" ]; then
-            poe-code spawn "$SERVICE" "$PROMPT" --model "$MODEL"
+            AGENT_OUTPUT=$(poe-code spawn "$SERVICE" "$PROMPT" --model "$MODEL")
           else
-            poe-code spawn "$SERVICE" "$PROMPT"
+            AGENT_OUTPUT=$(poe-code spawn "$SERVICE" "$PROMPT")
           fi
+          echo "$AGENT_OUTPUT"
+          echo "agent_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$AGENT_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - name: Generate pull request metadata
         id: pr_metadata
         env:
-          SERVICE: ${{ steps.provider.outputs.service }}
+          MODEL: ${{ steps.provider.outputs.model }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          AGENT_OUTPUT: ${{ steps.agent_run.outputs.agent_output }}
         run: node scripts/workflows/generate-pr-metadata.cjs
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6

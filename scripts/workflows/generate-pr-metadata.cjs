@@ -102,18 +102,11 @@ function parseMetadata(payload) {
 }
 
 function main() {
-  const { SERVICE, ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GITHUB_OUTPUT } =
+  const { ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GITHUB_OUTPUT, MODEL, AGENT_OUTPUT } =
     process.env;
 
   if (!GITHUB_OUTPUT) {
     throw new Error("Missing GITHUB_OUTPUT path");
-  }
-  if (!SERVICE) {
-    throw new Error("Missing service configuration for PR metadata generation.");
-  }
-  const service = SERVICE.trim();
-  if (!service) {
-    throw new Error("Service identifier is empty.");
   }
 
   run("git fetch origin main", "inherit");
@@ -122,19 +115,34 @@ function main() {
   const diffPatch = run("git diff origin/main");
 
   const segments = [
-    "You generate GitHub pull request metadata.",
     ISSUE_NUMBER ? `Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE ?? ""}`.trim() : null,
     ISSUE_BODY ? `Issue details:\n${ISSUE_BODY}` : null,
+    AGENT_OUTPUT ? `Agent output:\n${truncate(AGENT_OUTPUT, 8_000)}` : null,
     diffStat ? `Diff summary:\n${diffStat}` : null,
     diffPatch
       ? `Full diff compared to main:\n${truncate(diffPatch, 12_000)}`
-      : null,
-    "Respond with JSON containing keys title and body."
+      : null
   ].filter(Boolean);
 
   const prompt = segments.join("\n\n");
 
-  const result = spawnSync("poe-code", ["spawn", service, prompt], {
+  const systemPrompt = [
+    "You generate GitHub pull request metadata.",
+    "Analyze the provided issue and git diff to create appropriate PR title and body.",
+    "Respond ONLY with valid JSON containing keys 'title' and 'body'.",
+    "Do not include any other text, markdown formatting, or code fences.",
+    "The title should be concise (under 72 characters).",
+    "The body should include a summary section and reference the issue number."
+  ].join(" ");
+
+  const args = ["query", "--system", systemPrompt];
+  if (MODEL) {
+    args.push("--model", MODEL);
+  }
+
+  // Use npx to ensure we use the locally installed version
+  const result = spawnSync("npx", ["poe-code", ...args], {
+    input: prompt,
     encoding: "utf8"
   });
 
@@ -144,7 +152,7 @@ function main() {
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || "").trim();
     const suffix = detail ? `: ${detail}` : "";
-    throw new Error(`poe-code exited with ${result.status}${suffix}`);
+    throw new Error(`poe-code query exited with ${result.status}${suffix}`);
   }
 
   const metadata = parseMetadata((result.stdout || "").trim());
