@@ -24,7 +24,6 @@ import {
   type ScopedLogger
 } from "./logger.js";
 import { ErrorLogger } from "./error-logger.js";
-import { createTelemetryClient } from "./telemetry.js";
 import { createDefaultCommandRunner } from "./command-runner.js";
 import type { PromptFn, LoggerFn } from "./types.js";
 import type { HttpClient } from "./http.js";
