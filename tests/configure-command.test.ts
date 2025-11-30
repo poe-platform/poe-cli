@@ -164,4 +164,5 @@ describe("configure command", () => {
     const settings = JSON.parse(await fs.readFile(settingsPath, "utf8"));
     expect(settings.model).toBe(customModel);
   });
+
 });

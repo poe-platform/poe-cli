@@ -58,6 +58,7 @@ export const kimiService = createProvider<
   KimiRemoveOptions,
   KimiSpawnOptions
 >({
+  disabled: true,
   name: "kimi",
   label: "Kimi",
   id: "kimi",
@@ -113,7 +114,7 @@ export const kimiService = createProvider<
               },
               providers: {
                 [PROVIDER_NAME]: {
-                  type: "openai",
+                  type: "openai_legacy",
                   base_url: "https://api.poe.com/v1",
                   api_key: apiKey ?? ""
                 }

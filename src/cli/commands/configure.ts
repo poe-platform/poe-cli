@@ -208,6 +208,25 @@ async function createConfigurePayload(
         model
       };
     }
+    case "kimi": {
+      const apiKey = await container.options.resolveApiKey({
+        value: options.apiKey,
+        dryRun: flags.dryRun
+      });
+      const modelPrompt = requireModelPrompt(adapter);
+      const defaultModel = await container.options.resolveModel({
+        value: options.model,
+        assumeDefault: flags.assumeYes,
+        defaultValue: modelPrompt.defaultValue,
+        choices: modelPrompt.choices,
+        label: modelPrompt.label
+      });
+      return {
+        env: context.env,
+        apiKey,
+        defaultModel
+      };
+    }
     default:
       throw new Error(`Unknown service "${service}".`);
   }

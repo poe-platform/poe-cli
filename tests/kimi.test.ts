@@ -131,7 +131,7 @@ describe("kimi service", () => {
       },
       providers: {
         [PROVIDER_NAME]: {
-          type: "openai",
+          type: "openai_legacy",
           base_url: "https://api.poe.com/v1",
           api_key: "sk-test"
         }
@@ -160,7 +160,7 @@ describe("kimi service", () => {
         {
           providers: {
             local: {
-              type: "openai",
+              type: "openai_legacy",
               base_url: "http://localhost:8080",
               api_key: "local-key"
             }
@@ -182,12 +182,12 @@ describe("kimi service", () => {
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config.providers.local).toEqual({
-      type: "openai",
+      type: "openai_legacy",
       base_url: "http://localhost:8080",
       api_key: "local-key"
     });
     expect(config.providers[PROVIDER_NAME]).toMatchObject({
-      type: "openai",
+      type: "openai_legacy",
       base_url: "https://api.poe.com/v1",
       api_key: "sk-test"
     });
@@ -206,12 +206,12 @@ describe("kimi service", () => {
         {
           providers: {
             poe: {
-              type: "openai",
+              type: "openai_legacy",
               base_url: "https://api.poe.com/v1",
               api_key: "old-key"
             },
             openai: {
-              type: "openai",
+              type: "openai_legacy",
               base_url: "https://api.openai.com/v1",
               api_key: "openai-key"
             }
@@ -227,7 +227,7 @@ describe("kimi service", () => {
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config.providers[PROVIDER_NAME].api_key).toBe("sk-test");
     expect(config.providers.openai).toEqual({
-      type: "openai",
+      type: "openai_legacy",
       base_url: "https://api.openai.com/v1",
       api_key: "openai-key"
     });
