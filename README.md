@@ -1,6 +1,6 @@
 # poe-code
 
-> Configure local developer tooling to use the Poe API.
+> Configure coding agents to use the Poe API.
 
 ## Quick Start
 
@@ -16,19 +16,6 @@ npx poe-code@latest configure claude-code
 npx poe-code@latest login
 ```
 
-### Install Coding CLIs
-
-```bash
-# Claude Code
-npx poe-code@latest install claude-code
-
-# Codex
-npx poe-code@latest install codex
-
-# OpenCode
-npx poe-code@latest install opencode
-```
-
 ### Configure Coding CLIs
 
 ```bash
@@ -41,6 +28,19 @@ npx poe-code@latest configure codex
 # OpenCode
 npx poe-code@latest configure opencode
 
+```
+
+### Install Coding CLIs
+
+```bash
+# Claude Code
+npx poe-code@latest install claude-code
+
+# Codex
+npx poe-code@latest install codex
+
+# OpenCode
+npx poe-code@latest install opencode
 ```
 
 ### Uninstall Configuration
