@@ -51,6 +51,12 @@ npx poe-code@latest remove codex
 
 Removes the Codex settings previously applied by `npx poe-code@latest configure codex`.
 
+### Test Configuration
+
+```bash
+npx poe-code@latest test codex
+```
+
 ### Spawn a coding agent
 
 ```bash
@@ -61,5 +67,4 @@ npx poe-code@latest spawn claude-code "Explain this error message"
 ### Optional Flags
 
 - `--dry-run` – show every mutation without touching disk.
-- `--verbose` – print shell commands as they run.
 - `--yes` – accept defaults for prompts.
