@@ -28,6 +28,9 @@ npx poe-code@latest configure codex
 # OpenCode
 npx poe-code@latest configure opencode
 
+# Kimi
+npx poe-code@latest configure kimi
+
 ```
 
 ### Install Coding CLIs
@@ -41,7 +44,14 @@ npx poe-code@latest install codex
 
 # OpenCode
 npx poe-code@latest install opencode
+
+# Kimi
+npx poe-code@latest install kimi
 ```
+
+### Configure The Kimi CLI
+
+`poe-code` applies the Poe-backed provider to the local Kimi CLI as well. Running `npx poe-code@latest configure kimi` resolves the single supported model automatically and prints `Using Kimi model: <model>` so you always know which profile is active.
 
 ### Uninstall Configuration
 

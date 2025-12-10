@@ -120,6 +120,9 @@ export function createOptionResolvers(
     if (value != null) {
       return value;
     }
+    if (choices.length === 1) {
+      return choices[0]!.value;
+    }
     if (assumeDefault) {
       return defaultValue;
     }

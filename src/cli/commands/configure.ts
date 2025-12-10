@@ -221,6 +221,7 @@ async function createConfigurePayload(
         choices: modelPrompt.choices,
         label: modelPrompt.label
       });
+      context.logger.info(`Using ${adapter.label} model: ${defaultModel}`);
       return {
         env: context.env,
         apiKey,

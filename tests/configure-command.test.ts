@@ -4,6 +4,7 @@ import { createCliContainer } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
 import type { CommandRunner } from "../src/utils/command-checks.js";
 import { createHomeFs, createTestProgram } from "./test-helpers.js";
+import type { LoggerFn } from "../src/cli/types.js";
 
 const cwd = "/repo";
 const homeDir = "/home/test";
@@ -18,7 +19,7 @@ describe("configure command", () => {
 
   function createContainer(
     versionMap: Record<string, string | null>,
-    overrides: { commandRunner?: CommandRunner } = {}
+    overrides: { commandRunner?: CommandRunner; logger?: LoggerFn } = {}
   ) {
     const prompts = vi.fn().mockResolvedValue({});
     const commandRunner: CommandRunner =
@@ -42,11 +43,12 @@ describe("configure command", () => {
         }
         return { stdout: "", stderr: "", exitCode: 0 };
       });
+    const logger = overrides.logger ?? (() => {});
     const container = createCliContainer({
       fs,
       prompts,
       env: { cwd, homeDir },
-      logger: () => {},
+      logger,
       commandRunner
     });
     return { container, prompts, commandRunner };
@@ -140,6 +142,21 @@ describe("configure command", () => {
 
     expect(resolveModel).toHaveBeenCalled();
     expect(resolveReasoning).toHaveBeenCalled();
+  });
+
+  it("logs the resolved model when configuring kimi", async () => {
+    const logger = vi.fn();
+    const { container } = createContainer({ kimi: null }, { logger });
+    vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-kimi");
+    const resolvedModel = "Kimi-Custom";
+    vi.spyOn(container.options, "resolveModel").mockResolvedValue(resolvedModel);
+
+    const program = createTestProgram();
+    await executeConfigure(program, container, "kimi", {});
+
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining(`Using Kimi model: ${resolvedModel}`)
+    );
   });
 
   it("accepts --model option to set default model without prompting", async () => {

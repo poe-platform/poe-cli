@@ -30,4 +30,29 @@ describe("option resolvers", () => {
     const [descriptor] = prompts.mock.calls[0]!;
     expect(descriptor.message).toContain("Enter your Poe API key");
   });
+
+  it("auto-selects the only available model without prompting", async () => {
+    const promptLibrary = createPromptLibrary();
+    const prompts = vi.fn().mockResolvedValue({});
+    const apiKeyStore = {
+      read: vi.fn().mockResolvedValue(null),
+      write: vi.fn().mockResolvedValue(undefined)
+    };
+    const resolvers = createOptionResolvers({
+      prompts,
+      promptLibrary,
+      apiKeyStore
+    });
+
+    const result = await resolvers.resolveModel({
+      value: undefined,
+      assumeDefault: false,
+      defaultValue: "Default-Model",
+      choices: [{ title: "Only Choice", value: "Unique-Model" }],
+      label: "Test Model"
+    });
+
+    expect(result).toBe("Unique-Model");
+    expect(prompts).not.toHaveBeenCalled();
+  });
 });

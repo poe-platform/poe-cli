@@ -17,12 +17,7 @@ export const CODEX_MODELS = ["GPT-5.1-Codex", "GPT-5.1", "GPT-5.1-Codex-Mini"] a
 export const DEFAULT_CODEX_MODEL = CODEX_MODELS[0];
 
 export const KIMI_MODELS = [
-  "Kimi-K2",
   "Kimi-K2-Thinking",
-  "Kimi-K2-T",
-  "Kimi-K2-Instruct",
-  "Kimi-K2-0905-T",
-  "Kimi-K2-Think-T"
 ] as const;
 export const DEFAULT_KIMI_MODEL = KIMI_MODELS[0];
 

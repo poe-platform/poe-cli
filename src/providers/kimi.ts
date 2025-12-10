@@ -51,7 +51,7 @@ export const kimiService = createProvider<
   EmptyProviderOptions,
   ProviderSpawnOptions
 >({
-  disabled: true,
+  disabled: false,
   name: "kimi",
   label: "Kimi",
   id: "kimi",
