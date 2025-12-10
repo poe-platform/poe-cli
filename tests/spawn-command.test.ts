@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
+import path from "node:path";
 import { Command } from "commander";
 import { createProgram } from "../src/cli/program.js";
 import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
 import { createCliContainer, type CliDependencies } from "../src/cli/container.js";
 import type { FileSystem } from "../src/utils/file-system.js";
-import type { CommandRunner, CommandRunnerResult } from "../src/utils/command-checks.js";
+import type {
+  CommandRunner,
+  CommandRunnerOptions,
+  CommandRunnerResult
+} from "../src/utils/command-checks.js";
 import { FRONTIER_MODELS, PROVIDER_NAME } from "../src/cli/constants.js";
 
 const cwd = "/repo";
@@ -20,14 +25,19 @@ function createMemFs(): FileSystem {
 interface CommandCall {
   command: string;
   args: string[];
+  options?: CommandRunnerOptions;
 }
 
 function createCommandRunnerStub(
   result: CommandRunnerResult = { stdout: "", stderr: "", exitCode: 0 }
 ): { runner: CommandRunner; calls: CommandCall[] } {
   const calls: CommandCall[] = [];
-  const runner: CommandRunner = async (command, args) => {
-    calls.push({ command, args });
+  const runner: CommandRunner = async (command, args, options) => {
+    const call: CommandCall = { command, args };
+    if (options) {
+      call.options = options;
+    }
+    calls.push(call);
     return { ...result };
   };
   return { runner, calls };
@@ -251,9 +261,9 @@ describe("spawn command", () => {
     registerSpawnCommand(program, container, {
       handlers: {
         "poe-code": async (ctx) => {
-          logs.push(`custom:${ctx.prompt}`);
+          logs.push(`custom:${ctx.options.prompt}`);
           expect(ctx.service).toBe("poe-code");
-          expect(ctx.args).toEqual(["--model", "beta"]);
+          expect(ctx.options.args).toEqual(["--model", "beta"]);
         }
       }
     });
@@ -361,5 +371,88 @@ describe("spawn command", () => {
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);
+  });
+
+  it("runs spawn commands from a custom cwd via -C flag", async () => {
+    const customCwd = "/projects/demo";
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "Agent output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "-C",
+      customCwd,
+      "claude-code",
+      "Explain the change"
+    ]);
+
+    expect(calls).toEqual([
+      {
+        command: "claude",
+        args: [
+          "-p",
+          "Explain the change",
+          "--allowedTools",
+          "Bash,Read",
+          "--permission-mode",
+          "acceptEdits",
+          "--output-format",
+          "text"
+        ],
+        options: { cwd: customCwd }
+      }
+    ]);
+  });
+
+  it("resolves relative cwd paths against the CLI environment", async () => {
+    const relative = "feature";
+    const resolved = path.join(cwd, relative);
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "Agent output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "--cwd",
+      relative,
+      "codex",
+      "Summarize the diff"
+    ]);
+
+    expect(calls).toEqual([
+      {
+        command: "codex",
+        args: [
+          "exec",
+          "Summarize the diff",
+          "--full-auto",
+          "--skip-git-repo-check"
+        ],
+        options: { cwd: resolved }
+      }
+    ]);
   });
 });

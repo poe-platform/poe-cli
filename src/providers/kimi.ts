@@ -12,18 +12,11 @@ import { KIMI_MODELS, DEFAULT_KIMI_MODEL, PROVIDER_NAME } from "../cli/constants
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { JsonObject } from "../utils/json.js";
-
-type KimiConfigureOptions = {
-  defaultModel: string;
-};
-
-type KimiRemoveOptions = Record<string, never>;
-
-type KimiSpawnOptions = {
-  prompt: string;
-  args?: string[];
-  model?: string;
-};
+import type {
+  ProviderSpawnOptions,
+  DefaultModelConfigureOptions,
+  EmptyProviderOptions
+} from "./spawn-options.js";
 
 export const KIMI_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "kimi",
@@ -54,9 +47,9 @@ function buildKimiArgs(prompt: string, extraArgs?: string[]): string[] {
 
 export const kimiService = createProvider<
   Record<string, any>,
-  KimiConfigureOptions,
-  KimiRemoveOptions,
-  KimiSpawnOptions
+  DefaultModelConfigureOptions,
+  EmptyProviderOptions,
+  ProviderSpawnOptions
 >({
   disabled: true,
   name: "kimi",
@@ -139,6 +132,11 @@ export const kimiService = createProvider<
   install: KIMI_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildKimiArgs(options.prompt, options.args);
+    if (options.cwd) {
+      return context.command.runCommand("kimi", args, {
+        cwd: options.cwd
+      });
+    }
     return context.command.runCommand("kimi", args);
   }
 });

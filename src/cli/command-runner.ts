@@ -1,13 +1,21 @@
 import { spawn } from "node:child_process";
 import type {
   CommandRunner,
+  CommandRunnerOptions,
   CommandRunnerResult
 } from "../utils/command-checks.js";
 
 export function createDefaultCommandRunner(): CommandRunner {
-  return async (command, args): Promise<CommandRunnerResult> =>
+  return async (
+    command,
+    args,
+    options?: CommandRunnerOptions
+  ): Promise<CommandRunnerResult> =>
     await new Promise((resolve) => {
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(command, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        cwd: options?.cwd
+      });
       let stdout = "";
       let stderr = "";
 

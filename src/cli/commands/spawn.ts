@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
 import {
@@ -11,13 +12,12 @@ import {
   resolveProviderHandler
 } from "./shared.js";
 import type { CommandRunnerResult } from "../../utils/command-checks.js";
+import type { SpawnCommandOptions } from "../../providers/spawn-options.js";
 
 export interface CustomSpawnHandlerContext {
   container: CliContainer;
   service: string;
-  prompt: string;
-  args: string[];
-  model?: string;
+  options: SpawnCommandOptions;
   flags: CommandFlags;
   resources: ExecutionResources;
 }
@@ -47,6 +47,7 @@ export function registerSpawnCommand(
     .command("spawn")
     .description("Run a single prompt through a configured service CLI.")
     .option("--model <model>", "Model identifier override passed to the service CLI")
+    .option("-C, --cwd <path>", "Working directory for the service CLI")
     .argument(
       "<service>",
       serviceDescription
@@ -68,17 +69,24 @@ export function registerSpawnCommand(
         flags,
         `spawn:${service}`
       );
-      const commandOptions = this.opts<{ model?: string }>();
-      const modelOverride = commandOptions.model;
+      const commandOptions = this.opts<{ model?: string; cwd?: string }>();
+      const cwdOverride = resolveSpawnWorkingDirectory(
+        container.env.cwd,
+        commandOptions.cwd
+      );
+      const spawnOptions: SpawnCommandOptions = {
+        prompt: promptText,
+        args: agentArgs,
+        model: commandOptions.model,
+        cwd: cwdOverride
+      };
 
       const customHandler = options.handlers?.[service];
       if (customHandler) {
         await customHandler({
           container,
           service,
-          prompt: promptText,
-          args: agentArgs,
-          model: modelOverride,
+          options: spawnOptions,
           flags,
           resources
         });
@@ -98,9 +106,12 @@ export function registerSpawnCommand(
 
       if (flags.dryRun) {
         const extra =
-          agentArgs.length > 0 ? ` with args ${JSON.stringify(agentArgs)}` : "";
+          spawnOptions.args && spawnOptions.args.length > 0
+            ? ` with args ${JSON.stringify(spawnOptions.args)}`
+            : "";
+        const cwdSuffix = spawnOptions.cwd ? ` from ${spawnOptions.cwd}` : "";
         resources.logger.dryRun(
-          `Dry run: would spawn ${adapter.label} with prompt "${promptText}"${extra}.`
+          `Dry run: would spawn ${adapter.label} with prompt "${spawnOptions.prompt}"${extra}${cwdSuffix}.`
         );
         return;
       }
@@ -118,11 +129,10 @@ export function registerSpawnCommand(
           if (!resolution.adapter.spawn) {
             throw new Error(`${adapter.label} does not support spawn.`);
           }
-          const output = await resolution.adapter.spawn(providerContext, {
-            prompt: promptText,
-            args: agentArgs,
-            model: modelOverride
-          });
+          const output = await resolution.adapter.spawn(
+            providerContext,
+            spawnOptions
+          );
           return output as CommandRunnerResult | void;
         }
       )) as CommandRunnerResult | void;
@@ -154,4 +164,17 @@ export function registerSpawnCommand(
 
       resources.logger.info(`${adapter.label} spawn completed.`);
     });
+}
+
+function resolveSpawnWorkingDirectory(
+  baseDir: string,
+  candidate?: string
+): string | undefined {
+  if (!candidate || candidate.trim().length === 0) {
+    return undefined;
+  }
+  if (path.isAbsolute(candidate)) {
+    return candidate;
+  }
+  return path.resolve(baseDir, candidate);
 }

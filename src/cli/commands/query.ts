@@ -3,9 +3,7 @@ import type { CliContainer } from "../container.js";
 import { DEFAULT_FRONTIER_MODEL } from "../constants.js";
 import {
   createExecutionResources,
-  resolveCommandFlags,
-  type CommandFlags,
-  type ExecutionResources
+  resolveCommandFlags
 } from "./shared.js";
 import { loadCredentials } from "../../services/credentials.js";
 

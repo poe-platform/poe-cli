@@ -17,6 +17,7 @@ import {
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
+import type { ProviderSpawnOptions } from "./spawn-options.js";
 
 function providerModel(model?: string): string {
   const value = model ?? DEFAULT_FRONTIER_MODEL;
@@ -166,17 +167,18 @@ export const openCodeService = createProvider({
     );
   },
   spawn(context, options) {
-    const opts = (options ?? {}) as {
-      prompt: string;
-      args?: string[];
-      model?: string;
-    };
+    const opts = (options ?? {}) as ProviderSpawnOptions;
     const args = [
       ...getModelArgs(opts.model),
       "run",
       opts.prompt,
       ...(opts.args ?? [])
     ];
+    if (opts.cwd) {
+      return context.command.runCommand("opencode", args, {
+        cwd: opts.cwd
+      });
+    }
     return context.command.runCommand("opencode", args);
   }
 });

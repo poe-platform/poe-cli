@@ -100,9 +100,11 @@ jobs:
             AGENT_OUTPUT=$(poe-code spawn "$SERVICE" "$PROMPT")
           fi
           echo "$AGENT_OUTPUT"
-          echo "agent_output<<EOF" >> $GITHUB_OUTPUT
-          echo "$AGENT_OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "agent_output<<EOF"
+            echo "$AGENT_OUTPUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - name: Generate pull request metadata
         id: pr_metadata
         env:

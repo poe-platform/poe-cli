@@ -5,9 +5,14 @@ export interface CommandRunnerResult {
   exitCode: number;
 }
 
+export interface CommandRunnerOptions {
+  cwd?: string;
+}
+
 export type CommandRunner = (
   command: string,
-  args: string[]
+  args: string[],
+  options?: CommandRunnerOptions
 ) => Promise<CommandRunnerResult>;
 
 export function formatCommandRunnerResult(

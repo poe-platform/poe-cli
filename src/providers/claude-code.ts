@@ -9,10 +9,7 @@ import {
   removeFileMutation,
   writeTemplateMutation
 } from "../services/service-manifest.js";
-import {
-  type InstallContext,
-  type ServiceInstallDefinition
-} from "../services/service-install.js";
+import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   CLAUDE_CODE_VARIANTS,
   DEFAULT_CLAUDE_CODE_MODEL
@@ -20,18 +17,11 @@ import {
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
-
-type ClaudeConfigureOptions = {
-  defaultModel: string;
-};
-
-type ClaudeRemoveOptions = Record<string, never>;
-
-type ClaudeSpawnOptions = {
-  prompt: string;
-  args?: string[];
-  model?: string;
-};
+import type {
+  ProviderSpawnOptions,
+  DefaultModelConfigureOptions,
+  EmptyProviderOptions
+} from "./spawn-options.js";
 
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
@@ -71,9 +61,9 @@ function buildClaudeArgs(
 
 export const claudeCodeService = createProvider<
   Record<string, any>,
-  ClaudeConfigureOptions,
-  ClaudeRemoveOptions,
-  ClaudeSpawnOptions
+  DefaultModelConfigureOptions,
+  EmptyProviderOptions,
+  ProviderSpawnOptions
 >({
   name: "claude-code",
   label: "Claude Code",
@@ -168,6 +158,11 @@ export const claudeCodeService = createProvider<
       options.args,
       options.model
     );
+    if (options.cwd) {
+      return context.command.runCommand("claude", args, {
+        cwd: options.cwd
+      });
+    }
     return context.command.runCommand("claude", args);
   }
 });

@@ -14,6 +14,7 @@ import {
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
+import type { ProviderSpawnOptions } from "./spawn-options.js";
 import {
   CODEX_MODELS,
   DEFAULT_CODEX_MODEL,
@@ -166,7 +167,7 @@ export const codexService = createProvider<
   Record<string, never>,
   CodexConfigureContext,
   CodexRemoveContext,
-  { prompt: string; args?: string[]; model?: string }
+  ProviderSpawnOptions
 >({
   name: "codex",
   label: "Codex",
@@ -249,6 +250,11 @@ export const codexService = createProvider<
       options.args,
       options.model
     );
+    if (options.cwd) {
+      return context.command.runCommand("codex", args, {
+        cwd: options.cwd
+      });
+    }
     return context.command.runCommand("codex", args);
   }
 });

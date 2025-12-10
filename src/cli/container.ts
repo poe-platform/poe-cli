@@ -20,8 +20,7 @@ import {
 } from "./options.js";
 import {
   createLoggerFactory,
-  type LoggerFactory,
-  type ScopedLogger
+  type LoggerFactory
 } from "./logger.js";
 import { ErrorLogger } from "./error-logger.js";
 import { createDefaultCommandRunner } from "./command-runner.js";

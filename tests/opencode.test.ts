@@ -97,17 +97,6 @@ describe("opencode service", () => {
     ...overrides
   });
 
-  type RemoveOptions = Parameters<
-    typeof opencodeService.openCodeService.remove
-  >[0]["options"];
-
-  const buildRemoveOptions = (
-    overrides: Partial<RemoveOptions> = {}
-  ): RemoveOptions => ({
-    env,
-    ...overrides
-  });
-
   async function configureOpenCode(
     overrides: Partial<ConfigureOptions> = {}
   ): Promise<void> {
@@ -116,17 +105,6 @@ describe("opencode service", () => {
       env,
       command: createTestCommandContext(fs),
       options: buildConfigureOptions(overrides)
-    });
-  }
-
-  async function removeOpenCode(
-    overrides: Partial<RemoveOptions> = {}
-  ): Promise<boolean> {
-    return opencodeService.openCodeService.remove({
-      fs,
-      env,
-      command: createTestCommandContext(fs),
-      options: buildRemoveOptions(overrides)
     });
   }
 

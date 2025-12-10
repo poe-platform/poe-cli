@@ -100,9 +100,17 @@ export function createLoggingCommandRunner(
   runner: CommandRunner,
   logger: ScopedLogger
 ): CommandRunner {
-  return async (command, args): Promise<CommandRunnerResult> => {
+  return async (
+    command,
+    args,
+    options
+  ): Promise<CommandRunnerResult> => {
     const rendered = [command, ...args].join(" ").trim();
-    logger.verbose(`> ${rendered}`);
+    const suffix = options?.cwd ? ` (cwd: ${options.cwd})` : "";
+    logger.verbose(`> ${rendered}${suffix}`);
+    if (options) {
+      return runner(command, args, options);
+    }
     return runner(command, args);
   };
 }

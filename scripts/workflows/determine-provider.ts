@@ -16,9 +16,9 @@ const PROVIDERS = new Map<string, ProviderMetadata>([
   ["opencode", { service: "opencode", model: DEFAULT_FRONTIER_MODEL }]
 ]);
 
-const REQUIRED_ENV = ["LABEL_NAME", "ISSUE_NUMBER", "GITHUB_OUTPUT"] as const;
+type RequiredEnvName = "LABEL_NAME" | "ISSUE_NUMBER" | "GITHUB_OUTPUT";
 
-function readEnv(name: (typeof REQUIRED_ENV)[number]): string {
+function readEnv(name: RequiredEnvName): string {
   const value = process.env[name];
   if (!value) {
     process.stderr.write(`Missing ${name} environment variable.\n`);
