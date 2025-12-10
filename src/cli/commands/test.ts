@@ -52,7 +52,9 @@ export async function executeTest(
     if (!entry.test) {
       throw new Error(`Service "${service}" does not support test.`);
     }
-    const resolution = await resolveProviderHandler(entry, providerContext);
+    const resolution = await resolveProviderHandler(entry, providerContext, {
+      useResolver: false
+    });
     if (!resolution.adapter.test) {
       throw new Error(`Service "${service}" does not support test.`);
     }

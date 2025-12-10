@@ -112,7 +112,9 @@ export function registerSpawnCommand(
           if (!entry.spawn) {
             throw new Error(`${adapter.label} does not support spawn.`);
           }
-          const resolution = await resolveProviderHandler(entry, providerContext);
+          const resolution = await resolveProviderHandler(entry, providerContext, {
+            useResolver: false
+          });
           if (!resolution.adapter.spawn) {
             throw new Error(`${adapter.label} does not support spawn.`);
           }

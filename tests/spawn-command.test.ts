@@ -88,7 +88,6 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
-      { command: "claude", args: ["--version"] },
       {
         command: "claude",
         args: [
@@ -132,10 +131,14 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
-      { command: "codex", args: ["--version"] },
       {
         command: "codex",
-        args: ["exec", "Summarize the diff", "--full-auto"]
+        args: [
+          "exec",
+          "Summarize the diff",
+          "--full-auto",
+          "--skip-git-repo-check"
+        ]
       }
     ]);
     expect(logs.some((message) => message.includes("Codex output"))).toBe(true);
@@ -167,7 +170,6 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
-      { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
         args: [
@@ -315,7 +317,6 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
-      { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
         args: ["--model", `poe/${override}`, "run", "List files"]
@@ -354,7 +355,6 @@ describe("spawn command", () => {
     ]);
 
     expect(calls).toEqual([
-      { command: "opencode", args: ["--version"] },
       {
         command: "opencode",
         args: ["--model", prefixed, "run", "List files"]

@@ -87,17 +87,20 @@ export interface ProviderResolution {
   version: string | null;
 }
 
+export interface ResolveProviderOptions {
+  useResolver?: boolean;
+}
+
 export async function resolveProviderHandler(
   adapter: ProviderService,
-  context: ProviderContext
+  context: ProviderContext,
+  options: ResolveProviderOptions = {}
 ): Promise<ProviderResolution> {
-  if (adapter.resolveVersion) {
+  const shouldResolve = options.useResolver ?? true;
+  if (shouldResolve && adapter.resolveVersion) {
     return adapter.resolveVersion(context);
   }
-  return {
-    adapter,
-    version: null
-  };
+  return { adapter, version: null };
 }
 
 export function resolveServiceAdapter(
