@@ -61,6 +61,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/poe-platform/poe-code.git"
+    "url": "git+https://github.com/poe-platform/poe-code.git"
   }
 }
