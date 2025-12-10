@@ -68,3 +68,4 @@ npx poe-code@latest spawn claude-code "Explain this error message"
 
 - `--dry-run` – show every mutation without touching disk.
 - `--yes` – accept defaults for prompts.
+- `-C, --cwd <path>` – run `spawn` from a specific working directory so provider CLIs see the right project files.
