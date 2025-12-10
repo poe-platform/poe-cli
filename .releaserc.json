@@ -43,7 +43,13 @@
       }
     ],
     "@semantic-release/release-notes-generator",
-    "@semantic-release/npm",
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "npm version ${nextRelease.version} --no-git-tag-version",
+        "publishCmd": "npm publish --provenance"
+      }
+    ],
     "@semantic-release/github"
   ]
 }
