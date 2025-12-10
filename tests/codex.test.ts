@@ -292,6 +292,11 @@ describe("codex service", () => {
     ).rejects.toThrow();
   });
 
+  it("builds exec args that skip git repo checks", () => {
+    const args = codexService.buildCodexExecArgs("Check the status");
+    expect(args).toContain("--skip-git-repo-check");
+  });
+
   it("spawns the codex CLI with the provided prompt and args", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: "codex-output\n",
@@ -374,7 +379,8 @@ describe("codex service", () => {
       override,
       "exec",
       "Summarize the diff",
-      "--full-auto"
+      "--full-auto",
+      "--skip-git-repo-check"
     ]);
   });
 

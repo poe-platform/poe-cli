@@ -134,7 +134,10 @@ function isTableEmpty(value: unknown): value is TomlTable {
   return isTomlTable(value) && Object.keys(value).length === 0;
 }
 
-const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto"] as const;
+const CODEX_DEFAULT_EXEC_ARGS = [
+  "--full-auto",
+  "--skip-git-repo-check"
+] as const;
 
 export function buildCodexExecArgs(
   prompt: string,
