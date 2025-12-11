@@ -23,21 +23,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - name: Generate npm OIDC token
-        id: npm-token
-        run: |
-          set -euo pipefail
-          ID_TOKEN=$(curl -sSf \
-            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r '.value')
-          NPM_TOKEN=$(curl -sSf \
-            -H "Content-Type: application/json" \
-            -X POST https://registry.npmjs.org/-/npm/v1/oidc/token \
-            -d "{\"token\":\"${ID_TOKEN}\"}" | jq -r '.token')
-          echo "token=${NPM_TOKEN}" >> "$GITHUB_OUTPUT"
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ steps.npm-token.outputs.token }}
-          NPM_TOKEN: ${{ steps.npm-token.outputs.token }}
         run: npx semantic-release
