@@ -44,10 +44,10 @@
     ],
     "@semantic-release/release-notes-generator",
     [
-      "@semantic-release/exec",
+      "@semantic-release/npm",
       {
-        "prepareCmd": "npm version ${nextRelease.version} --no-git-tag-version",
-        "publishCmd": "npm publish --provenance"
+        "npmPublish": true,
+        "pkgRoot": "."
       }
     ],
     "@semantic-release/github"
