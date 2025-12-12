@@ -13,7 +13,14 @@ export const CLAUDE_CODE_VARIANTS = {
 
 export const DEFAULT_CLAUDE_CODE_MODEL = CLAUDE_CODE_VARIANTS.sonnet;
 
-export const CODEX_MODELS = ["GPT-5.1-Codex", "GPT-5.1", "GPT-5.1-Codex-Mini"] as const;
+export const CODEX_MODELS = [
+  "gpt-5.2",
+  "gpt-5.2-chat",
+  "gpt-5.2-pro",
+  "GPT-5.1-Codex",
+  "GPT-5.1",
+  "GPT-5.1-Codex-Mini"
+] as const;
 export const DEFAULT_CODEX_MODEL = CODEX_MODELS[0];
 
 export const KIMI_MODELS = [
