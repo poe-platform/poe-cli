@@ -20,7 +20,7 @@ describe("codex service", () => {
   let fs: FileSystem;
   let vol: Volume;
   const home = "/home/user";
-  const configDir = path.join(home, ".codex");
+  const configDir = path.join(home, ".poe-code", "codex");
   const configPath = path.join(configDir, "config.toml");
   let env = createCliEnvironment({ cwd: home, homeDir: home });
 
@@ -316,7 +316,7 @@ describe("codex service", () => {
       exitCode: 0
     }));
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,
@@ -362,7 +362,7 @@ describe("codex service", () => {
       exitCode: 0
     }));
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,

@@ -87,8 +87,8 @@ describe("configure command", () => {
     expect(content.configured_services.opencode).toEqual({
       version: "2.3.4",
       files: [
-        homeDir + "/.config/opencode/config.json",
-        homeDir + "/.local/share/opencode/auth.json"
+        homeDir + "/.poe-code/opencode/config.json",
+        homeDir + "/.poe-code/opencode/auth.json"
       ]
     });
   });
@@ -177,7 +177,7 @@ describe("configure command", () => {
       })
     );
 
-    const settingsPath = homeDir + "/.claude/settings.json";
+    const settingsPath = homeDir + "/.poe-code/claude-code/settings.json";
     const settings = JSON.parse(await fs.readFile(settingsPath, "utf8"));
     expect(settings.model).toBe(customModel);
   });

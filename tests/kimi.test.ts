@@ -240,7 +240,7 @@ describe("kimi service", () => {
       exitCode: 0
     }));
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,

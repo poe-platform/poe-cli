@@ -218,7 +218,7 @@ describe("opencode service", () => {
       exitCode: 0
     }));
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,
@@ -257,7 +257,7 @@ describe("opencode service", () => {
     }));
     const customModel = FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!;
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,
@@ -289,7 +289,7 @@ describe("opencode service", () => {
     }));
     const prefixed = withProviderPrefix("Custom-Model");
     const providerContext = {
-      env: {} as any,
+      env,
       paths: {},
       command: {
         runCommand,
