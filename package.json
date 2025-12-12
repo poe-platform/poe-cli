@@ -19,7 +19,11 @@
   },
   "bin": {
     "poe-code": "dist/index.js",
-    "poe-code-configure": "dist/index.js"
+    "poe-code-configure": "dist/index.js",
+    "poe-claude": "dist/wrappers/poe-claude.js",
+    "poe-codex": "dist/wrappers/poe-codex.js",
+    "poe-opencode": "dist/wrappers/poe-opencode.js",
+    "poe-kimi": "dist/wrappers/poe-kimi.js"
   },
   "files": [
     "dist"
