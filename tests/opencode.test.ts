@@ -35,7 +35,7 @@ describe("opencode service", () => {
   let fs: FileSystem;
   let vol: Volume;
   const homeDir = "/home/user";
-  const configPath = path.join(homeDir, ".config", "opencode", "config.json");
+  const configPath = path.join(homeDir, ".poe-code", "opencode", "config", "config.json");
   const authPath = path.join(
     homeDir,
     ".local",
