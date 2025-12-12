@@ -16,7 +16,7 @@ export const AVAILABLE_MODELS = [
   "gpt-5.2",
   "gpt-5.2-chat",
   "gpt-5.2-pro",
-  "GPT-4o",
+  "gpt-4o",
   "Claude-3.5-Sonnet",
   DEFAULT_CODEX_MODEL,
 ] as const;
@@ -106,9 +106,9 @@ export class SmartStrategy implements ModelStrategy {
     }
 
     if (context.messageType === "chat") {
-      // Use GPT-4o for general chat
-      this.lastModel = "GPT-4o";
-      return "GPT-4o";
+      // Use gpt-4o for general chat
+      this.lastModel = "gpt-4o";
+      return "gpt-4o";
     }
 
     // Default to Claude
