@@ -42,6 +42,17 @@ describe("codex service", () => {
     ]);
   });
 
+  it("normalizes OpenAI model identifiers to lowercase", () => {
+    expect(codexService.buildCodexExecArgs("hi", [], "GPT-5.1-Codex")).toEqual([
+      "--model",
+      "gpt-5.1-codex",
+      "exec",
+      "hi",
+      "--full-auto",
+      "--skip-git-repo-check"
+    ]);
+  });
+
   function createProviderTestContext(
     runCommand: ReturnType<typeof vi.fn>,
     options: { dryRun?: boolean } = {}

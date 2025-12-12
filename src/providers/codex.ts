@@ -145,7 +145,7 @@ export function buildCodexExecArgs(
   extraArgs: string[] = [],
   model?: string
 ): string[] {
-  const modelArgs = model ? ["--model", model] : [];
+  const modelArgs = model ? ["--model", model.toLowerCase()] : [];
   return [...modelArgs, "exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
