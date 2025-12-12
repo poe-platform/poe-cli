@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import path from "node:path";
 import { executeDoctor } from "../src/cli/commands/doctor.js";
 import { executeConfigure } from "../src/cli/commands/configure.js";
 import { createCliContainer } from "../src/cli/container.js";
@@ -82,5 +83,18 @@ describe("doctor command", () => {
     await executeDoctor(program, container);
 
     expect(invokeSpy).not.toHaveBeenCalled();
+  });
+
+  it("generates poe-code agent configs", async () => {
+    const container = createContainer({ codex: "4.0.0" });
+    const program = createTestProgram();
+
+    await executeDoctor(program, container);
+
+    const agentHome = path.join(homeDir, ".poe-code", "codex", ".codex");
+    const configPath = path.join(agentHome, "config.toml");
+
+    const content = await container.fs.readFile(configPath, "utf8");
+    expect(content).toContain("model = \"GPT-5.1-Codex\"");
   });
 });
