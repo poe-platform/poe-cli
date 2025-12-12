@@ -5,7 +5,7 @@ import {
 import {
   ensureDirectory,
   jsonMergeMutation,
-  jsonPruneMutation
+  removeFileMutation
 } from "../services/service-manifest.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import { KIMI_MODELS, DEFAULT_KIMI_MODEL, PROVIDER_NAME } from "../cli/constants.js";
@@ -86,10 +86,10 @@ export const kimiService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.kimi"
+          path: "~/.poe-code/kimi"
         }),
         jsonMergeMutation({
-          target: "~/.kimi/config.json",
+          target: "~/.poe-code/kimi/config.json",
           value: ({ options }) => {
             const { defaultModel, apiKey } = (options ?? {}) as {
               defaultModel?: string;
@@ -117,13 +117,8 @@ export const kimiService = createProvider<
         })
       ],
       remove: [
-        jsonPruneMutation({
-          target: "~/.kimi/config.json",
-          shape: (): JsonObject => ({
-            providers: {
-              [PROVIDER_NAME]: true
-            }
-          })
+        removeFileMutation({
+          target: "~/.poe-code/kimi/config.json"
         })
       ]
     }
@@ -132,11 +127,17 @@ export const kimiService = createProvider<
   install: KIMI_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildKimiArgs(options.prompt, options.args);
+    const configDir = context.env.resolveHomePath(".poe-code", "kimi");
+    const env = {
+      ...process.env,
+      KIMI_CONFIG_DIR: configDir
+    };
     if (options.cwd) {
       return context.command.runCommand("kimi", args, {
-        cwd: options.cwd
+        cwd: options.cwd,
+        env
       });
     }
-    return context.command.runCommand("kimi", args);
+    return context.command.runCommand("kimi", args, { env });
   }
 });

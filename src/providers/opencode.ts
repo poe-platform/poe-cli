@@ -13,7 +13,7 @@ import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
-  jsonPruneMutation
+  removeFileMutation
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
@@ -94,13 +94,10 @@ export const openCodeService = createProvider({
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.config/opencode"
-        }),
-        ensureDirectory({
-          path: "~/.local/share/opencode"
+          path: "~/.poe-code/opencode"
         }),
         jsonMergeMutation({
-          target: "~/.config/opencode/config.json",
+          target: "~/.poe-code/opencode/config.json",
           value: ({ options }) => {
             const { model } = (options ?? {}) as { model?: string };
             return {
@@ -120,7 +117,7 @@ export const openCodeService = createProvider({
           }
         }),
         jsonMergeMutation({
-          target: "~/.local/share/opencode/auth.json",
+          target: "~/.poe-code/opencode/auth.json",
           value: ({ options }) => {
             const { apiKey } = (options ?? {}) as { apiKey?: string };
             return {
@@ -133,19 +130,11 @@ export const openCodeService = createProvider({
         })
       ],
       remove: [
-        jsonPruneMutation({
-          target: "~/.config/opencode/config.json",
-          shape: (): JsonObject => ({
-            provider: {
-              [PROVIDER_NAME]: true
-            }
-          })
+        removeFileMutation({
+          target: "~/.poe-code/opencode/config.json"
         }),
-        jsonPruneMutation({
-          target: "~/.local/share/opencode/auth.json",
-          shape: (): JsonObject => ({
-            [PROVIDER_NAME]: true
-          })
+        removeFileMutation({
+          target: "~/.poe-code/opencode/auth.json"
         })
       ]
     }
@@ -174,11 +163,17 @@ export const openCodeService = createProvider({
       opts.prompt,
       ...(opts.args ?? [])
     ];
+    const configDir = context.env.resolveHomePath(".poe-code", "opencode");
+    const env = {
+      ...process.env,
+      OPENCODE_CONFIG_DIR: configDir
+    };
     if (opts.cwd) {
       return context.command.runCommand("opencode", args, {
-        cwd: opts.cwd
+        cwd: opts.cwd,
+        env
       });
     }
-    return context.command.runCommand("opencode", args);
+    return context.command.runCommand("opencode", args, { env });
   }
 });

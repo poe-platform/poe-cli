@@ -7,10 +7,9 @@ import {
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
-  createBackupMutation,
   ensureDirectory,
-  tomlTemplateMergeMutation,
-  tomlPruneMutation
+  removeFileMutation,
+  tomlTemplateMergeMutation
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
@@ -210,13 +209,9 @@ export const codexService = createProvider<
   manifest: {
     "*": {
       configure: [
-        ensureDirectory({ path: "~/.codex" }),
-        createBackupMutation({
-          target: "~/.codex/config.toml",
-          timestamp: ({ options }) => options.timestamp
-        }),
+        ensureDirectory({ path: "~/.poe-code/codex" }),
         tomlTemplateMergeMutation({
-          target: "~/.codex/config.toml",
+          target: "~/.poe-code/codex/config.toml",
           templateId: "codex/config.toml.hbs",
           context: ({ options }) => ({
             apiKey: options.apiKey,
@@ -226,18 +221,8 @@ export const codexService = createProvider<
         })
       ],
       remove: [
-        tomlPruneMutation({
-          target: "~/.codex/config.toml",
-          prune: (document) => {
-            const result = stripCodexConfiguration(document);
-            if (!result.changed) {
-              return { changed: false, result: document };
-            }
-            return {
-              changed: true,
-              result: result.empty ? null : document
-            };
-          }
+        removeFileMutation({
+          target: "~/.poe-code/codex/config.toml"
         })
       ]
     }
@@ -250,11 +235,18 @@ export const codexService = createProvider<
       options.args,
       options.model
     );
+    const configDir = context.env.resolveHomePath(".poe-code", "codex");
+    const env = {
+      ...process.env,
+      CODEX_HOME: configDir,
+      XDG_CONFIG_HOME: configDir
+    };
     if (options.cwd) {
       return context.command.runCommand("codex", args, {
-        cwd: options.cwd
+        cwd: options.cwd,
+        env
       });
     }
-    return context.command.runCommand("codex", args);
+    return context.command.runCommand("codex", args, { env });
   }
 });

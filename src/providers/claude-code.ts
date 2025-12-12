@@ -103,23 +103,23 @@ export const claudeCodeService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.claude"
+          path: "~/.poe-code/claude-code"
         }),
         writeTemplateMutation({
-          target: "~/.claude/anthropic_key.sh",
+          target: "~/.poe-code/claude-code/anthropic_key.sh",
           templateId: "claude-code/anthropic_key.sh.hbs",
           context: ({ env }) => ({
             credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
           })
         }),
         makeExecutableMutation({
-          target: "~/.claude/anthropic_key.sh",
+          target: "~/.poe-code/claude-code/anthropic_key.sh",
           mode: 0o700
         }),
         jsonMergeMutation({
-          target: "~/.claude/settings.json",
+          target: "~/.poe-code/claude-code/settings.json",
           value: ({ options, env }) => ({
-            apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
+            apiKeyHelper: env.resolveHomePath(".poe-code", "claude-code", "anthropic_key.sh"),
             env: {
               ANTHROPIC_BASE_URL: "https://api.poe.com",
               ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
@@ -131,21 +131,11 @@ export const claudeCodeService = createProvider<
         })
       ],
       remove: [
-        jsonPruneMutation({
-          target: "~/.claude/settings.json",
-          shape: () => ({
-            apiKeyHelper: true,
-            env: {
-              ANTHROPIC_BASE_URL: true,
-              ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
-              ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-              ANTHROPIC_DEFAULT_OPUS_MODEL: true
-            },
-            model: true
-          })
+        removeFileMutation({
+          target: "~/.poe-code/claude-code/settings.json"
         }),
         removeFileMutation({
-          target: "~/.claude/anthropic_key.sh"
+          target: "~/.poe-code/claude-code/anthropic_key.sh"
         })
       ]
     }
@@ -158,11 +148,17 @@ export const claudeCodeService = createProvider<
       options.args,
       options.model
     );
+    const configDir = context.env.resolveHomePath(".poe-code", "claude-code");
+    const env = {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: configDir
+    };
     if (options.cwd) {
       return context.command.runCommand("claude", args, {
-        cwd: options.cwd
+        cwd: options.cwd,
+        env
       });
     }
-    return context.command.runCommand("claude", args);
+    return context.command.runCommand("claude", args, { env });
   }
 });
