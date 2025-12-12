@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
+import path from "node:path";
 import { createProgram } from "../src/cli/program.js";
 import type { FileSystem } from "../src/utils/file-system.js";
 
@@ -96,5 +97,41 @@ describe("login command", () => {
         message.includes(`Dry run: would store Poe API key at ${credentialsPath}.`)
       )
     ).toBe(true);
+  });
+
+  it("generates agent configs inside the poe-code directory", async () => {
+    const program = createProgram({
+      fs,
+      prompts,
+      env: { cwd, homeDir },
+      logger: (message) => {
+        logs.push(message);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "login",
+      "--api-key",
+      "agent-key"
+    ]);
+
+    const claudeSettingsPath = path.join(
+      homeDir,
+      ".poe-code/claude-code/.claude/settings.json"
+    );
+    const claudeScriptPath = path.join(
+      homeDir,
+      ".poe-code/claude-code/.claude/anthropic_key.sh"
+    );
+
+    const content = await fs.readFile(claudeSettingsPath, "utf8");
+    const parsed = JSON.parse(content);
+    expect(parsed.model).toBe("Claude-3.5-Sonnet");
+    expect(parsed.apiKeyHelper).toBe(claudeScriptPath);
+
+    const helperScript = await fs.readFile(claudeScriptPath, "utf8");
+    expect(helperScript).toContain(`require('${credentialsPath}')`);
   });
 });
