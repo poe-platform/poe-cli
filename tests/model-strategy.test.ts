@@ -87,14 +87,14 @@ describe("SmartStrategy", () => {
     expect(model).toBe("gpt-5.2");
   });
 
-  it("selects GPT-4o for chat tasks", () => {
+  it("selects gpt-4o for chat tasks", () => {
     const context: ModelContext = {
       messageType: "chat",
       complexity: "simple",
     };
 
     const model = strategy.getNextModel(context);
-    expect(model).toBe("GPT-4o");
+    expect(model).toBe("gpt-4o");
   });
 
   it("defaults to Claude when no context provided", () => {
@@ -136,9 +136,9 @@ describe("FixedStrategy", () => {
   it("can change the model", () => {
     const strategy = new FixedStrategy("gpt-5.2");
 
-    strategy.setModel("GPT-4o");
+    strategy.setModel("gpt-4o");
 
-    expect(strategy.getNextModel()).toBe("GPT-4o");
+    expect(strategy.getNextModel()).toBe("gpt-4o");
   });
 
   it("returns correct name and description", () => {
@@ -166,7 +166,7 @@ describe("RoundRobinStrategy", () => {
     expect(model2).toBe("gpt-5.2");
     expect(model3).toBe("gpt-5.2-chat");
     expect(model4).toBe("gpt-5.2-pro");
-    expect(model5).toBe("GPT-4o");
+    expect(model5).toBe("gpt-4o");
     expect(model6).toBe("Claude-3.5-Sonnet");
     expect(model7).toBe(DEFAULT_CODEX_MODEL);
     expect(model8).toBe(CLAUDE_MODEL_SONNET); // Wrapped around

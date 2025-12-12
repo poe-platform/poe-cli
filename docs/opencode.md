@@ -16,8 +16,8 @@
             "Claude-Sonnet-4.5": {
                 "name": "Claude Sonnet 4.5"
             },
-            "GPT-5.1-Codex": {
-                "name": "GPT-5.1-Codex"
+            "gpt-5.1-codex": {
+                "name": "gpt-5.1-codex"
             }
         }
       }
