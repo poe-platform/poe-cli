@@ -1,7 +1,4 @@
-import {
-  createBinaryExistsCheck,
-  createCommandExpectationCheck
-} from "../utils/command-checks.js";
+import { createBinaryExistsCheck, createCommandExpectationCheck } from "../utils/command-checks.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -21,11 +18,7 @@ import type {
 export const KIMI_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "kimi",
   summary: "Kimi CLI",
-  check: createBinaryExistsCheck(
-    "kimi",
-    "kimi-cli-binary",
-    "Kimi CLI binary must exist"
-  ),
+  check: createBinaryExistsCheck("kimi", "kimi-cli-binary", "Kimi CLI binary must exist"),
   steps: [
     {
       id: "install-kimi-cli-uv",
@@ -86,10 +79,10 @@ export const kimiService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.kimi"
+          path: "~/.poe-code/kimi"
         }),
         jsonMergeMutation({
-          target: "~/.kimi/config.json",
+          target: "~/.poe-code/kimi/config.json",
           value: ({ options }) => {
             const { defaultModel, apiKey } = (options ?? {}) as {
               defaultModel?: string;
@@ -118,7 +111,7 @@ export const kimiService = createProvider<
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.kimi/config.json",
+          target: "~/.poe-code/kimi/config.json",
           shape: (): JsonObject => ({
             providers: {
               [PROVIDER_NAME]: true

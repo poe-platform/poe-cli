@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
 import type { FileSystem } from "../src/utils/file-system.js";
-import {
-  DEFAULT_KIMI_MODEL,
-  KIMI_MODELS,
-  PROVIDER_NAME
-} from "../src/cli/constants.js";
+import { DEFAULT_KIMI_MODEL, KIMI_MODELS, PROVIDER_NAME } from "../src/cli/constants.js";
 import * as kimiService from "../src/providers/kimi.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
@@ -19,8 +15,7 @@ function createMemFs(): { fs: FileSystem; vol: Volume } {
   return { fs: fs.promises as unknown as FileSystem, vol };
 }
 
-const withProviderPrefix = (model: string): string =>
-  `${PROVIDER_NAME}/${model}`;
+const withProviderPrefix = (model: string): string => `${PROVIDER_NAME}/${model}`;
 
 const DEFAULT_PROVIDER_MODEL = withProviderPrefix(DEFAULT_KIMI_MODEL);
 
@@ -28,7 +23,7 @@ describe("kimi service", () => {
   let fs: FileSystem;
   let vol: Volume;
   const homeDir = "/home/user";
-  const configPath = path.join(homeDir, ".kimi", "config.json");
+  const configPath = path.join(homeDir, ".poe-code", "kimi", "config.json");
   let env = createCliEnvironment({ cwd: homeDir, homeDir });
 
   beforeEach(() => {
@@ -70,33 +65,23 @@ describe("kimi service", () => {
     return { context, logs };
   }
 
-  type ConfigureOptions = Parameters<
-    typeof kimiService.kimiService.configure
-  >[0]["options"];
+  type ConfigureOptions = Parameters<typeof kimiService.kimiService.configure>[0]["options"];
 
-  const buildConfigureOptions = (
-    overrides: Partial<ConfigureOptions> = {}
-  ): ConfigureOptions => ({
+  const buildConfigureOptions = (overrides: Partial<ConfigureOptions> = {}): ConfigureOptions => ({
     env,
     apiKey: "sk-test",
     defaultModel: DEFAULT_KIMI_MODEL,
     ...overrides
   });
 
-  type RemoveOptions = Parameters<
-    typeof kimiService.kimiService.remove
-  >[0]["options"];
+  type RemoveOptions = Parameters<typeof kimiService.kimiService.remove>[0]["options"];
 
-  const buildRemoveOptions = (
-    overrides: Partial<RemoveOptions> = {}
-  ): RemoveOptions => ({
+  const buildRemoveOptions = (overrides: Partial<RemoveOptions> = {}): RemoveOptions => ({
     env,
     ...overrides
   });
 
-  async function configureKimi(
-    overrides: Partial<ConfigureOptions> = {}
-  ): Promise<void> {
+  async function configureKimi(overrides: Partial<ConfigureOptions> = {}): Promise<void> {
     await kimiService.kimiService.configure({
       fs,
       env,
@@ -105,9 +90,7 @@ describe("kimi service", () => {
     });
   }
 
-  async function removeKimi(
-    overrides: Partial<RemoveOptions> = {}
-  ): Promise<boolean> {
+  async function removeKimi(overrides: Partial<RemoveOptions> = {}): Promise<boolean> {
     return kimiService.kimiService.remove({
       fs,
       env,
@@ -256,11 +239,7 @@ describe("kimi service", () => {
       args: ["--format", "markdown"]
     });
 
-    expect(runCommand).toHaveBeenCalledWith("kimi", [
-      "List all files",
-      "--format",
-      "markdown"
-    ]);
+    expect(runCommand).toHaveBeenCalledWith("kimi", ["List all files", "--format", "markdown"]);
     expect(result).toEqual({
       stdout: "kimi-output\n",
       stderr: "",
@@ -278,9 +257,7 @@ describe("kimi service", () => {
 
     await kimiService.kimiService.test?.(context);
 
-    expect(runCommand).toHaveBeenCalledWith("kimi", [
-      "Output exactly: KIMI_OK"
-    ]);
+    expect(runCommand).toHaveBeenCalledWith("kimi", ["Output exactly: KIMI_OK"]);
   });
 
   it("skips the Kimi health check during dry runs", async () => {
@@ -292,11 +269,7 @@ describe("kimi service", () => {
     await kimiService.kimiService.test?.(context);
 
     expect(runCommand).not.toHaveBeenCalled();
-    expect(
-      logs.find((line) =>
-        line.includes('kimi "Output exactly: KIMI_OK"')
-      )
-    ).toBeTruthy();
+    expect(logs.find((line) => line.includes('kimi "Output exactly: KIMI_OK"'))).toBeTruthy();
   });
 
   it("includes stdout and stderr when the Kimi health check command fails", async () => {
@@ -307,9 +280,7 @@ describe("kimi service", () => {
     }));
     const { context } = createProviderTestContext(runCommand);
 
-    await expect(
-      kimiService.kimiService.test?.(context)
-    ).rejects.toThrow(/KIMI_FAIL_STDOUT/);
+    await expect(kimiService.kimiService.test?.(context)).rejects.toThrow(/KIMI_FAIL_STDOUT/);
   });
 
   it("includes stdout and stderr when the Kimi health check output is unexpected", async () => {
@@ -320,9 +291,9 @@ describe("kimi service", () => {
     }));
     const { context } = createProviderTestContext(runCommand);
 
-    await expect(
-      kimiService.kimiService.test?.(context)
-    ).rejects.toThrow(/expected "KIMI_OK" but received "MISCONFIG"/i);
+    await expect(kimiService.kimiService.test?.(context)).rejects.toThrow(
+      /expected "KIMI_OK" but received "MISCONFIG"/i
+    );
   });
 
   it("removes the Poe provider from config on remove", async () => {

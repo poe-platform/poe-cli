@@ -1,14 +1,7 @@
-import {
-  DEFAULT_FRONTIER_MODEL,
-  FRONTIER_MODELS,
-  PROVIDER_NAME
-} from "../cli/constants.js";
+import { DEFAULT_FRONTIER_MODEL, FRONTIER_MODELS, PROVIDER_NAME } from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
 import type { CommandCheck } from "../utils/command-checks.js";
-import {
-  createBinaryExistsCheck,
-  createCommandExpectationCheck
-} from "../utils/command-checks.js";
+import { createBinaryExistsCheck, createCommandExpectationCheck } from "../utils/command-checks.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
   ensureDirectory,
@@ -25,12 +18,13 @@ function providerModel(model?: string): string {
   return value.startsWith(prefix) ? value : `${prefix}${value}`;
 }
 
-const FRONTIER_MODEL_RECORD = FRONTIER_MODELS.reduce<
-  Record<string, { name: string }>
->((acc, id) => {
-  acc[id] = { name: id };
-  return acc;
-}, {});
+const FRONTIER_MODEL_RECORD = FRONTIER_MODELS.reduce<Record<string, { name: string }>>(
+  (acc, id) => {
+    acc[id] = { name: id };
+    return acc;
+  },
+  {}
+);
 
 export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "opencode",
@@ -57,9 +51,7 @@ function createOpenCodeVersionCheck(): CommandCheck {
     async run({ runCommand }) {
       const result = await runCommand("opencode", ["--version"]);
       if (result.exitCode !== 0) {
-        throw new Error(
-          `OpenCode CLI --version failed with exit code ${result.exitCode}.`
-        );
+        throw new Error(`OpenCode CLI --version failed with exit code ${result.exitCode}.`);
       }
     }
   };
@@ -94,13 +86,13 @@ export const openCodeService = createProvider({
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.config/opencode"
+          path: "~/.poe-code/opencode/config"
         }),
         ensureDirectory({
-          path: "~/.local/share/opencode"
+          path: "~/.poe-code/opencode/share"
         }),
         jsonMergeMutation({
-          target: "~/.config/opencode/config.json",
+          target: "~/.poe-code/opencode/config/config.json",
           value: ({ options }) => {
             const { model } = (options ?? {}) as { model?: string };
             return {
@@ -120,7 +112,7 @@ export const openCodeService = createProvider({
           }
         }),
         jsonMergeMutation({
-          target: "~/.local/share/opencode/auth.json",
+          target: "~/.poe-code/opencode/share/auth.json",
           value: ({ options }) => {
             const { apiKey } = (options ?? {}) as { apiKey?: string };
             return {
@@ -134,7 +126,7 @@ export const openCodeService = createProvider({
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.config/opencode/config.json",
+          target: "~/.poe-code/opencode/config/config.json",
           shape: (): JsonObject => ({
             provider: {
               [PROVIDER_NAME]: true
@@ -142,7 +134,7 @@ export const openCodeService = createProvider({
           })
         }),
         jsonPruneMutation({
-          target: "~/.local/share/opencode/auth.json",
+          target: "~/.poe-code/opencode/share/auth.json",
           shape: (): JsonObject => ({
             [PROVIDER_NAME]: true
           })
@@ -157,23 +149,14 @@ export const openCodeService = createProvider({
       createCommandExpectationCheck({
         id: "opencode-cli-health",
         command: "opencode",
-        args: [
-          ...getModelArgs(DEFAULT_FRONTIER_MODEL),
-          "run",
-          "Output exactly: OPEN_CODE_OK"
-        ],
+        args: [...getModelArgs(DEFAULT_FRONTIER_MODEL), "run", "Output exactly: OPEN_CODE_OK"],
         expectedOutput: "OPEN_CODE_OK"
       })
     );
   },
   spawn(context, options) {
     const opts = (options ?? {}) as ProviderSpawnOptions;
-    const args = [
-      ...getModelArgs(opts.model),
-      "run",
-      opts.prompt,
-      ...(opts.args ?? [])
-    ];
+    const args = [...getModelArgs(opts.model), "run", opts.prompt, ...(opts.args ?? [])];
     if (opts.cwd) {
       return context.command.runCommand("opencode", args, {
         cwd: opts.cwd

@@ -1,9 +1,6 @@
 import type { CliEnvironment } from "../cli/environment.js";
 import type { CommandCheck } from "../utils/command-checks.js";
-import {
-  createBinaryExistsCheck,
-  createCommandExpectationCheck
-} from "../utils/command-checks.js";
+import { createBinaryExistsCheck, createCommandExpectationCheck } from "../utils/command-checks.js";
 import { isTomlTable, type TomlTable } from "../utils/toml.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import {
@@ -15,11 +12,7 @@ import {
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { ProviderSpawnOptions } from "./spawn-options.js";
-import {
-  CODEX_MODELS,
-  DEFAULT_CODEX_MODEL,
-  DEFAULT_REASONING
-} from "../cli/constants.js";
+import { CODEX_MODELS, DEFAULT_CODEX_MODEL, DEFAULT_REASONING } from "../cli/constants.js";
 
 type CodexConfigureContext = {
   env: CliEnvironment;
@@ -35,18 +28,11 @@ type CodexRemoveContext = {
 
 const CODEX_PROVIDER_ID = "poe";
 const CODEX_BASE_URL = "https://api.poe.com/v1";
-const CODEX_TOP_LEVEL_FIELDS = [
-  "model",
-  "model_reasoning_effort"
-] as const;
+const CODEX_TOP_LEVEL_FIELDS = ["model", "model_reasoning_effort"] as const;
 export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "codex",
   summary: "Codex CLI",
-  check: createBinaryExistsCheck(
-    "codex",
-    "codex-cli-binary",
-    "Codex CLI binary must exist"
-  ),
+  check: createBinaryExistsCheck("codex", "codex-cli-binary", "Codex CLI binary must exist"),
   steps: [
     {
       id: "install-codex-cli-npm",
@@ -58,9 +44,7 @@ export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
   successMessage: "Installed Codex CLI via npm."
 };
 
-function stripCodexConfiguration(
-  document: TomlTable
-): { changed: boolean; empty: boolean } {
+function stripCodexConfiguration(document: TomlTable): { changed: boolean; empty: boolean } {
   if (!isTomlTable(document)) {
     return { changed: false, empty: false };
   }
@@ -115,11 +99,7 @@ function matchesExpectedProviderConfig(table: TomlTable): boolean {
   }
 
   const envKey = table["env_key"];
-  if (
-    envKey != null &&
-    envKey !== "OPENAI_API_KEY" &&
-    envKey !== "POE_API_KEY"
-  ) {
+  if (envKey != null && envKey !== "OPENAI_API_KEY" && envKey !== "POE_API_KEY") {
     return false;
   }
 
@@ -135,10 +115,7 @@ function isTableEmpty(value: unknown): value is TomlTable {
   return isTomlTable(value) && Object.keys(value).length === 0;
 }
 
-const CODEX_DEFAULT_EXEC_ARGS = [
-  "--full-auto",
-  "--skip-git-repo-check"
-] as const;
+const CODEX_DEFAULT_EXEC_ARGS = ["--full-auto", "--skip-git-repo-check"] as const;
 
 export function buildCodexExecArgs(
   prompt: string,
@@ -155,9 +132,7 @@ function createCodexVersionCheck(): CommandCheck {
     async run({ runCommand }) {
       const result = await runCommand("codex", ["--version"]);
       if (result.exitCode !== 0) {
-        throw new Error(
-          `Codex CLI --version failed with exit code ${result.exitCode}.`
-        );
+        throw new Error(`Codex CLI --version failed with exit code ${result.exitCode}.`);
       }
     }
   };
@@ -198,11 +173,7 @@ export const codexService = createProvider<
       createCommandExpectationCheck({
         id: "codex-cli-health",
         command: "codex",
-        args: buildCodexExecArgs(
-          "Output exactly: CODEX_OK",
-          [],
-          DEFAULT_CODEX_MODEL
-        ),
+        args: buildCodexExecArgs("Output exactly: CODEX_OK", [], DEFAULT_CODEX_MODEL),
         expectedOutput: "CODEX_OK"
       })
     );
@@ -210,13 +181,13 @@ export const codexService = createProvider<
   manifest: {
     "*": {
       configure: [
-        ensureDirectory({ path: "~/.codex" }),
+        ensureDirectory({ path: "~/.poe-code/codex" }),
         createBackupMutation({
-          target: "~/.codex/config.toml",
+          target: "~/.poe-code/codex/config.toml",
           timestamp: ({ options }) => options.timestamp
         }),
         tomlTemplateMergeMutation({
-          target: "~/.codex/config.toml",
+          target: "~/.poe-code/codex/config.toml",
           templateId: "codex/config.toml.hbs",
           context: ({ options }) => ({
             apiKey: options.apiKey,
@@ -227,7 +198,7 @@ export const codexService = createProvider<
       ],
       remove: [
         tomlPruneMutation({
-          target: "~/.codex/config.toml",
+          target: "~/.poe-code/codex/config.toml",
           prune: (document) => {
             const result = stripCodexConfiguration(document);
             if (!result.changed) {
@@ -245,11 +216,7 @@ export const codexService = createProvider<
   versionResolver: createBinaryVersionResolver("codex"),
   install: CODEX_INSTALL_DEFINITION,
   spawn(context, options) {
-    const args = buildCodexExecArgs(
-      options.prompt,
-      options.args,
-      options.model
-    );
+    const args = buildCodexExecArgs(options.prompt, options.args, options.model);
     if (options.cwd) {
       return context.command.runCommand("codex", args, {
         cwd: options.cwd

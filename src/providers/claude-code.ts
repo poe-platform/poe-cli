@@ -1,7 +1,4 @@
-import {
-  createBinaryExistsCheck,
-  createCommandExpectationCheck
-} from "../utils/command-checks.js";
+import { createBinaryExistsCheck, createCommandExpectationCheck } from "../utils/command-checks.js";
 import {
   ensureDirectory,
   jsonMergeMutation,
@@ -10,10 +7,7 @@ import {
   writeTemplateMutation
 } from "../services/service-manifest.js";
 import { type ServiceInstallDefinition } from "../services/service-install.js";
-import {
-  CLAUDE_CODE_VARIANTS,
-  DEFAULT_CLAUDE_CODE_MODEL
-} from "../cli/constants.js";
+import { CLAUDE_CODE_VARIANTS, DEFAULT_CLAUDE_CODE_MODEL } from "../cli/constants.js";
 import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
@@ -26,11 +20,7 @@ import type {
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
   summary: "Claude CLI",
-  check: createBinaryExistsCheck(
-    "claude",
-    "claude-cli-binary",
-    "Claude CLI binary must exist"
-  ),
+  check: createBinaryExistsCheck("claude", "claude-cli-binary", "Claude CLI binary must exist"),
   steps: [
     {
       id: "install-claude-cli-npm",
@@ -50,11 +40,7 @@ const CLAUDE_SPAWN_DEFAULTS = [
   "text"
 ] as const;
 
-function buildClaudeArgs(
-  prompt: string,
-  extraArgs?: string[],
-  model?: string
-): string[] {
+function buildClaudeArgs(prompt: string, extraArgs?: string[], model?: string): string[] {
   const modelArgs = model ? ["--model", model] : [];
   return ["-p", prompt, ...modelArgs, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
@@ -103,23 +89,23 @@ export const claudeCodeService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.claude"
+          path: "~/.poe-code/claude-code"
         }),
         writeTemplateMutation({
-          target: "~/.claude/anthropic_key.sh",
+          target: "~/.poe-code/claude-code/anthropic_key.sh",
           templateId: "claude-code/anthropic_key.sh.hbs",
           context: ({ env }) => ({
             credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
           })
         }),
         makeExecutableMutation({
-          target: "~/.claude/anthropic_key.sh",
+          target: "~/.poe-code/claude-code/anthropic_key.sh",
           mode: 0o700
         }),
         jsonMergeMutation({
-          target: "~/.claude/settings.json",
+          target: "~/.poe-code/claude-code/settings.json",
           value: ({ options, env }) => ({
-            apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
+            apiKeyHelper: env.resolveHomePath(".poe-code", "claude-code", "anthropic_key.sh"),
             env: {
               ANTHROPIC_BASE_URL: "https://api.poe.com",
               ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
@@ -132,7 +118,7 @@ export const claudeCodeService = createProvider<
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.claude/settings.json",
+          target: "~/.poe-code/claude-code/settings.json",
           shape: () => ({
             apiKeyHelper: true,
             env: {
@@ -145,7 +131,7 @@ export const claudeCodeService = createProvider<
           })
         }),
         removeFileMutation({
-          target: "~/.claude/anthropic_key.sh"
+          target: "~/.poe-code/claude-code/anthropic_key.sh"
         })
       ]
     }
@@ -153,11 +139,7 @@ export const claudeCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
-    const args = buildClaudeArgs(
-      options.prompt,
-      options.args,
-      options.model
-    );
+    const args = buildClaudeArgs(options.prompt, options.args, options.model);
     if (options.cwd) {
       return context.command.runCommand("claude", args, {
         cwd: options.cwd

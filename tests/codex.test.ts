@@ -20,7 +20,7 @@ describe("codex service", () => {
   let fs: FileSystem;
   let vol: Volume;
   const home = "/home/user";
-  const configDir = path.join(home, ".codex");
+  const configDir = path.join(home, ".poe-code", "codex");
   const configPath = path.join(configDir, "config.toml");
   let env = createCliEnvironment({ cwd: home, homeDir: home });
 
@@ -63,17 +63,11 @@ describe("codex service", () => {
     return { context, logs };
   }
 
-  type ConfigureOptions = Parameters<
-    typeof codexService.codexService.configure
-  >[0]["options"];
+  type ConfigureOptions = Parameters<typeof codexService.codexService.configure>[0]["options"];
 
-  type RemoveOptions = Parameters<
-    typeof codexService.codexService.remove
-  >[0]["options"];
+  type RemoveOptions = Parameters<typeof codexService.codexService.remove>[0]["options"];
 
-  const buildConfigureOptions = (
-    overrides: Partial<ConfigureOptions> = {}
-  ): ConfigureOptions => ({
+  const buildConfigureOptions = (overrides: Partial<ConfigureOptions> = {}): ConfigureOptions => ({
     env,
     apiKey: "sk-test",
     model: DEFAULT_CODEX_MODEL,
@@ -81,16 +75,12 @@ describe("codex service", () => {
     ...overrides
   });
 
-  const buildRemoveOptions = (
-    overrides: Partial<RemoveOptions> = {}
-  ): RemoveOptions => ({
+  const buildRemoveOptions = (overrides: Partial<RemoveOptions> = {}): RemoveOptions => ({
     env,
     ...overrides
   });
 
-  async function configureCodex(
-    overrides: Partial<ConfigureOptions> = {}
-  ): Promise<void> {
+  async function configureCodex(overrides: Partial<ConfigureOptions> = {}): Promise<void> {
     await codexService.codexService.configure({
       fs,
       env,
@@ -99,9 +89,7 @@ describe("codex service", () => {
     });
   }
 
-  async function removeCodex(
-    overrides: Partial<RemoveOptions> = {}
-  ): Promise<boolean> {
+  async function removeCodex(overrides: Partial<RemoveOptions> = {}): Promise<boolean> {
     return codexService.codexService.remove({
       fs,
       env,
@@ -116,19 +104,12 @@ describe("codex service", () => {
     });
 
     const content = await fs.readFile(configPath, "utf8");
-    expect(content.trim()).toContain(
-      `model = "${DEFAULT_CODEX_MODEL}"`
-    );
+    expect(content.trim()).toContain(`model = "${DEFAULT_CODEX_MODEL}"`);
     expect(content.trim()).toContain('model_reasoning_effort = "medium"');
-    expect(content.trim()).toContain(
-      'experimental_bearer_token = "sk-test"'
-    );
-    await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects
-      .toThrow();
+    expect(content.trim()).toContain('experimental_bearer_token = "sk-test"');
+    await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects.toThrow();
 
-    await expect(
-      fs.readFile(`${configPath}.backup.20240101T000000`, "utf8")
-    ).rejects.toThrow();
+    await expect(fs.readFile(`${configPath}.backup.20240101T000000`, "utf8")).rejects.toThrow();
   });
 
   it("removes generated config without restoring backup", async () => {
@@ -139,11 +120,7 @@ describe("codex service", () => {
       timestamp: () => "20240101T000000"
     });
 
-    await fs.writeFile(
-      `${configPath}.backup.20240101T000000`,
-      "legacy",
-      { encoding: "utf8" }
-    );
+    await fs.writeFile(`${configPath}.backup.20240101T000000`, "legacy", { encoding: "utf8" });
     const removed = await removeCodex();
     expect(removed).toBe(true);
 
@@ -241,23 +218,16 @@ describe("codex service", () => {
       timestamp: () => "20240202T101010"
     });
 
-    const backupContent = await fs.readFile(
-      `${configPath}.backup.20240202T101010`,
-      "utf8"
-    );
+    const backupContent = await fs.readFile(`${configPath}.backup.20240202T101010`, "utf8");
     expect(backupContent).toBe("legacy-config");
-    await expect(
-      fs.readFile(path.join(configDir, "auth.json"), "utf8")
-    ).rejects.toThrow();
+    await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects.toThrow();
   });
 
   it("merges codex configuration with existing content", async () => {
     await fs.mkdir(configDir, { recursive: true });
     await fs.writeFile(
       configPath,
-      ['model_provider = "legacy"', "", "[features]", "foo = true", ""].join(
-        "\n"
-      ),
+      ['model_provider = "legacy"', "", "[features]", "foo = true", ""].join("\n"),
       { encoding: "utf8" }
     );
 
@@ -281,15 +251,10 @@ describe("codex service", () => {
       experimental_bearer_token: "sk-test"
     });
 
-    const backupContent = await fs.readFile(
-      `${configPath}.backup.20240303T030303`,
-      "utf8"
-    );
+    const backupContent = await fs.readFile(`${configPath}.backup.20240303T030303`, "utf8");
     expect(backupContent.trim()).toContain('model_provider = "legacy"');
     expect(backupContent.trim()).toContain("[features]");
-    await expect(
-      fs.readFile(path.join(configDir, "auth.json"), "utf8")
-    ).rejects.toThrow();
+    await expect(fs.readFile(path.join(configDir, "auth.json"), "utf8")).rejects.toThrow();
   });
 
   it("builds exec args that skip git repo checks", () => {
@@ -322,13 +287,10 @@ describe("codex service", () => {
       }
     } as unknown as ProviderContext;
 
-    const result = await codexService.codexService.spawn(
-      providerContext,
-      {
-        prompt: "Describe the codebase",
-        args: ["--output", "json"]
-      }
-    );
+    const result = await codexService.codexService.spawn(providerContext, {
+      prompt: "Describe the codebase",
+      args: ["--output", "json"]
+    });
 
     const expectedArgs = codexService.buildCodexExecArgs("Describe the codebase", [
       "--output",
@@ -396,11 +358,7 @@ describe("codex service", () => {
 
     expect(runCommand).toHaveBeenCalledWith(
       "codex",
-      codexService.buildCodexExecArgs(
-        "Output exactly: CODEX_OK",
-        [],
-        DEFAULT_CODEX_MODEL
-      )
+      codexService.buildCodexExecArgs("Output exactly: CODEX_OK", [], DEFAULT_CODEX_MODEL)
     );
   });
 
@@ -415,9 +373,7 @@ describe("codex service", () => {
     expect(runCommand).not.toHaveBeenCalled();
     expect(
       logs.find((line) =>
-        line.includes(
-          `codex --model ${DEFAULT_CODEX_MODEL} exec "Output exactly: CODEX_OK"`
-        )
+        line.includes(`codex --model ${DEFAULT_CODEX_MODEL} exec "Output exactly: CODEX_OK"`)
       )
     ).toBeTruthy();
   });
@@ -447,9 +403,7 @@ describe("codex service", () => {
     }));
     const { context } = createProviderTestContext(runCommand);
 
-    await expect(codexService.codexService.test?.(context)).rejects.toThrow(
-      /FAIL_STDOUT/
-    );
+    await expect(codexService.codexService.test?.(context)).rejects.toThrow(/FAIL_STDOUT/);
   });
 
   it("includes stdout and stderr when the health check output is unexpected", async () => {

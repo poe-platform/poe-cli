@@ -74,7 +74,7 @@ describe("credentials store", () => {
       metadata: {
         version: "2.3.4",
         files: [
-          "/home/user/.config/opencode/config.json",
+          "/home/user/.poe-code/opencode/config/config.json",
           "/home/user/.local/share/opencode/auth.json"
         ]
       }
@@ -89,7 +89,7 @@ describe("credentials store", () => {
       opencode: {
         version: "2.3.4",
         files: [
-          "/home/user/.config/opencode/config.json",
+          "/home/user/.poe-code/opencode/config/config.json",
           "/home/user/.local/share/opencode/auth.json"
         ]
       }

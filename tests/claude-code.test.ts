@@ -6,15 +6,11 @@ import * as claudeService from "../src/providers/claude-code.js";
 import type { ProviderContext } from "../src/cli/service-registry.js";
 import { createCliEnvironment } from "../src/cli/environment.js";
 import { createTestCommandContext } from "./test-command-context.js";
-import {
-  CLAUDE_CODE_VARIANTS,
-  DEFAULT_CLAUDE_CODE_MODEL
-} from "../src/cli/constants.js";
+import { CLAUDE_CODE_VARIANTS, DEFAULT_CLAUDE_CODE_MODEL } from "../src/cli/constants.js";
 import { createLoggerFactory } from "../src/cli/logger.js";
 
-const resolveVariantModel = (
-  variant: keyof typeof CLAUDE_CODE_VARIANTS
-): string => CLAUDE_CODE_VARIANTS[variant];
+const resolveVariantModel = (variant: keyof typeof CLAUDE_CODE_VARIANTS): string =>
+  CLAUDE_CODE_VARIANTS[variant];
 
 const CLAUDE_MODEL_HAIKU = resolveVariantModel("haiku");
 const CLAUDE_MODEL_SONNET = resolveVariantModel("sonnet");
@@ -30,8 +26,8 @@ describe("claude-code service", () => {
   let fs: FileSystem;
   let vol: Volume;
   const home = "/home/user";
-  const settingsPath = path.join(home, ".claude", "settings.json");
-  const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
+  const settingsPath = path.join(home, ".poe-code", "claude-code", "settings.json");
+  const keyHelperPath = path.join(home, ".poe-code", "claude-code", "anthropic_key.sh");
   const credentialsPath = path.join(home, ".poe-code", "credentials.json");
   const apiKey = "sk-test";
   let env = createCliEnvironment({
@@ -85,29 +81,21 @@ describe("claude-code service", () => {
     typeof claudeService.claudeCodeService.configure
   >[0]["options"];
 
-  type RemoveOptions = Parameters<
-    typeof claudeService.claudeCodeService.remove
-  >[0]["options"];
+  type RemoveOptions = Parameters<typeof claudeService.claudeCodeService.remove>[0]["options"];
 
-  const buildConfigureOptions = (
-    overrides: Partial<ConfigureOptions> = {}
-  ): ConfigureOptions => ({
+  const buildConfigureOptions = (overrides: Partial<ConfigureOptions> = {}): ConfigureOptions => ({
     env,
     apiKey,
     defaultModel: CLAUDE_MODEL_SONNET,
     ...overrides
   });
 
-  const buildRemoveOptions = (
-    overrides: Partial<RemoveOptions> = {}
-  ): RemoveOptions => ({
+  const buildRemoveOptions = (overrides: Partial<RemoveOptions> = {}): RemoveOptions => ({
     env,
     ...overrides
   });
 
-  async function configureClaude(
-    overrides: Partial<ConfigureOptions> = {}
-  ): Promise<void> {
+  async function configureClaude(overrides: Partial<ConfigureOptions> = {}): Promise<void> {
     await claudeService.claudeCodeService.configure({
       fs,
       env,
@@ -116,9 +104,7 @@ describe("claude-code service", () => {
     });
   }
 
-  async function removeClaude(
-    overrides: Partial<RemoveOptions> = {}
-  ): Promise<boolean> {
+  async function removeClaude(overrides: Partial<RemoveOptions> = {}): Promise<boolean> {
     return claudeService.claudeCodeService.remove({
       fs,
       env,
@@ -129,11 +115,7 @@ describe("claude-code service", () => {
 
   it("removeClaudeCode prunes manifest-managed env keys from settings json", async () => {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-    await fs.writeFile(
-      keyHelperPath,
-      "#!/bin/bash\necho existing\n",
-      { encoding: "utf8" }
-    );
+    await fs.writeFile(keyHelperPath, "#!/bin/bash\necho existing\n", { encoding: "utf8" });
     await fs.writeFile(
       settingsPath,
       JSON.stringify(
@@ -173,11 +155,7 @@ describe("claude-code service", () => {
 
   it("removeClaudeCode deletes settings file when only manifest keys remain", async () => {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-    await fs.writeFile(
-      keyHelperPath,
-      "#!/bin/bash\necho existing\n",
-      { encoding: "utf8" }
-    );
+    await fs.writeFile(keyHelperPath, "#!/bin/bash\necho existing\n", { encoding: "utf8" });
     await fs.writeFile(
       settingsPath,
       JSON.stringify(
@@ -228,7 +206,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        "node -e \"console.log(require('/home/user/.poe-code/credentials.json').apiKey)\""
       ].join("\n")
     );
   });
@@ -272,7 +250,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        "node -e \"console.log(require('/home/user/.poe-code/credentials.json').apiKey)\""
       ].join("\n")
     );
   });
@@ -285,9 +263,7 @@ describe("claude-code service", () => {
     await configureClaude();
 
     const files = await fs.readdir(dir);
-    const backupName = files.find((name) =>
-      name.startsWith("settings.json.invalid-")
-    );
+    const backupName = files.find((name) => name.startsWith("settings.json.invalid-"));
     expect(backupName).toBeDefined();
     const backupPath = path.join(dir, backupName as string);
     const backupContent = await fs.readFile(backupPath, "utf8");
@@ -309,7 +285,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        "node -e \"console.log(require('/home/user/.poe-code/credentials.json').apiKey)\""
       ].join("\n")
     );
   });
@@ -374,13 +350,10 @@ describe("claude-code service", () => {
       }
     } as unknown as ProviderContext;
 
-    const result = await claudeService.claudeCodeService.spawn(
-      providerContext,
-      {
-        prompt: "Test prompt",
-        args: ["--custom-arg", "value"]
-      }
-    );
+    const result = await claudeService.claudeCodeService.spawn(providerContext, {
+      prompt: "Test prompt",
+      args: ["--custom-arg", "value"]
+    });
 
     expect(runCommand).toHaveBeenCalledWith("claude", [
       "-p",
@@ -504,9 +477,7 @@ describe("claude-code service", () => {
     }));
     const { context } = createProviderTestContext(runCommand);
 
-    await expect(
-      claudeService.claudeCodeService.test?.(context)
-    ).rejects.toThrow(/FAIL_STDOUT/);
+    await expect(claudeService.claudeCodeService.test?.(context)).rejects.toThrow(/FAIL_STDOUT/);
   });
 
   it("includes stdout and stderr when the Claude health check output is unexpected", async () => {
@@ -517,9 +488,9 @@ describe("claude-code service", () => {
     }));
     const { context } = createProviderTestContext(runCommand);
 
-    await expect(
-      claudeService.claudeCodeService.test?.(context)
-    ).rejects.toThrow(/expected "CLAUDE_CODE_OK" but received "WRONG"/i);
+    await expect(claudeService.claudeCodeService.test?.(context)).rejects.toThrow(
+      /expected "CLAUDE_CODE_OK" but received "WRONG"/i
+    );
   });
 
   it("falls back to Windows path lookup when which is unavailable", async () => {

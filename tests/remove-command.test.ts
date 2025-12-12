@@ -96,8 +96,8 @@ describe("remove command", () => {
     const details: MutationLogDetails = {
       manifestId: "test-service",
       kind: "transformFile",
-      label: "Transform file /home/test/.config/opencode/config.json",
-      targetPath: "/home/test/.config/opencode/config.json"
+      label: "Transform file /home/test/.poe-code/opencode/config/config.json",
+      targetPath: "/home/test/.poe-code/opencode/config/config.json"
     };
     const outcome: ServiceMutationOutcome = {
       changed: true,
@@ -129,7 +129,7 @@ describe("remove command", () => {
     expect(
       logs.some((line) =>
         line.includes(
-          "Transform file /home/test/.config/opencode/config.json: delete"
+          "Transform file /home/test/.poe-code/opencode/config/config.json: delete"
         )
       )
     ).toBe(true);
