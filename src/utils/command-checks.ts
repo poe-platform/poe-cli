@@ -7,6 +7,7 @@ export interface CommandRunnerResult {
 
 export interface CommandRunnerOptions {
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
 export type CommandRunner = (

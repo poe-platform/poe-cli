@@ -14,7 +14,8 @@ export function createDefaultCommandRunner(): CommandRunner {
     await new Promise((resolve) => {
       const child = spawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        cwd: options?.cwd
+        cwd: options?.cwd,
+        env: options?.env
       });
       let stdout = "";
       let stderr = "";
