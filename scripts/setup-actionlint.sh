@@ -15,5 +15,5 @@ fi
 
 # Download actionlint binary
 echo "Downloading actionlint..."
-bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+bash <(curl -L -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 echo "✓ actionlint downloaded successfully"
