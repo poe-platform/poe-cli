@@ -8,6 +8,12 @@ vscode-extension/vitest.config.*.js.map
 vscode-extension/vitest.config.mjs
 vscode-extension/vitest.config.mjs.map
 vscode-extension/preview/public/
+LibreChat/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Test projects created by poe-setup init
 g/
