@@ -454,6 +454,62 @@ describe("claude-code service", () => {
     ]);
   });
 
+  it("spawns the claude CLI with stdin when requested", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: "hello\n",
+      stderr: "",
+      exitCode: 0
+    }));
+    const providerContext = {
+      env: {} as any,
+      paths: {
+        settingsPath,
+        keyHelperPath,
+        credentialsPath
+      },
+      command: {
+        runCommand,
+        fs
+      },
+      logger: {
+        context: {
+          dryRun: false,
+          verbose: true
+        },
+        info: vi.fn(),
+        success: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        errorWithStack: vi.fn(),
+        logException: vi.fn(),
+        dryRun: vi.fn(),
+        verbose: vi.fn(),
+        child: vi.fn()
+      }
+    } as unknown as ProviderContext;
+
+    await claudeService.claudeCodeService.spawn(providerContext, {
+      prompt: "Test prompt",
+      useStdin: true
+    });
+
+    expect(runCommand).toHaveBeenCalledWith(
+      "claude",
+      [
+        "-p",
+        "--input-format",
+        "text",
+        "--allowedTools",
+        "Bash,Read",
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text"
+      ],
+      { stdin: "Test prompt" }
+    );
+  });
+
   it("runs the Claude CLI health check when invoking the provider test", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: "CLAUDE_CODE_OK\n",

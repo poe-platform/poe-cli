@@ -51,11 +51,21 @@ const CLAUDE_SPAWN_DEFAULTS = [
 ] as const;
 
 function buildClaudeArgs(
-  prompt: string,
+  prompt: string | undefined,
   extraArgs?: string[],
   model?: string
 ): string[] {
   const modelArgs = model ? ["--model", model] : [];
+  if (prompt == null) {
+    return [
+      "-p",
+      "--input-format",
+      "text",
+      ...modelArgs,
+      ...CLAUDE_SPAWN_DEFAULTS,
+      ...(extraArgs ?? [])
+    ];
+  }
   return ["-p", prompt, ...modelArgs, ...CLAUDE_SPAWN_DEFAULTS, ...(extraArgs ?? [])];
 }
 
@@ -156,7 +166,7 @@ export const claudeCodeService = createProvider<
   spawn(context, options) {
     const shouldUseStdin = Boolean(options.useStdin);
     const args = buildClaudeArgs(
-      shouldUseStdin ? "-" : options.prompt,
+      shouldUseStdin ? undefined : options.prompt,
       options.args,
       options.model
     );
