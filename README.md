@@ -62,7 +62,7 @@ Removes the Codex settings previously applied by `npx poe-code@latest configure 
 ```bash
 npx poe-code@latest test codex
 
-npx poe-code@latest test --stdin codex
+npx poe-code@latest test --stdin claude-code
 # Verifies that stdin prompts work by running a tiny spawn and expecting `STDIN_OK`.
 ```
 
@@ -73,7 +73,7 @@ npx poe-code@latest test --stdin codex
 npx poe-code@latest spawn claude-code "Explain this error message"
 
 cat prompt.txt | npx poe-code@latest spawn codex
-# Reads the prompt from stdin (supported by `codex`).
+# Reads the prompt from stdin (useful for very long prompts).
 ```
 
 ### Optional Flags
