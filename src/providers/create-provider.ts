@@ -34,6 +34,7 @@ interface CreateProviderOptions<
   summary: string;
   branding?: ProviderBranding;
   disabled?: boolean;
+  supportsStdinPrompt?: boolean;
   configurePrompts?: ProviderConfigurePrompts;
   manifest:
     | ServiceManifestDefinition<ConfigureOptions, RemoveOptions>
@@ -92,6 +93,7 @@ export function createProvider<
     label: options.label,
     branding: options.branding,
     disabled: options.disabled,
+    supportsStdinPrompt: options.supportsStdinPrompt,
     configurePrompts: options.configurePrompts,
     resolvePaths:
       options.resolvePaths ??

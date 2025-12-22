@@ -48,11 +48,12 @@ export function registerSpawnCommand(
     .description("Run a single prompt through a configured service CLI.")
     .option("--model <model>", "Model identifier override passed to the service CLI")
     .option("-C, --cwd <path>", "Working directory for the service CLI")
+    .option("--stdin", "Read the prompt from stdin")
     .argument(
       "<service>",
       serviceDescription
     )
-    .argument("<prompt>", "Prompt text to send")
+    .argument("[prompt]", "Prompt text to send (or '-' / stdin)")
     .argument(
       "[agentArgs...]",
       "Additional arguments forwarded to the service CLI"
@@ -60,7 +61,7 @@ export function registerSpawnCommand(
     .action(async function (
       this: Command,
       service: string,
-      promptText: string,
+      promptText: string | undefined,
       agentArgs: string[] = []
     ) {
       const flags = resolveCommandFlags(program);
@@ -69,16 +70,48 @@ export function registerSpawnCommand(
         flags,
         `spawn:${service}`
       );
-      const commandOptions = this.opts<{ model?: string; cwd?: string }>();
+      const commandOptions = this.opts<{ model?: string; cwd?: string; stdin?: boolean }>();
       const cwdOverride = resolveSpawnWorkingDirectory(
         container.env.cwd,
         commandOptions.cwd
       );
+
+      const wantsStdinFlag = commandOptions.stdin === true;
+      const shouldReadFromStdin =
+        wantsStdinFlag ||
+        promptText === "-" ||
+        (!promptText && !process.stdin.isTTY);
+
+      const forwardedArgs = wantsStdinFlag
+        ? [...(promptText ? [promptText] : []), ...agentArgs]
+        : agentArgs;
+
+      if (wantsStdinFlag) {
+        promptText = undefined;
+      }
+
+      if (promptText === "-") {
+        promptText = undefined;
+      }
+
+      if (!promptText && shouldReadFromStdin) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) {
+          chunks.push(chunk);
+        }
+        promptText = Buffer.concat(chunks).toString("utf8").trim();
+      }
+
+      if (!promptText) {
+        throw new Error("No prompt provided via argument or stdin");
+      }
+
       const spawnOptions: SpawnCommandOptions = {
         prompt: promptText,
-        args: agentArgs,
+        args: forwardedArgs,
         model: commandOptions.model,
-        cwd: cwdOverride
+        cwd: cwdOverride,
+        useStdin: shouldReadFromStdin
       };
 
       const customHandler = options.handlers?.[service];
@@ -97,6 +130,11 @@ export function registerSpawnCommand(
       if (typeof adapter.spawn !== "function") {
         throw new Error(`${adapter.label} does not support spawn.`);
       }
+      if (spawnOptions.useStdin && !adapter.supportsStdinPrompt) {
+        throw new Error(
+          `${adapter.label} does not support stdin prompts. Use a different service (e.g. "codex") or pass the prompt as an argument.`
+        );
+      }
 
       const providerContext = buildProviderContext(
         container,
@@ -110,8 +148,11 @@ export function registerSpawnCommand(
             ? ` with args ${JSON.stringify(spawnOptions.args)}`
             : "";
         const cwdSuffix = spawnOptions.cwd ? ` from ${spawnOptions.cwd}` : "";
+        const promptDetail = spawnOptions.useStdin
+          ? `(stdin, ${spawnOptions.prompt.length} chars)`
+          : `"${spawnOptions.prompt}"`;
         resources.logger.dryRun(
-          `Dry run: would spawn ${adapter.label} with prompt "${spawnOptions.prompt}"${extra}${cwdSuffix}.`
+          `Dry run: would spawn ${adapter.label} with prompt ${promptDetail}${extra}${cwdSuffix}.`
         );
         return;
       }

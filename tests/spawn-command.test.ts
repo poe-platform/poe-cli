@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { Command } from "commander";
 import { createProgram } from "../src/cli/program.js";
 import { registerSpawnCommand } from "../src/cli/commands/spawn.js";
@@ -454,5 +455,112 @@ describe("spawn command", () => {
         options: { cwd: resolved }
       }
     ]);
+  });
+
+  it("consumes prompt text from stdin when no prompt argument is provided", async () => {
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "Codex output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    const stdinStream = Readable.from([Buffer.from("Prompt via stdin")]);
+    Object.defineProperty(stdinStream, "isTTY", { value: false });
+    const stdinSpy = vi
+      .spyOn(process, "stdin", "get")
+      .mockReturnValue(stdinStream as NodeJS.ReadStream);
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "codex"
+    ]);
+
+    expect(calls).toEqual([
+      {
+        command: "codex",
+        args: ["exec", "-", "--full-auto", "--skip-git-repo-check"],
+        options: { stdin: "Prompt via stdin" }
+      }
+    ]);
+
+    stdinSpy.mockRestore();
+  });
+
+  it("treats the next argument as agent args when --stdin is set", async () => {
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "Codex output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    const stdinStream = Readable.from([Buffer.from("Prompt via stdin")]);
+    Object.defineProperty(stdinStream, "isTTY", { value: false });
+    const stdinSpy = vi
+      .spyOn(process, "stdin", "get")
+      .mockReturnValue(stdinStream as NodeJS.ReadStream);
+
+    await program.parseAsync([
+      "node",
+      "cli",
+      "spawn",
+      "--stdin",
+      "codex",
+      "--",
+      "--foo",
+      "bar"
+    ]);
+
+    expect(calls).toEqual([
+      {
+        command: "codex",
+        args: ["exec", "-", "--full-auto", "--skip-git-repo-check", "--foo", "bar"],
+        options: { stdin: "Prompt via stdin" }
+      }
+    ]);
+
+    stdinSpy.mockRestore();
+  });
+
+  it("fails with a meaningful error when stdin prompts are not supported", async () => {
+    const { runner } = createCommandRunnerStub({
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    const stdinStream = Readable.from([Buffer.from("Prompt via stdin")]);
+    Object.defineProperty(stdinStream, "isTTY", { value: false });
+    const stdinSpy = vi
+      .spyOn(process, "stdin", "get")
+      .mockReturnValue(stdinStream as NodeJS.ReadStream);
+
+    await expect(
+      program.parseAsync(["node", "cli", "spawn", "opencode"])
+    ).rejects.toThrow(/stdin prompts/i);
+
+    stdinSpy.mockRestore();
   });
 });

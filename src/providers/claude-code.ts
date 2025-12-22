@@ -69,6 +69,7 @@ export const claudeCodeService = createProvider<
   label: "Claude Code",
   id: "claude-code",
   summary: "Configure Claude Code to route through Poe.",
+  supportsStdinPrompt: true,
   branding: {
     colors: {
       dark: "#C15F3C",
@@ -153,15 +154,26 @@ export const claudeCodeService = createProvider<
   versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
+    const shouldUseStdin = Boolean(options.useStdin);
     const args = buildClaudeArgs(
-      options.prompt,
+      shouldUseStdin ? "-" : options.prompt,
       options.args,
       options.model
     );
-    if (options.cwd) {
+    if (shouldUseStdin) {
+      if (options.cwd) {
+        return context.command.runCommand("claude", args, {
+          cwd: options.cwd,
+          stdin: options.prompt
+        });
+      }
       return context.command.runCommand("claude", args, {
-        cwd: options.cwd
+        stdin: options.prompt
       });
+    }
+
+    if (options.cwd) {
+      return context.command.runCommand("claude", args, { cwd: options.cwd });
     }
     return context.command.runCommand("claude", args);
   }

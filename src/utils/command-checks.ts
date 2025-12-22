@@ -7,6 +7,7 @@ export interface CommandRunnerResult {
 
 export interface CommandRunnerOptions {
   cwd?: string;
+  stdin?: string | Buffer;
 }
 
 export type CommandRunner = (
@@ -95,7 +96,7 @@ export async function runAndMatchOutput(
   }
 }
 
-function stdoutMatchesExpected(stdout: string, expected: string): boolean {
+export function stdoutMatchesExpected(stdout: string, expected: string): boolean {
   const trimmed = stdout.trim();
   if (trimmed === expected) {
     return true;

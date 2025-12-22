@@ -173,6 +173,7 @@ export const codexService = createProvider<
   label: "Codex",
   id: "codex",
   summary: "Configure Codex to use Poe as the model provider.",
+  supportsStdinPrompt: true,
   branding: {
     colors: {
       dark: "#D5D9DF",
@@ -245,15 +246,26 @@ export const codexService = createProvider<
   versionResolver: createBinaryVersionResolver("codex"),
   install: CODEX_INSTALL_DEFINITION,
   spawn(context, options) {
+    const shouldUseStdin = Boolean(options.useStdin);
     const args = buildCodexExecArgs(
-      options.prompt,
+      shouldUseStdin ? "-" : options.prompt,
       options.args,
       options.model
     );
-    if (options.cwd) {
+    if (shouldUseStdin) {
+      if (options.cwd) {
+        return context.command.runCommand("codex", args, {
+          cwd: options.cwd,
+          stdin: options.prompt
+        });
+      }
       return context.command.runCommand("codex", args, {
-        cwd: options.cwd
+        stdin: options.prompt
       });
+    }
+
+    if (options.cwd) {
+      return context.command.runCommand("codex", args, { cwd: options.cwd });
     }
     return context.command.runCommand("codex", args);
   }

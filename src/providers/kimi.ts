@@ -56,6 +56,7 @@ export const kimiService = createProvider<
   label: "Kimi",
   id: "kimi",
   summary: "Configure Kimi CLI to use Poe API",
+  supportsStdinPrompt: false,
   branding: {
     colors: {
       dark: "#7B68EE",

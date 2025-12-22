@@ -3,6 +3,7 @@ export interface SpawnCommandOptions {
   args?: string[];
   model?: string;
   cwd?: string;
+  useStdin?: boolean;
 }
 
 export type ProviderSpawnOptions<

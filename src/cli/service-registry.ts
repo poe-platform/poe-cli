@@ -70,6 +70,7 @@ export interface ProviderService<
   label: string;
   branding?: ProviderBranding;
   disabled?: boolean;
+  supportsStdinPrompt?: boolean;
   configurePrompts?: ProviderConfigurePrompts;
   resolvePaths?: (env: CliEnvironment) => TPaths;
   install?(context: ProviderContext<TPaths>): Promise<void> | void;

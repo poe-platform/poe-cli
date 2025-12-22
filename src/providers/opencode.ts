@@ -74,6 +74,7 @@ export const openCodeService = createProvider({
   label: "OpenCode CLI",
   id: "opencode",
   summary: "Configure OpenCode CLI to use the Poe API.",
+  supportsStdinPrompt: false,
   branding: {
     colors: {
       dark: "#4A4F55",

@@ -12,12 +12,18 @@ export function createDefaultCommandRunner(): CommandRunner {
     options?: CommandRunnerOptions
   ): Promise<CommandRunnerResult> =>
     await new Promise((resolve) => {
+      const hasStdin = options?.stdin != null;
       const child = spawn(command, args, {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [hasStdin ? "pipe" : "ignore", "pipe", "pipe"],
         cwd: options?.cwd
       });
       let stdout = "";
       let stderr = "";
+
+      if (hasStdin && child.stdin) {
+        child.stdin.on("error", () => {});
+        child.stdin.end(options!.stdin);
+      }
 
       child.stdout?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string | Buffer) => {
