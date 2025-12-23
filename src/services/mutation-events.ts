@@ -13,7 +13,7 @@ export function createMutationReporter(
       logger.verbose(`Starting mutation: ${details.label}`);
     },
     onComplete(details, outcome) {
-      logger.info(formatMutationMessage(details, outcome));
+      logger.verbose(formatMutationMessage(details, outcome));
     },
     onError(details, error) {
       logger.error(

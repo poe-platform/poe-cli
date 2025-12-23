@@ -26,6 +26,7 @@ function createBaseProgram(): Command {
     .name("poe-code")
     .option("-y, --yes")
     .option("--dry-run")
+    .option("--verbose")
     .exitOverride();
   return program;
 }
@@ -119,6 +120,7 @@ describe("remove command", () => {
     await program.parseAsync([
       "node",
       "cli",
+      "--verbose",
       "remove",
       "test-service"
     ]);

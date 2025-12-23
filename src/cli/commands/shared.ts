@@ -17,6 +17,7 @@ import { resolveIsolatedTargetDirectory } from "../isolated-env.js";
 export interface CommandFlags {
   dryRun: boolean;
   assumeYes: boolean;
+  verbose: boolean;
 }
 
 export interface ExecutionResources {
@@ -28,7 +29,8 @@ export function resolveCommandFlags(program: Command): CommandFlags {
   const opts = program.optsWithGlobals();
   return {
     dryRun: Boolean(opts.dryRun),
-    assumeYes: Boolean(opts.yes)
+    assumeYes: Boolean(opts.yes),
+    verbose: Boolean(opts.verbose)
   };
 }
 
@@ -39,7 +41,7 @@ export function createExecutionResources(
 ): ExecutionResources {
   const baseLogger = container.loggerFactory.create({
     dryRun: flags.dryRun,
-    verbose: true,
+    verbose: flags.verbose,
     scope
   });
   const runner = createLoggingCommandRunner(container.commandRunner, baseLogger);
