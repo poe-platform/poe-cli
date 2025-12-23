@@ -4,9 +4,9 @@ import type {
   ProviderService,
   ProviderContext,
   ProviderBranding,
-  ProviderConfigurePrompts
+  ProviderConfigurePrompts,
+  ProviderIsolatedEnv
 } from "../cli/service-registry.js";
-import type { CliEnvironment } from "../cli/environment.js";
 import {
   createServiceManifest,
   type ServiceManifestDefinition
@@ -23,7 +23,6 @@ interface ManifestVersionDefinition<ConfigureOptions, RemoveOptions> {
 }
 
 interface CreateProviderOptions<
-  TPaths extends Record<string, unknown>,
   ConfigureOptions,
   RemoveOptions,
   SpawnOptions
@@ -36,24 +35,18 @@ interface CreateProviderOptions<
   disabled?: boolean;
   supportsStdinPrompt?: boolean;
   configurePrompts?: ProviderConfigurePrompts;
+  isolatedEnv?: ProviderIsolatedEnv;
   manifest:
     | ServiceManifestDefinition<ConfigureOptions, RemoveOptions>
     | Record<string, ManifestVersionDefinition<ConfigureOptions, RemoveOptions>>;
   install?: ServiceInstallDefinition;
-  resolvePaths?: (env: CliEnvironment) => TPaths;
-  test?: ProviderService<
-    TPaths,
-    ConfigureOptions,
-    RemoveOptions,
-    SpawnOptions
-  >["test"];
+  test?: ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions>["test"];
   spawn?: ProviderService<
-    TPaths,
     ConfigureOptions,
     RemoveOptions,
     SpawnOptions
   >["spawn"];
-  versionResolver?: ProviderVersionResolver<TPaths>;
+  versionResolver?: ProviderVersionResolver;
 }
 
 interface ManifestEntry<ConfigureOptions, RemoveOptions> {
@@ -64,25 +57,18 @@ interface ManifestEntry<ConfigureOptions, RemoveOptions> {
 }
 
 export function createProvider<
-  TPaths extends Record<string, unknown> = Record<string, any>,
   ConfigureOptions = any,
   RemoveOptions = ConfigureOptions,
   SpawnOptions = any
 >(
-  options: CreateProviderOptions<
-    TPaths,
-    ConfigureOptions,
-    RemoveOptions,
-    SpawnOptions
-  >
-): ProviderService<TPaths, ConfigureOptions, RemoveOptions, SpawnOptions> {
+  options: CreateProviderOptions<ConfigureOptions, RemoveOptions, SpawnOptions>
+): ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions> {
   const manifestEntries = buildManifestEntries(options);
   const defaultManifest =
     manifestEntries.find((entry) => entry.range === "*")?.manifest ??
     manifestEntries[0]!.manifest;
 
   const provider: ProviderService<
-    TPaths,
     ConfigureOptions,
     RemoveOptions,
     SpawnOptions
@@ -95,14 +81,7 @@ export function createProvider<
     disabled: options.disabled,
     supportsStdinPrompt: options.supportsStdinPrompt,
     configurePrompts: options.configurePrompts,
-    resolvePaths:
-      options.resolvePaths ??
-      ((() => ({} as TPaths)) as ProviderService<
-        TPaths,
-        ConfigureOptions,
-        RemoveOptions,
-        SpawnOptions
-      >["resolvePaths"]),
+    isolatedEnv: options.isolatedEnv,
     async configure(context, runOptions) {
       await defaultManifest.configure(context, runOptions);
     },
@@ -139,17 +118,11 @@ export function createProvider<
 }
 
 function buildManifestEntries<
-  TPaths extends Record<string, unknown>,
   ConfigureOptions,
   RemoveOptions,
   SpawnOptions
 >(
-  options: CreateProviderOptions<
-    TPaths,
-    ConfigureOptions,
-    RemoveOptions,
-    SpawnOptions
-  >
+  options: CreateProviderOptions<ConfigureOptions, RemoveOptions, SpawnOptions>
 ): ManifestEntry<ConfigureOptions, RemoveOptions>[] {
   const input = options.manifest;
   const map = isVersionedManifest(input)
@@ -174,12 +147,11 @@ function buildManifestEntries<
   });
 }
 
-function isVersionedManifest<ConfigureOptions, RemoveOptions>(
+function isVersionedManifest<ConfigureOptions, RemoveOptions, SpawnOptions>(
   value: CreateProviderOptions<
-    Record<string, unknown>,
     ConfigureOptions,
     RemoveOptions,
-    unknown
+    SpawnOptions
   >["manifest"]
 ): value is Record<
   string,
@@ -191,9 +163,9 @@ function isVersionedManifest<ConfigureOptions, RemoveOptions>(
   return !("id" in value && "summary" in value);
 }
 
-async function safeResolveVersion<TPaths extends Record<string, unknown>>(
-  resolver: ProviderVersionResolver<TPaths>,
-  context: ProviderContext<TPaths>
+async function safeResolveVersion(
+  resolver: ProviderVersionResolver,
+  context: ProviderContext
 ): Promise<string | null> {
   try {
     return await resolver(context);
@@ -225,17 +197,16 @@ function selectManifest<ConfigureOptions, RemoveOptions>(
 }
 
 function bindManifest<
-  TPaths extends Record<string, unknown>,
   ConfigureOptions,
   RemoveOptions,
   SpawnOptions
 >(
-  base: ProviderService<TPaths, ConfigureOptions, RemoveOptions, SpawnOptions>,
+  base: ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions>,
   manifest: ReturnType<
     typeof createServiceManifest<ConfigureOptions, RemoveOptions>
   >,
   version: string | null
-): ProviderService<TPaths, ConfigureOptions, RemoveOptions, SpawnOptions> {
+): ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions> {
   if (
     base.configure === manifest.configure &&
     base.remove === manifest.remove
@@ -254,10 +225,8 @@ function bindManifest<
   };
 }
 
-function createInstallRunner<TPaths extends Record<string, unknown>>(
-  definition: ServiceInstallDefinition
-) {
-  return async (context: ProviderContext<TPaths>): Promise<void> => {
+function createInstallRunner(definition: ServiceInstallDefinition) {
+  return async (context: ProviderContext): Promise<void> => {
     await runServiceInstall(definition, {
       isDryRun: context.logger.context.dryRun,
       runCommand: context.command.runCommand,

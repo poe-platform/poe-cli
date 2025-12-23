@@ -57,7 +57,6 @@ describe("codex service", () => {
 
     const context = {
       env,
-      paths: {},
       command: {
         runCommand,
         fs
@@ -315,24 +314,7 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {},
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: { dryRun: false, verbose: true }
-      },
-      async runCheck(check) {
-        await check.run({
-          isDryRun: false,
-          runCommand,
-          logDryRun: () => {}
-        });
-      }
-    } as unknown as ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     const result = await codexService.codexService.spawn(
       providerContext,
@@ -347,7 +329,11 @@ describe("codex service", () => {
       "json"
     ]);
 
-    expect(runCommand).toHaveBeenCalledWith("codex", expectedArgs);
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "codex",
+      ...expectedArgs
+    ]);
     expect(result).toEqual({
       stdout: "codex-output\n",
       stderr: "",
@@ -361,24 +347,7 @@ describe("codex service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {},
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: { dryRun: false, verbose: true }
-      },
-      async runCheck(check) {
-        await check.run({
-          isDryRun: false,
-          runCommand,
-          logDryRun: () => {}
-        });
-      }
-    } as ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
     const override = `${DEFAULT_CODEX_MODEL}-alt`;
 
     await codexService.codexService.spawn(providerContext, {
@@ -386,7 +355,9 @@ describe("codex service", () => {
       model: override
     });
 
-    expect(runCommand).toHaveBeenCalledWith("codex", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "codex",
       "--model",
       override,
       "exec",

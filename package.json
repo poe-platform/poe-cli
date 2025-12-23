@@ -4,7 +4,7 @@
   "description": "CLI tool to configure Poe API for developer workflows.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-templates.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-templates.mjs && node scripts/generate-bin-wrappers.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -19,7 +19,10 @@
   },
   "bin": {
     "poe-code": "dist/index.js",
-    "poe-code-configure": "dist/index.js"
+    "poe-code-configure": "dist/index.js",
+    "poe-claude": "dist/bin/poe-claude.js",
+    "poe-codex": "dist/bin/poe-codex.js",
+    "poe-opencode": "dist/bin/poe-opencode.js"
   },
   "files": [
     "dist"

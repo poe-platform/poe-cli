@@ -52,9 +52,6 @@ describe("remove command", () => {
     const adapter: ProviderService = createProviderStub({
       name: "test-service",
       label: "Test Service",
-      resolvePaths() {
-        return {};
-      },
       async remove(context) {
         removeSpy(context.options);
         return true;

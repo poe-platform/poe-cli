@@ -10,6 +10,7 @@ import {
   executeConfigure
 } from "./commands/configure.js";
 import { registerSpawnCommand } from "./commands/spawn.js";
+import { registerWrapCommand } from "./commands/wrap.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerInstallCommand } from "./commands/install.js";
 import { registerRemoveCommand } from "./commands/remove.js";
@@ -43,6 +44,7 @@ function bootstrapProgram(container: CliContainer): Command {
   registerInstallCommand(program, container);
   registerConfigureCommand(program, container);
   registerSpawnCommand(program, container);
+  registerWrapCommand(program, container);
   registerQueryCommand(program, container);
   registerTestCommand(program, container);
   registerRemoveCommand(program, container);

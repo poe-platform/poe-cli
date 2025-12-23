@@ -4,6 +4,7 @@ import {
 } from "../utils/command-checks.js";
 import {
   ensureDirectory,
+  chmodMutation,
   jsonMergeMutation,
   jsonPruneMutation,
   removeFileMutation,
@@ -14,14 +15,38 @@ import {
   CLAUDE_CODE_VARIANTS,
   DEFAULT_CLAUDE_CODE_MODEL
 } from "../cli/constants.js";
-import { makeExecutableMutation, quoteSinglePath } from "./provider-helpers.js";
 import { createProvider } from "./create-provider.js";
 import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type {
   ProviderSpawnOptions,
-  DefaultModelConfigureOptions,
+  ModelConfigureOptions,
   EmptyProviderOptions
 } from "./spawn-options.js";
+import type { CliEnvironment } from "../cli/environment.js";
+
+function scriptTemplateContext(input: {
+  env: CliEnvironment;
+}): { credentialsPathLiteral: string } {
+  const credentialsPath = input.env.credentialsPath;
+  const homeDir = input.env.homeDir;
+  const defaultSuffix = "/.poe-code/credentials.json";
+  if (credentialsPath === homeDir + defaultSuffix) {
+    return {
+      credentialsPathLiteral: `require('os').homedir() + '${defaultSuffix}'`
+    };
+  }
+  if (credentialsPath.startsWith(homeDir + "/")) {
+    const suffix = credentialsPath.slice(homeDir.length);
+    return {
+      credentialsPathLiteral: `require('os').homedir() + '${escapeSingleQuotes(suffix)}'`
+    };
+  }
+  return { credentialsPathLiteral: `'${escapeSingleQuotes(credentialsPath)}'` };
+}
+
+function escapeSingleQuotes(value: string): string {
+  return value.split("'").join("\\'");
+}
 
 export const CLAUDE_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
   id: "claude-code",
@@ -50,6 +75,13 @@ const CLAUDE_SPAWN_DEFAULTS = [
   "text"
 ] as const;
 
+function buildClaudeApiKeyHelperCommand(
+  context: Parameters<typeof scriptTemplateContext>[0]
+): string {
+  const { credentialsPathLiteral } = scriptTemplateContext(context);
+  return `node -e "process.stdout.write(String(require(${credentialsPathLiteral}).apiKey || ''))"`;
+}
+
 function buildClaudeArgs(
   prompt: string | undefined,
   extraArgs?: string[],
@@ -70,8 +102,7 @@ function buildClaudeArgs(
 }
 
 export const claudeCodeService = createProvider<
-  Record<string, any>,
-  DefaultModelConfigureOptions,
+  ModelConfigureOptions,
   EmptyProviderOptions,
   ProviderSpawnOptions
 >({
@@ -96,6 +127,20 @@ export const claudeCodeService = createProvider<
       }))
     }
   },
+  isolatedEnv: {
+    agentBinary: "claude",
+    configProbe: { kind: "isolatedFile", relativePath: "settings.json" },
+    env: {
+      CLAUDE_CONFIG_DIR: { kind: "isolatedDir" }
+    },
+    repairs: [
+      {
+        kind: "chmod",
+        relativePath: "anthropic_key.sh",
+        mode: 0o700
+      }
+    ]
+  },
   test(context) {
     return context.runCheck(
       createCommandExpectationCheck({
@@ -114,36 +159,34 @@ export const claudeCodeService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.claude"
+          targetDirectory: "~/.claude"
         }),
         writeTemplateMutation({
-          target: "~/.claude/anthropic_key.sh",
+          targetDirectory: "~/.claude",
+          targetFile: "anthropic_key.sh",
           templateId: "claude-code/anthropic_key.sh.hbs",
-          context: ({ env }) => ({
-            credentialsPathLiteral: quoteSinglePath(env.credentialsPath)
-          })
+          context: scriptTemplateContext
         }),
-        makeExecutableMutation({
-          target: "~/.claude/anthropic_key.sh",
-          mode: 0o700
-        }),
+        chmodMutation({ target: "~/.claude/anthropic_key.sh", mode: 0o700 }),
         jsonMergeMutation({
-          target: "~/.claude/settings.json",
-          value: ({ options, env }) => ({
-            apiKeyHelper: env.resolveHomePath(".claude", "anthropic_key.sh"),
+          targetDirectory: "~/.claude",
+          targetFile: "settings.json",
+          value: ({ env, options }) => ({
+            apiKeyHelper: buildClaudeApiKeyHelperCommand({ env }),
             env: {
               ANTHROPIC_BASE_URL: "https://api.poe.com",
               ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
               ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_CODE_VARIANTS.sonnet,
               ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_CODE_VARIANTS.opus
             },
-            model: options.defaultModel
+            model: options.model
           })
         })
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.claude/settings.json",
+          targetDirectory: "~/.claude",
+          targetFile: "settings.json",
           shape: () => ({
             apiKeyHelper: true,
             env: {
@@ -156,7 +199,8 @@ export const claudeCodeService = createProvider<
           })
         }),
         removeFileMutation({
-          target: "~/.claude/anthropic_key.sh"
+          targetDirectory: "~/.claude",
+          targetFile: "anthropic_key.sh"
         })
       ]
     }
@@ -172,19 +216,25 @@ export const claudeCodeService = createProvider<
     );
     if (shouldUseStdin) {
       if (options.cwd) {
-        return context.command.runCommand("claude", args, {
+        return context.command.runCommand(
+          "poe-code",
+          ["wrap", "claude-code", ...args],
+          {
           cwd: options.cwd,
           stdin: options.prompt
-        });
+          }
+        );
       }
-      return context.command.runCommand("claude", args, {
+      return context.command.runCommand("poe-code", ["wrap", "claude-code", ...args], {
         stdin: options.prompt
       });
     }
 
     if (options.cwd) {
-      return context.command.runCommand("claude", args, { cwd: options.cwd });
+      return context.command.runCommand("poe-code", ["wrap", "claude-code", ...args], {
+        cwd: options.cwd
+      });
     }
-    return context.command.runCommand("claude", args);
+    return context.command.runCommand("poe-code", ["wrap", "claude-code", ...args]);
   }
 });

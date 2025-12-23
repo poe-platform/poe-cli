@@ -12,8 +12,7 @@ function createAdapter(
   return createProviderStub({
     name,
     label,
-    branding,
-    resolvePaths: () => ({})
+    branding
   });
 }
 

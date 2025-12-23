@@ -28,6 +28,7 @@ import type { PromptFn, LoggerFn } from "./types.js";
 import type { HttpClient } from "./http.js";
 import type { CommandRunner } from "../utils/command-checks.js";
 import { getDefaultProviders } from "../providers/index.js";
+import { createPoeCodeCommandRunner } from "./poe-code-command-runner.js";
 
 export interface CliDependencies {
   fs: FileSystem;
@@ -132,7 +133,13 @@ export function createCliContainer(
     registry.register(adapter);
   }
 
-  return {
+  let container: CliContainer = null as unknown as CliContainer;
+  const wrappedRunner = createPoeCodeCommandRunner({
+    getContainer: () => container,
+    baseRunner: commandRunner
+  });
+
+  container = {
     env: environment,
     fs: dependencies.fs,
     prompts: dependencies.prompts,
@@ -143,8 +150,10 @@ export function createCliContainer(
     contextFactory,
     registry,
     httpClient,
-    commandRunner,
+    commandRunner: wrappedRunner,
     providers,
     dependencies
   };
+
+  return container;
 }

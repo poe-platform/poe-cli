@@ -106,7 +106,8 @@ describe("test command", () => {
   it("runs a stdin spawn test when --stdin is provided", async () => {
     const logs: string[] = [];
     const container = createContainer(logs);
-    const runCommand = container.commandRunner as unknown as ReturnType<typeof vi.fn>;
+    const runCommand = container.dependencies
+      .commandRunner as unknown as ReturnType<typeof vi.fn>;
 
     container.registry.register(
       createProviderStub({

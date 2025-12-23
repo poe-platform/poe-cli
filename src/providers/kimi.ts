@@ -14,7 +14,7 @@ import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { JsonObject } from "../utils/json.js";
 import type {
   ProviderSpawnOptions,
-  DefaultModelConfigureOptions,
+  ModelConfigureOptions,
   EmptyProviderOptions
 } from "./spawn-options.js";
 
@@ -46,8 +46,7 @@ function buildKimiArgs(prompt: string, extraArgs?: string[]): string[] {
 }
 
 export const kimiService = createProvider<
-  Record<string, any>,
-  DefaultModelConfigureOptions,
+  ModelConfigureOptions,
   EmptyProviderOptions,
   ProviderSpawnOptions
 >({
@@ -87,16 +86,17 @@ export const kimiService = createProvider<
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.kimi"
+          targetDirectory: "~/.kimi"
         }),
         jsonMergeMutation({
-          target: "~/.kimi/config.json",
+          targetDirectory: "~/.kimi",
+          targetFile: "config.json",
           value: ({ options }) => {
-            const { defaultModel, apiKey } = (options ?? {}) as {
-              defaultModel?: string;
+            const { model, apiKey } = (options ?? {}) as {
+              model?: string;
               apiKey?: string;
             };
-            const selectedModel = defaultModel ?? DEFAULT_KIMI_MODEL;
+            const selectedModel = model ?? DEFAULT_KIMI_MODEL;
             return {
               default_model: providerModel(selectedModel),
               models: {
@@ -119,7 +119,8 @@ export const kimiService = createProvider<
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.kimi/config.json",
+          targetDirectory: "~/.kimi",
+          targetFile: "config.json",
           shape: (): JsonObject => ({
             providers: {
               [PROVIDER_NAME]: true

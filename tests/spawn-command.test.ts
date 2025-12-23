@@ -73,7 +73,39 @@ describe("spawn command", () => {
     vi.clearAllMocks();
   });
 
+  async function ensureIsolatedConfig(service: string): Promise<void> {
+    if (service === "claude-code") {
+      await fs.mkdir(`${homeDir}/.poe-code/claude-code`, { recursive: true });
+      await fs.writeFile(
+        `${homeDir}/.poe-code/claude-code/settings.json`,
+        "{}",
+        { encoding: "utf8" }
+      );
+      return;
+    }
+    if (service === "codex") {
+      await fs.mkdir(`${homeDir}/.poe-code/codex`, { recursive: true });
+      await fs.writeFile(
+        `${homeDir}/.poe-code/codex/config.toml`,
+        "",
+        { encoding: "utf8" }
+      );
+      return;
+    }
+    if (service === "opencode") {
+      await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+        recursive: true
+      });
+      await fs.writeFile(
+        `${homeDir}/.poe-code/opencode/.config/opencode/config.json`,
+        "{}",
+        { encoding: "utf8" }
+      );
+    }
+  }
+
   it("spawns a claude-code agent", async () => {
+    await ensureIsolatedConfig("claude-code");
     const logs: string[] = [];
     const { runner, calls } = createCommandRunnerStub({
       stdout: "Agent output\n",
@@ -110,13 +142,19 @@ describe("spawn command", () => {
           "acceptEdits",
           "--output-format",
           "text"
-        ]
+        ],
+        options: {
+          env: {
+            CLAUDE_CONFIG_DIR: `${homeDir}/.poe-code/claude-code`
+          }
+        }
       }
     ]);
     expect(logs.some((message) => message.includes("Agent output"))).toBe(true);
   });
 
   it("spawns a codex agent", async () => {
+    await ensureIsolatedConfig("codex");
     const logs: string[] = [];
     const { runner, calls } = createCommandRunnerStub({
       stdout: "Codex output\n",
@@ -144,18 +182,20 @@ describe("spawn command", () => {
     expect(calls).toEqual([
       {
         command: "codex",
-        args: [
-          "exec",
-          "Summarize the diff",
-          "--full-auto",
-          "--skip-git-repo-check"
-        ]
+        args: ["exec", "Summarize the diff", "--full-auto", "--skip-git-repo-check"],
+        options: {
+          env: {
+            CODEX_HOME: `${homeDir}/.poe-code/codex`,
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/codex`
+          }
+        }
       }
     ]);
     expect(logs.some((message) => message.includes("Codex output"))).toBe(true);
   });
 
   it("spawns an opencode agent", async () => {
+    await ensureIsolatedConfig("opencode");
     const logs: string[] = [];
     const { runner, calls } = createCommandRunnerStub({
       stdout: "OpenCode output\n",
@@ -188,7 +228,13 @@ describe("spawn command", () => {
           `poe/${FRONTIER_MODELS[0]!}`,
           "run",
           "List files"
-        ]
+        ],
+        options: {
+          env: {
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/opencode/.config`,
+            XDG_DATA_HOME: `${homeDir}/.poe-code/opencode/.local/share`
+          }
+        }
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(
@@ -197,6 +243,7 @@ describe("spawn command", () => {
   });
 
   it("fails when spawn command exits with error", async () => {
+    await ensureIsolatedConfig("claude-code");
     const { runner } = createCommandRunnerStub({
       stdout: "",
       stderr: "spawn failed",
@@ -299,6 +346,7 @@ describe("spawn command", () => {
   });
 
   it("passes through model override via CLI flag", async () => {
+    await ensureIsolatedConfig("opencode");
     const logs: string[] = [];
     const { runner, calls } = createCommandRunnerStub({
       stdout: "OpenCode output\n",
@@ -330,13 +378,25 @@ describe("spawn command", () => {
     expect(calls).toEqual([
       {
         command: "opencode",
-        args: ["--model", `poe/${override}`, "run", "List files"]
+        args: [
+          "--model",
+          `poe/${override}`,
+          "run",
+          "List files"
+        ],
+        options: {
+          env: {
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/opencode/.config`,
+            XDG_DATA_HOME: `${homeDir}/.poe-code/opencode/.local/share`
+          }
+        }
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);
   });
 
   it("avoids duplicating provider prefixes for CLI model overrides", async () => {
+    await ensureIsolatedConfig("opencode");
     const logs: string[] = [];
     const { runner, calls } = createCommandRunnerStub({
       stdout: "OpenCode output\n",
@@ -368,13 +428,20 @@ describe("spawn command", () => {
     expect(calls).toEqual([
       {
         command: "opencode",
-        args: ["--model", prefixed, "run", "List files"]
+        args: ["--model", prefixed, "run", "List files"],
+        options: {
+          env: {
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/opencode/.config`,
+            XDG_DATA_HOME: `${homeDir}/.poe-code/opencode/.local/share`
+          }
+        }
       }
     ]);
     expect(logs.some((message) => message.includes("OpenCode output"))).toBe(true);
   });
 
   it("runs spawn commands from a custom cwd via -C flag", async () => {
+    await ensureIsolatedConfig("claude-code");
     const customCwd = "/projects/demo";
     const { runner, calls } = createCommandRunnerStub({
       stdout: "Agent output\n",
@@ -412,12 +479,18 @@ describe("spawn command", () => {
           "--output-format",
           "text"
         ],
-        options: { cwd: customCwd }
+        options: {
+          cwd: customCwd,
+          env: {
+            CLAUDE_CONFIG_DIR: `${homeDir}/.poe-code/claude-code`
+          }
+        }
       }
     ]);
   });
 
   it("resolves relative cwd paths against the CLI environment", async () => {
+    await ensureIsolatedConfig("codex");
     const relative = "feature";
     const resolved = path.join(cwd, relative);
     const { runner, calls } = createCommandRunnerStub({
@@ -452,12 +525,62 @@ describe("spawn command", () => {
           "--full-auto",
           "--skip-git-repo-check"
         ],
-        options: { cwd: resolved }
+        options: {
+          cwd: resolved,
+          env: {
+            CODEX_HOME: `${homeDir}/.poe-code/codex`,
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/codex`
+          }
+        }
       }
     ]);
   });
 
+  it("creates isolated config when missing", async () => {
+    const { runner, calls } = createCommandRunnerStub({
+      stdout: "Agent output\n",
+      stderr: "",
+      exitCode: 0
+    });
+    const program = createProgram({
+      fs,
+      prompts: vi.fn().mockResolvedValue({}),
+      env: { cwd, homeDir },
+      commandRunner: runner,
+      logger: () => {}
+    });
+
+    await fs.mkdir(`${homeDir}/.poe-code`, { recursive: true });
+    await fs.writeFile(
+      `${homeDir}/.poe-code/credentials.json`,
+      JSON.stringify({ apiKey: "sk-test" }),
+      { encoding: "utf8" }
+    );
+
+    await program.parseAsync(["node", "cli", "spawn", "codex", "Summarize the diff"]);
+
+    expect(calls).toEqual([
+      {
+        command: "codex",
+        args: ["--version"]
+      },
+      {
+        command: "codex",
+        args: ["exec", "Summarize the diff", "--full-auto", "--skip-git-repo-check"],
+        options: {
+          env: {
+            CODEX_HOME: `${homeDir}/.poe-code/codex`,
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/codex`
+          }
+        }
+      }
+    ]);
+
+    await expect(fs.stat(`${homeDir}/.poe-code/codex/config.toml`)).resolves.toBeDefined();
+  });
+
   it("consumes prompt text from stdin when no prompt argument is provided", async () => {
+    await ensureIsolatedConfig("codex");
     const { runner, calls } = createCommandRunnerStub({
       stdout: "Codex output\n",
       stderr: "",
@@ -477,18 +600,19 @@ describe("spawn command", () => {
       .spyOn(process, "stdin", "get")
       .mockReturnValue(stdinStream as NodeJS.ReadStream);
 
-    await program.parseAsync([
-      "node",
-      "cli",
-      "spawn",
-      "codex"
-    ]);
+    await program.parseAsync(["node", "cli", "spawn", "codex"]);
 
     expect(calls).toEqual([
       {
         command: "codex",
         args: ["exec", "-", "--full-auto", "--skip-git-repo-check"],
-        options: { stdin: "Prompt via stdin" }
+        options: {
+          env: {
+            CODEX_HOME: `${homeDir}/.poe-code/codex`,
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/codex`
+          },
+          stdin: "Prompt via stdin"
+        }
       }
     ]);
 
@@ -496,6 +620,7 @@ describe("spawn command", () => {
   });
 
   it("treats the next argument as agent args when --stdin is set", async () => {
+    await ensureIsolatedConfig("codex");
     const { runner, calls } = createCommandRunnerStub({
       stdout: "Codex output\n",
       stderr: "",
@@ -530,7 +655,13 @@ describe("spawn command", () => {
       {
         command: "codex",
         args: ["exec", "-", "--full-auto", "--skip-git-repo-check", "--foo", "bar"],
-        options: { stdin: "Prompt via stdin" }
+        options: {
+          env: {
+            CODEX_HOME: `${homeDir}/.poe-code/codex`,
+            XDG_CONFIG_HOME: `${homeDir}/.poe-code/codex`
+          },
+          stdin: "Prompt via stdin"
+        }
       }
     ]);
 

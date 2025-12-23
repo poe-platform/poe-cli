@@ -2,21 +2,21 @@
 
 > Configure coding agents to use the Poe API.
 
-## Quick Start
+## Try it out
 
 ```bash
-npx poe-code@latest configure claude-code
+npm install -g poe-code
+
+poe-claude --help
+poe-codex --help
+poe-opencode --help
 ```
 
-## Usage
-
-### Authenticate Once
-
-```bash
-npx poe-code@latest login
-```
+## Permanent Configuration
 
 ### Configure Coding CLIs
+
+This is a persistent change: it updates the config files.
 
 ```bash
 # Claude Code
@@ -33,6 +33,16 @@ npx poe-code@latest configure kimi
 
 ```
 
+### Remove configuration overrides
+
+Removes the Codex settings previously applied by `npx poe-code@latest configure codex`.
+
+```bash
+npx poe-code@latest remove codex
+```
+
+## Utilities
+
 ### Install Coding CLIs
 
 ```bash
@@ -48,14 +58,6 @@ npx poe-code@latest install opencode
 # Kimi
 npx poe-code@latest install kimi
 ```
-
-### Uninstall Configuration
-
-```bash
-npx poe-code@latest remove codex
-```
-
-Removes the Codex settings previously applied by `npx poe-code@latest configure codex`.
 
 ### Test Configuration
 

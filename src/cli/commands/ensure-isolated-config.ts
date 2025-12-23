@@ -1,0 +1,78 @@
+import type { CliContainer } from "../container.js";
+import type { ProviderService } from "../service-registry.js";
+import {
+  buildProviderContext,
+  createExecutionResources,
+  resolveProviderHandler,
+  applyIsolatedConfiguration,
+  type CommandFlags
+} from "./shared.js";
+import {
+  isolatedConfigExists,
+  resolveIsolatedEnvDetails
+} from "../isolated-env.js";
+import { createConfigurePayload } from "./configure-payload.js";
+import type { ConfigureCommandOptions } from "./configure.js";
+import {
+  createMutationReporter
+} from "../../services/mutation-events.js";
+
+export async function ensureIsolatedConfigForService(input: {
+  container: CliContainer;
+  adapter: ProviderService;
+  service: string;
+  options?: ConfigureCommandOptions;
+  flags: CommandFlags;
+}): Promise<void> {
+  const { container, adapter, service } = input;
+  const isolated = adapter.isolatedEnv;
+  if (!isolated) {
+    return;
+  }
+
+  const flags = input.flags;
+  const resources = createExecutionResources(
+    container,
+    flags,
+    `isolated:${service}`
+  );
+  const providerContext = buildProviderContext(container, adapter, resources);
+  const details = resolveIsolatedEnvDetails(container.env, isolated, adapter.name);
+  const hasConfig = await isolatedConfigExists(container.fs, details.configProbePath);
+  if (hasConfig) {
+    return;
+  }
+
+  const payload = await createConfigurePayload({
+    container,
+    flags: { ...flags, assumeYes: true },
+    options: input.options ?? {},
+    context: providerContext,
+    adapter
+  });
+
+  await container.registry.invoke(service, "configure", async (entry) => {
+    if (!entry.configure) {
+      throw new Error(`Service "${service}" does not support configure.`);
+    }
+    const resolution = await resolveProviderHandler(entry, providerContext);
+    const mutationLogger = createMutationReporter(resources.logger);
+    await applyIsolatedConfiguration({
+      resolution,
+      providerContext,
+      payload,
+      isolated,
+      providerName: adapter.name,
+      observers: mutationLogger
+    });
+  });
+
+  if (!flags.dryRun) {
+    const refreshed = await isolatedConfigExists(container.fs, details.configProbePath);
+    if (!refreshed) {
+      throw new Error(
+        `${adapter.label} isolated configuration did not create ${details.configProbePath}.`
+      );
+    }
+  }
+}

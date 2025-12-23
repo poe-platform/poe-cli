@@ -3,6 +3,7 @@ import type { CliContainer } from "../container.js";
 import type { ProviderContext } from "../service-registry.js";
 import { removeConfiguredService } from "../../services/credentials.js";
 import { createMutationReporter } from "../../services/mutation-events.js";
+import { resolveIsolatedTargetDirectory } from "../isolated-env.js";
 import {
   buildProviderContext,
   createExecutionResources,
@@ -69,7 +70,7 @@ export function registerRemoveCommand(
       if (!resolution.adapter.remove) {
         return false;
       }
-      return await resolution.adapter.remove(
+      const result = await resolution.adapter.remove(
         {
           fs: providerContext.command.fs,
           env: providerContext.env,
@@ -78,6 +79,30 @@ export function registerRemoveCommand(
         },
         { observers: mutationLogger }
       );
+
+      const isolated = adapter.isolatedEnv;
+      if (isolated) {
+        await resolution.adapter.remove(
+          {
+            fs: providerContext.command.fs,
+            env: providerContext.env,
+            command: providerContext.command,
+            options: payload,
+            pathMapper: {
+              mapTargetDirectory: ({ targetDirectory }: { targetDirectory: string }) =>
+                resolveIsolatedTargetDirectory({
+                  targetDirectory,
+                  isolated,
+                  env: providerContext.env,
+                  providerName: adapter.name
+                })
+            }
+          },
+          { observers: mutationLogger }
+        );
+      }
+
+      return result;
     }
   );
 

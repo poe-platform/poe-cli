@@ -164,7 +164,6 @@ function createCodexVersionCheck(): CommandCheck {
 }
 
 export const codexService = createProvider<
-  Record<string, never>,
   CodexConfigureContext,
   CodexRemoveContext,
   ProviderSpawnOptions
@@ -194,6 +193,14 @@ export const codexService = createProvider<
       defaultValue: DEFAULT_REASONING
     }
   },
+  isolatedEnv: {
+    agentBinary: "codex",
+    configProbe: { kind: "isolatedFile", relativePath: "config.toml" },
+    env: {
+      CODEX_HOME: { kind: "isolatedDir" },
+      XDG_CONFIG_HOME: { kind: "isolatedDir" }
+    }
+  },
   test(context) {
     return context.runCheck(
       createCommandExpectationCheck({
@@ -211,13 +218,15 @@ export const codexService = createProvider<
   manifest: {
     "*": {
       configure: [
-        ensureDirectory({ path: "~/.codex" }),
+        ensureDirectory({ targetDirectory: "~/.codex" }),
         createBackupMutation({
-          target: "~/.codex/config.toml",
+          targetDirectory: "~/.codex",
+          targetFile: "config.toml",
           timestamp: ({ options }) => options.timestamp
         }),
         tomlTemplateMergeMutation({
-          target: "~/.codex/config.toml",
+          targetDirectory: "~/.codex",
+          targetFile: "config.toml",
           templateId: "codex/config.toml.hbs",
           context: ({ options }) => ({
             apiKey: options.apiKey,
@@ -228,7 +237,8 @@ export const codexService = createProvider<
       ],
       remove: [
         tomlPruneMutation({
-          target: "~/.codex/config.toml",
+          targetDirectory: "~/.codex",
+          targetFile: "config.toml",
           prune: (document) => {
             const result = stripCodexConfiguration(document);
             if (!result.changed) {
@@ -254,19 +264,21 @@ export const codexService = createProvider<
     );
     if (shouldUseStdin) {
       if (options.cwd) {
-        return context.command.runCommand("codex", args, {
+        return context.command.runCommand("poe-code", ["wrap", "codex", ...args], {
           cwd: options.cwd,
           stdin: options.prompt
         });
       }
-      return context.command.runCommand("codex", args, {
+      return context.command.runCommand("poe-code", ["wrap", "codex", ...args], {
         stdin: options.prompt
       });
     }
 
     if (options.cwd) {
-      return context.command.runCommand("codex", args, { cwd: options.cwd });
+      return context.command.runCommand("poe-code", ["wrap", "codex", ...args], {
+        cwd: options.cwd
+      });
     }
-    return context.command.runCommand("codex", args);
+    return context.command.runCommand("poe-code", ["wrap", "codex", ...args]);
   }
 });

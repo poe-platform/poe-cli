@@ -24,6 +24,11 @@ export interface CommandContextComplete {
 export interface CommandContext {
   fs: FileSystem;
   runCommand: CommandRunner;
+  runCommandWithEnv(
+    command: string,
+    args: string[],
+    options?: { cwd?: string; env?: Record<string, string | undefined> }
+  ): Promise<CommandRunnerResult>;
   flushDryRun(options?: { emitIfEmpty?: boolean }): void;
   complete(messages: CommandContextComplete): void;
 }
@@ -46,6 +51,12 @@ export function createCommandContextFactory(
       return {
         fs,
         runCommand: options.runner,
+        runCommandWithEnv(command, args, runOptions) {
+          return options.runner(command, args, {
+            cwd: runOptions?.cwd,
+            env: runOptions?.env
+          });
+        },
         flushDryRun() {},
         complete(messages) {
           options.logger.info(messages.success);
@@ -83,6 +94,12 @@ export function createCommandContextFactory(
     return {
       fs: proxyFs,
       runCommand: options.runner,
+      runCommandWithEnv(command, args, runOptions) {
+        return options.runner(command, args, {
+          cwd: runOptions?.cwd,
+          env: runOptions?.env
+        });
+      },
       flushDryRun({ emitIfEmpty }: { emitIfEmpty?: boolean } = {}) {
         flush(Boolean(emitIfEmpty));
       },

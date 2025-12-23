@@ -43,9 +43,6 @@ describe("install command", () => {
     const adapter: ProviderService = createProviderStub({
       name: "test-service",
       label: "Test Service",
-      resolvePaths() {
-        return {};
-      },
       async install() {
         callOrder.push("install");
       }

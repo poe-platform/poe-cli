@@ -15,7 +15,13 @@ export function createDefaultCommandRunner(): CommandRunner {
       const hasStdin = options?.stdin != null;
       const child = spawn(command, args, {
         stdio: [hasStdin ? "pipe" : "ignore", "pipe", "pipe"],
-        cwd: options?.cwd
+        cwd: options?.cwd,
+        env: options?.env
+          ? {
+              ...(process.env as Record<string, string | undefined>),
+              ...options.env
+            }
+          : undefined
       });
       let stdout = "";
       let stderr = "";

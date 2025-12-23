@@ -26,7 +26,6 @@ function createContext(fs: FileSystem) {
   return {
     provider: {
       env,
-      paths: {},
       command,
       logger
     },
@@ -42,7 +41,7 @@ function createContext(fs: FileSystem) {
 describe("versioned manifest providers", () => {
   it("selects manifest matching resolved version", async () => {
     const fs = createFs();
-    const provider = createProvider<Record<string, string>, DemoConfigure>({
+    const provider = createProvider<DemoConfigure>({
       name: "demo",
       label: "Demo",
       id: "demo",
@@ -80,7 +79,7 @@ describe("versioned manifest providers", () => {
 
   it("falls back to wildcard manifest when detection fails", async () => {
     const fs = createFs();
-    const provider = createProvider<Record<string, string>, DemoConfigure>({
+    const provider = createProvider<DemoConfigure>({
       name: "demo",
       label: "Demo",
       id: "demo",
@@ -127,7 +126,6 @@ describe("versioned manifest providers", () => {
     const env = createCliEnvironment({ cwd: "/repo", homeDir: "/home/user" });
     const context: ProviderContext = {
       env,
-      paths: {},
       command,
       logger,
       async runCheck(check) {

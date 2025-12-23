@@ -1,2 +1,2 @@
 #!/bin/bash
-node -e "console.log(require({{{credentialsPathLiteral}}}).apiKey)"
+node -e "process.stdout.write(String(require({{{credentialsPathLiteral}}}).apiKey || ''))"

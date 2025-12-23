@@ -7,14 +7,6 @@ mount_target="${COLIMA_RUNNER_MOUNT:-/workspace}"
 image="${COLIMA_RUNNER_IMAGE:-node:latest}"
 profile="${COLIMA_PROFILE:-default}"
 docker_args_env="${COLIMA_DOCKER_ARGS:-}"
-credentials_path_default="${HOME}/.poe-code/credentials.json"
-credentials_path_raw="${COLIMA_CREDENTIALS_PATH:-${credentials_path_default}}"
-credentials_path="${credentials_path_raw/#\~/${HOME}}"
-credentials_dir_host="$(dirname "${credentials_path}")"
-mkdir -p "${credentials_dir_host}"
-mkdir -p "${credentials_dir_host}/logs"
-credentials_mount_default="/root/.poe-code"
-credentials_mount="${COLIMA_CREDENTIALS_MOUNT:-${credentials_mount_default}}"
 export_logs="${COLIMA_RUNNER_EXPORT_LOGS:-1}"
 log_export_dir_host="${COLIMA_RUNNER_LOG_EXPORT_DIR:-${repo_root}/.colima-logs}"
 log_export_mount="${COLIMA_RUNNER_LOG_EXPORT_MOUNT:-/log-export}"
@@ -36,10 +28,6 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 colima_args=(start --profile "${profile}" --mount "${repo_root}:${mount_target}:w")
-if [ "${credentials_dir_host}" != "${repo_root}" ]; then
-  colima_args+=(--mount "${credentials_dir_host}:${credentials_dir_host}:w")
-fi
-credentials_volume=(-v "${credentials_dir_host}:${credentials_mount}:rw")
 log_export_volume=()
 
 if [ "${export_logs}" = "1" ]; then
@@ -66,10 +54,6 @@ fi
 
 docker_run_common=(docker run --rm -it -v "${mount_target}:${mount_target}:rw" -w "${mount_target}")
 
-if [ "${#credentials_volume[@]}" -gt 0 ]; then
-  docker_run_common+=("${credentials_volume[@]}")
-fi
-
 if [ "${#log_export_volume[@]}" -gt 0 ]; then
   docker_run_common+=("${log_export_volume[@]}")
 fi
@@ -89,6 +73,8 @@ container_commands=(
   "build_dir=\$(mktemp -d)"
   "cleanup_build_dir() { rm -rf \"\${build_dir}\"; }"
   "trap cleanup_build_dir EXIT"
+  "rm -rf /root/.poe-code"
+  "mkdir -p /root/.poe-code/logs"
   "tar -C \"\${workspace_dir}\" --exclude=node_modules --exclude=.git -cf - . | tar -C \"\${build_dir}\" -xf -"
   "cd \"\${build_dir}\""
   "npm install"

@@ -37,7 +37,7 @@ export const templateFixtures = new Map<string, string>([
     "claude-code/anthropic_key.sh.hbs",
     [
       "#!/bin/bash",
-      'node -e "console.log(require({{{credentialsPathLiteral}}}).apiKey)"'
+      'node -e "process.stdout.write(String(require({{{credentialsPathLiteral}}}).apiKey || \'\'))"'
     ].join("\n")
   ],
   [

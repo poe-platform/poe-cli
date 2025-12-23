@@ -2,7 +2,8 @@ import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
 import type {
   ProviderService,
-  ProviderContext
+  ProviderContext,
+  ProviderIsolatedEnv
 } from "../service-registry.js";
 import {
   createLoggingCommandRunner,
@@ -10,6 +11,8 @@ import {
 } from "../context.js";
 import type { ScopedLogger } from "../logger.js";
 import type { CommandCheck } from "../../utils/command-checks.js";
+import type { ServiceMutationObservers } from "../../services/service-manifest.js";
+import { resolveIsolatedTargetDirectory } from "../isolated-env.js";
 
 export interface CommandFlags {
   dryRun: boolean;
@@ -57,13 +60,9 @@ export function buildProviderContext(
   adapter: ProviderService,
   resources: ExecutionResources
 ): ProviderContext {
-  const paths = adapter.resolvePaths
-    ? adapter.resolvePaths(container.env)
-    : {};
   const runCheck = createCheckRunner(resources);
   return {
     env: container.env,
-    paths,
     command: resources.context,
     logger: resources.logger,
     runCheck
@@ -91,6 +90,13 @@ export interface ResolveProviderOptions {
   useResolver?: boolean;
 }
 
+export function listIsolatedServiceIds(container: CliContainer): string[] {
+  return container.registry
+    .list()
+    .filter((provider) => Boolean(provider.isolatedEnv))
+    .map((provider) => provider.name);
+}
+
 export async function resolveProviderHandler(
   adapter: ProviderService,
   context: ProviderContext,
@@ -112,4 +118,32 @@ export function resolveServiceAdapter(
     throw new Error(`Unknown service "${service}".`);
   }
   return adapter;
+}
+
+export async function applyIsolatedConfiguration(input: {
+  resolution: ProviderResolution;
+  providerContext: ProviderContext;
+  payload: unknown;
+  isolated: ProviderIsolatedEnv;
+  providerName: string;
+  observers?: ServiceMutationObservers;
+}): Promise<void> {
+  await input.resolution.adapter.configure(
+    {
+      fs: input.providerContext.command.fs,
+      env: input.providerContext.env,
+      command: input.providerContext.command,
+      options: input.payload,
+      pathMapper: {
+        mapTargetDirectory: ({ targetDirectory }) =>
+          resolveIsolatedTargetDirectory({
+            targetDirectory,
+            isolated: input.isolated,
+            env: input.providerContext.env,
+            providerName: input.providerName
+          })
+      }
+    },
+    input.observers ? { observers: input.observers } : undefined
+  );
 }

@@ -32,7 +32,8 @@ describe("claude-code service", () => {
   const home = "/home/user";
   const settingsPath = path.join(home, ".claude", "settings.json");
   const keyHelperPath = path.join(home, ".claude", "anthropic_key.sh");
-  const credentialsPath = path.join(home, ".poe-code", "credentials.json");
+  const expectedApiKeyHelperCommand =
+    `node -e "process.stdout.write(String(require(require('os').homedir() + '/.poe-code/credentials.json').apiKey || ''))"`;
   const apiKey = "sk-test";
   let env = createCliEnvironment({
     cwd: home,
@@ -63,7 +64,6 @@ describe("claude-code service", () => {
 
     const context = {
       env,
-      paths: {},
       command: {
         runCommand,
         fs
@@ -94,7 +94,7 @@ describe("claude-code service", () => {
   ): ConfigureOptions => ({
     env,
     apiKey,
-    defaultModel: CLAUDE_MODEL_SONNET,
+    model: CLAUDE_MODEL_SONNET,
     ...overrides
   });
 
@@ -138,7 +138,7 @@ describe("claude-code service", () => {
       settingsPath,
       JSON.stringify(
         {
-          apiKeyHelper: keyHelperPath,
+          apiKeyHelper: "./anthropic_key.sh",
           theme: "dark",
           env: {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
@@ -182,7 +182,7 @@ describe("claude-code service", () => {
       settingsPath,
       JSON.stringify(
         {
-          apiKeyHelper: keyHelperPath,
+          apiKeyHelper: "./anthropic_key.sh",
           env: {
             ANTHROPIC_BASE_URL: "https://api.poe.com",
             ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
@@ -215,7 +215,7 @@ describe("claude-code service", () => {
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
     expect(parsed).toEqual({
-      apiKeyHelper: keyHelperPath,
+      apiKeyHelper: expectedApiKeyHelperCommand,
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
@@ -228,9 +228,18 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        'node -e "process.stdout.write(String(require(require(\'os\').homedir() + \'/.poe-code/credentials.json\').apiKey || \'\'))"'
       ].join("\n")
     );
+  });
+
+  it("writes apiKeyHelper as an executable command", async () => {
+    await configureClaude();
+
+    const content = await fs.readFile(settingsPath, "utf8");
+    const parsed = JSON.parse(content);
+
+    expect(parsed.apiKeyHelper).toBe(expectedApiKeyHelperCommand);
   });
 
   it("merges existing settings json while preserving other keys", async () => {
@@ -257,7 +266,7 @@ describe("claude-code service", () => {
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
     expect(parsed).toEqual({
-      apiKeyHelper: keyHelperPath,
+      apiKeyHelper: expectedApiKeyHelperCommand,
       theme: "dark",
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
@@ -272,7 +281,7 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        'node -e "process.stdout.write(String(require(require(\'os\').homedir() + \'/.poe-code/credentials.json\').apiKey || \'\'))"'
       ].join("\n")
     );
   });
@@ -296,7 +305,7 @@ describe("claude-code service", () => {
     const settings = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(settings);
     expect(parsed).toEqual({
-      apiKeyHelper: keyHelperPath,
+      apiKeyHelper: expectedApiKeyHelperCommand,
       env: {
         ANTHROPIC_BASE_URL: "https://api.poe.com",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_MODEL_HAIKU,
@@ -309,13 +318,13 @@ describe("claude-code service", () => {
     expect(script).toBe(
       [
         "#!/bin/bash",
-        'node -e "console.log(require(\'/home/user/.poe-code/credentials.json\').apiKey)"'
+        'node -e "process.stdout.write(String(require(require(\'os\').homedir() + \'/.poe-code/credentials.json\').apiKey || \'\'))"'
       ].join("\n")
     );
   });
 
-  it("creates settings with custom defaultModel value", async () => {
-    await configureClaude({ defaultModel: CLAUDE_MODEL_HAIKU });
+  it("creates settings with custom model value", async () => {
+    await configureClaude({ model: CLAUDE_MODEL_HAIKU });
 
     const content = await fs.readFile(settingsPath, "utf8");
     const parsed = JSON.parse(content);
@@ -332,47 +341,7 @@ describe("claude-code service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {
-        settingsPath,
-        keyHelperPath,
-        credentialsPath
-      },
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: {
-          dryRun: false,
-          verbose: true
-        },
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        errorWithStack: vi.fn(),
-        logException: vi.fn(),
-        dryRun: vi.fn(),
-        verbose: vi.fn(),
-        child: vi.fn()
-      },
-      async runCheck(check) {
-        await check.run({
-          isDryRun: false,
-          runCommand,
-          logDryRun: () => {}
-        });
-      },
-      async runCheck(check) {
-        await check.run({
-          isDryRun: false,
-          runCommand,
-          logDryRun: () => {}
-        });
-      }
-    } as unknown as ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     const result = await claudeService.claudeCodeService.spawn(
       providerContext,
@@ -382,7 +351,9 @@ describe("claude-code service", () => {
       }
     );
 
-    expect(runCommand).toHaveBeenCalledWith("claude", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "claude-code",
       "-p",
       "Test prompt",
       "--allowedTools",
@@ -407,40 +378,16 @@ describe("claude-code service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {
-        settingsPath,
-        keyHelperPath,
-        credentialsPath
-      },
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: {
-          dryRun: false,
-          verbose: true
-        },
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        errorWithStack: vi.fn(),
-        logException: vi.fn(),
-        dryRun: vi.fn(),
-        verbose: vi.fn(),
-        child: vi.fn()
-      }
-    } as unknown as ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     await claudeService.claudeCodeService.spawn(providerContext, {
       prompt: "Test prompt",
       model: CLAUDE_MODEL_HAIKU
     });
 
-    expect(runCommand).toHaveBeenCalledWith("claude", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "claude-code",
       "-p",
       "Test prompt",
       "--model",
@@ -460,33 +407,7 @@ describe("claude-code service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {
-        settingsPath,
-        keyHelperPath,
-        credentialsPath
-      },
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: {
-          dryRun: false,
-          verbose: true
-        },
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        errorWithStack: vi.fn(),
-        logException: vi.fn(),
-        dryRun: vi.fn(),
-        verbose: vi.fn(),
-        child: vi.fn()
-      }
-    } as unknown as ProviderContext;
+    const { context: providerContext } = createProviderTestContext(runCommand);
 
     await claudeService.claudeCodeService.spawn(providerContext, {
       prompt: "Test prompt",
@@ -494,8 +415,10 @@ describe("claude-code service", () => {
     });
 
     expect(runCommand).toHaveBeenCalledWith(
-      "claude",
+      "poe-code",
       [
+        "wrap",
+        "claude-code",
         "-p",
         "--input-format",
         "text",
@@ -511,8 +434,15 @@ describe("claude-code service", () => {
   });
 
   it("runs the Claude CLI health check when invoking the provider test", async () => {
-    const runCommand = vi.fn(async () => ({
-      stdout: "CLAUDE_CODE_OK\n",
+    await fs.mkdir(path.join(home, ".poe-code"), { recursive: true });
+    await fs.writeFile(
+      path.join(home, ".poe-code", "credentials.json"),
+      JSON.stringify({ apiKey: "sk-test" }),
+      { encoding: "utf8" }
+    );
+    await configureClaude();
+    const runCommand = vi.fn(async (command: string) => ({
+      stdout: command === "/bin/sh" ? "sk-test\n" : "CLAUDE_CODE_OK\n",
       stderr: "",
       exitCode: 0
     }));

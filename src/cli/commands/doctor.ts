@@ -10,6 +10,7 @@ import {
 import { loadConfiguredServices } from "../../services/credentials.js";
 import { executeConfigure } from "./configure.js";
 import { executeRemove } from "./remove.js";
+import { ensureIsolatedConfigForService } from "./ensure-isolated-config.js";
 
 export function registerDoctorCommand(
   program: Command,
@@ -27,6 +28,8 @@ export async function executeDoctor(
   program: Command,
   container: CliContainer
 ): Promise<void> {
+  const flags = resolveCommandFlags(program);
+
   const configured = await loadConfiguredServices({
     fs: container.fs,
     filePath: container.env.credentialsPath
@@ -38,7 +41,6 @@ export async function executeDoctor(
     return;
   }
 
-  const flags = resolveCommandFlags(program);
   for (const [service, metadata] of services) {
     await reconcileService({
       program,
@@ -70,6 +72,13 @@ async function reconcileService(context: DoctorContext): Promise<void> {
     }`);
     return;
   }
+
+  await ensureIsolatedConfigForService({
+    container,
+    adapter,
+    service,
+    flags
+  });
 
   const resources = createExecutionResources(
     container,

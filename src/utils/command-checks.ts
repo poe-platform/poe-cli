@@ -7,6 +7,7 @@ export interface CommandRunnerResult {
 
 export interface CommandRunnerOptions {
   cwd?: string;
+  env?: Record<string, string | undefined>;
   stdin?: string | Buffer;
 }
 

@@ -8,8 +8,10 @@ import {
   resolveServiceAdapter
 } from "./shared.js";
 import { resolveServiceArgument } from "./configure.js";
-import type { CommandRunnerResult } from "../../utils/command-checks.js";
+import { resolveIsolatedEnvDetails } from "../isolated-env.js";
 import {
+  type CommandCheck,
+  type CommandRunnerResult,
   formatCommandRunnerResult,
   stdoutMatchesExpected
 } from "../../utils/command-checks.js";
@@ -26,20 +28,26 @@ export function registerTestCommand(
       "[service]",
       "Service to test (claude-code | codex | opencode)"
     )
+    .option("--isolated", "Run the health check using isolated configuration.")
     .action(async function (this: Command, service: string | undefined) {
       const resolved = await resolveServiceArgument(
         program,
         container,
         service
       );
-      await executeTest(this, container, resolved);
+      const opts = this.opts<{ isolated?: boolean; stdin?: boolean }>();
+      await executeTest(this, container, resolved, {
+        isolated: Boolean(opts.isolated),
+        stdin: Boolean(opts.stdin)
+      });
     });
 }
 
 export async function executeTest(
   program: Command,
   container: CliContainer,
-  service: string
+  service: string,
+  options: { isolated?: boolean; stdin?: boolean } = {}
 ): Promise<void> {
   const adapter = resolveServiceAdapter(container, service);
   const flags = resolveCommandFlags(program);
@@ -54,8 +62,24 @@ export async function executeTest(
     resources
   );
 
-  const commandOptions = program.optsWithGlobals<{ stdin?: boolean }>();
-  if (commandOptions.stdin) {
+  const isolatedDetails =
+    options.isolated && adapter.isolatedEnv
+      ? resolveIsolatedEnvDetails(container.env, adapter.isolatedEnv, adapter.name)
+      : null;
+
+  if (options.isolated && adapter.isolatedEnv) {
+    const { ensureIsolatedConfigForService } = await import(
+      "./ensure-isolated-config.js"
+    );
+    await ensureIsolatedConfigForService({
+      container,
+      adapter,
+      service,
+      flags
+    });
+  }
+
+  if (options.stdin) {
     if (!adapter.supportsStdinPrompt) {
       throw new Error(`${adapter.label} does not support stdin prompts.`);
     }
@@ -119,13 +143,31 @@ export async function executeTest(
       if (!entry.test) {
         throw new Error(`Service "${service}" does not support test.`);
       }
-      const resolution = await resolveProviderHandler(entry, providerContext, {
+      const activeContext =
+        isolatedDetails
+          ? {
+              ...providerContext,
+              runCheck: async (check: CommandCheck) => {
+                await check.run({
+                  isDryRun: providerContext.logger.context.dryRun,
+                  runCommand: (command: string, args: string[]) =>
+                    resources.context.runCommandWithEnv(command, args, {
+                      env: isolatedDetails.env
+                    }),
+                  logDryRun: (message: string) =>
+                    providerContext.logger.dryRun(message)
+                });
+              }
+            }
+          : providerContext;
+
+      const resolution = await resolveProviderHandler(entry, activeContext, {
         useResolver: false
       });
       if (!resolution.adapter.test) {
         throw new Error(`Service "${service}" does not support test.`);
       }
-      await resolution.adapter.test(providerContext);
+      await resolution.adapter.test(activeContext);
     });
   }
 

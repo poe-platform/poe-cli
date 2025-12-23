@@ -52,7 +52,6 @@ describe("kimi service", () => {
 
     const context = {
       env,
-      paths: {},
       command: {
         runCommand,
         fs
@@ -79,7 +78,7 @@ describe("kimi service", () => {
   ): ConfigureOptions => ({
     env,
     apiKey: "sk-test",
-    defaultModel: DEFAULT_KIMI_MODEL,
+    model: DEFAULT_KIMI_MODEL,
     ...overrides
   });
 
@@ -141,7 +140,7 @@ describe("kimi service", () => {
 
   it("writes the selected kimi model to the config", async () => {
     const alternate = KIMI_MODELS[KIMI_MODELS.length - 1]!;
-    await configureKimi({ defaultModel: alternate });
+    await configureKimi({ model: alternate });
 
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     expect(config.default_model).toBe(withProviderPrefix(alternate));
@@ -241,7 +240,6 @@ describe("kimi service", () => {
     }));
     const providerContext = {
       env: {} as any,
-      paths: {},
       command: {
         runCommand,
         fs

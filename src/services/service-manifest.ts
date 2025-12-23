@@ -21,10 +21,35 @@ type ValueResolver<Options, Value> =
   | Value
   | ((context: MutationContext<Options>) => Value);
 
+type TargetPathResolver<Options> = ValueResolver<Options, string>;
+
+type TargetDirectoryResolver<Options> = ValueResolver<Options, string>;
+
+type TargetFileResolver<Options> = ValueResolver<Options, string>;
+
+export type TargetLocation<Options> =
+  | {
+      target: TargetPathResolver<Options>;
+      targetDirectory?: never;
+      targetFile?: never;
+    }
+  | {
+      target?: never;
+      targetDirectory: TargetDirectoryResolver<Options>;
+      targetFile?: TargetFileResolver<Options>;
+    };
+
 interface MutationContext<Options> {
   options: Options;
   fs: FileSystem;
   env: CliEnvironment;
+}
+
+export interface ServiceManifestPathMapper {
+  mapTargetDirectory: (input: {
+    targetDirectory: string;
+    env: CliEnvironment;
+  }) => string;
 }
 
 interface TransformResult {
@@ -35,7 +60,7 @@ interface TransformResult {
 interface TransformFileMutation<Options> {
   kind: "transformFile";
   label?: ValueResolver<Options, string | undefined>;
-  target: ValueResolver<Options, string>;
+  target: TargetLocation<Options>;
   transform(
     input: { content: string | null; context: MutationContext<Options> }
   ): Promise<TransformResult> | TransformResult;
@@ -44,20 +69,20 @@ interface TransformFileMutation<Options> {
 interface EnsureDirectoryMutation<Options> {
   kind: "ensureDirectory";
   label?: ValueResolver<Options, string | undefined>;
-  path: ValueResolver<Options, string>;
+  targetDirectory: TargetDirectoryResolver<Options>;
 }
 
 interface CreateBackupMutation<Options> {
   kind: "createBackup";
   label?: ValueResolver<Options, string | undefined>;
-  target: ValueResolver<Options, string>;
+  target: TargetLocation<Options>;
   timestamp?: ValueResolver<Options, (() => string) | undefined>;
 }
 
 interface WriteTemplateMutation<Options> {
   kind: "writeTemplate";
   label?: ValueResolver<Options, string | undefined>;
-  target: ValueResolver<Options, string>;
+  target: TargetLocation<Options>;
   templateId: string;
   context?: ValueResolver<Options, JsonObject | undefined>;
 }
@@ -65,9 +90,16 @@ interface WriteTemplateMutation<Options> {
 interface RemoveFileMutation<Options> {
   kind: "removeFile";
   label?: ValueResolver<Options, string | undefined>;
-  target: ValueResolver<Options, string>;
+  target: TargetLocation<Options>;
   whenEmpty?: boolean;
   whenContentMatches?: RegExp;
+}
+
+interface ChmodMutation<Options> {
+  kind: "chmod";
+  label?: ValueResolver<Options, string | undefined>;
+  target: TargetLocation<Options>;
+  mode: number;
 }
 
 export type ServiceMutation<Options> =
@@ -75,7 +107,8 @@ export type ServiceMutation<Options> =
   | EnsureDirectoryMutation<Options>
   | CreateBackupMutation<Options>
   | WriteTemplateMutation<Options>
-  | RemoveFileMutation<Options>;
+  | RemoveFileMutation<Options>
+  | ChmodMutation<Options>;
 
 export interface ServiceManifestDefinition<
   ConfigureOptions,
@@ -110,6 +143,7 @@ export interface ServiceExecutionContext<Options> {
   env: CliEnvironment;
   command: CommandContext;
   options: Options;
+  pathMapper?: ServiceManifestPathMapper;
 }
 
 export interface MutationLogDetails {
@@ -137,7 +171,8 @@ export type MutationEffect =
   | "mkdir"
   | "copy"
   | "write"
-  | "delete";
+  | "delete"
+  | "chmod";
 
 export interface ServiceMutationObservers {
   onStart?(details: MutationLogDetails): void;
@@ -149,56 +184,81 @@ export interface ServiceMutationObservers {
 }
 
 export function ensureDirectory<Options>(config: {
-  path: ValueResolver<Options, string>;
+  path?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
+  const targetDirectory = config.targetDirectory ?? config.path;
+  if (!targetDirectory) {
+    throw new Error("ensureDirectory requires a path or targetDirectory.");
+  }
   return {
     kind: "ensureDirectory",
-    path: config.path,
+    targetDirectory,
     label: config.label
   };
 }
 
 export function createBackupMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   timestamp?: ValueResolver<Options, (() => string) | undefined>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "createBackup",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     timestamp: config.timestamp,
     label: config.label
   };
 }
 
 export function writeTemplateMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   templateId: string;
   context?: ValueResolver<Options, JsonObject | undefined>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "writeTemplate",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     templateId: config.templateId,
     context: config.context,
     label: config.label
   };
 }
 
+export function chmodMutation<Options>(config: {
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
+  mode: number;
+  label?: ValueResolver<Options, string | undefined>;
+}): ServiceMutation<Options> {
+  return {
+    kind: "chmod",
+    target: normalizeTargetLocation(config),
+    mode: config.mode,
+    label: config.label
+  };
+}
+
 export function jsonMergeMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   value: ValueResolver<Options, JsonObject>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     label: config.label,
     async transform({ content, context }) {
-      const rawTarget = resolveValue(config.target, context);
-      const targetPath = expandHomeShortcut(rawTarget, context.env);
+      const targetPath = resolveTargetPath(config, context);
       const current = await parseJsonWithRecovery({
         content,
         fs: context.fs,
@@ -216,13 +276,15 @@ export function jsonMergeMutation<Options>(config: {
 }
 
 export function jsonPruneMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   shape: ValueResolver<Options, JsonObject>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     label: config.label,
     async transform({ content, context }) {
       if (content == null) {
@@ -247,17 +309,18 @@ export function jsonPruneMutation<Options>(config: {
 }
 
 export function tomlMergeMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   value: ValueResolver<Options, TomlTable>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     label: config.label,
     async transform({ content, context }) {
-      const rawTarget = resolveValue(config.target, context);
-      const targetPath = expandHomeShortcut(rawTarget, context.env);
+      const targetPath = resolveTargetPath(config, context);
       const current = await parseTomlWithRecovery({
         content,
         fs: context.fs,
@@ -276,7 +339,9 @@ export function tomlMergeMutation<Options>(config: {
 }
 
 export function tomlPruneMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   prune: (
     document: TomlTable,
     context: MutationContext<Options>
@@ -285,7 +350,7 @@ export function tomlPruneMutation<Options>(config: {
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     label: config.label,
     async transform({ content, context }) {
       if (content == null) {
@@ -314,18 +379,19 @@ export function tomlPruneMutation<Options>(config: {
 }
 
 export function tomlTemplateMergeMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   templateId: string;
   context?: ValueResolver<Options, JsonObject | undefined>;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     label: config.label,
     async transform({ content, context }) {
-      const rawTarget = resolveValue(config.target, context);
-      const targetPath = expandHomeShortcut(rawTarget, context.env);
+      const targetPath = resolveTargetPath(config, context);
       const current = await parseTomlWithRecovery({
         content,
         fs: context.fs,
@@ -363,7 +429,7 @@ export function removePatternMutation<Options>(config: {
 }): ServiceMutation<Options> {
   return {
     kind: "transformFile",
-    target: config.target,
+    target: { target: config.target },
     label: config.label,
     transform({ content, context }) {
       if (content == null) {
@@ -387,14 +453,16 @@ export function removePatternMutation<Options>(config: {
 }
 
 export function removeFileMutation<Options>(config: {
-  target: ValueResolver<Options, string>;
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
   whenEmpty?: boolean;
   whenContentMatches?: RegExp;
   label?: ValueResolver<Options, string | undefined>;
 }): ServiceMutation<Options> {
   return {
     kind: "removeFile",
-    target: config.target,
+    target: normalizeTargetLocation(config),
     whenEmpty: config.whenEmpty,
     whenContentMatches: config.whenContentMatches,
     label: config.label
@@ -465,7 +533,11 @@ async function applyMutation<Options>(
 ): Promise<boolean> {
   switch (mutation.kind) {
     case "ensureDirectory": {
-      const targetPath = resolvePath(mutation.path, context);
+      validateHomeRelativePath(mutation.targetDirectory, context);
+      const targetPath = resolvePath(
+        { targetDirectory: mutation.targetDirectory },
+        context
+      );
       const details = createMutationDetails(
         mutation,
         manifestId,
@@ -489,6 +561,7 @@ async function applyMutation<Options>(
       }
     }
     case "createBackup": {
+      validateHomeRelativePath(mutation.target, context);
       const targetPath = resolvePath(mutation.target, context);
       const timestamp = mutation.timestamp
         ? resolveValue(mutation.timestamp, mutationContext(context))
@@ -515,6 +588,7 @@ async function applyMutation<Options>(
       return false;
     }
     case "writeTemplate": {
+      validateHomeRelativePath(mutation.target, context);
       const targetPath = resolvePath(mutation.target, context);
       const renderContext = mutation.context
         ? resolveValue(mutation.context, mutationContext(context))
@@ -545,7 +619,64 @@ async function applyMutation<Options>(
       }
       return true;
     }
+    case "chmod": {
+      validateHomeRelativePath(mutation.target, context);
+      const targetPath = resolvePath(mutation.target, context);
+      const details = createMutationDetails(
+        mutation,
+        manifestId,
+        targetPath,
+        context
+      );
+      observers?.onStart?.(details);
+      try {
+        if (typeof context.fs.chmod !== "function") {
+          observers?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
+          flushCommandDryRun(context);
+          return false;
+        }
+
+        const stat = await context.fs.stat(targetPath);
+        const currentMode =
+          typeof stat.mode === "number" ? stat.mode & 0o777 : null;
+        if (currentMode === mutation.mode) {
+          observers?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
+          flushCommandDryRun(context);
+          return false;
+        }
+
+        await context.fs.chmod(targetPath, mutation.mode);
+        observers?.onComplete?.(details, {
+          changed: true,
+          effect: "chmod",
+          detail: "update"
+        });
+        flushCommandDryRun(context);
+        return true;
+      } catch (error) {
+        if (isNotFound(error)) {
+          observers?.onComplete?.(details, {
+            changed: false,
+            effect: "none",
+            detail: "noop"
+          });
+          flushCommandDryRun(context);
+          return false;
+        }
+        observers?.onError?.(details, error);
+        throw error;
+      }
+    }
     case "removeFile": {
+      validateHomeRelativePath(mutation.target, context);
       const targetPath = resolvePath(mutation.target, context);
       const details = createMutationDetails(
         mutation,
@@ -601,6 +732,7 @@ async function applyMutation<Options>(
       }
     }
     case "transformFile": {
+      validateHomeRelativePath(mutation.target, context);
       const targetPath = resolvePath(mutation.target, context);
       const current = await readFileIfExists(context.fs, targetPath);
       const details = createMutationDetails(
@@ -634,6 +766,33 @@ async function applyMutation<Options>(
       throw new Error(`Unsupported mutation kind: ${(neverMutation as any).kind}`);
     }
   }
+}
+
+function validateHomeRelativePath<Options>(
+  resolver: ValueResolver<Options, string> | TargetLocation<Options>,
+  context: ServiceExecutionContext<Options>
+): void {
+  const raw = resolveRawPathResolver(resolver, context);
+  if (typeof raw !== "string" || raw.length === 0) {
+    return;
+  }
+  if (raw.startsWith("~")) {
+    return;
+  }
+  throw new Error(
+    `Service manifest targets must live under home (~): received "${raw}".`
+  );
+}
+
+function resolveRawPathResolver<Options>(
+  resolver: ValueResolver<Options, string> | TargetLocation<Options>,
+  context: ServiceExecutionContext<Options>
+): string {
+  const location = normalizeResolverToLocation(resolver);
+  if ("target" in location && location.target !== undefined) {
+    return resolveValue(location.target, mutationContext(context));
+  }
+  return resolveValue(location.targetDirectory, mutationContext(context));
 }
 
 function mutationContext<Options>(
@@ -679,6 +838,8 @@ function describeMutationOperation(
       return `Create backup ${displayPath}`;
     case "writeTemplate":
       return `Write file ${displayPath}`;
+    case "chmod":
+      return `Set permissions ${displayPath}`;
     case "removeFile":
       return `Remove file ${displayPath}`;
     case "transformFile":
@@ -699,11 +860,96 @@ function resolveValue<Options, Value>(
 }
 
 function resolvePath<Options>(
-  resolver: ValueResolver<Options, string>,
+  resolver: ValueResolver<Options, string> | TargetLocation<Options>,
   context: ServiceExecutionContext<Options>
 ): string {
-  const raw = resolveValue(resolver, mutationContext(context));
-  return expandHomeShortcut(raw, context.env);
+  const location = normalizeResolverToLocation(resolver);
+  if ("target" in location && location.target !== undefined) {
+    const raw = resolveValue(location.target, mutationContext(context));
+    const expanded = expandHomeShortcut(raw, context.env);
+    if (!context.pathMapper) {
+      return expanded;
+    }
+    const rawDirectory = path.dirname(expanded);
+    const mappedDirectory = context.pathMapper.mapTargetDirectory({
+      targetDirectory: rawDirectory,
+      env: context.env
+    });
+    const rawFile = path.basename(expanded);
+    return rawFile.length === 0 ? mappedDirectory : path.join(mappedDirectory, rawFile);
+  }
+
+  const rawDirectory = resolveValue(
+    location.targetDirectory,
+    mutationContext(context)
+  );
+  const expandedDirectory = expandHomeShortcut(rawDirectory, context.env);
+  const mappedDirectory = context.pathMapper
+    ? context.pathMapper.mapTargetDirectory({
+        targetDirectory: expandedDirectory,
+        env: context.env
+      })
+    : expandedDirectory;
+  if (location.targetFile === undefined) {
+    return mappedDirectory;
+  }
+  const rawFile = resolveValue(location.targetFile, mutationContext(context));
+  return rawFile.length === 0 ? mappedDirectory : path.join(mappedDirectory, rawFile);
+}
+
+function normalizeResolverToLocation<Options>(
+  resolver: ValueResolver<Options, string> | TargetLocation<Options>
+): TargetLocation<Options> {
+  if (typeof resolver === "object" && resolver != null) {
+    if ("target" in resolver || "targetDirectory" in resolver) {
+      return resolver as TargetLocation<Options>;
+    }
+  }
+  return {
+    target: resolver as ValueResolver<Options, string>
+  };
+}
+
+function normalizeTargetLocation<Options>(config: {
+  target?: ValueResolver<Options, string>;
+  targetDirectory?: ValueResolver<Options, string>;
+  targetFile?: ValueResolver<Options, string>;
+}): TargetLocation<Options> {
+  if (config.target) {
+    return { target: config.target };
+  }
+  if (config.targetDirectory) {
+    return {
+      targetDirectory: config.targetDirectory,
+      targetFile: config.targetFile
+    };
+  }
+  throw new Error("Missing target for service manifest mutation.");
+}
+
+function resolveTargetPath<Options>(
+  config: {
+    target?: ValueResolver<Options, string>;
+    targetDirectory?: ValueResolver<Options, string>;
+    targetFile?: ValueResolver<Options, string>;
+  },
+  context: MutationContext<Options>
+): string {
+  if (config.target) {
+    return expandHomeShortcut(resolveValue(config.target, context), context.env);
+  }
+  if (!config.targetDirectory) {
+    throw new Error("Missing targetDirectory.");
+  }
+  const directory = expandHomeShortcut(
+    resolveValue(config.targetDirectory, context),
+    context.env
+  );
+  if (!config.targetFile) {
+    return directory;
+  }
+  const file = resolveValue(config.targetFile, context);
+  return file.length === 0 ? directory : path.join(directory, file);
 }
 
 function flushCommandDryRun<Options>(

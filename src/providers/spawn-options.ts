@@ -10,8 +10,8 @@ export type ProviderSpawnOptions<
   Extra extends Record<string, unknown> = Record<string, never>
 > = SpawnCommandOptions & Extra;
 
-export interface DefaultModelConfigureOptions {
-  defaultModel: string;
+export interface ModelConfigureOptions {
+  model: string;
 }
 
 export type EmptyProviderOptions = Record<string, never>;

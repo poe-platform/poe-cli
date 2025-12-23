@@ -56,6 +56,15 @@ describe("doctor command", () => {
     const container = createContainer({ opencode: "3.1.0" });
     const program = createTestProgram();
 
+    await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+      recursive: true
+    });
+    await fs.writeFile(
+      `${homeDir}/.poe-code/opencode/.config/opencode/config.json`,
+      "{}",
+      { encoding: "utf8" }
+    );
+
     await executeConfigure(program, container, "opencode", {});
 
     const initial = await loadConfiguredServices({ fs, filePath: credentialsPath });
@@ -76,7 +85,46 @@ describe("doctor command", () => {
   it("skips services when versions match", async () => {
     const container = createContainer({ opencode: "3.1.0" });
     const program = createTestProgram();
+
+    await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+      recursive: true
+    });
+    await fs.writeFile(
+      `${homeDir}/.poe-code/opencode/.config/opencode/config.json`,
+      "{}",
+      { encoding: "utf8" }
+    );
     await executeConfigure(program, container, "opencode", {});
+
+    const invokeSpy = vi.spyOn(container.registry, "invoke");
+    await executeDoctor(program, container);
+
+    expect(invokeSpy).not.toHaveBeenCalledWith(
+      "opencode",
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it("does not configure unrelated isolated services", async () => {
+    const container = createContainer({ opencode: "3.1.0" });
+    const program = createTestProgram();
+
+    await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+      recursive: true
+    });
+    await fs.writeFile(
+      `${homeDir}/.poe-code/opencode/.config/opencode/config.json`,
+      "{}",
+      { encoding: "utf8" }
+    );
+
+    await saveConfiguredService({
+      fs,
+      filePath: credentialsPath,
+      service: "opencode",
+      metadata: { version: "3.1.0", files: [] }
+    });
 
     const invokeSpy = vi.spyOn(container.registry, "invoke");
     await executeDoctor(program, container);

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Volume, createFsFromVolume } from "memfs";
 import { createProgram } from "../src/cli/program.js";
 import type { FileSystem } from "../src/utils/file-system.js";
+import type { CommandRunner } from "../src/utils/command-checks.js";
 
 function createMemfs(homeDir: string): FileSystem {
   const volume = new Volume();
@@ -24,14 +25,23 @@ describe("login command", () => {
   });
 
   it("stores the provided api key flag", async () => {
+    const commandRunner: CommandRunner = vi.fn(async () => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    }));
     const program = createProgram({
       fs,
       prompts,
       env: { cwd, homeDir },
+      commandRunner,
       logger: (message) => {
         logs.push(message);
       }
     });
+
+    const optsSpy = vi.spyOn(program, "optsWithGlobals");
+    optsSpy.mockReturnValue({ yes: true, dryRun: false } as any);
 
     await program.parseAsync([
       "node",
@@ -42,44 +52,75 @@ describe("login command", () => {
     ]);
 
     const raw = await fs.readFile(credentialsPath, "utf8");
-    expect(JSON.parse(raw)).toEqual({ apiKey: "test-key" });
+    expect(JSON.parse(raw)).toEqual(
+      expect.objectContaining({ apiKey: "test-key" })
+    );
     expect(prompts).not.toHaveBeenCalled();
     expect(
       logs.some((message) =>
         message.includes(`Poe API key stored at ${credentialsPath}.`)
       )
     ).toBe(true);
+
+    await expect(fs.stat(`${homeDir}/.claude/settings.json`)).rejects.toBeTruthy();
+    await expect(fs.stat(`${homeDir}/.codex/config.toml`)).rejects.toBeTruthy();
+    await expect(
+      fs.stat(`${homeDir}/.config/opencode/config.json`)
+    ).rejects.toBeTruthy();
   });
 
   it("prompts for an api key when flag missing", async () => {
     prompts.mockResolvedValue({ apiKey: "prompt-key" });
+    const commandRunner: CommandRunner = vi.fn(async () => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    }));
     const program = createProgram({
       fs,
       prompts,
       env: { cwd, homeDir },
+      commandRunner,
       logger: (message) => {
         logs.push(message);
       }
     });
 
+    const optsSpy = vi.spyOn(program, "optsWithGlobals");
+    optsSpy.mockReturnValue({ yes: true, dryRun: false } as any);
+
     await program.parseAsync(["node", "cli", "login"]);
 
     const stored = await fs.readFile(credentialsPath, "utf8");
-    expect(JSON.parse(stored)).toEqual({ apiKey: "prompt-key" });
+    expect(JSON.parse(stored)).toEqual(
+      expect.objectContaining({ apiKey: "prompt-key" })
+    );
     expect(prompts).toHaveBeenCalledTimes(1);
     const [descriptor] = prompts.mock.calls[0]!;
     expect(descriptor.message).toContain("Poe API key");
   });
 
   it("skips writing credentials during dry run", async () => {
+    const commandRunner: CommandRunner = vi.fn(async () => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    }));
     const program = createProgram({
       fs,
       prompts,
       env: { cwd, homeDir },
+      commandRunner,
       logger: (message) => {
         logs.push(message);
-      }
+      },
+      exitOverride: true
     });
+
+    prompts.mockResolvedValue({ apiKey: "dry-key" });
+
+    const optsSpy = vi.spyOn(program, "optsWithGlobals");
+    optsSpy.mockReturnValue({ yes: true, dryRun: true } as any);
 
     await program.parseAsync([
       "node",

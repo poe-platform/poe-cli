@@ -66,7 +66,6 @@ describe("opencode service", () => {
 
     const context = {
       env,
-      paths: {},
       command: {
         runCommand,
         fs
@@ -217,24 +216,16 @@ describe("opencode service", () => {
       stderr: "",
       exitCode: 0
     }));
-    const providerContext = {
-      env: {} as any,
-      paths: {},
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: { dryRun: false, verbose: true }
-      }
-    } as unknown as import("../src/cli/service-registry.js").ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     const result = await opencodeService.openCodeService.spawn(providerContext, {
       prompt: "List all files",
       args: ["--format", "markdown"]
     });
 
-    expect(runCommand).toHaveBeenCalledWith("opencode", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "opencode",
       "--model",
       DEFAULT_PROVIDER_MODEL,
       "run",
@@ -256,24 +247,16 @@ describe("opencode service", () => {
       exitCode: 0
     }));
     const customModel = FRONTIER_MODELS[FRONTIER_MODELS.length - 1]!;
-    const providerContext = {
-      env: {} as any,
-      paths: {},
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: { dryRun: false, verbose: true }
-      }
-    } as unknown as import("../src/cli/service-registry.js").ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     await opencodeService.openCodeService.spawn(providerContext, {
       prompt: "List all files",
       model: customModel
     });
 
-    expect(runCommand).toHaveBeenCalledWith("opencode", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "opencode",
       "--model",
       withProviderPrefix(customModel),
       "run",
@@ -288,31 +271,16 @@ describe("opencode service", () => {
       exitCode: 0
     }));
     const prefixed = withProviderPrefix("Custom-Model");
-    const providerContext = {
-      env: {} as any,
-      paths: {},
-      command: {
-        runCommand,
-        fs
-      },
-      logger: {
-        context: { dryRun: false, verbose: true }
-      },
-      async runCheck(check) {
-        await check.run({
-          isDryRun: false,
-          runCommand,
-          logDryRun: () => {}
-        });
-      }
-    } as ProviderContext;
+    const providerContext = createProviderTestContext(runCommand).context;
 
     await opencodeService.openCodeService.spawn(providerContext, {
       prompt: "Describe the change",
       model: prefixed
     });
 
-    expect(runCommand).toHaveBeenCalledWith("opencode", [
+    expect(runCommand).toHaveBeenCalledWith("poe-code", [
+      "wrap",
+      "opencode",
       "--model",
       prefixed,
       "run",

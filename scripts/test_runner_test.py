@@ -7,17 +7,20 @@ import scripts.test_runner as test_runner
 
 
 class RunCommandsTest(unittest.TestCase):
-  def test_runs_each_command_group_with_single_subprocess(self) -> None:
+  def test_prepends_home_reset_before_each_group(self) -> None:
     fake_runner = Path("/tmp/colima-runner.sh")
     command_groups = [
       ["cmd one", "cmd two"],
       ["cmd three"],
     ]
+    reset_cmd = "rm -rf ~/.poe-code && mkdir -p ~/.poe-code/logs"
 
     with (
       patch.object(test_runner, "COMMAND_GROUPS", command_groups),
       patch("scripts.test_runner.colima_runner_path", return_value=fake_runner),
+      patch("scripts.test_runner.load_local_api_key", return_value="test-key"),
       patch("scripts.test_runner.subprocess.run") as mocked_run,
+      patch("builtins.print"),
       patch.dict(os.environ, {"COLIMA_DOCKER_ARGS": ""}, clear=True),
     ):
       test_runner.run_commands()
@@ -26,7 +29,10 @@ class RunCommandsTest(unittest.TestCase):
 
     for call, expected_commands in zip(mocked_run.call_args_list, command_groups):
       args, kwargs = call
-      self.assertEqual(args[0], [str(fake_runner), *expected_commands])
+      self.assertEqual(
+        args[0],
+        [str(fake_runner), reset_cmd, "poe-code login --api-key test-key", *expected_commands],
+      )
       self.assertTrue(kwargs["check"])
       self.assertEqual(kwargs["env"]["COLIMA_DOCKER_ARGS"], "-e POE_CODE_STDERR_LOGS=1")
 

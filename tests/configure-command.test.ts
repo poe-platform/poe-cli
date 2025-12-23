@@ -75,6 +75,9 @@ describe("configure command", () => {
 
   it("stores configured service metadata with detected version", async () => {
     const { container } = createContainer({ opencode: "2.3.4" });
+    await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+      recursive: true
+    });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-opencode");
     vi.spyOn(container.options, "resolveModel").mockImplementation(
       async ({ defaultValue }) => defaultValue
@@ -95,6 +98,9 @@ describe("configure command", () => {
 
   it("skips metadata persistence during dry run", async () => {
     const { container } = createContainer({ opencode: "2.3.4" });
+    await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
+      recursive: true
+    });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-opencode");
     vi.spyOn(container.options, "resolveModel").mockImplementation(
       async ({ defaultValue }) => defaultValue
@@ -144,19 +150,18 @@ describe("configure command", () => {
     expect(resolveReasoning).toHaveBeenCalled();
   });
 
-  it("logs the resolved model when configuring kimi", async () => {
-    const logger = vi.fn();
-    const { container } = createContainer({ kimi: null }, { logger });
+  it("resolves the model when configuring kimi", async () => {
+    const { container } = createContainer({ kimi: null });
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-kimi");
     const resolvedModel = "Kimi-Custom";
-    vi.spyOn(container.options, "resolveModel").mockResolvedValue(resolvedModel);
+    const resolveModel = vi
+      .spyOn(container.options, "resolveModel")
+      .mockResolvedValue(resolvedModel);
 
     const program = createTestProgram();
     await executeConfigure(program, container, "kimi", {});
 
-    expect(logger).toHaveBeenCalledWith(
-      expect.stringContaining(`Using Kimi model: ${resolvedModel}`)
-    );
+    expect(resolveModel).toHaveBeenCalled();
   });
 
   it("accepts --model option to set default model without prompting", async () => {

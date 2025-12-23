@@ -5,17 +5,16 @@ import type {
 import type { ServiceRunOptions } from "../src/services/service-manifest.js";
 
 export function createProviderStub<
-  Paths extends Record<string, string> = Record<string, string>,
   ConfigureOptions = unknown,
   RemoveOptions = ConfigureOptions,
   SpawnOptions = unknown
 >(
   overrides: Partial<
-    ProviderService<Paths, ConfigureOptions, RemoveOptions, SpawnOptions>
+    ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions>
   > &
-    Pick<ProviderService<Paths, ConfigureOptions, RemoveOptions, SpawnOptions>, "name" | "label"> &
-    Partial<Pick<ProviderService<Paths>, "id" | "summary">>
-): ProviderService<Paths, ConfigureOptions, RemoveOptions, SpawnOptions> {
+    Pick<ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions>, "name" | "label"> &
+    Partial<Pick<ProviderService, "id" | "summary">>
+): ProviderService<ConfigureOptions, RemoveOptions, SpawnOptions> {
   const id = overrides.id ?? overrides.name;
   const summary = overrides.summary ?? overrides.label;
 
@@ -33,13 +32,6 @@ export function createProviderStub<
     ...overrides,
     id,
     summary,
-    resolvePaths:
-      overrides.resolvePaths ?? ((() => ({} as Paths)) as ProviderService<
-        Paths,
-        ConfigureOptions,
-        RemoveOptions,
-        SpawnOptions
-      >["resolvePaths"]),
     configure: overrides.configure ?? defaultConfigure,
     remove: overrides.remove ?? defaultRemove
   };

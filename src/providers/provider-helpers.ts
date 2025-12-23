@@ -11,9 +11,10 @@ export function makeExecutableMutation<Options>(config: {
 }): ServiceMutation<Options> {
   const mode = config.mode ?? 0o700;
   const resolver = toResolver(config.target);
+  const target = toManifestTarget(config.target);
   return {
     kind: "transformFile",
-    target: resolver,
+    target,
     label: (context) => `Make file executable ${resolveTargetPath(resolver, context)}`,
     async transform({ content, context }) {
       if (typeof context.fs.chmod === "function" && content != null) {
@@ -37,6 +38,19 @@ function toResolver<Options>(
     return input;
   }
   return () => input;
+}
+
+function toManifestTarget<Options>(input: TargetResolver<Options>): {
+  target: string | ((context: { options: Options }) => string);
+} {
+  if (typeof input === "function") {
+    return {
+      target: (context) => input({ options: context.options })
+    };
+  }
+  return {
+    target: input
+  };
 }
 
 function resolveTargetPath<Options>(

@@ -91,17 +91,29 @@ export const openCodeService = createProvider({
       }))
     }
   },
+  isolatedEnv: {
+    agentBinary: "opencode",
+    configProbe: {
+      kind: "isolatedFile",
+      relativePath: ".config/opencode/config.json"
+    },
+    env: {
+      XDG_CONFIG_HOME: { kind: "isolatedDir", relativePath: ".config" },
+      XDG_DATA_HOME: { kind: "isolatedDir", relativePath: ".local/share" }
+    }
+  },
   manifest: {
     "*": {
       configure: [
         ensureDirectory({
-          path: "~/.config/opencode"
+          targetDirectory: "~/.config/opencode"
         }),
         ensureDirectory({
-          path: "~/.local/share/opencode"
+          targetDirectory: "~/.local/share/opencode"
         }),
         jsonMergeMutation({
-          target: "~/.config/opencode/config.json",
+          targetDirectory: "~/.config/opencode",
+          targetFile: "config.json",
           value: ({ options }) => {
             const { model } = (options ?? {}) as { model?: string };
             return {
@@ -121,7 +133,8 @@ export const openCodeService = createProvider({
           }
         }),
         jsonMergeMutation({
-          target: "~/.local/share/opencode/auth.json",
+          targetDirectory: "~/.local/share/opencode",
+          targetFile: "auth.json",
           value: ({ options }) => {
             const { apiKey } = (options ?? {}) as { apiKey?: string };
             return {
@@ -135,7 +148,8 @@ export const openCodeService = createProvider({
       ],
       remove: [
         jsonPruneMutation({
-          target: "~/.config/opencode/config.json",
+          targetDirectory: "~/.config/opencode",
+          targetFile: "config.json",
           shape: (): JsonObject => ({
             provider: {
               [PROVIDER_NAME]: true
@@ -143,7 +157,8 @@ export const openCodeService = createProvider({
           })
         }),
         jsonPruneMutation({
-          target: "~/.local/share/opencode/auth.json",
+          targetDirectory: "~/.local/share/opencode",
+          targetFile: "auth.json",
           shape: (): JsonObject => ({
             [PROVIDER_NAME]: true
           })
@@ -176,10 +191,10 @@ export const openCodeService = createProvider({
       ...(opts.args ?? [])
     ];
     if (opts.cwd) {
-      return context.command.runCommand("opencode", args, {
+      return context.command.runCommand("poe-code", ["wrap", "opencode", ...args], {
         cwd: opts.cwd
       });
     }
-    return context.command.runCommand("opencode", args);
+    return context.command.runCommand("poe-code", ["wrap", "opencode", ...args]);
   }
 });

@@ -7,7 +7,10 @@ import type {
   ModelPromptInput,
   ReasoningPromptInput
 } from "./prompts.js";
-import type { ServiceRunOptions } from "../services/service-manifest.js";
+import type {
+  ServiceRunOptions,
+  ServiceManifestPathMapper
+} from "../services/service-manifest.js";
 
 export interface ProviderColorSet {
   light?: string;
@@ -23,11 +26,8 @@ export interface ProviderConfigurePrompts {
   reasoningEffort?: ReasoningPromptInput;
 }
 
-export interface ProviderContext<
-  TPaths extends Record<string, unknown> = Record<string, any>
-> {
+export interface ProviderContext {
   env: CliEnvironment;
-  paths: TPaths;
   command: CommandContext;
   logger: ScopedLogger;
   runCheck(check: CommandCheck): Promise<void>;
@@ -38,20 +38,19 @@ export interface ServiceExecutionContext<Options> {
   env: CliEnvironment;
   command: CommandContext;
   options: Options;
+  pathMapper?: ServiceManifestPathMapper;
 }
 
 export interface ProviderVersionResolution<
-  TPaths extends Record<string, unknown>,
   TConfigure,
   TRemove,
   TSpawn
 > {
   version: string | null;
-  adapter: ProviderService<TPaths, TConfigure, TRemove, TSpawn>;
+  adapter: ProviderService<TConfigure, TRemove, TSpawn>;
 }
 
 export interface ProviderService<
-  TPaths extends Record<string, unknown> = Record<string, any>,
   TConfigure = any,
   TRemove = TConfigure,
   TSpawn = any
@@ -72,17 +71,40 @@ export interface ProviderService<
   disabled?: boolean;
   supportsStdinPrompt?: boolean;
   configurePrompts?: ProviderConfigurePrompts;
-  resolvePaths?: (env: CliEnvironment) => TPaths;
-  install?(context: ProviderContext<TPaths>): Promise<void> | void;
-  spawn?(
-    context: ProviderContext<TPaths>,
-    options: TSpawn
-  ): Promise<unknown>;
-  test?(context: ProviderContext<TPaths>): Promise<void>;
+  isolatedEnv?: ProviderIsolatedEnv;
+  install?(context: ProviderContext): Promise<void> | void;
+  spawn?(context: ProviderContext, options: TSpawn): Promise<unknown>;
+  test?(context: ProviderContext): Promise<void>;
   resolveVersion?(
-    context: ProviderContext<TPaths>
-  ): Promise<ProviderVersionResolution<TPaths, TConfigure, TRemove, TSpawn>>;
+    context: ProviderContext
+  ): Promise<ProviderVersionResolution<TConfigure, TRemove, TSpawn>>;
 }
+
+export interface ProviderIsolatedEnv {
+  agentBinary: string;
+  configProbe: IsolatedEnvPath;
+  env: Record<string, IsolatedEnvValue>;
+  repairs?: IsolatedEnvRepair[];
+}
+
+export type IsolatedEnvRepair =
+  | {
+      kind: "chmod";
+      relativePath: string;
+      mode: number;
+    };
+
+export type IsolatedEnvPath =
+  | {
+      kind: "isolatedDir";
+      relativePath?: string;
+    }
+  | {
+      kind: "isolatedFile";
+      relativePath: string;
+    };
+
+export type IsolatedEnvValue = string | IsolatedEnvPath;
 
 export type ProviderOperation =
   | "install"

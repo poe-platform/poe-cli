@@ -1,13 +1,12 @@
 import type { Command } from "commander";
 import type { CliContainer } from "../container.js";
-import type { ProviderContext, ProviderService } from "../service-registry.js";
 import {
   buildProviderContext,
   createExecutionResources,
-  type CommandFlags,
   resolveCommandFlags,
   resolveServiceAdapter,
-  resolveProviderHandler
+  resolveProviderHandler,
+  applyIsolatedConfiguration
 } from "./shared.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
 import { createMenuTheme } from "../ui/theme.js";
@@ -17,10 +16,7 @@ import {
   createMutationReporter
 } from "../../services/mutation-events.js";
 import type { ServiceMutationObservers } from "../../services/service-manifest.js";
-import type {
-  ModelPromptInput,
-  ReasoningPromptInput
-} from "../prompts.js";
+import { createConfigurePayload } from "./configure-payload.js";
 
 export interface ConfigureCommandOptions {
   apiKey?: string;
@@ -76,7 +72,6 @@ export async function executeConfigure(
   );
 
   const payload = await createConfigurePayload({
-    service,
     container,
     flags,
     options,
@@ -92,6 +87,7 @@ export async function executeConfigure(
     const tracker = createMutationTracker();
     const mutationLogger = createMutationReporter(resources.logger);
     const observers = combineMutationObservers(tracker.observers, mutationLogger);
+
     await resolution.adapter.configure(
       {
         fs: providerContext.command.fs,
@@ -117,6 +113,24 @@ export async function executeConfigure(
         }
       });
     }
+
+    const isolated = adapter.isolatedEnv;
+    if (isolated) {
+      const isolatedTracker = createMutationTracker();
+      const isolatedLogger = createMutationReporter(resources.logger);
+      const isolatedObservers = combineMutationObservers(
+        isolatedTracker.observers,
+        isolatedLogger
+      );
+      await applyIsolatedConfiguration({
+        resolution,
+        providerContext,
+        payload,
+        isolated,
+        providerName: adapter.name,
+        observers: isolatedObservers
+      });
+    }
   });
 
   const dryMessage =
@@ -128,109 +142,6 @@ export async function executeConfigure(
     success: `Configured ${adapter.label}.`,
     dry: dryMessage
   });
-}
-
-interface ConfigurePayloadInit {
-  service: string;
-  container: CliContainer;
-  flags: CommandFlags;
-  options: ConfigureCommandOptions;
-  context: ProviderContext;
-  adapter: ProviderService;
-}
-
-async function createConfigurePayload(
-  init: ConfigurePayloadInit
-): Promise<unknown> {
-  const { service, container, flags, options, context, adapter } = init;
-  switch (service) {
-    case "claude-code": {
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
-      const modelPrompt = requireModelPrompt(adapter);
-      const defaultModel = await container.options.resolveModel({
-        value: options.model,
-        assumeDefault: flags.assumeYes,
-        defaultValue: modelPrompt.defaultValue,
-        choices: modelPrompt.choices,
-        label: modelPrompt.label
-      });
-      return {
-        env: context.env,
-        apiKey,
-        defaultModel
-      };
-    }
-    case "codex": {
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
-      const modelPrompt = requireModelPrompt(adapter);
-      const model = await container.options.resolveModel({
-        value: options.model,
-        assumeDefault: flags.assumeYes,
-        defaultValue: modelPrompt.defaultValue,
-        choices: modelPrompt.choices,
-        label: modelPrompt.label
-      });
-      const reasoningPrompt = requireReasoningPrompt(adapter);
-      const reasoningEffort = await container.options.resolveReasoning({
-        value: options.reasoningEffort,
-        defaultValue: reasoningPrompt.defaultValue,
-        label: reasoningPrompt.label
-      });
-      return {
-        env: context.env,
-        apiKey,
-        model,
-        reasoningEffort
-      };
-    }
-    case "opencode": {
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
-      const modelPrompt = requireModelPrompt(adapter);
-      const model = await container.options.resolveModel({
-        value: options.model,
-        assumeDefault: flags.assumeYes,
-        defaultValue: modelPrompt.defaultValue,
-        choices: modelPrompt.choices,
-        label: modelPrompt.label
-      });
-      return {
-        env: context.env,
-        apiKey,
-        model
-      };
-    }
-    case "kimi": {
-      const apiKey = await container.options.resolveApiKey({
-        value: options.apiKey,
-        dryRun: flags.dryRun
-      });
-      const modelPrompt = requireModelPrompt(adapter);
-      const defaultModel = await container.options.resolveModel({
-        value: options.model,
-        assumeDefault: flags.assumeYes,
-        defaultValue: modelPrompt.defaultValue,
-        choices: modelPrompt.choices,
-        label: modelPrompt.label
-      });
-      context.logger.info(`Using ${adapter.label} model: ${defaultModel}`);
-      return {
-        env: context.env,
-        apiKey,
-        defaultModel
-      };
-    }
-    default:
-      throw new Error(`Unknown service "${service}".`);
-  }
 }
 
 function createMutationTracker(): {
@@ -256,26 +167,6 @@ function createMutationTracker(): {
       return Array.from(targets).sort();
     }
   };
-}
-
-function requireModelPrompt(
-  adapter: ProviderService
-): ModelPromptInput {
-  const prompt = adapter.configurePrompts?.model;
-  if (!prompt) {
-    throw new Error(`${adapter.label} must define a model prompt.`);
-  }
-  return prompt;
-}
-
-function requireReasoningPrompt(
-  adapter: ProviderService
-): ReasoningPromptInput {
-  const prompt = adapter.configurePrompts?.reasoningEffort;
-  if (!prompt) {
-    throw new Error(`${adapter.label} must define a reasoning prompt.`);
-  }
-  return prompt;
 }
 
 export async function resolveServiceArgument(
