@@ -18,20 +18,12 @@ describe("configure command", () => {
   });
 
   function createContainer(
-    versionMap: Record<string, string | null>,
     overrides: { commandRunner?: CommandRunner; logger?: LoggerFn } = {}
   ) {
     const prompts = vi.fn().mockResolvedValue({});
     const commandRunner: CommandRunner =
       overrides.commandRunner ??
       vi.fn(async (command, args) => {
-        if (args[0] === "--version" && versionMap[command]) {
-          return {
-            stdout: `${command} ${versionMap[command]}`,
-            stderr: "",
-            exitCode: 0
-          };
-        }
         if (command === "codex" && args.includes("exec")) {
           return { stdout: "CODEX_OK\n", stderr: "", exitCode: 0 };
         }
@@ -55,7 +47,7 @@ describe("configure command", () => {
   }
 
   it("does not invoke install when configuring a service", async () => {
-    const { container } = createContainer({ codex: null });
+    const { container } = createContainer();
 
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-test");
     vi.spyOn(container.options, "resolveModel").mockResolvedValue(
@@ -73,8 +65,8 @@ describe("configure command", () => {
     expect(operation).toBe("configure");
   });
 
-  it("stores configured service metadata with detected version", async () => {
-    const { container } = createContainer({ opencode: "2.3.4" });
+  it("stores configured service metadata", async () => {
+    const { container } = createContainer();
     await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
       recursive: true
     });
@@ -88,7 +80,6 @@ describe("configure command", () => {
 
     const content = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
     expect(content.configured_services.opencode).toEqual({
-      version: "2.3.4",
       files: [
         homeDir + "/.config/opencode/config.json",
         homeDir + "/.local/share/opencode/auth.json"
@@ -97,7 +88,7 @@ describe("configure command", () => {
   });
 
   it("skips metadata persistence during dry run", async () => {
-    const { container } = createContainer({ opencode: "2.3.4" });
+    const { container } = createContainer();
     await fs.mkdir(`${homeDir}/.poe-code/opencode/.config/opencode`, {
       recursive: true
     });
@@ -113,7 +104,7 @@ describe("configure command", () => {
   });
 
   it("uses provider-defined prompt metadata for configure flows", async () => {
-    const { container } = createContainer({ codex: null });
+    const { container } = createContainer();
     const provider = container.registry.require("codex") as any;
     provider.configurePrompts = {
       model: {
@@ -151,7 +142,7 @@ describe("configure command", () => {
   });
 
   it("resolves the model when configuring kimi", async () => {
-    const { container } = createContainer({ kimi: null });
+    const { container } = createContainer();
     vi.spyOn(container.options, "resolveApiKey").mockResolvedValue("sk-kimi");
     const resolvedModel = "Kimi-Custom";
     const resolveModel = vi
@@ -165,7 +156,7 @@ describe("configure command", () => {
   });
 
   it("accepts --model option to set default model without prompting", async () => {
-    const { container } = createContainer({ "claude-code": "1.2.3" });
+    const { container } = createContainer();
     const customModel = "Claude-Opus-4.5";
 
     const resolveModel = vi.spyOn(container.options, "resolveModel");

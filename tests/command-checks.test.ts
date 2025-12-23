@@ -20,29 +20,28 @@ function createRunner(responses: Record<string, { stdout?: string; stderr?: stri
 }
 
 describe("createBinaryExistsCheck", () => {
-  it("runs the version command after locating the binary", async () => {
+  it("passes after locating the binary", async () => {
     const runCommand = createRunner({
-      "which demo": { stdout: "/usr/bin/demo\n", exitCode: 0 },
-      "demo --version": { stdout: "demo 2.0.0\n", exitCode: 0 }
+      "which demo": { stdout: "/usr/bin/demo\n", exitCode: 0 }
     });
 
     const check = createBinaryExistsCheck("demo", "demo-id", "demo desc");
     await check.run({ isDryRun: false, runCommand });
 
     expect(runCommand).toHaveBeenCalledWith("which", ["demo"]);
-    expect(runCommand).toHaveBeenCalledWith("demo", ["--version"]);
   });
 
-  it("fails when the version output lacks a semver", async () => {
+  it("falls back through detection strategies", async () => {
     const runCommand = createRunner({
-      "which demo": { stdout: "/usr/bin/demo\n", exitCode: 0 },
-      "demo --version": { stdout: "demo build unknown\n", exitCode: 0 }
+      "which demo": { stdout: "", exitCode: 1 },
+      "where demo": { stdout: "/usr/bin/demo\n", exitCode: 0 }
     });
 
     const check = createBinaryExistsCheck("demo", "demo-id", "demo desc");
-    await expect(
-      check.run({ isDryRun: false, runCommand })
-    ).rejects.toThrow(/Unable to parse version/i);
+    await check.run({ isDryRun: false, runCommand });
+
+    expect(runCommand).toHaveBeenCalledWith("which", ["demo"]);
+    expect(runCommand).toHaveBeenCalledWith("where", ["demo"]);
   });
 });
 

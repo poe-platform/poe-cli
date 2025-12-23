@@ -9,7 +9,6 @@ import {
   createExecutionResources,
   resolveCommandFlags,
   resolveServiceAdapter,
-  resolveProviderHandler
 } from "./shared.js";
 
 export interface RemoveCommandOptions {
@@ -66,11 +65,7 @@ export function registerRemoveCommand(
       if (!entry.remove) {
         throw new Error(`Service "${service}" does not support remove.`);
       }
-      const resolution = await resolveProviderHandler(entry, providerContext);
-      if (!resolution.adapter.remove) {
-        return false;
-      }
-      const result = await resolution.adapter.remove(
+      const result = await entry.remove(
         {
           fs: providerContext.command.fs,
           env: providerContext.env,
@@ -82,7 +77,7 @@ export function registerRemoveCommand(
 
       const isolated = adapter.isolatedEnv;
       if (isolated) {
-        await resolution.adapter.remove(
+        await entry.remove(
           {
             fs: providerContext.command.fs,
             env: providerContext.env,

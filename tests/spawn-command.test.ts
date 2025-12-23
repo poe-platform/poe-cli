@@ -562,10 +562,6 @@ describe("spawn command", () => {
     expect(calls).toEqual([
       {
         command: "codex",
-        args: ["--version"]
-      },
-      {
-        command: "codex",
         args: ["exec", "Summarize the diff", "--full-auto", "--skip-git-repo-check"],
         options: {
           env: {

@@ -4,7 +4,6 @@ import {
   PROVIDER_NAME
 } from "../cli/constants.js";
 import type { JsonObject } from "../utils/json.js";
-import type { CommandCheck } from "../utils/command-checks.js";
 import {
   createBinaryExistsCheck,
   createCommandExpectationCheck
@@ -16,7 +15,6 @@ import {
   jsonPruneMutation
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
-import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { ProviderSpawnOptions } from "./spawn-options.js";
 
 function providerModel(model?: string): string {
@@ -47,23 +45,8 @@ export const OPEN_CODE_INSTALL_DEFINITION: ServiceInstallDefinition = {
       args: ["install", "-g", "opencode-ai"]
     }
   ],
-  postChecks: [createOpenCodeVersionCheck()],
   successMessage: "Installed OpenCode CLI via npm."
 };
-
-function createOpenCodeVersionCheck(): CommandCheck {
-  return {
-    id: "opencode-cli-version",
-    async run({ runCommand }) {
-      const result = await runCommand("opencode", ["--version"]);
-      if (result.exitCode !== 0) {
-        throw new Error(
-          `OpenCode CLI --version failed with exit code ${result.exitCode}.`
-        );
-      }
-    }
-  };
-}
 
 function getModelArgs(model?: string): string[] {
   return ["--model", providerModel(model)];
@@ -103,8 +86,7 @@ export const openCodeService = createProvider({
     }
   },
   manifest: {
-    "*": {
-      configure: [
+    configure: [
         ensureDirectory({
           targetDirectory: "~/.config/opencode"
         }),
@@ -145,8 +127,8 @@ export const openCodeService = createProvider({
             };
           }
         })
-      ],
-      remove: [
+    ],
+    remove: [
         jsonPruneMutation({
           targetDirectory: "~/.config/opencode",
           targetFile: "config.json",
@@ -163,10 +145,8 @@ export const openCodeService = createProvider({
             [PROVIDER_NAME]: true
           })
         })
-      ]
-    }
+    ]
   },
-  versionResolver: createBinaryVersionResolver("opencode"),
   install: OPEN_CODE_INSTALL_DEFINITION,
   test(context) {
     return context.runCheck(

@@ -11,7 +11,6 @@ export interface SaveCredentialsOptions extends CredentialsStoreOptions {
 }
 
 export interface ConfiguredServiceMetadata {
-  version: string | null;
   files: string[];
 }
 
@@ -106,10 +105,6 @@ export async function removeConfiguredService(
 function normalizeConfiguredServiceMetadata(
   metadata: ConfiguredServiceMetadata
 ): ConfiguredServiceMetadata {
-  const version =
-    typeof metadata.version === "string" && metadata.version.length > 0
-      ? metadata.version
-      : null;
   const seen = new Set<string>();
   const files: string[] = [];
   for (const entry of metadata.files ?? []) {
@@ -122,7 +117,6 @@ function normalizeConfiguredServiceMetadata(
     }
   }
   return {
-    version,
     files
   };
 }
@@ -186,10 +180,6 @@ function normalizeConfiguredServices(
       continue;
     }
     const normalized = normalizeConfiguredServiceMetadata({
-      version:
-        typeof entry.version === "string" && entry.version.length > 0
-          ? entry.version
-          : null,
       files: Array.isArray(entry.files) ? entry.files : []
     });
     entries[key] = normalized;

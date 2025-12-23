@@ -41,15 +41,6 @@ export interface ServiceExecutionContext<Options> {
   pathMapper?: ServiceManifestPathMapper;
 }
 
-export interface ProviderVersionResolution<
-  TConfigure,
-  TRemove,
-  TSpawn
-> {
-  version: string | null;
-  adapter: ProviderService<TConfigure, TRemove, TSpawn>;
-}
-
 export interface ProviderService<
   TConfigure = any,
   TRemove = TConfigure,
@@ -75,9 +66,6 @@ export interface ProviderService<
   install?(context: ProviderContext): Promise<void> | void;
   spawn?(context: ProviderContext, options: TSpawn): Promise<unknown>;
   test?(context: ProviderContext): Promise<void>;
-  resolveVersion?(
-    context: ProviderContext
-  ): Promise<ProviderVersionResolution<TConfigure, TRemove, TSpawn>>;
 }
 
 export interface ProviderIsolatedEnv {

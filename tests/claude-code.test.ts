@@ -512,9 +512,6 @@ describe("claude-code service", () => {
     const captured: Array<{ command: string; args: string[] }> = [];
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       captured.push({ command, args });
-      if (command === "claude" && args[0] === "--version") {
-        return { stdout: "claude 1.0.0", stderr: "", exitCode: 0 };
-      }
       if (command === "which") {
         return { stdout: "", stderr: "not found", exitCode: 1 };
       }
@@ -528,8 +525,7 @@ describe("claude-code service", () => {
     const binaryCheck = claudeService.CLAUDE_CODE_INSTALL_DEFINITION.check;
     await binaryCheck.run({ isDryRun: false, runCommand });
 
-    expect(captured.map((entry) => entry.command)).toEqual(["which", "where", "claude"]);
+    expect(captured.map((entry) => entry.command)).toEqual(["which", "where"]);
     expect(captured[1]).toEqual({ command: "where", args: ["claude"] });
-    expect(captured[2]).toEqual({ command: "claude", args: ["--version"] });
   });
 });

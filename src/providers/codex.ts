@@ -1,5 +1,4 @@
 import type { CliEnvironment } from "../cli/environment.js";
-import type { CommandCheck } from "../utils/command-checks.js";
 import {
   createBinaryExistsCheck,
   createCommandExpectationCheck
@@ -13,7 +12,6 @@ import {
   tomlPruneMutation
 } from "../services/service-manifest.js";
 import { createProvider } from "./create-provider.js";
-import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { ProviderSpawnOptions } from "./spawn-options.js";
 import {
   CODEX_MODELS,
@@ -54,7 +52,6 @@ export const CODEX_INSTALL_DEFINITION: ServiceInstallDefinition = {
       args: ["install", "-g", "@openai/codex"]
     }
   ],
-  postChecks: [createCodexVersionCheck()],
   successMessage: "Installed Codex CLI via npm."
 };
 
@@ -149,20 +146,6 @@ export function buildCodexExecArgs(
   return [...modelArgs, "exec", prompt, ...CODEX_DEFAULT_EXEC_ARGS, ...extraArgs];
 }
 
-function createCodexVersionCheck(): CommandCheck {
-  return {
-    id: "codex-cli-version",
-    async run({ runCommand }) {
-      const result = await runCommand("codex", ["--version"]);
-      if (result.exitCode !== 0) {
-        throw new Error(
-          `Codex CLI --version failed with exit code ${result.exitCode}.`
-        );
-      }
-    }
-  };
-}
-
 export const codexService = createProvider<
   CodexConfigureContext,
   CodexRemoveContext,
@@ -216,44 +199,41 @@ export const codexService = createProvider<
     );
   },
   manifest: {
-    "*": {
-      configure: [
-        ensureDirectory({ targetDirectory: "~/.codex" }),
-        createBackupMutation({
-          targetDirectory: "~/.codex",
-          targetFile: "config.toml",
-          timestamp: ({ options }) => options.timestamp
-        }),
-        tomlTemplateMergeMutation({
-          targetDirectory: "~/.codex",
-          targetFile: "config.toml",
-          templateId: "codex/config.toml.hbs",
-          context: ({ options }) => ({
-            apiKey: options.apiKey,
-            model: options.model,
-            reasoningEffort: options.reasoningEffort
-          })
+    configure: [
+      ensureDirectory({ targetDirectory: "~/.codex" }),
+      createBackupMutation({
+        targetDirectory: "~/.codex",
+        targetFile: "config.toml",
+        timestamp: ({ options }) => options.timestamp
+      }),
+      tomlTemplateMergeMutation({
+        targetDirectory: "~/.codex",
+        targetFile: "config.toml",
+        templateId: "codex/config.toml.hbs",
+        context: ({ options }) => ({
+          apiKey: options.apiKey,
+          model: options.model,
+          reasoningEffort: options.reasoningEffort
         })
-      ],
-      remove: [
-        tomlPruneMutation({
-          targetDirectory: "~/.codex",
-          targetFile: "config.toml",
-          prune: (document) => {
-            const result = stripCodexConfiguration(document);
-            if (!result.changed) {
-              return { changed: false, result: document };
-            }
-            return {
-              changed: true,
-              result: result.empty ? null : document
-            };
+      })
+    ],
+    remove: [
+      tomlPruneMutation({
+        targetDirectory: "~/.codex",
+        targetFile: "config.toml",
+        prune: (document) => {
+          const result = stripCodexConfiguration(document);
+          if (!result.changed) {
+            return { changed: false, result: document };
           }
-        })
-      ]
-    }
+          return {
+            changed: true,
+            result: result.empty ? null : document
+          };
+        }
+      })
+    ]
   },
-  versionResolver: createBinaryVersionResolver("codex"),
   install: CODEX_INSTALL_DEFINITION,
   spawn(context, options) {
     const shouldUseStdin = Boolean(options.useStdin);

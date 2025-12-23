@@ -4,7 +4,6 @@ import {
   buildProviderContext,
   createExecutionResources,
   resolveCommandFlags,
-  resolveProviderHandler,
   resolveServiceAdapter
 } from "./shared.js";
 import { resolveServiceArgument } from "./configure.js";
@@ -101,13 +100,7 @@ export async function executeTest(
         if (!entry.spawn) {
           throw new Error(`Service "${service}" does not support spawn.`);
         }
-        const resolution = await resolveProviderHandler(entry, providerContext, {
-          useResolver: false
-        });
-        if (!resolution.adapter.spawn) {
-          throw new Error(`Service "${service}" does not support spawn.`);
-        }
-        const output = await resolution.adapter.spawn(providerContext, {
+        const output = await entry.spawn(providerContext, {
           prompt,
           useStdin: true
         });
@@ -161,13 +154,7 @@ export async function executeTest(
             }
           : providerContext;
 
-      const resolution = await resolveProviderHandler(entry, activeContext, {
-        useResolver: false
-      });
-      if (!resolution.adapter.test) {
-        throw new Error(`Service "${service}" does not support test.`);
-      }
-      await resolution.adapter.test(activeContext);
+      await entry.test(activeContext);
     });
   }
 

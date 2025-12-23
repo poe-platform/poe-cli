@@ -9,7 +9,6 @@ import {
   type CommandFlags,
   type ExecutionResources
 ,
-  resolveProviderHandler
 } from "./shared.js";
 import type { CommandRunnerResult } from "../../utils/command-checks.js";
 import type { SpawnCommandOptions } from "../../providers/spawn-options.js";
@@ -164,16 +163,7 @@ export function registerSpawnCommand(
           if (!entry.spawn) {
             throw new Error(`${adapter.label} does not support spawn.`);
           }
-          const resolution = await resolveProviderHandler(entry, providerContext, {
-            useResolver: false
-          });
-          if (!resolution.adapter.spawn) {
-            throw new Error(`${adapter.label} does not support spawn.`);
-          }
-          const output = await resolution.adapter.spawn(
-            providerContext,
-            spawnOptions
-          );
+          const output = await entry.spawn(providerContext, spawnOptions);
           return output as CommandRunnerResult | void;
         }
       )) as CommandRunnerResult | void;

@@ -10,7 +10,6 @@ import {
 import { type ServiceInstallDefinition } from "../services/service-install.js";
 import { KIMI_MODELS, DEFAULT_KIMI_MODEL, PROVIDER_NAME } from "../cli/constants.js";
 import { createProvider } from "./create-provider.js";
-import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type { JsonObject } from "../utils/json.js";
 import type {
   ProviderSpawnOptions,
@@ -83,8 +82,7 @@ export const kimiService = createProvider<
     );
   },
   manifest: {
-    "*": {
-      configure: [
+    configure: [
         ensureDirectory({
           targetDirectory: "~/.kimi"
         }),
@@ -116,8 +114,8 @@ export const kimiService = createProvider<
             };
           }
         })
-      ],
-      remove: [
+    ],
+    remove: [
         jsonPruneMutation({
           targetDirectory: "~/.kimi",
           targetFile: "config.json",
@@ -127,10 +125,8 @@ export const kimiService = createProvider<
             }
           })
         })
-      ]
-    }
+    ]
   },
-  versionResolver: createBinaryVersionResolver("kimi"),
   install: KIMI_INSTALL_DEFINITION,
   spawn(context, options) {
     const args = buildKimiArgs(options.prompt, options.args);

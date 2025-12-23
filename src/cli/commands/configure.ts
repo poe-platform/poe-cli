@@ -5,7 +5,6 @@ import {
   createExecutionResources,
   resolveCommandFlags,
   resolveServiceAdapter,
-  resolveProviderHandler,
   applyIsolatedConfiguration
 } from "./shared.js";
 import { renderServiceMenu } from "../ui/service-menu.js";
@@ -83,12 +82,11 @@ export async function executeConfigure(
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
     }
-    const resolution = await resolveProviderHandler(entry, providerContext);
     const tracker = createMutationTracker();
     const mutationLogger = createMutationReporter(resources.logger);
     const observers = combineMutationObservers(tracker.observers, mutationLogger);
 
-    await resolution.adapter.configure(
+    await entry.configure(
       {
         fs: providerContext.command.fs,
         env: providerContext.env,
@@ -108,7 +106,6 @@ export async function executeConfigure(
         filePath: providerContext.env.credentialsPath,
         service,
         metadata: {
-          version: resolution.version,
           files: tracker.files()
         }
       });
@@ -123,7 +120,7 @@ export async function executeConfigure(
         isolatedLogger
       );
       await applyIsolatedConfiguration({
-        resolution,
+        adapter: entry,
         providerContext,
         payload,
         isolated,

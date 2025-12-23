@@ -83,32 +83,11 @@ function createCheckRunner(
   };
 }
 
-export interface ProviderResolution {
-  adapter: ProviderService;
-  version: string | null;
-}
-
-export interface ResolveProviderOptions {
-  useResolver?: boolean;
-}
-
 export function listIsolatedServiceIds(container: CliContainer): string[] {
   return container.registry
     .list()
     .filter((provider) => Boolean(provider.isolatedEnv))
     .map((provider) => provider.name);
-}
-
-export async function resolveProviderHandler(
-  adapter: ProviderService,
-  context: ProviderContext,
-  options: ResolveProviderOptions = {}
-): Promise<ProviderResolution> {
-  const shouldResolve = options.useResolver ?? true;
-  if (shouldResolve && adapter.resolveVersion) {
-    return adapter.resolveVersion(context);
-  }
-  return { adapter, version: null };
 }
 
 export function resolveServiceAdapter(
@@ -123,14 +102,14 @@ export function resolveServiceAdapter(
 }
 
 export async function applyIsolatedConfiguration(input: {
-  resolution: ProviderResolution;
+  adapter: ProviderService;
   providerContext: ProviderContext;
   payload: unknown;
   isolated: ProviderIsolatedEnv;
   providerName: string;
   observers?: ServiceMutationObservers;
 }): Promise<void> {
-  await input.resolution.adapter.configure(
+  await input.adapter.configure(
     {
       fs: input.providerContext.command.fs,
       env: input.providerContext.env,

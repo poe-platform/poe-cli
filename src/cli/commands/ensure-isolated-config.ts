@@ -3,7 +3,6 @@ import type { ProviderService } from "../service-registry.js";
 import {
   buildProviderContext,
   createExecutionResources,
-  resolveProviderHandler,
   applyIsolatedConfiguration,
   type CommandFlags
 } from "./shared.js";
@@ -55,10 +54,9 @@ export async function ensureIsolatedConfigForService(input: {
     if (!entry.configure) {
       throw new Error(`Service "${service}" does not support configure.`);
     }
-    const resolution = await resolveProviderHandler(entry, providerContext);
     const mutationLogger = createMutationReporter(resources.logger);
     await applyIsolatedConfiguration({
-      resolution,
+      adapter: entry,
       providerContext,
       payload,
       isolated,

@@ -16,7 +16,6 @@ import {
   DEFAULT_CLAUDE_CODE_MODEL
 } from "../cli/constants.js";
 import { createProvider } from "./create-provider.js";
-import { createBinaryVersionResolver } from "./versioned-provider.js";
 import type {
   ProviderSpawnOptions,
   ModelConfigureOptions,
@@ -156,56 +155,53 @@ export const claudeCodeService = createProvider<
     );
   },
   manifest: {
-    "*": {
-      configure: [
-        ensureDirectory({
-          targetDirectory: "~/.claude"
-        }),
-        writeTemplateMutation({
-          targetDirectory: "~/.claude",
-          targetFile: "anthropic_key.sh",
-          templateId: "claude-code/anthropic_key.sh.hbs",
-          context: scriptTemplateContext
-        }),
-        chmodMutation({ target: "~/.claude/anthropic_key.sh", mode: 0o700 }),
-        jsonMergeMutation({
-          targetDirectory: "~/.claude",
-          targetFile: "settings.json",
-          value: ({ env, options }) => ({
-            apiKeyHelper: buildClaudeApiKeyHelperCommand({ env }),
-            env: {
-              ANTHROPIC_BASE_URL: "https://api.poe.com",
-              ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
-              ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_CODE_VARIANTS.sonnet,
-              ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_CODE_VARIANTS.opus
-            },
-            model: options.model
-          })
+    configure: [
+      ensureDirectory({
+        targetDirectory: "~/.claude"
+      }),
+      writeTemplateMutation({
+        targetDirectory: "~/.claude",
+        targetFile: "anthropic_key.sh",
+        templateId: "claude-code/anthropic_key.sh.hbs",
+        context: scriptTemplateContext
+      }),
+      chmodMutation({ target: "~/.claude/anthropic_key.sh", mode: 0o700 }),
+      jsonMergeMutation({
+        targetDirectory: "~/.claude",
+        targetFile: "settings.json",
+        value: ({ env, options }) => ({
+          apiKeyHelper: buildClaudeApiKeyHelperCommand({ env }),
+          env: {
+            ANTHROPIC_BASE_URL: "https://api.poe.com",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_CODE_VARIANTS.haiku,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_CODE_VARIANTS.sonnet,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_CODE_VARIANTS.opus
+          },
+          model: options.model
         })
-      ],
-      remove: [
-        jsonPruneMutation({
-          targetDirectory: "~/.claude",
-          targetFile: "settings.json",
-          shape: () => ({
-            apiKeyHelper: true,
-            env: {
-              ANTHROPIC_BASE_URL: true,
-              ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
-              ANTHROPIC_DEFAULT_SONNET_MODEL: true,
-              ANTHROPIC_DEFAULT_OPUS_MODEL: true
-            },
-            model: true
-          })
-        }),
-        removeFileMutation({
-          targetDirectory: "~/.claude",
-          targetFile: "anthropic_key.sh"
+      })
+    ],
+    remove: [
+      jsonPruneMutation({
+        targetDirectory: "~/.claude",
+        targetFile: "settings.json",
+        shape: () => ({
+          apiKeyHelper: true,
+          env: {
+            ANTHROPIC_BASE_URL: true,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: true,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: true,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: true
+          },
+          model: true
         })
-      ]
-    }
+      }),
+      removeFileMutation({
+        targetDirectory: "~/.claude",
+        targetFile: "anthropic_key.sh"
+      })
+    ]
   },
-  versionResolver: createBinaryVersionResolver("claude"),
   install: CLAUDE_CODE_INSTALL_DEFINITION,
   spawn(context, options) {
     const shouldUseStdin = Boolean(options.useStdin);

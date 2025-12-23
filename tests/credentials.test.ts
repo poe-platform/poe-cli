@@ -44,7 +44,6 @@ describe("credentials store", () => {
       apiKey: "initial",
       configured_services: {
         codex: {
-          version: "1.0.0",
           files: ["/home/user/.codex/config.toml"]
         }
       }
@@ -72,7 +71,6 @@ describe("credentials store", () => {
       filePath: credentialsPath,
       service: "opencode",
       metadata: {
-        version: "2.3.4",
         files: [
           "/home/user/.config/opencode/config.json",
           "/home/user/.local/share/opencode/auth.json"
@@ -87,7 +85,6 @@ describe("credentials store", () => {
 
     expect(services).toEqual({
       opencode: {
-        version: "2.3.4",
         files: [
           "/home/user/.config/opencode/config.json",
           "/home/user/.local/share/opencode/auth.json"
@@ -102,7 +99,6 @@ describe("credentials store", () => {
       filePath: credentialsPath,
       service: "claude-code",
       metadata: {
-        version: "3.1.0",
         files: ["/home/user/.claude/settings.json"]
       }
     });
