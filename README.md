@@ -2,21 +2,21 @@
 
 > Configure coding agents to use the Poe API.
 
-## Try it out
+## Try it in 1 minute
 
 ```bash
+# Install Poe wrapper binaries.
 npm install -g poe-code
 
-poe-claude --help
+# Run your existing agent CLI through Poe (you’ll be prompted on first run).
 poe-codex --help
-poe-opencode --help
 ```
 
-## Permanent Configuration
+Also available: `poe-claude`, `poe-opencode`.
 
-### Configure Coding CLIs
+## Make it default
 
-This is a persistent change: it updates the config files.
+This updates the provider’s config files so you can use the provider CLI directly.
 
 ```bash
 # Claude Code
@@ -30,12 +30,9 @@ npx poe-code@latest configure opencode
 
 # Kimi
 npx poe-code@latest configure kimi
-
 ```
 
 ### Remove configuration overrides
-
-Removes the Codex settings previously applied by `npx poe-code@latest configure codex`.
 
 ```bash
 npx poe-code@latest remove codex
@@ -43,7 +40,7 @@ npx poe-code@latest remove codex
 
 ## Utilities
 
-### Install Coding CLIs
+### Install agent CLIs (if needed)
 
 ```bash
 # Claude Code
@@ -59,27 +56,7 @@ npx poe-code@latest install opencode
 npx poe-code@latest install kimi
 ```
 
-### Test Configuration
-
-```bash
-npx poe-code@latest test codex
-
-npx poe-code@latest test --stdin claude-code
-# Verifies that stdin prompts work by running a tiny spawn and expecting `STDIN_OK`.
-```
-
-### Spawn a coding agent
-
-```bash
-# Claude Code
-npx poe-code@latest spawn claude-code "Explain this error message"
-
-cat prompt.txt | npx poe-code@latest spawn codex
-# Reads the prompt from stdin (useful for very long prompts).
-```
-
-### Optional Flags
+### Optional flags
 
 - `--dry-run` – show every mutation without touching disk.
 - `--yes` – accept defaults for prompts.
-- `-C, --cwd <path>` – run `spawn` from a specific working directory so provider CLIs see the right project files.
