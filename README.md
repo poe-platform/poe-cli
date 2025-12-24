@@ -40,7 +40,27 @@ npx poe-code@latest remove codex
 
 ## Utilities
 
-### Install agent CLIs (if needed)
+Utilities are especially useful for scripting and CI/CD.
+
+### Spawn a one-off prompt
+
+```bash
+npx poe-code@latest spawn codex "Say hello"
+```
+
+### Spawn a prompt via stdin
+
+```bash
+echo "Say hello" | npx poe-code@latest spawn codex --stdin
+```
+
+### Test a configured service
+
+```bash
+npx poe-code@latest test codex
+```
+
+### Install agent CLIs
 
 ```bash
 # Claude Code
