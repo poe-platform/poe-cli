@@ -8,7 +8,7 @@
 # Install Poe wrapper binaries.
 npm install -g poe-code
 
-# Run your existing agent CLI through Poe (you’ll be prompted on first run).
+# Run your existing agent CLI through Poe (you’ll be prompted for api key on first run).
 poe-codex --help
 ```
 
