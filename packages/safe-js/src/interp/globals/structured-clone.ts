@@ -119,6 +119,7 @@ function cloneStructuredValue(value: SandboxValue, transfers: ArrayBuffer[], bud
 }
 
 function assertStructuredCloneable(value: SandboxValue, seen: WeakSet<object>): void {
+  if (typeof value === "symbol") throw new DOMException("Cannot clone a symbol value.", "DataCloneError");
   if (isSandboxClosure(value) || isSandboxPromise(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value))
     throw new DOMException("Cannot clone closures, promises, or collection iterators.", "DataCloneError");
   if (typeof value !== "object" || value === null || seen.has(value)) return;
