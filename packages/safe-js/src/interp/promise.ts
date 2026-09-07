@@ -8,6 +8,7 @@ import { runPromiseJob } from "./jobs.js";
 import { observeSandboxPromise, unrepresentedPromiseContinuations } from "./promise-tracker.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "./promise-resolvers.js";
 import { promiseContinuations, promiseReactionResults, linkPromiseAggregateProducer } from "./promise-continuations.js";
+import { promiseCapabilityExecutors, type PromiseCapabilityExecutorState } from "./promise-continuations.js";
 import { trackPromiseContinuation, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers, promiseAggregateHandlers, promiseAggregateStates, promiseAggregateEntries, type PromiseAggregateState, type PromiseAggregateEntry, type PromiseAdoptionBridge, type PromiseContinuation } from "./promise-continuations.js";
 import {
   createSandboxClosure,
@@ -324,19 +325,8 @@ async function createPromiseCapability(
   if (!isSandboxClosure(constructor) || constructor.construct === undefined) {
     throw new TypeError("Promise method requires a constructor receiver.");
   }
-  let resolve: SandboxValue;
-  let reject: SandboxValue;
-  const executor = createSandboxClosure({
-    sandbox: true,
-    retainedValues: () => [resolve, reject],
-    call: (args) => {
-      if (resolve !== undefined || reject !== undefined) {
-        throw new TypeError("Promise capability is already initialized.");
-      }
-      [resolve, reject] = args;
-      return undefined;
-    }
-  });
+  const state: PromiseCapabilityExecutorState = {resolve: undefined, reject: undefined};
+  const executor = createPromiseCapabilityExecutor(state);
   const leaveCall = budget.enterCall();
   try {
     const promise = await constructor.construct([executor], {
@@ -345,6 +335,7 @@ async function createPromiseCapability(
       thisValue: undefined,
       newTarget: constructor
     });
+    const {resolve, reject} = state;
     if (!isSandboxClosure(resolve) || !isSandboxClosure(reject)) {
       throw new TypeError("Promise capability requires callable resolve and reject functions.");
     }
@@ -352,6 +343,22 @@ async function createPromiseCapability(
   } finally {
     leaveCall();
   }
+}
+
+export function createPromiseCapabilityExecutor(state: PromiseCapabilityExecutorState): SandboxClosure {
+  const executor = createSandboxClosure({
+    sandbox: true, guest: true, name: "", length: 2,
+    retainedValues: () => [state.resolve, state.reject],
+    call: ([resolve, reject]) => {
+      if (state.resolve !== undefined || state.reject !== undefined)
+        throw new TypeError("Promise capability is already initialized.");
+      state.resolve = resolve;
+      state.reject = reject;
+      return undefined;
+    }
+  });
+  promiseCapabilityExecutors.set(executor, state);
+  return executor;
 }
 
 async function callPromiseClosure(

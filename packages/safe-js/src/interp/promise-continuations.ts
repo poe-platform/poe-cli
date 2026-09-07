@@ -1,5 +1,8 @@
 import type { SandboxClosure, SandboxObject, SandboxPromise, SandboxValue } from "./values.js";
 
+export type PromiseCapabilityExecutorState = {resolve: SandboxValue; reject: SandboxValue};
+export const promiseCapabilityExecutors = new WeakMap<SandboxClosure, PromiseCapabilityExecutorState>();
+
 export type PromiseAggregateState = {
   method: "all" | "allSettled" | "race" | "any";
   capability: {promise: SandboxValue; resolve: SandboxClosure; reject: SandboxClosure};

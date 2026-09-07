@@ -44,6 +44,8 @@ import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge, createPromiseAggregateHandler } from "../interp/promise.js";
 import { promiseAggregateStates, promiseAggregateEntries, linkPromiseAggregateProducer, type PromiseAggregateState } from "../interp/promise-continuations.js";
+import { createPromiseCapabilityExecutor } from "../interp/promise.js";
+import type { PromiseCapabilityExecutorState } from "../interp/promise-continuations.js";
 import { promiseAdoptionBridges, promiseContinuations, type PromiseContinuation } from "../interp/promise-continuations.js";
 import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
@@ -948,9 +950,16 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "promise-resolver") {
+    if (serialized.kind === "capability-executor") {
+      const executorState: PromiseCapabilityExecutorState = {resolve: undefined, reject: undefined};
+      value = createPromiseCapabilityExecutor(executorState);
+      state.initializeIterators.push(() => {
+        executorState.resolve = deserializeValue(serialized.resolve, state) as SandboxValue;
+        executorState.reject = deserializeValue(serialized.reject, state) as SandboxValue;
+      });
+    } else if (serialized.kind === "promise-resolver") {
       const promise = deserializeValue(serialized.promise, state);
       if (!isSandboxPromise(promise)) throw new TypeError("Invalid promise resolver target.");
       const capability = state.pendingCapabilities.get(promise);

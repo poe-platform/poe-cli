@@ -23,6 +23,7 @@ import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
 import { promiseContinuations, promiseReactionResults, promiseProducers, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
+import { promiseCapabilityExecutors } from "../interp/promise-continuations.js";
 import { promiseAggregateStates, promiseAggregateEntries, promiseAggregateHandlers, type PromiseAggregateState } from "../interp/promise-continuations.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -46,6 +47,7 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | { kind: "capability-executor"; resolve: T; reject: T; state: GuestObjectState<T> }
   | { kind: "promise-aggregate"; method: PromiseAggregateState["method"]; capability: {promise: T; resolve: T; reject: T}; values: T; remaining: number; size: number; iteration: "complete" | "abrupt" }
   | { kind: "aggregate-entry"; aggregate: T; index: number; called: boolean }
   | { kind: "aggregate-handler"; entry: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T> }
@@ -98,6 +100,9 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const executor = isSandboxClosure(value) ? promiseCapabilityExecutors.get(value) : undefined;
+  if (executor !== undefined)
+    return {kind: "capability-executor", resolve: encode(executor.resolve), reject: encode(executor.reject), state: captureObjectState(value, encode)!};
   const aggregate = promiseAggregateStates.get(value);
   if (aggregate !== undefined) {
     if (aggregate.iteration === "active") throw new TypeError("Cannot snapshot an active promise aggregate iterator.");
