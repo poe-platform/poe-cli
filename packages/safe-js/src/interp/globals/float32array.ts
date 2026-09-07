@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "reduce", "reduceRight", "map", "filter", "toLocaleString"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "with", "reduce", "reduceRight", "map", "filter", "toLocaleString"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,7 +352,7 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "with", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
   return createSandboxClosure({
     guest: true,
@@ -365,7 +365,7 @@ export function getFloat32Member(
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "sort" || key === "toSorted" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "toReversed" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const storage = float32Storage(receiver, key === "sort" || key === "toSorted" || key === "with" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "toReversed" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
       if (key === "toReversed") {
         let result: Float32Array | undefined;
         const release = retainValues(budget, () => [receiver, result, ...args]);
@@ -552,6 +552,28 @@ export function getFloat32Member(
                 return key === "includes" ? true : index + 0;
             }
             return notFound;
+          } finally { release(); }
+        })();
+      }
+      if (key === "with") {
+        return (async () => {
+          let result: Float32Array | undefined;
+          const release = retainValues(budget, () => [receiver, result, ...args]);
+          try {
+            const number = await sandboxNumber(args[0], budget, bridge);
+            const relative = Number.isNaN(number) ? 0 : Math.trunc(number);
+            const index = relative < 0 ? storage.length + relative : relative;
+            const replacement = await sandboxNumber(args[1], budget, bridge);
+            if (index < 0 || index >= float32Storage(receiver).length)
+              throw new RangeError("Float32Array#with index is out of bounds.");
+            checkFloat32Allocation(storage.length, budget);
+            result = new Float32Array(storage.length);
+            createDataCheckpoint(budget, bridge)(result, 0, true);
+            for (let offset = 0; offset < storage.length; offset++) {
+              budget.visitNode();
+              result[offset] = offset === index ? replacement : receiver[offset]!;
+            }
+            return result;
           } finally { release(); }
         })();
       }
