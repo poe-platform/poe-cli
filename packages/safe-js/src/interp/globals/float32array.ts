@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,17 +352,17 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at"].includes(key)) return undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
     name: key,
-    length: key === "reverse" ? 0 : key === "set" || key === "fill" ? 1 : 2,
+    length: key === "reverse" ? 0 : key === "set" || key === "fill" || key === "at" ? 1 : 2,
     call: (args, context) => {
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse");
+      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at");
       if (key === "reverse") {
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
@@ -389,6 +389,17 @@ export function getFloat32Member(
         invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
           invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
       };
+      if (key === "at") {
+        return (async () => {
+          const release = retainValues(budget, () => [receiver, ...args]);
+          try {
+            const number = await sandboxNumber(args[0], budget, bridge);
+            const relative = Number.isNaN(number) ? 0 : Math.trunc(number);
+            const index = relative < 0 ? storage.length + relative : relative;
+            return index < 0 || index >= storage.length ? undefined : receiver[index];
+          } finally { release(); }
+        })();
+      }
       if (key === "copyWithin") {
         return (async () => {
           const release = retainValues(budget, () => [receiver, ...args]);
