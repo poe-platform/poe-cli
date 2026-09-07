@@ -327,19 +327,19 @@ export function getFloat32Member(
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
       const storage = float32Storage(receiver);
+      const bridge: SandboxCallContext = {
+        ...context, stack: context?.stack ?? [], thisValue: receiver,
+        getProperty: context?.getProperty ?? ((value, property) => {
+          const descriptor = getSandboxPropertyDescriptor(value, property, budget);
+          return descriptor === undefined ? getSandboxDataProperty(value, property, budget)
+            : readPropertyDescriptor(descriptor, value, bridge);
+        }),
+        invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
+          invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
+      };
       if (key === "set") {
         return (async () => {
           const [source, offsetValue = 0] = args;
-          const bridge: SandboxCallContext = {
-            ...context, stack: context?.stack ?? [], thisValue: receiver,
-            getProperty: context?.getProperty ?? ((value, property) => {
-              const descriptor = getSandboxPropertyDescriptor(value, property, budget);
-              return descriptor === undefined ? getSandboxDataProperty(value, property, budget)
-                : readPropertyDescriptor(descriptor, value, bridge);
-            }),
-            invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
-              invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
-          };
           let current: SandboxValue;
           let sourceObject: SandboxValue;
           const release = retainValues(budget, () => [receiver, sourceObject, current, ...args]);
@@ -367,17 +367,23 @@ export function getFloat32Member(
           } finally { release(); }
         })();
       }
-      const start = relativeIndex(args[0], storage.length, 0);
-      const end = relativeIndex(args[1], storage.length, storage.length);
-      const length = Math.max(end - start, 0);
-      if (key === "subarray")
-        return new Float32Array(storage.buffer, storage.byteOffset + start * 4, length);
-      checkFloat32Allocation(length, budget);
-      const result = new Float32Array(length);
-      new Uint8Array(result.buffer).set(
-        new Uint8Array(storage.buffer, storage.byteOffset + start * 4, length * 4)
-      );
-      return result;
+      return (async () => {
+        const release = retainValues(budget, () => [receiver, ...args]);
+        try {
+          const start = relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
+          const end = args[1] === undefined ? storage.length
+            : relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
+          const length = Math.max(end - start, 0);
+          if (key === "subarray")
+            return new Float32Array(storage.buffer, storage.byteOffset + start * 4, length);
+          checkFloat32Allocation(length, budget);
+          const result = new Float32Array(length);
+          new Uint8Array(result.buffer).set(
+            new Uint8Array(storage.buffer, storage.byteOffset + start * 4, length * 4)
+          );
+          return result;
+        } finally { release(); }
+      })();
     }
   });
 }
@@ -412,9 +418,7 @@ export function setFloat32Member(
   );
 }
 
-function relativeIndex(value: SandboxValue, length: number, fallback: number): number {
-  if (value === undefined) return fallback;
-  const numeric = float32Number(value);
+function relativeIndex(numeric: number, length: number): number {
   const integer = Number.isNaN(numeric) ? 0 : Math.trunc(numeric);
   return integer < 0 ? Math.max(length + integer, 0) : Math.min(integer, length);
 }
