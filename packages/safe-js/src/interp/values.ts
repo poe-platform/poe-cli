@@ -42,7 +42,7 @@ import {
 import { parseRegex, type RegexPattern } from "./regex/parse.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { sandboxErrorTypes } from "../error/shape.js";
-import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
+import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, intrinsicFunctionDataDescriptors, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
 import type { FunctionSource } from "../parse/function-source.js";
 import {
   copySandboxArgumentProperties,
@@ -787,8 +787,7 @@ export function measureSandboxData(
       if (options.ignoreClosures) return;
       if (value.properties !== undefined) {
         if (isIntrinsicFunction(value)) {
-          for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value.properties))) {
-            if (key === "prototype" || key === "name" || key === "length") continue;
+          for (const [key, descriptor] of intrinsicFunctionDataDescriptors(value.properties)) {
             usage += key.length + 1;
             if ("value" in descriptor) visit(descriptor.value, depth + 1);
             else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);

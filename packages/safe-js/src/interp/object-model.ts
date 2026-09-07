@@ -32,7 +32,11 @@ import {
 
 const guestClosures = new WeakSet<object>();
 const functionProperties = new WeakMap<object, SandboxObject>();
-const functionPropertyRevisions = new WeakMap<object, { revision: number }>();
+const functionPropertyRevisions = new WeakMap<object, {
+  revision: number;
+  measuredRevision?: number;
+  measuredDescriptors?: Array<[string, PropertyDescriptor]>;
+}>();
 const prototypes = new WeakMap<object, object | null>();
 const intrinsicPrototypes = new WeakMap<Budget, SandboxObject>();
 const boxedPrototypes = new WeakMap<Budget, Map<BoxedKind, SandboxObject>>();
@@ -60,6 +64,19 @@ export function isGuestClosure(value: unknown): value is SandboxClosure {
 
 export function getGuestFunctionProperties(closure: SandboxClosure): SandboxObject | undefined {
   return functionProperties.get(closure);
+}
+
+export function intrinsicFunctionDataDescriptors(properties: SandboxObject): Array<[string, PropertyDescriptor]> {
+  const state = functionPropertyRevisions.get(properties);
+  if (state?.measuredDescriptors !== undefined && state.measuredRevision === state.revision)
+    return state.measuredDescriptors;
+  const descriptors = Object.entries(Object.getOwnPropertyDescriptors(properties))
+    .filter(([key]) => key !== "prototype" && key !== "name" && key !== "length");
+  if (state !== undefined) {
+    state.measuredRevision = state.revision;
+    state.measuredDescriptors = descriptors;
+  }
+  return descriptors;
 }
 
 export function materializeFunctionProperties(closure: SandboxClosure): SandboxObject {
