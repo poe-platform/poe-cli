@@ -19,7 +19,7 @@ export async function nextArrayIterator(value: SandboxValue, budget: Budget, con
       ?? getSandboxPropertyDescriptor(source, key, budget) ?? { value: undefined }, source, context);
   try {
     budget.visitNode();
-    const number = isFloat32Array(source) ? float32Storage(source).length
+    const number = isFloat32Array(source) ? float32Storage(source, true).length
       : await sandboxNumber(await read("length"), budget, context);
     const length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
     if (index >= length) {
