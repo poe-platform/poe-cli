@@ -3832,6 +3832,7 @@ class Parser {
   }
 
   private findTopLevelForIterationOperator(startIndex: number): Token | undefined {
+    let operator: Token | undefined;
     let depth = 0;
     let previousToken: Token | undefined;
 
@@ -3842,7 +3843,7 @@ class Parser {
           depth += 1;
         } else if (token.value === ")" || token.value === "]" || token.value === "}") {
           if (depth === 0 && token.value === ")") {
-            return undefined;
+            return operator;
           }
           depth -= 1;
         } else if (depth === 0 && token.value === ";") {
@@ -3854,10 +3855,13 @@ class Parser {
         depth === 0 &&
         token.type === "keyword" &&
         (token.value === "of" || token.value === "in") &&
+        index !== startIndex &&
+        !(token.value === "of" && index === startIndex + 1 &&
+          ["const", "let", "var"].includes(previousToken?.value ?? "")) &&
         previousToken?.value !== "." &&
         previousToken?.value !== "?."
       ) {
-        return token;
+        operator ??= token;
       }
 
       previousToken = token;
@@ -5131,7 +5135,8 @@ function isLiteralPropertyKey(token: Token): boolean {
 }
 
 function isIdentifierLikeToken(token: Token): boolean {
-  return token.type === "identifier" || (token.type === "keyword" && token.value === "async");
+  return token.type === "identifier" ||
+    (token.type === "keyword" && (token.value === "async" || token.value === "of"));
 }
 
 function isNewToken(token: Token): boolean {

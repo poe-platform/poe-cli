@@ -465,7 +465,7 @@ class Lexer {
       if (
         char === "/" &&
         this.peekChar(1) !== "=" &&
-        shouldRejectRegexLiteral(tokens[tokens.length - 1], lastClosedControlParenthesis)
+        shouldRejectRegexLiteral(tokens[tokens.length - 1], lastClosedControlParenthesis, tokens)
       ) {
         if (!this.options.allowRegexLiterals) {
           this.syntaxError("Regular expression literals are not supported", this.position());
@@ -796,7 +796,7 @@ class Lexer {
     if (
       this.currentChar() === "/" &&
       this.peekChar(1) !== "=" &&
-      shouldRejectRegexLiteral(this.lastSignificantToken(), this.lastClosedControlParenthesis)
+      shouldRejectRegexLiteral(this.lastSignificantToken(), this.lastClosedControlParenthesis, this.tokens)
     ) {
       if (!this.options.allowRegexLiterals) {
         this.syntaxError("Regular expression literals are not supported", start);
@@ -1152,7 +1152,8 @@ function matchPunctuator(source: string, index: number): string | undefined {
 
 function shouldRejectRegexLiteral(
   previousToken: Pick<Token, "type" | "value"> | undefined,
-  lastClosedControlParenthesis: boolean
+  lastClosedControlParenthesis: boolean,
+  tokens: ReadonlyArray<Pick<Token, "type" | "value">>
 ): boolean {
   if (previousToken === undefined) {
     return true;
@@ -1168,6 +1169,7 @@ function shouldRejectRegexLiteral(
   }
 
   if (previousToken.type === "keyword") {
+    if (previousToken.value === "of") return endsWithForOfSeparator(tokens);
     return !EXPRESSION_ENDING_KEYWORDS.has(previousToken.value);
   }
 
@@ -1176,6 +1178,36 @@ function shouldRejectRegexLiteral(
   }
 
   return !isExpressionEndingPunctuator(previousToken.value);
+}
+
+function endsWithForOfSeparator(tokens: ReadonlyArray<Pick<Token, "type" | "value">>): boolean {
+  let depth = 0;
+  let start = -1;
+  for (let index = tokens.length - 2; index >= 0; index--) {
+    const token = tokens[index];
+    if (token.type !== "punctuator") continue;
+    if ([")", "]", "}"].includes(token.value)) depth++;
+    else if (["(", "[", "{"].includes(token.value)) {
+      if (depth > 0) { depth--; continue; }
+      if (token.value === "(" && (tokens[index - 1]?.value === "for" ||
+          (tokens[index - 1]?.value === "await" && tokens[index - 2]?.value === "for"))) start = index + 1;
+      break;
+    } else if (depth === 0 && token.value === ";") break;
+  }
+  if (start < 0) return false;
+  depth = 0;
+  for (let index = start; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.type === "punctuator") {
+      if (["(", "[", "{"].includes(token.value)) depth++;
+      else if ([")", "]", "}"].includes(token.value)) depth--;
+    }
+    if (depth === 0 && token.type === "keyword" && token.value === "of" &&
+        index !== start && tokens[index - 1]?.value !== "." && tokens[index - 1]?.value !== "?." &&
+        !(index === start + 1 && ["const", "let", "var"].includes(tokens[start].value)))
+      return index === tokens.length - 1;
+  }
+  return false;
 }
 
 function updateGroupingState(
