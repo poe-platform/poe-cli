@@ -2,6 +2,7 @@ export const DUMP_FORMAT_VERSION = 2;
 export const inMemoryRunSnapshots = new WeakSet<object>();
 import { getRegexProperties, isSandboxPromise, isSandboxRegex } from "../interp/values.js";
 import { isPromiseResolvingFunction } from "../interp/promise.js";
+import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { hasCustomRegexProperties, serializeRegexProperties, type RegexPropertyData } from "./regexp-properties.js";
 export const EXECUTION_SEMANTICS = "jobs-v8";
@@ -354,7 +355,7 @@ function indexHeapContainers(snapshot: DumpableSnapshot): Pick<DumpState, "heapI
       continue;
     }
 
-    collectContainerStats(value, stats, ancestors, guestValues);
+    collectContainerStats(value, stats, ancestors, guestValues, inMemoryRunSnapshots.has(snapshot));
   }
 
   const heapIds = new Map<object | symbol, number>();
@@ -391,6 +392,7 @@ function collectContainerStats(
   stats: Map<object, ContainerStat>,
   ancestors: WeakSet<object>,
   guestValues: Set<object>,
+  trustedRunReplay: boolean,
   depth = 0
 ): void {
   if (value === null || typeof value !== "object") {
@@ -432,17 +434,19 @@ function collectContainerStats(
     ? { kind: "typedarray", state: captureTypedArrayState(value, entry => { guestEntries.push(entry); return null; }) }
     : isSandboxArrayBuffer(value)
     ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
+    : trustedRunReplay && isSandboxPromise(value) && unrepresentedPromiseContinuations.has(value)
+    ? undefined
     : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
     if (!isSandboxArrayBuffer(value) && !isSandboxDataView(value) && !isNumericTypedArray(value)) guestValues.add(value);
     for (const entry of guestEntries) {
-      collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
+      collectContainerStats(entry, stats, ancestors, guestValues, trustedRunReplay, depth + 1);
       if (entry !== null && typeof entry === "object") stats.get(entry)!.forceHeap = true;
     }
     ancestors.delete(value);
     return;
   }
-  for (const entry of guestEntries) collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
+  for (const entry of guestEntries) collectContainerStats(entry, stats, ancestors, guestValues, trustedRunReplay, depth + 1);
   if (!Array.isArray(value) && !isPlainObject(value) && !isNumericTypedArray(value) && !isSandboxDate(value)) {
     ancestors.delete(value);
     return;
@@ -461,12 +465,12 @@ function collectContainerStats(
     ? getSandboxArgumentEntries(value).map(([, entry]) => entry)
     : getEnumerableDataValues(value);
   for (const entry of entries) {
-    collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
+    collectContainerStats(entry, stats, ancestors, guestValues, trustedRunReplay, depth + 1);
   }
   for (const key of ownSerializableSymbolKeys(value)) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
     if ("value" in descriptor)
-      collectContainerStats(descriptor.value, stats, ancestors, guestValues, depth + 1);
+      collectContainerStats(descriptor.value, stats, ancestors, guestValues, trustedRunReplay, depth + 1);
   }
 
   ancestors.delete(value);
