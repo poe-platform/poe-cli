@@ -6,7 +6,7 @@ import type { Budget } from "../budget.js";
 import { isSandboxDate } from "../date.js";
 import { boxedValue, createSandboxBox, isSandboxBox } from "../boxed.js";
 import { isSandboxErrorConstructorInstance } from "../exceptions.js";
-import { isFloat32Array } from "../float32.js";
+import { isNumericTypedArray, typedArrayStorage } from "../typed-array.js";
 import { hasHostObjectMember, isGuestHostObject } from "../host-capabilities.js";
 import { collectionIteratorState, isSandboxCollectionIterator } from "../collection-iterator.js";
 import { isSandboxRegExpIterator } from "../regexp-iterator.js";
@@ -219,6 +219,6 @@ function typeTag(value: SandboxValue, builtinOnly = false): string {
   if (isSandboxCollectionIterator(value)) return collectionIteratorState(value).collectionKind === "map" ? "Map Iterator" : "Set Iterator";
   if (isSandboxPromise(value)) return "Promise";
   if (isSandboxGenerator(value)) return "Generator";
-  if (isFloat32Array(value)) return "Float32Array";
+  if (isNumericTypedArray(value)) return typedArrayStorage(value).Native.name;
   return "Object";
 }

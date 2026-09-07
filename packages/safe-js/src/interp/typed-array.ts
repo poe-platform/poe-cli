@@ -1,6 +1,10 @@
 import type { Budget } from "./budget.js";
 import { arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage } from "./array-buffer.js";
 
+export const numericTypedArrayConstructors = { Float32Array, Uint8Array };
+export type NumericTypedArrayConstructor = typeof numericTypedArrayConstructors[keyof typeof numericTypedArrayConstructors];
+export type NumericTypedArray = InstanceType<NumericTypedArrayConstructor>;
+
 const typedArrayPrototype = Object.getPrototypeOf(Float32Array.prototype);
 const readLength = Object.getOwnPropertyDescriptor(typedArrayPrototype, "length")!.get!;
 const readOffset = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteOffset")!.get!;
@@ -9,43 +13,44 @@ const readTag = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symbol.toSt
 const createValuesIterator = Object.getOwnPropertyDescriptor(typedArrayPrototype, "values")!.value;
 const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength")!.get!;
 const bufferResizable = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resizable")?.get;
-export const float32ViewLayouts = new WeakMap<Float32Array, { byteOffset: number; length?: number }>();
+export const typedArrayViewLayouts = new WeakMap<NumericTypedArray, { byteOffset: number; length?: number }>();
 const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value as ((length: number) => void) | undefined;
 
-export function restoreFloat32View(buffer: ArrayBuffer, byteOffset: number, length?: number, budget?: Budget): Float32Array {
+export function restoreTypedArrayView(buffer: ArrayBuffer, byteOffset: number, length?: number, budget?: Budget, Native: NumericTypedArrayConstructor = Float32Array): NumericTypedArray {
   const originalLength = arrayBufferLength(buffer);
-  const required = byteOffset + (length ?? 0) * 4;
+  const required = byteOffset + (length ?? 0) * Native.BYTES_PER_ELEMENT;
   const options = arrayBufferOptions(buffer);
   const grow = required > originalLength;
   if (grow) {
     if (resizeBuffer === undefined || options === undefined || required > options.maxByteLength)
       throw new RangeError("Float32Array layout exceeds backing capacity.");
-    budget?.allocateArrayLength(Math.ceil(required / 4));
+    budget?.allocateArrayLength(Math.ceil(required / Native.BYTES_PER_ELEMENT));
     budget?.provisionDataUsage(required - originalLength)();
     Reflect.apply(resizeBuffer, buffer, [required]);
   }
   try {
-    const view = new Float32Array(buffer, byteOffset, length);
-    if (options !== undefined) float32ViewLayouts.set(view, { byteOffset, ...(length === undefined ? {} : { length }) });
+    const view = new Native(buffer, byteOffset, length);
+    if (options !== undefined) typedArrayViewLayouts.set(view, { byteOffset, ...(length === undefined ? {} : { length }) });
     return view;
   } finally {
     if (grow) Reflect.apply(resizeBuffer!, buffer, [originalLength]);
   }
 }
 
-export function isFloat32Array(value: unknown): value is Float32Array {
-  return (
-    ArrayBuffer.isView(value) &&
-    Object.getPrototypeOf(value) === Float32Array.prototype &&
-    Reflect.apply(readTag, value, []) === "Float32Array"
-  );
+export function isNumericTypedArray(value: unknown): value is NumericTypedArray {
+  if (!ArrayBuffer.isView(value)) return false;
+  const tag = Reflect.apply(readTag, value, []);
+  return Object.hasOwn(numericTypedArrayConstructors, tag) &&
+    Object.getPrototypeOf(value) === numericTypedArrayConstructors[tag as keyof typeof numericTypedArrayConstructors].prototype;
 }
 
-export function float32Storage(value: Float32Array, requireInBounds = false): {
+export function typedArrayStorage(value: NumericTypedArray, requireInBounds = false): {
   buffer: ArrayBuffer;
   byteOffset: number;
   length: number;
   byteLength: number;
+  Native: NumericTypedArrayConstructor;
+  elementSize: number;
 } {
   if (requireInBounds) Reflect.apply(createValuesIterator, value, []);
   const buffer = Reflect.apply(readBuffer, value, []) as ArrayBuffer;
@@ -54,7 +59,10 @@ export function float32Storage(value: Float32Array, requireInBounds = false): {
   ) {
     throw new TypeError("Float32Array requires a non-shared ArrayBuffer.");
   }
+  const Native = numericTypedArrayConstructors[Reflect.apply(readTag, value, []) as keyof typeof numericTypedArrayConstructors];
   return {
+    Native,
+    elementSize: Native.BYTES_PER_ELEMENT,
     buffer,
     byteOffset: Reflect.apply(readOffset, value, []) as number,
     length: Reflect.apply(readLength, value, []) as number,
@@ -62,20 +70,20 @@ export function float32Storage(value: Float32Array, requireInBounds = false): {
   };
 }
 
-export function float32Properties(value: Float32Array): Array<[PropertyKey, PropertyDescriptor]> {
+export function typedArrayProperties(value: NumericTypedArray): Array<[PropertyKey, PropertyDescriptor]> {
   const properties: Array<[PropertyKey, PropertyDescriptor]> = [];
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key === "string" && isFloat32Index(key)) continue;
+    if (typeof key === "string" && isTypedArrayIndex(key)) continue;
     properties.push([key, Object.getOwnPropertyDescriptor(value, key)!]);
   }
   return properties;
 }
 
-export function float32DataProperties(value: Float32Array): Array<[string, PropertyDescriptor]> {
+export function typedArrayDataProperties(value: NumericTypedArray): Array<[string, PropertyDescriptor]> {
   if (Object.getOwnPropertySymbols(value).length > 0)
     throw new TypeError("Float32Array symbol properties are not supported.");
   const properties: Array<[string, PropertyDescriptor]> = [];
-  for (const [key, descriptor] of float32Properties(value)) {
+  for (const [key, descriptor] of typedArrayProperties(value)) {
     if (typeof key !== "string") throw new TypeError("Float32Array symbol properties are not supported.");
     if (!("value" in descriptor))
       throw new TypeError(`Float32Array accessor property '${key}' is not supported.`);
@@ -84,11 +92,11 @@ export function float32DataProperties(value: Float32Array): Array<[string, Prope
   return properties;
 }
 
-export function isFloat32Index(key: string): boolean {
+export function isTypedArrayIndex(key: string): boolean {
   return key === "-0" || String(Number(key)) === key;
 }
 
-export function float32Number(value: unknown): number {
+export function typedArrayNumber(value: unknown): number {
   if (
     (value !== null && typeof value === "object") ||
     typeof value === "function" ||
@@ -102,24 +110,24 @@ export function float32Number(value: unknown): number {
   return Number(value);
 }
 
-export function checkFloat32Allocation(length: number, budget: Budget): void {
+export function checkTypedArrayAllocation(length: number, budget: Budget, elementSize = Float32Array.BYTES_PER_ELEMENT): void {
   budget.allocateArrayLength(length);
-  budget.provisionDataUsage(length * Float32Array.BYTES_PER_ELEMENT + 1)();
+  budget.provisionDataUsage(length * elementSize + 1)();
 }
 
-export function copyFloat32Storage<TValue>(
-  value: Float32Array,
+export function copyTypedArrayStorage<TValue>(
+  value: NumericTypedArray,
   state: {
     seen: WeakMap<object, TValue>;
     float32Buffers?: WeakMap<ArrayBuffer, ArrayBuffer>;
   }
-): Float32Array {
-  const storage = float32Storage(value);
+): NumericTypedArray {
+  const storage = typedArrayStorage(value);
   const buffer = copyArrayBufferStorage(storage.buffer, state);
   if (bufferResizable !== undefined && Reflect.apply(bufferResizable, storage.buffer, [])) {
-    const layout = float32ViewLayouts.get(value);
+    const layout = typedArrayViewLayouts.get(value);
     if (layout === undefined) throw new TypeError("Resizable Float32Array copies require known view layout.");
-    return restoreFloat32View(buffer, layout.byteOffset, layout.length);
+    return restoreTypedArrayView(buffer, layout.byteOffset, layout.length, undefined, storage.Native);
   }
-  return new Float32Array(buffer, storage.byteOffset, storage.length);
+  return new storage.Native(buffer, storage.byteOffset, storage.length);
 }

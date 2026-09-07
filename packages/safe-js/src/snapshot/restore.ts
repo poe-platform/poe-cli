@@ -19,7 +19,7 @@ import { runAsyncPrefix } from "../interp/jobs.js";
 import type { CompletionResult } from "../interp/exceptions.js";
 import { toPropertyKey } from "../interp/property-key.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
-import { decodeFloat32Storage, restoreFloat32Properties } from "./float32array.js";
+import { decodeTypedArrayStorage, restoreTypedArrayProperties } from "./typed-array.js";
 import { decodeArrayBufferStorage } from "./array-buffer.js";
 import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
@@ -607,10 +607,10 @@ function initializeIntrinsicRealm(state: RestoreState): void {
         prototype.id === JSON.stringify([...JSON.parse(node.id) as string[], "prototype"]);
     }));
   const float32 = Object.values(state.heap).find(node => node.kind === "intrinsic" && node.id === '["Float32Array"]');
-  const float32Prototypes = float32?.kind !== "intrinsic" ||
+  const typedArrayPrototypes = float32?.kind !== "intrinsic" ||
     float32.state?.properties.properties.some(([key, descriptor]) => key === "prototype" && descriptor.kind === "data" &&
       !descriptor.writable && !descriptor.enumerable && !descriptor.configurable) === true;
-  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance, errorPrototypes, float32Prototypes });
+  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance, errorPrototypes, typedArrayPrototypes });
   state.intrinsicsInitialized = true;
 }
 
@@ -665,9 +665,9 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return value;
   }
-  if (serialized.kind === "float32array") {
+  if (serialized.kind === "float32array" || serialized.kind === "typedarray") {
     if (serialized.state !== undefined) initializeIntrinsicRealm(state);
-    const value = decodeFloat32Storage(serialized, (reference) =>
+    const value = decodeTypedArrayStorage(serialized, (reference) =>
       deserializeValue(reference as SerializedSnapshotValue, state), state.budget);
     state.heapValueById.set(id, value);
     if (serialized.state !== undefined) {
@@ -675,7 +675,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       state.initializeIterators.push(() => {
         if (objectState.prototype !== undefined)
           setSandboxPrototype(value, deserializeValue(objectState.prototype, state) as object | null, state.budget);
-        restoreFloat32Properties(value, objectState, entry => deserializeValue(entry, state));
+        restoreTypedArrayProperties(value, objectState, entry => deserializeValue(entry, state));
       });
       return value;
     }

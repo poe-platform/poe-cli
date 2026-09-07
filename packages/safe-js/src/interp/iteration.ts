@@ -8,8 +8,8 @@ import {
   type SandboxValue
 } from "./values.js";
 import { enterRunningState } from "./running-state.js";
-import { isFloat32Array } from "./float32.js";
-import { float32Prototypes } from "./float32-prototypes.js";
+import { isNumericTypedArray } from "./typed-array.js";
+import { typedArrayPrototypes } from "./typed-array-prototypes.js";
 import { boxedValue, isSandboxBox } from "./boxed.js";
 import { getHostObjectIterator, isGuestHostObject } from "./host-capabilities.js";
 import { isSandboxCollectionIterator, nextCollectionIterator } from "./collection-iterator.js";
@@ -367,8 +367,8 @@ export function getSandboxIterator(
       snapshot: () => ({ kind: "builtin", value, index: 0 }) };
   }
   if (isGuestHostObject(value)) return getHostObjectIterator(value);
-  if (isFloat32Array(value)) {
-    if (hasExplicitSandboxPrototype(value) || (budget !== undefined && float32Prototypes.has(budget))) {
+  if (isNumericTypedArray(value)) {
+    if (hasExplicitSandboxPrototype(value) || (budget !== undefined && typedArrayPrototypes.has(budget))) {
       if (getSandboxPropertyDescriptor(value, Symbol.iterator, budget) === undefined) return undefined;
       return guestProtocolAdapter(value, budget ?? new Budget(), context, false);
     }

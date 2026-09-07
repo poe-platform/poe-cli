@@ -140,6 +140,7 @@ describe("compile checkpoint hash compatibility", () => {
       bindings: {
         ...capture.completed.bindings,
         ArrayBuffer: { kind: "fn", name: "ArrayBuffer" },
+        Uint8Array: { kind: "fn", name: "Uint8Array" },
         Symbol: { kind: "fn", name: "Symbol" },
         BigInt: { kind: "fn", name: "BigInt" },
         Date: { kind: "fn", name: "Date" },

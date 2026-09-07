@@ -145,10 +145,10 @@ import { getCollectionIteratorMember } from "./methods/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "./regexp-iterator.js";
 import { getRegExpIteratorMember } from "./methods/regexp-iterator.js";
 import {
-  getFloat32Member,
-  setFloat32Member
-} from "./globals/float32array.js";
-import { isFloat32Array } from "./float32.js";
+  getTypedArrayMember,
+  setTypedArrayMember
+} from "./globals/numeric-typed-array.js";
+import { isNumericTypedArray } from "./typed-array.js";
 import { dateString, dateTime, isSandboxDate } from "./date.js";
 import {
   createSandboxRegex,
@@ -2031,7 +2031,7 @@ function forInObject(value: SandboxValue): object | undefined {
   if (
     typeof value === "string" ||
     Array.isArray(value) ||
-    isFloat32Array(value) ||
+    isNumericTypedArray(value) ||
     isPlainForInObject(value)
   ) {
     return Object(value);
@@ -2795,7 +2795,7 @@ function getPropertyValue(
   if (typeof target === "string") return getStringMember(target, property, context.budget);
   if (typeof target === "number") return getNumberMember(property, context.budget);
   if (typeof target === "boolean") return undefined;
-  if (isFloat32Array(target)) return getFloat32Member(target, property, context.budget);
+  if (isNumericTypedArray(target)) return getTypedArrayMember(target, property, context.budget);
   if (isSandboxDate(target)) return undefined;
   if (isSandboxMap(target)) return getSandboxPrototype(target, context.budget) === null
     ? getMapMember(target, property, createMapMethodOptions(context)) : undefined;
@@ -3189,7 +3189,7 @@ async function evaluateMemberCallExpression(
     if (isSandboxDate(member.object)) {
       return evaluateResolvedCallExpression(node, await getPropertyValue(member.object, member.property, context), context, member.object);
     }
-    if (isFloat32Array(member.object)) {
+    if (isNumericTypedArray(member.object)) {
       return evaluateResolvedCallExpression(
         node,
         await getPropertyValue(member.object, member.property, context),
@@ -3547,7 +3547,7 @@ function hasSandboxProperty(value: SandboxValue, key: PropertyKey, context: Eval
     if (hasOwnSandboxProperty(current, key, false)) return true;
     if (!isSandboxDate(current) && !isSandboxRegex(current) && !isSandboxMap(current) && !isSandboxSet(current) && !((isGuestClosure(current) || isSandboxGenerator(current) || Array.isArray(current)) && hasExplicitSandboxPrototype(current)) &&
         (Array.isArray(current) || !isPlainSandboxObject(current) ||
-        isSandboxDate(current) || isFloat32Array(current) || isSandboxGenerator(current) || isSandboxCollectionIterator(current) || isSandboxRegExpIterator(current))) {
+        isSandboxDate(current) || isNumericTypedArray(current) || isSandboxGenerator(current) || isSandboxCollectionIterator(current) || isSandboxRegExpIterator(current))) {
       return getPropertyValue(current, key, context) !== undefined;
     }
     current = getSandboxPrototype(current, context.budget) as SandboxValue;
@@ -3836,7 +3836,7 @@ function getMemberValue(
   while (typeof current === "object" && current !== null) {
     if (isSandboxClosure(current)) return getClosureMemberValue(current, property, context);
     if (Array.isArray(current)) return getArrayMemberValue(current, property, context);
-    if (!isPlainSandboxObject(current) || isSandboxGenerator(current) || isSandboxCollectionIterator(current) || isSandboxRegExpIterator(current) || isFloat32Array(current)) {
+    if (!isPlainSandboxObject(current) || isSandboxGenerator(current) || isSandboxCollectionIterator(current) || isSandboxRegExpIterator(current) || isNumericTypedArray(current)) {
       return getPropertyValue(current, property, context);
     }
     if (Object.hasOwn(current, String(property))) return (current as SandboxObject)[String(property)];
@@ -3887,8 +3887,8 @@ export function setSandboxProperty(
   if (isSandboxPromise(target)) target = getPromiseProperties(target);
   if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
-  if (isFloat32Array(target)) {
-    return setFloat32Member(target, property, value, budget, context);
+  if (isNumericTypedArray(target)) {
+    return setTypedArrayMember(target, property, value, budget, context);
   }
   if (isSandboxRegex(target)) {
     setRegexMember(target, property, value, budget);

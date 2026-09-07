@@ -20,12 +20,13 @@ import type { Budget, CompileTicket } from "./budget.js";
 import { types as nodeTypes } from "node:util";
 import { CompileScope, RegexCompileGuard, regexCompiledData } from "./regex/compile-guard.js";
 import {
-  copyFloat32Storage,
-  float32DataProperties,
-  float32Properties,
-  float32Storage,
-  isFloat32Array
-} from "./float32.js";
+  type NumericTypedArray,
+  copyTypedArrayStorage,
+  typedArrayDataProperties,
+  typedArrayProperties,
+  typedArrayStorage,
+  isNumericTypedArray
+} from "./typed-array.js";
 import type { GeneratorChannel } from "./generator.js";
 import { SandboxError } from "./budget.js";
 import { observeSandboxPromise, trackSandboxPromise } from "./promise-tracker.js";
@@ -63,7 +64,7 @@ export type SandboxPrimitive = string | number | bigint | boolean | symbol | nul
 export type SandboxValue =
   | SandboxPrimitive
   | Date
-  | Float32Array
+  | NumericTypedArray
   | ArrayBuffer
   | SandboxObject
   | SandboxArray
@@ -619,10 +620,10 @@ export function measureSandboxData(
     const prototype = getSandboxPrototype(value);
     if (prototype !== null) visit(prototype, depth + 1);
     if (isSandboxArrayBuffer(value)) usage += arrayBufferLength(value);
-    if (isFloat32Array(value)) {
-      const storage = float32Storage(value);
+    if (isNumericTypedArray(value)) {
+      const storage = typedArrayStorage(value);
       visit(storage.buffer, depth + 1);
-      for (const [key, descriptor] of float32Properties(value)) {
+      for (const [key, descriptor] of typedArrayProperties(value)) {
         usage += 1;
         if (typeof key === "string") usage += key.length;
         else visit(key, depth + 1);
@@ -940,7 +941,8 @@ function copyToSandbox(
     return copy;
   }
 
-  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !(state.structuredClone && isSandboxDate(value))) {
+  if (typeof value === "object" && value !== null && hasGuestObjectState(value) &&
+      !(state.structuredClone && (isSandboxDate(value) || isSandboxArrayBuffer(value) || isNumericTypedArray(value)))) {
     throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
   }
 
@@ -1014,6 +1016,7 @@ function copyToSandbox(
     if (existing !== undefined) return existing;
     const copy = copyArrayBufferStorage(value, state);
     state.seen.set(value, copy);
+    if (state.structuredClone) return copy;
     for (const [key, descriptor] of arrayBufferDataProperties(value)) {
       Object.defineProperty(copy, key, { ...descriptor,
         value: copyToSandbox(descriptor.value, state, joinPath(path, key), cloneSandboxCollections, depth + 1) });
@@ -1036,13 +1039,14 @@ function copyToSandbox(
     return copy;
   }
 
-  if (isFloat32Array(value)) {
+  if (isNumericTypedArray(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
-    const copy = copyFloat32Storage(value, state);
+    const copy = copyTypedArrayStorage(value, state);
     state.seen.set(value, copy);
-    copyToSandbox(float32Storage(value).buffer, state, `${path}.buffer`, cloneSandboxCollections, depth + 1);
-    for (const [key, descriptor] of float32DataProperties(value)) {
+    if (state.structuredClone) return copy;
+    copyToSandbox(typedArrayStorage(value).buffer, state, `${path}.buffer`, cloneSandboxCollections, depth + 1);
+    for (const [key, descriptor] of typedArrayDataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,
         value: copyToSandbox(
@@ -1275,13 +1279,13 @@ function copyFromSandbox(
     }
   }
 
-  if (isFloat32Array(value)) {
+  if (isNumericTypedArray(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
-    const copy = copyFloat32Storage(value, state);
+    const copy = copyTypedArrayStorage(value, state);
     state.seen.set(value, copy);
-    copyFromSandbox(float32Storage(value).buffer, state, `${path}.buffer`, options, depth + 1);
-    for (const [key, descriptor] of float32DataProperties(value)) {
+    copyFromSandbox(typedArrayStorage(value).buffer, state, `${path}.buffer`, options, depth + 1);
+    for (const [key, descriptor] of typedArrayDataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,
         value: copyFromSandbox(descriptor.value, state, joinPath(path, key), options, depth + 1)
@@ -1521,13 +1525,14 @@ function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet
     return;
   }
 
-  if (isFloat32Array(value)) {
+  if (isNumericTypedArray(value)) {
     if (seen.has(value)) return;
     seen.add(value);
-    budget.allocateArrayLength(Math.ceil(float32Storage(value).byteLength / 4));
-    const capacity = arrayBufferOptions(float32Storage(value).buffer)?.maxByteLength;
+    const storage = typedArrayStorage(value);
+    budget.allocateArrayLength(Math.ceil(storage.byteLength / storage.elementSize));
+    const capacity = arrayBufferOptions(typedArrayStorage(value).buffer)?.maxByteLength;
     if (capacity !== undefined) budget.allocateArrayLength(capacity);
-    for (const [key, descriptor] of float32DataProperties(value)) {
+    for (const [key, descriptor] of typedArrayDataProperties(value)) {
       budget.allocateString(key);
       allocateSandboxValue(descriptor.value, budget, seen);
     }

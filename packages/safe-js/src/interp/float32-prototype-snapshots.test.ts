@@ -3,7 +3,7 @@ import { run } from "../run.js";
 import { serialize, type RuntimeSnapshotValue } from "../snapshot/serialize.js";
 import { restore } from "../snapshot/restore.js";
 import { isSandboxClosure } from "./values.js";
-import { createFloat32ArrayGlobal } from "./globals/float32array.js";
+import { createNumericTypedArrayGlobal } from "./globals/numeric-typed-array.js";
 import { Budget } from "./budget.js";
 import { registerBuiltinIdentities } from "./intrinsics.js";
 import { getSandboxDataProperty } from "./object-model.js";
@@ -44,7 +44,7 @@ it.each(["numeric-metadata", "scope-prototype", "mixed-entries", "bad-extensibil
 it("restores the older Float32Array constructor property shape", () => {
   const source="return 1";
   const budget=new Budget();
-  const constructor=createFloat32ArrayGlobal(budget);
+  const constructor=createNumericTypedArrayGlobal(budget);
   registerBuiltinIdentities(budget,{Float32Array:constructor});
   const saved=serialize({source,currentAstNodeId:1,scopeChain:[{id:"external",bindings:{constructor}}],callStack:[],pendingPromises:[],moduleBindings:{}});
   const result=restore(JSON.parse(JSON.stringify(saved)),{source}).currentScope.lookup("constructor");

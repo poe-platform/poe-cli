@@ -4,7 +4,7 @@ import { readPropertyDescriptor } from "./accessors.js";
 import { dateString, dateTime, isSandboxDate } from "./date.js";
 import type { Budget } from "./budget.js";
 import { invokeBuiltinClosure } from "./builtin-call.js";
-import { float32Storage, isFloat32Array } from "./float32.js";
+import { typedArrayStorage, isNumericTypedArray } from "./typed-array.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { isGuestHostObject } from "./host-capabilities.js";
 import { collectionIteratorState, isSandboxCollectionIterator } from "./collection-iterator.js";
@@ -151,7 +151,7 @@ function conversionHook(
   const implicitBuiltin =
     !hasExplicitSandboxPrototype(value) &&
     ((Array.isArray(value) && getSandboxPrototype(value, budget) === null) ||
-      isFloat32Array(value) ||
+      isNumericTypedArray(value) ||
       sandboxErrorTypes.has(value) ||
       (isSandboxClosure(value) && getSandboxPrototype(value, budget) === null) ||
       isSandboxMap(value) ||
@@ -208,14 +208,14 @@ async function defaultToString(
   if (isSandboxGenerator(value)) return "[object Generator]";
   if (isSandboxRegex(value)) return regexToString(value, budget, context);
   if (isSandboxDate(value)) return budget.allocateString(dateString(value));
-  if (Array.isArray(value) || isFloat32Array(value)) {
+  if (Array.isArray(value) || isNumericTypedArray(value)) {
     if (Object.hasOwn(value, "join")) {
       const join = await readCoercionProperty(value, "join", context);
       if (!isSandboxClosure(join))
-        return isFloat32Array(value) ? "[object Float32Array]" : "[object Array]";
+        return isNumericTypedArray(value) ? `[object ${typedArrayStorage(value).Native.name}]` : "[object Array]";
       return invokeBuiltinClosure(join, [], budget, context, value);
     }
-    const length = isFloat32Array(value) ? float32Storage(value).length : value.length;
+    const length = isNumericTypedArray(value) ? typedArrayStorage(value).length : value.length;
     return joinSandboxArray(value, length, ",", budget, context, joining);
   }
   if (sandboxErrorTypes.has(value)) {

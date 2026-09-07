@@ -1,5 +1,5 @@
 import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
-import { float32Storage, isFloat32Array } from "../interp/float32.js";
+import { typedArrayStorage, isNumericTypedArray } from "../interp/typed-array.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { serializePropertyDescriptors } from "./property-descriptors.js";
 import type { GuestObjectState } from "./guest-heap.js";
@@ -59,6 +59,6 @@ export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve
   }
   const referenced = resolve(value.buffer);
   if (isSandboxArrayBuffer(referenced)) return referenced;
-  if (isFloat32Array(referenced)) return float32Storage(referenced).buffer;
+  if (isNumericTypedArray(referenced)) return typedArrayStorage(referenced).buffer;
   throw new TypeError("Invalid ArrayBuffer backing reference.");
 }

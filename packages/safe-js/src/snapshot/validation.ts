@@ -7,7 +7,7 @@ import type { Budget } from "../interp/budget.js";
 import type { ParseResult } from "../parse/parser.js";
 import { DUMP_FORMAT_VERSION } from "./dump-format.js";
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
-import { validateFloat32Storage } from "./float32array.js";
+import { validateTypedArrayStorage } from "./typed-array.js";
 import { validateArrayBufferStorage } from "./array-buffer.js";
 import { restoreDateTime } from "../interp/date.js";
 import { validateBoxedProperties } from "./boxed.js";
@@ -160,8 +160,8 @@ function validateDumpHeap(root: Record<string, unknown>, state: ValidationState)
       validateGuestHeapNode({kind:"guest-object",state:entry.state}, heap, state.limits.maxEntries);
       continue;
     }
-    if (entry.kind === "float32array") {
-      validateFloat32Storage(entry);
+    if (entry.kind === "float32array" || entry.kind === "typedarray") {
+      validateTypedArrayStorage(entry);
       requireRecord(entry.entries, `${path}.entries`);
       if (Object.hasOwn(entry, "state")) {
         if (Object.keys(entry.entries as object).length !== 0) fail("invalidValue", path, "ambiguous Float32Array property state");
@@ -624,7 +624,7 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
     }
   } catch (error) { fail("invalidValue", path, String(error)); }
   validateErrorType(record, path);
-  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "arraybuffer", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
+  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "typedarray", "arraybuffer", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
     fail("unknownTag", `${path}.kind`, "unknown heap tag");
   validateValue(record, path, 1, state);
   if (record.kind === "symbol") validateSymbolRecord(record, path, state);
@@ -637,8 +637,8 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
     validateArrayBufferStorage(record);
     validateGuestHeapNode({kind:"guest-object",state:record.state}, heap, state.limits.maxEntries);
   }
-  if (record.kind === "float32array") {
-    validateFloat32Storage(record);
+  if (record.kind === "float32array" || record.kind === "typedarray") {
+    validateTypedArrayStorage(record);
     requireRecord(record.entries, `${path}.entries`);
     if (Object.hasOwn(record, "state")) {
       if (Object.keys(record.entries as object).length !== 0) fail("invalidValue", path, "ambiguous Float32Array property state");

@@ -9,8 +9,8 @@ import { retainedAccessorClosures } from "./accessors.js";
 import { getHostObjectMember, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
 import type { Budget } from "./budget.js";
 import { errorPrototypes } from "./error-prototypes.js";
-import { float32Properties, isFloat32Array, isFloat32Index } from "./float32.js";
-import { float32Prototypes } from "./float32-prototypes.js";
+import { typedArrayProperties, typedArrayStorage, isNumericTypedArray, isTypedArrayIndex } from "./typed-array.js";
+import { typedArrayPrototypes } from "./typed-array-prototypes.js";
 import { arrayBufferPrototypes, isSandboxArrayBuffer } from "./array-buffer.js";
 import { sandboxErrorTypes } from "../error/shape.js";
 import { boxedValue, isSandboxBox, type BoxedKind, type BoxedPrimitive } from "./boxed.js";
@@ -320,7 +320,7 @@ export function releaseObjectPrototype(budget: Budget): void {
   functionPrototypes.delete(budget);
   generatorPrototypes.delete(budget);
   errorPrototypes.delete(budget);
-  float32Prototypes.delete(budget);
+  typedArrayPrototypes.delete(budget);
   arrayBufferPrototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
@@ -329,7 +329,7 @@ export function releaseObjectPrototype(budget: Budget): void {
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
   if (isSandboxArrayBuffer(value)) return budget === undefined ? null : arrayBufferPrototypes.get(budget) ?? null;
-  if (isFloat32Array(value)) return budget === undefined ? null : float32Prototypes.get(budget) ?? null;
+  if (isNumericTypedArray(value)) return budget === undefined ? null : typedArrayPrototypes.get(budget)?.get(typedArrayStorage(value).Native) ?? null;
   // Host transport records are data-only. Resolve their default prototype in
   // the receiving realm without persisting executable intrinsic graphs.
   const errorType = sandboxErrorTypes.get(value);
@@ -381,7 +381,7 @@ export function getSandboxPropertyDescriptor(
   ) {
     // An integer-indexed object stops numeric-key lookup even when it occurs
     // inside another object's prototype chain and the index is invalid.
-    if (isFloat32Array(current) && typeof key !== "symbol" && isFloat32Index(String(key)))
+    if (isNumericTypedArray(current) && typeof key !== "symbol" && isTypedArrayIndex(String(key)))
       return Object.getOwnPropertyDescriptor(current, key);
     const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current)
       ? key === "prototype" && current.construct !== undefined && current.boundTarget === undefined
@@ -410,7 +410,7 @@ export function getSandboxDataProperty(
   let current = value;
   let depth = 0;
   while (typeof current === "object" && current !== null) {
-    if (isFloat32Array(current) && typeof key !== "symbol" && isFloat32Index(String(key)))
+    if (isNumericTypedArray(current) && typeof key !== "symbol" && isTypedArrayIndex(String(key)))
       return Object.getOwnPropertyDescriptor(current, key)?.value;
     if (isGuestHostObject(current)) return typeof key === "symbol" ? undefined : getHostObjectMember(current, String(key));
     if (isSandboxRegex(current)) return Object.getOwnPropertyDescriptor(getRegexProperties(current), key)?.value;
@@ -481,7 +481,7 @@ export function setSandboxPrototype(
 
 function isPrototypeRecord(value: object): boolean {
   if (isSandboxArrayBuffer(value)) return true;
-  if (isFloat32Array(value)) return true;
+  if (isNumericTypedArray(value)) return true;
   if (isGuestClosure(value)) return true;
   if (isGuestHostObject(value)) return false;
   if (
@@ -513,8 +513,8 @@ export function hasGuestObjectState(value: object): boolean {
   if (isSandboxBox(value) || isSandboxDate(value)) return false;
   return (
     descriptorObjects.has(value) &&
-    (isFloat32Array(value)
-      ? float32Properties(value).map(([, descriptor]) => descriptor)
+    (isNumericTypedArray(value)
+      ? typedArrayProperties(value).map(([, descriptor]) => descriptor)
       : Object.values(Object.getOwnPropertyDescriptors(value))).some(
       (descriptor) => !descriptor.enumerable || !descriptor.configurable || !descriptor.writable
     )

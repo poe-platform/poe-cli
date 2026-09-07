@@ -12,7 +12,7 @@ import { isSandboxDate } from "../date.js";
 import { createSandboxBox } from "../boxed.js";
 import { createObjectGlobal, hasOwnSandboxProperty } from "./object.js";
 import { isGuestHostObject } from "../host-capabilities.js";
-import { isFloat32Array, isFloat32Index } from "../float32.js";
+import { isNumericTypedArray, isTypedArrayIndex } from "../typed-array.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
@@ -787,7 +787,7 @@ export function defineDataProperty(
   context?: SandboxCallContext
 ): void | Promise<void> {
   budget.visitNode();
-  if (isFloat32Array(target) && typeof key !== "symbol" && isFloat32Index(String(key)) && "value" in descriptor) {
+  if (isNumericTypedArray(target) && typeof key !== "symbol" && isTypedArrayIndex(String(key)) && "value" in descriptor) {
     const { value, ...attributes } = descriptor;
     // Validates index and descriptor restrictions without writing an element.
     Object.defineProperty(target, key, attributes);

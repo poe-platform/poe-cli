@@ -1,6 +1,8 @@
 import { createConsoleJsonGlobals } from "./globals/console-json.js";
 import { createCollectionGlobals } from "./globals/collections.js";
-import { createFloat32ArrayGlobal, createFloat32ArrayPrototypes } from "./globals/float32array.js";
+import { createNumericTypedArrayGlobal, createNumericTypedArrayPrototypes } from "./globals/numeric-typed-array.js";
+import { numericTypedArrayConstructors } from "./typed-array.js";
+import type { SandboxClosure } from "./values.js";
 import { createErrorGlobals, createErrorPrototypes } from "./globals/error.js";
 import { createMathGlobals } from "./globals/math.js";
 import { createRegexGlobals } from "./globals/regex.js";
@@ -18,12 +20,13 @@ import type { RunClock } from "../run.js";
 import { registerBuiltinIdentities } from "./intrinsics.js";
 
 export function createBuiltinBindings(
-  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean; float32Prototypes?: boolean }
+  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean; typedArrayPrototypes?: boolean }
 ) {
   const bindings = {
     ...createConsoleJsonGlobals(options),
     ...createCollectionGlobals(options),
-    Float32Array: createFloat32ArrayGlobal(options.budget, options.float32Prototypes !== false),
+    ...Object.fromEntries(Object.entries(numericTypedArrayConstructors).map(([name, Native]) =>
+      [name, createNumericTypedArrayGlobal(options.budget, options.typedArrayPrototypes !== false, Native)])) as Record<keyof typeof numericTypedArrayConstructors, SandboxClosure>,
     Date: createDateGlobal(options),
     Symbol: createSymbolGlobal(options.budget),
     BigInt: createBigIntGlobal(options.budget),
@@ -37,7 +40,7 @@ export function createBuiltinBindings(
     ...createRegexGlobals(options)
   };
   createFunctionPrototype(options.budget, options.functionHasInstance);
-  if (options.float32Prototypes !== false) createFloat32ArrayPrototypes(options.budget, bindings.Float32Array);
+  if (options.typedArrayPrototypes !== false) createNumericTypedArrayPrototypes(options.budget, bindings);
   if (options.errorPrototypes !== false) createErrorPrototypes(options.budget, bindings);
   createGeneratorPrototypes(options.budget);
   registerBuiltinIdentities(options.budget, bindings);

@@ -1,15 +1,18 @@
 import type { Budget } from "../budget.js";
 import {
-  checkFloat32Allocation,
-  float32Number,
-  float32Storage,
-  float32ViewLayouts,
-  isFloat32Array,
-  isFloat32Index
-} from "../float32.js";
+  checkTypedArrayAllocation,
+  typedArrayNumber,
+  typedArrayStorage,
+  typedArrayViewLayouts,
+  isNumericTypedArray,
+  isTypedArrayIndex,
+  numericTypedArrayConstructors,
+  type NumericTypedArray,
+  type NumericTypedArrayConstructor
+} from "../typed-array.js";
 import { createSandboxClosure, isSandboxClosure, measureSandboxData, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
-import { float32Prototypes } from "../float32-prototypes.js";
+import { typedArrayPrototypes } from "../typed-array-prototypes.js";
 import { getBoxedPrototype, getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
@@ -20,33 +23,33 @@ import { createDataCheckpoint } from "../data-checkpoint.js";
 import { createSandboxBox } from "../boxed.js";
 import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
 
-const constructors = new WeakSet<SandboxClosure>();
+const constructors = new WeakMap<SandboxClosure, NumericTypedArrayConstructor>();
 
-export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false): SandboxClosure {
+export function createNumericTypedArrayGlobal(budget: Budget, nativePrototype = false, Native: NumericTypedArrayConstructor = Float32Array): SandboxClosure {
   const constructor = createSandboxClosure({
     guest: nativePrototype,
     sandbox: true,
-    name: "Float32Array",
+    name: Native.name,
     length: 3,
-    properties: { BYTES_PER_ELEMENT: 4 },
+    properties: { BYTES_PER_ELEMENT: Native.BYTES_PER_ELEMENT },
     call: () => {
       throw new TypeError("Constructor Float32Array requires 'new'.");
     },
     construct: (args, context) => {
-      if (!nativePrototype) return allocateFloat32Array(args[0], budget);
+      if (!nativePrototype) return allocateTypedArray(args[0], budget, Native);
       return (async () => {
         const newTarget = context?.newTarget ?? constructor;
         const candidate = context?.getProperty === undefined
           ? getSandboxDataProperty(newTarget, "prototype", budget)
           : await context.getProperty(newTarget, "prototype");
-        const prototype = candidate !== null && typeof candidate === "object" ? candidate : float32Prototypes.get(budget)!;
+        const prototype = candidate !== null && typeof candidate === "object" ? candidate : typedArrayPrototypes.get(budget)!.get(Native)!;
         const release = retainValues(budget, () => [prototype, ...args]);
         try {
           if (isSandboxArrayBuffer(args[0])) {
             const buffer = args[0];
             const number = await sandboxNumber(args[1], budget, context);
             const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
-            if (!Number.isSafeInteger(offset) || offset < 0 || offset % 4 !== 0)
+            if (!Number.isSafeInteger(offset) || offset < 0 || offset % Native.BYTES_PER_ELEMENT !== 0)
               throw new RangeError("Invalid Float32Array buffer offset.");
             let length: number | undefined;
             if (args[2] !== undefined) {
@@ -58,34 +61,34 @@ export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false
             if (arrayBufferDetached(buffer)) throw new TypeError("Cannot construct Float32Array from a detached ArrayBuffer.");
             const bytes = arrayBufferLength(buffer);
             if (length === undefined) {
-              if ((arrayBufferOptions(buffer) === undefined && bytes % 4 !== 0) || offset > bytes)
+              if ((arrayBufferOptions(buffer) === undefined && bytes % Native.BYTES_PER_ELEMENT !== 0) || offset > bytes)
                 throw new RangeError("Invalid Float32Array buffer length.");
-              length = Math.floor((bytes - offset) / 4);
+              length = Math.floor((bytes - offset) / Native.BYTES_PER_ELEMENT);
             } else {
-              if (offset + length * 4 > bytes)
+              if (offset + length * Native.BYTES_PER_ELEMENT > bytes)
                 throw new RangeError("Invalid Float32Array view length.");
             }
             budget.allocateArrayLength(length);
-            const result = new Float32Array(buffer, offset, args[2] === undefined ? undefined : length);
+            const result = new Native(buffer, offset, args[2] === undefined ? undefined : length);
             if (arrayBufferOptions(buffer) !== undefined)
-              float32ViewLayouts.set(result, { byteOffset: offset, ...(args[2] === undefined ? {} : { length }) });
+              typedArrayViewLayouts.set(result, { byteOffset: offset, ...(args[2] === undefined ? {} : { length }) });
             setSandboxPrototype(result, prototype, budget);
             return result;
           }
-          const result = args[0] !== null && typeof args[0] === "object" && !isFloat32Array(args[0])
-            ? await allocateFloat32Input(args[0], budget, context)
-            : allocateFloat32Array(args[0], budget);
+          const result = args[0] !== null && typeof args[0] === "object" && !isNumericTypedArray(args[0])
+            ? await allocateTypedArrayInput(args[0], budget, Native, context)
+            : allocateTypedArray(args[0], budget, Native);
           setSandboxPrototype(result, prototype, budget);
           return result;
         } finally { release(); }
       })();
     }
   });
-  constructors.add(constructor);
+  constructors.set(constructor, Native);
   return constructor;
 }
 
-async function allocateFloat32Input(source: SandboxValue, budget: Budget, context?: SandboxCallContext): Promise<Float32Array> {
+async function allocateTypedArrayInput(source: SandboxValue, budget: Budget, Native: NumericTypedArrayConstructor, context?: SandboxCallContext): Promise<NumericTypedArray> {
   const callerContext = context;
   const bridge: SandboxCallContext = {
     ...callerContext, stack: callerContext?.stack ?? [], thisValue: undefined,
@@ -100,7 +103,7 @@ async function allocateFloat32Input(source: SandboxValue, budget: Budget, contex
   const values: SandboxValue[] = [];
   let iterator: SandboxIterator | undefined;
   let current: SandboxValue;
-  let result: Float32Array | undefined;
+  let result: NumericTypedArray | undefined;
   const release = retainValues(budget, () => [source, values, iterator?.retainedValue, current, result]);
   const checkData = createDataCheckpoint(budget, bridge);
   try {
@@ -123,8 +126,8 @@ async function allocateFloat32Input(source: SandboxValue, budget: Budget, contex
       const number = await sandboxNumber(current, budget, bridge);
       length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
     }
-    checkFloat32Allocation(length, budget);
-    result = new Float32Array(length);
+    checkTypedArrayAllocation(length, budget, Native.BYTES_PER_ELEMENT);
+    result = new Native(length);
     checkData(result, 0, true);
     for (let index = 0; index < length; index++) {
       budget.visitNode();
@@ -135,31 +138,30 @@ async function allocateFloat32Input(source: SandboxValue, budget: Budget, contex
   } finally { release(); }
 }
 
-function allocateFloat32Array(source: SandboxValue, budget: Budget): Float32Array {
-      if (Array.isArray(source) || isFloat32Array(source)) {
-        const length = isFloat32Array(source) ? float32Storage(source).length : source.length;
-        checkFloat32Allocation(length, budget);
-        if (isFloat32Array(source)) return new Float32Array(source);
-        const result = new Float32Array(length);
+function allocateTypedArray(source: SandboxValue, budget: Budget, Native: NumericTypedArrayConstructor): NumericTypedArray {
+      if (Array.isArray(source) || isNumericTypedArray(source)) {
+        const length = isNumericTypedArray(source) ? typedArrayStorage(source).length : source.length;
+        checkTypedArrayAllocation(length, budget, Native.BYTES_PER_ELEMENT);
+        if (isNumericTypedArray(source)) return new Native(source);
+        const result = new Native(length);
         for (let index = 0; index < length; index += 1) {
           budget.visitNode();
           const descriptor = Object.getOwnPropertyDescriptor(source, index);
           if (descriptor !== undefined && !("value" in descriptor))
             throw new TypeError("Float32Array input accessors are not supported.");
-          result[index] = float32Number(descriptor?.value);
+          result[index] = typedArrayNumber(descriptor?.value);
         }
         return result;
       }
-      const number = float32Number(source);
+      const number = typedArrayNumber(source);
       const length = Number.isNaN(number) ? 0 : Math.trunc(number);
       if (length < 0 || !Number.isSafeInteger(length))
         throw new RangeError("Invalid typed array length.");
-      checkFloat32Allocation(length, budget);
-      return new Float32Array(length);
+      checkTypedArrayAllocation(length, budget, Native.BYTES_PER_ELEMENT);
+      return new Native(length);
 }
 
-export function createFloat32ArrayPrototypes(budget: Budget, constructor: SandboxClosure): void {
-  const prototype = Object.create(null) as SandboxObject;
+export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Record<keyof typeof numericTypedArrayConstructors, SandboxClosure>): void {
   const shared = Object.create(null) as SandboxObject;
   const abstractCall = () => { throw new TypeError("Abstract TypedArray constructor cannot be called."); };
   const typedArray = createSandboxClosure({ guest: true, sandbox: true, name: "TypedArray", length: 0,
@@ -218,7 +220,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
             length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
           }
           result = await invokeBuiltinClosure(target, [length], budget, context, undefined, true);
-          if (!isFloat32Array(result) || float32Storage(result).length < length)
+          if (!isNumericTypedArray(result) || typedArrayStorage(result).length < length)
             throw new TypeError("TypedArray.from constructor must return sufficient typed storage.");
           checkData(result, 0, true);
           for (let index = 0; index < length; index++) {
@@ -244,7 +246,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
         const release = retainValues(budget, () => [target, result, ...args]);
         try {
           result = await invokeBuiltinClosure(target, [args.length], budget, context, undefined, true);
-          if (!isFloat32Array(result) || float32Storage(result).length < args.length)
+          if (!isNumericTypedArray(result) || typedArrayStorage(result).length < args.length)
             throw new TypeError("TypedArray.of constructor must return sufficient typed storage.");
           for (let index = 0; index < args.length; index++) {
             budget.visitNode();
@@ -255,17 +257,25 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
       }
     })
   });
-  Object.defineProperties(materializeFunctionProperties(constructor), {
-    prototype: { value: prototype, writable: false },
-    BYTES_PER_ELEMENT: { value: 4, writable: false, enumerable: false, configurable: false }
-  });
-  Object.defineProperties(prototype, {
-    constructor: { value: constructor, writable: true, configurable: true },
-    BYTES_PER_ELEMENT: { value: 4 }
-  });
+  const prototypes = new Map<NumericTypedArrayConstructor, SandboxObject>();
+  for (const [name, Native] of Object.entries(numericTypedArrayConstructors)) {
+    const constructor = bindings[name as keyof typeof bindings];
+    const prototype = Object.create(null) as SandboxObject;
+    Object.defineProperties(materializeFunctionProperties(constructor), {
+      prototype: { value: prototype, writable: false },
+      BYTES_PER_ELEMENT: { value: Native.BYTES_PER_ELEMENT, writable: false, enumerable: false, configurable: false }
+    });
+    Object.defineProperties(prototype, {
+      constructor: { value: constructor, writable: true, configurable: true },
+      BYTES_PER_ELEMENT: { value: Native.BYTES_PER_ELEMENT }
+    });
+    setSandboxPrototype(constructor, typedArray);
+    setSandboxPrototype(prototype, shared);
+    prototypes.set(Native, prototype);
+    registerIntrinsicFunction(budget, constructor);
+    registerIntrinsicObject(budget, prototype);
+  }
   Object.defineProperty(shared, "constructor", { value: typedArray, writable: true, configurable: true });
-  setSandboxPrototype(constructor, typedArray);
-  setSandboxPrototype(prototype, shared);
   setSandboxPrototype(shared, getSandboxPrototype(Object.create(null), budget));
   const getters: SandboxClosure[] = [];
   const species = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.species]", length: 0,
@@ -277,24 +287,24 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
   for (const key of ["length", "byteLength", "byteOffset", "buffer"] as const) {
     const getter = createSandboxClosure({ guest: true, sandbox: true, name: `get ${key}`, length: 0,
       call: (_args, context) => {
-        if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
-        const storage = float32Storage(context.thisValue);
-        return key === "byteLength" ? storage.length * 4 : storage[key];
+        if (!isNumericTypedArray(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
+        const storage = typedArrayStorage(context.thisValue);
+        return key === "byteLength" ? storage.length * storage.elementSize : storage[key];
       }
     });
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
   for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "with", "reduce", "reduceRight", "map", "filter", "toLocaleString"])
-    Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
+    Object.defineProperty(shared, key, { value: getTypedArrayMember(new Float32Array(0), key, budget, bindings), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
   Object.defineProperty(shared, "join", { writable: true, configurable: true,
     value: createSandboxClosure({ guest: true, sandbox: true, name: "join", length: 1,
       call: async (args, context) => {
-        if (!isFloat32Array(context?.thisValue)) throw new TypeError("TypedArray join requires a typed array receiver.");
+        if (!isNumericTypedArray(context?.thisValue)) throw new TypeError("TypedArray join requires a typed array receiver.");
         const receiver = context.thisValue;
-        const length = float32Storage(receiver, true).length;
+        const length = typedArrayStorage(receiver, true).length;
         let separator = ",";
         let text = "";
         const release = retainValues(budget, () => [receiver, separator, text, ...args]);
@@ -311,39 +321,37 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     })
   });
   const tagGetter = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.toStringTag]", length: 0,
-    call: (_args, context) => isFloat32Array(context?.thisValue) ? "Float32Array" : undefined });
+    call: (_args, context) => isNumericTypedArray(context?.thisValue) ? typedArrayStorage(context.thisValue).Native.name : undefined });
   getters.push(tagGetter);
   Object.defineProperty(shared, Symbol.toStringTag, { get: accessorAdapter(tagGetter, "get"), configurable: true });
   for (const key of ["values", "keys", "entries"] as const) {
     const method = getSandboxDataProperty(arrayPrototype, key, budget) as SandboxClosure;
     const closure = createSandboxClosure({ guest: true, sandbox: true, name: key, length: 0,
       call: (args, context) => {
-        if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
-        float32Storage(context.thisValue, true);
+        if (!isNumericTypedArray(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
+        typedArrayStorage(context.thisValue, true);
         return invokeBuiltinClosure(method, args, budget, context, context.thisValue);
       }
     });
     Object.defineProperty(shared, key, { value: closure, writable: true, configurable: true });
     if (key === "values") Object.defineProperty(shared, Symbol.iterator, { value: closure, writable: true, configurable: true });
   }
-  float32Prototypes.set(budget, prototype);
-  registerBuiltinIdentities(budget, { Float32Array: constructor, "%TypedArray%": typedArray });
-  registerIntrinsicFunction(budget, constructor);
+  typedArrayPrototypes.set(budget, prototypes);
+  registerBuiltinIdentities(budget, { ...bindings, "%TypedArray%": typedArray });
   registerIntrinsicFunction(budget, typedArray);
-  registerIntrinsicObject(budget, prototype);
   registerIntrinsicObject(budget, shared);
   for (const getter of getters) registerIntrinsicFunction(budget, getter);
 }
 
-export function isFloat32ArrayConstructor(value: unknown): boolean {
-  return typeof value === "object" && value !== null && constructors.has(value as SandboxClosure);
+export function numericTypedArrayConstructor(value: unknown): NumericTypedArrayConstructor | undefined {
+  return typeof value === "object" && value !== null ? constructors.get(value as SandboxClosure) : undefined;
 }
 
-export function getFloat32Member(
-  value: Float32Array,
+export function getTypedArrayMember(
+  value: NumericTypedArray,
   property: string | number,
   budget: Budget,
-  defaultConstructor?: SandboxClosure
+  bindings?: Record<keyof typeof numericTypedArrayConstructors, SandboxClosure>
 ): SandboxValue {
   const key = String(property);
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -351,12 +359,12 @@ export function getFloat32Member(
     if (!("value" in descriptor)) throw new TypeError("Float32Array accessors are not supported.");
     return descriptor.value;
   }
-  if (float32Prototypes.has(budget)) return undefined;
-  const storage = float32Storage(value);
+  if (typedArrayPrototypes.has(budget)) return undefined;
+  const storage = typedArrayStorage(value);
   if (key === "length") return storage.length;
-  if (key === "byteLength") return storage.length * 4;
+  if (key === "byteLength") return storage.length * storage.elementSize;
   if (key === "byteOffset") return storage.byteOffset;
-  if (key === "BYTES_PER_ELEMENT") return 4;
+  if (key === "BYTES_PER_ELEMENT") return storage.elementSize;
   if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "with", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
   return createSandboxClosure({
@@ -368,15 +376,16 @@ export function getFloat32Member(
       if ((key === "sort" || key === "toSorted") && args[0] !== undefined && !isSandboxClosure(args[0]))
         throw new TypeError("TypedArray sort comparator must be callable.");
       const receiver = context?.thisValue;
-      if (!isFloat32Array(receiver))
+      if (!isNumericTypedArray(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "sort" || key === "toSorted" || key === "with" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "toReversed" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const storage = typedArrayStorage(receiver, key === "sort" || key === "toSorted" || key === "with" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "toReversed" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const defaultConstructor = bindings?.[storage.Native.name as keyof typeof bindings];
       if (key === "toReversed") {
-        let result: Float32Array | undefined;
+        let result: NumericTypedArray | undefined;
         const release = retainValues(budget, () => [receiver, result, ...args]);
         try {
-          checkFloat32Allocation(storage.length, budget);
-          result = new Float32Array(storage.length);
+          checkTypedArrayAllocation(storage.length, budget, storage.elementSize);
+          result = new storage.Native(storage.length);
           createDataCheckpoint(budget, context)(result, 0, true);
           for (let index = 0; index < storage.length; index++) {
             budget.visitNode();
@@ -388,14 +397,14 @@ export function getFloat32Member(
       if (key === "reverse") {
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
-          const bytes = new Uint8Array(storage.buffer, storage.byteOffset, storage.length * 4);
+          const bytes = new Uint8Array(storage.buffer, storage.byteOffset, storage.length * storage.elementSize);
           for (let lower = 0; lower < Math.floor(storage.length / 2); lower++) {
             const upper = storage.length - lower - 1;
-            for (let offset = 0; offset < 4; offset++) {
+            for (let offset = 0; offset < storage.elementSize; offset++) {
               budget.visitNode();
-              const saved = bytes[lower * 4 + offset];
-              bytes[lower * 4 + offset] = bytes[upper * 4 + offset];
-              bytes[upper * 4 + offset] = saved;
+              const saved = bytes[lower * storage.elementSize + offset];
+              bytes[lower * storage.elementSize + offset] = bytes[upper * storage.elementSize + offset];
+              bytes[upper * storage.elementSize + offset] = saved;
             }
           }
           return receiver;
@@ -415,22 +424,22 @@ export function getFloat32Member(
         const comparator = args[0] as SandboxClosure | undefined;
         if (key === "sort" && storage.length < 2) return receiver;
         return (async () => {
-          let items: Float32Array | undefined;
-          let scratch: Float32Array | undefined;
+          let items: NumericTypedArray | undefined;
+          let scratch: NumericTypedArray | undefined;
           let comparisonResult: SandboxValue;
           const release = retainValues(budget, () => [receiver, items, scratch, comparisonResult, ...args]);
           const checkData = createDataCheckpoint(budget, bridge);
           try {
-            checkFloat32Allocation(storage.length, budget);
-            items = new Float32Array(storage.length);
+            checkTypedArrayAllocation(storage.length, budget, storage.elementSize);
+            items = new storage.Native(storage.length);
             checkData(items, 0, true);
             for (let index = 0; index < storage.length; index++) {
               budget.visitNode();
               items[index] = receiver[index]!;
             }
             if (storage.length < 2) return items;
-            checkFloat32Allocation(storage.length, budget);
-            scratch = new Float32Array(storage.length);
+            checkTypedArrayAllocation(storage.length, budget, storage.elementSize);
+            scratch = new storage.Native(storage.length);
             checkData(scratch, 0, true);
             for (let width = 1; width < storage.length; width *= 2) {
               for (let start = 0; start < storage.length; start += width * 2) {
@@ -458,7 +467,7 @@ export function getFloat32Member(
                   scratch[output] = takeLeft ? items[left++]! : items[right++]!;
                 }
               }
-              const previous: Float32Array = items;
+              const previous: NumericTypedArray = items;
               items = scratch;
               scratch = previous;
             }
@@ -562,17 +571,17 @@ export function getFloat32Member(
       }
       if (key === "with") {
         return (async () => {
-          let result: Float32Array | undefined;
+          let result: NumericTypedArray | undefined;
           const release = retainValues(budget, () => [receiver, result, ...args]);
           try {
             const number = await sandboxNumber(args[0], budget, bridge);
             const relative = Number.isNaN(number) ? 0 : Math.trunc(number);
             const index = relative < 0 ? storage.length + relative : relative;
             const replacement = await sandboxNumber(args[1], budget, bridge);
-            if (index < 0 || index >= float32Storage(receiver).length)
+            if (index < 0 || index >= typedArrayStorage(receiver).length)
               throw new RangeError("Float32Array#with index is out of bounds.");
-            checkFloat32Allocation(storage.length, budget);
-            result = new Float32Array(storage.length);
+            checkTypedArrayAllocation(storage.length, budget, storage.elementSize);
+            result = new storage.Native(storage.length);
             createDataCheckpoint(budget, bridge)(result, 0, true);
             for (let offset = 0; offset < storage.length; offset++) {
               budget.visitNode();
@@ -603,14 +612,14 @@ export function getFloat32Member(
               : relativeIndex(await sandboxNumber(args[2], budget, bridge), storage.length);
             let count = Math.min(end - start, storage.length - target);
             if (count > 0) {
-              const current = float32Storage(receiver, true);
+              const current = typedArrayStorage(receiver, true);
               count = Math.min(count, current.length - start, current.length - target);
               if (count > 0) {
-                const bytes = new Uint8Array(current.buffer, current.byteOffset, current.length * 4);
+                const bytes = new Uint8Array(current.buffer, current.byteOffset, current.length * storage.elementSize);
                 const direction = start < target && target < start + count ? -1 : 1;
-                let from = start * 4 + (direction < 0 ? count * 4 - 1 : 0);
-                let to = target * 4 + (direction < 0 ? count * 4 - 1 : 0);
-                for (let remaining = count * 4; remaining > 0; remaining--) {
+                let from = start * storage.elementSize + (direction < 0 ? count * storage.elementSize - 1 : 0);
+                let to = target * storage.elementSize + (direction < 0 ? count * storage.elementSize - 1 : 0);
+                for (let remaining = count * storage.elementSize; remaining > 0; remaining--) {
                   budget.visitNode();
                   bytes[to] = bytes[from];
                   from += direction;
@@ -630,7 +639,7 @@ export function getFloat32Member(
             const start = relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
             const end = args[2] === undefined ? storage.length
               : relativeIndex(await sandboxNumber(args[2], budget, bridge), storage.length);
-            const current = float32Storage(receiver, true);
+            const current = typedArrayStorage(receiver, true);
             for (let index = start; index < Math.min(end, current.length); index++) {
               budget.visitNode();
               receiver[index] = value;
@@ -649,10 +658,10 @@ export function getFloat32Member(
             const number = await sandboxNumber(offsetValue, budget, bridge);
             const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
             if (offset < 0) throw new RangeError("Float32Array#set offset is out of bounds.");
-            const targetStorage = float32Storage(receiver, true);
+            const targetStorage = typedArrayStorage(receiver, true);
             if (source === null || source === undefined) throw new TypeError("Float32Array#set requires a non-null source.");
             let length: number;
-            if (isFloat32Array(source)) length = float32Storage(source, true).length;
+            if (isNumericTypedArray(source)) length = typedArrayStorage(source, true).length;
             else {
               sourceObject = typeof source === "object" ? source : createSandboxBox(source);
               current = await bridge.getProperty!(sourceObject, "length");
@@ -660,7 +669,7 @@ export function getFloat32Member(
               length = Number.isNaN(size) || size <= 0 ? 0 : Math.min(Math.trunc(size), Number.MAX_SAFE_INTEGER);
             }
             if (offset + length > targetStorage.length) throw new RangeError("Float32Array#set source is out of bounds.");
-            if (isFloat32Array(source)) Float32Array.prototype.set.call(receiver, source, offset);
+            if (isNumericTypedArray(source)) Float32Array.prototype.set.call(receiver, source, offset);
             else for (let index = 0; index < length; index++) {
               budget.visitNode();
               current = await bridge.getProperty!(sourceObject, String(index));
@@ -697,8 +706,8 @@ export function getFloat32Member(
             }
             length = kept.length;
           }
-          const layout = float32ViewLayouts.get(receiver);
-          const offset = (layout?.byteOffset ?? storage.byteOffset) + start * 4;
+          const layout = typedArrayViewLayouts.get(receiver);
+          const offset = (layout?.byteOffset ?? storage.byteOffset) + start * storage.elementSize;
           const tracking = layout !== undefined && layout.length === undefined && args[1] === undefined;
           if (defaultConstructor !== undefined) {
             candidate = await bridge.getProperty!(receiver, "constructor");
@@ -715,24 +724,24 @@ export function getFloat32Member(
             const values: SandboxValue[] = key !== "subarray" ? [length]
               : [storage.buffer, offset, tracking ? undefined : length];
             result = await invokeBuiltinClosure(candidate as SandboxClosure, values, budget, bridge, undefined, true);
-            if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
-            const target = float32Storage(result, key !== "subarray");
+            if (!isNumericTypedArray(result)) throw new TypeError("TypedArray species must return typed storage.");
+            const target = typedArrayStorage(result, key !== "subarray");
             if (key !== "subarray" && target.length < length)
               throw new TypeError("TypedArray species returned insufficient storage.");
           }
           if (key === "subarray") {
             if (result === undefined) {
-              result = new Float32Array(storage.buffer, offset, tracking ? undefined : length);
+              result = new storage.Native(storage.buffer, offset, tracking ? undefined : length);
               if (arrayBufferOptions(storage.buffer) !== undefined)
-                float32ViewLayouts.set(result, { byteOffset: offset, ...(tracking ? {} : { length }) });
+                typedArrayViewLayouts.set(result, { byteOffset: offset, ...(tracking ? {} : { length }) });
             }
             return result;
           }
           if (result === undefined) {
-            checkFloat32Allocation(length, budget);
-            result = new Float32Array(length);
+            checkTypedArrayAllocation(length, budget, storage.elementSize);
+            result = new storage.Native(length);
           }
-          if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
+          if (!isNumericTypedArray(result)) throw new TypeError("TypedArray species must return typed storage.");
           if (key === "filter") {
             for (let index = 0; index < length; index++) {
               budget.visitNode();
@@ -749,12 +758,17 @@ export function getFloat32Member(
             return result;
           }
           if (length > 0) {
-            const current = float32Storage(receiver, true);
-            const target = float32Storage(result, true);
+            const current = typedArrayStorage(receiver, true);
+            const target = typedArrayStorage(result, true);
             const count = Math.min(length, Math.max(current.length - start, 0));
-            if (count > 0) {
-              const sourceBytes = new Uint8Array(current.buffer, current.byteOffset + start * 4, count * 4);
-              const targetBytes = new Uint8Array(target.buffer, target.byteOffset, count * 4);
+            if (count > 0 && current.Native !== target.Native) {
+              for (let index = 0; index < count; index++) {
+                budget.visitNode();
+                result[index] = receiver[start + index]!;
+              }
+            } else if (count > 0) {
+              const sourceBytes = new Uint8Array(current.buffer, current.byteOffset + start * storage.elementSize, count * storage.elementSize);
+              const targetBytes = new Uint8Array(target.buffer, target.byteOffset, count * storage.elementSize);
               if (current.buffer === target.buffer && targetBytes.byteOffset > sourceBytes.byteOffset &&
                   targetBytes.byteOffset < sourceBytes.byteOffset + sourceBytes.length) {
                 for (let index = 0; index < sourceBytes.length; index++) {
@@ -771,15 +785,15 @@ export function getFloat32Member(
   });
 }
 
-export function setFloat32Member(
-  value: Float32Array,
+export function setTypedArrayMember(
+  value: NumericTypedArray,
   property: PropertyKey,
   entry: SandboxValue,
   budget: Budget,
   context?: SandboxCallContext
 ): void | Promise<void> {
   const key = typeof property === "symbol" ? property : String(property);
-  if (typeof key !== "symbol" && isFloat32Index(key)) {
+  if (typeof key !== "symbol" && isTypedArrayIndex(key)) {
     return (async () => {
       const release = retainValues(budget, () => [value, entry]);
       try {
@@ -792,7 +806,7 @@ export function setFloat32Member(
   const inherited = descriptor ?? getSandboxPropertyDescriptor(value, key, budget);
   if (
     descriptor === undefined && typeof key === "string" &&
-    !float32Prototypes.has(budget) &&
+    !typedArrayPrototypes.has(budget) &&
     ["length", "byteLength", "byteOffset", "buffer", "BYTES_PER_ELEMENT"].includes(key)
   )
     throw new TypeError(`Cannot assign to read only property '${String(key)}'.`);

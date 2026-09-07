@@ -10,8 +10,8 @@ import { isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshot
 import { isSandboxRegExpIterator, regexpIteratorState, restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { hasGuestObjectState, hasNullObjectPrototype, setSandboxPrototype } from "../interp/object-model.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
-import { float32DataProperties, float32Storage, isFloat32Array } from "../interp/float32.js";
-import { decodeFloat32Storage, encodeFloat32Layout, type Float32Data } from "./float32array.js";
+import { typedArrayDataProperties, typedArrayStorage, isNumericTypedArray } from "../interp/typed-array.js";
+import { decodeTypedArrayStorage, encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
 import { arrayBufferDataProperties, isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import { decodeArrayBufferStorage, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate, restoreDateTime, serializedDateTime } from "../interp/date.js";
@@ -63,7 +63,7 @@ type DataNode =
   | { kind: "boxed"; value: Atom; properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> }
   | { kind: "collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod; collection: Atom; index: number; exhausted: boolean; properties: Properties; extensible: boolean }
   | { kind: "date"; time: number | null; properties?: Properties; symbolProperties?: Array<SerializedSymbolProperty<Atom>>; extensible?: boolean; nullPrototype?: true }
-  | (Float32Data<Atom> & { properties: Properties; extensible: boolean })
+  | (TypedArrayData<Atom> & { properties: Properties; extensible: boolean })
   | (ArrayBufferData<Atom> & { properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> })
   | { kind: "capability"; id: string; properties: Atom }
   | {
@@ -186,11 +186,11 @@ export function encodeReplayData(
       let symbolIndex = 0;
       const symbolEntries = serializeSymbolProperties(entry, value => encode(value as SandboxValue, depth + 1, [...path, { symbol: Math.floor(symbolIndex++ / 2) }]));
       nodes[id] = { ...storage, properties, extensible: Object.isExtensible(entry), symbolEntries };
-    } else if (isFloat32Array(entry)) {
-      const backing = float32Storage(entry);
-      const storage: Float32Data<Atom> = { kind: "float32array", ...encodeFloat32Layout(entry), buffer: child(backing.buffer, "<buffer>") };
+    } else if (isNumericTypedArray(entry)) {
+      const backing = typedArrayStorage(entry);
+      const storage: TypedArrayData<Atom> = { ...encodeTypedArrayLayout(entry), buffer: child(backing.buffer, "<buffer>") };
       const properties: Properties = Object.create(null);
-      for (const [key, descriptor] of float32DataProperties(entry)) {
+      for (const [key, descriptor] of typedArrayDataProperties(entry)) {
         properties[key] = {
           value: child(descriptor.value, key),
           configurable: descriptor.configurable === true,
@@ -448,10 +448,10 @@ export function decodeReplayData(
         });
         return result;
       }
-      if (kind === "float32array") {
+      if (kind === "float32array" || kind === "typedarray") {
         if (typeof node.extensible !== "boolean")
           throw new TypeError("Invalid Float32Array extensibility.");
-        const result = decodeFloat32Storage(node, child, compilation.owner?.budget);
+        const result = decodeTypedArrayStorage(node, child, compilation.owner?.budget);
         restored.set(id, result);
         defineProperties(result, record(own(node, "properties")), child);
         if (!node.extensible) Object.preventExtensions(result);

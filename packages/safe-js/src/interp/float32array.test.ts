@@ -399,8 +399,8 @@ describe("Float32Array", () => {
     }
   });
 
-  it("keeps generic native functions and other native typed-array kinds rejected", () => {
-    expect(() => deepCopyToSandbox(new Uint8Array([1]))).toThrow(/Unsupported sandbox value/);
+  it("keeps generic native functions and unsupported typed-array kinds rejected", () => {
+    expect(deepCopyToSandbox(new Uint8Array([1]))).toEqual(new Uint8Array([1]));
     expect(() => deepCopyToSandbox(new Float64Array([1]))).toThrow(/Unsupported sandbox value/);
     const values = Object.assign(new Float32Array([1]), { callback: () => 1 });
     expect(() => deepCopyToSandbox(values)).toThrow(/Unsupported sandbox value/);

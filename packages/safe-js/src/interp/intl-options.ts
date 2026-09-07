@@ -1,6 +1,6 @@
 import type { Budget } from "./budget.js";
 import { createSandboxBox } from "./boxed.js";
-import { isFloat32Array } from "./float32.js";
+import { isNumericTypedArray } from "./typed-array.js";
 import { getSandboxPropertyDescriptor } from "./object-model.js";
 import { readPropertyDescriptor } from "./accessors.js";
 import { retainValues } from "./resources.js";
@@ -39,7 +39,7 @@ export async function canonicalizeGuestLocales(input: SandboxValue, budget: Budg
       budget.visitNode();
       const key = String(index);
       if (getSandboxPropertyDescriptor(list, key, budget) === undefined &&
-          !(isFloat32Array(list) && Object.hasOwn(list, key))) continue;
+          !(isNumericTypedArray(list) && Object.hasOwn(list, key))) continue;
       const value = await readIntlProperty(list, key, budget, context);
       if (typeof value !== "string" && (typeof value !== "object" || value === null))
         return Reflect.apply(canonicalLocales, Intl, [[value]]);

@@ -12,8 +12,8 @@ import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState } from 
 import { getGeneratorOrigin } from "../interp/closure-origin.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
-import { float32Storage, isFloat32Array } from "../interp/float32.js";
-import { captureFloat32State, encodeFloat32Layout, type Float32Data } from "./float32array.js";
+import { typedArrayStorage, isNumericTypedArray, type NumericTypedArray } from "../interp/typed-array.js";
+import { captureTypedArrayState, encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
 import { isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import { captureArrayBufferState, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate } from "../interp/date.js";
@@ -90,7 +90,7 @@ export type SerializedHeapValue =
   | ({ kind: "regex-object"; source: string; flags: string; lastIndex: SerializedSnapshotValue } & RegexPropertyData<SerializedSnapshotValue>)
   | { kind: "collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod; collection: SerializedSnapshotValue; index: number; exhausted: boolean; entries: Record<string, SerializedSnapshotValue> }
   | SerializedDate<SerializedSnapshotValue>
-  | (Float32Data<SerializedReferenceValue> & { entries: Record<string, SerializedSnapshotValue>; state?: GuestObjectState<SerializedSnapshotValue> })
+  | (TypedArrayData<SerializedReferenceValue> & { entries: Record<string, SerializedSnapshotValue>; state?: GuestObjectState<SerializedSnapshotValue> })
   | SerializedArguments<SerializedSnapshotValue>
   | SerializedArray<SerializedSnapshotValue>
   | {
@@ -148,7 +148,7 @@ export type RuntimeSnapshotValue =
   | symbol
   | SandboxBox
   | Date
-  | Float32Array
+  | NumericTypedArray
   | ArrayBuffer
   | boolean
   | null
@@ -343,7 +343,7 @@ function serializeValue(
     }
     return { kind: "ref", id };
   }
-  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isFloat32Array(value) && !isSandboxArrayBuffer(value)) {
+  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isNumericTypedArray(value) && !isSandboxArrayBuffer(value)) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
   if (value === null || typeof value === "string" || typeof value === "boolean") {
@@ -448,7 +448,7 @@ function serializeValue(
     return { kind: "regex", source: value.source, flags: value.flags, lastIndex: value.lastIndex };
   }
 
-  if (isSandboxArrayBuffer(value) || isSandboxBox(value) || isSandboxDate(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxRegExpIterator(value) || isSandboxCollectionIterator(value) || isFloat32Array(value)) {
+  if (isSandboxArrayBuffer(value) || isSandboxBox(value) || isSandboxDate(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxRegExpIterator(value) || isSandboxCollectionIterator(value) || isNumericTypedArray(value)) {
     const reference = serializeHeapReference(value, path, state);
     if (reference === undefined) {
       throw new TypeError(`Cannot serialize collection without a heap reference at ${path}.`);
@@ -487,7 +487,7 @@ function serializeHeapReference(
     | SandboxCollectionIterator
     | SandboxRegExpIterator
     | Date
-    | Float32Array
+    | NumericTypedArray
     | ArrayBuffer,
   path: string,
   state: SerializationState
@@ -530,11 +530,11 @@ function serializeHeapReference(
     } else if (isSandboxArrayBuffer(value)) {
       state.heap[String(id)] = { ...encodeArrayBufferStorage(value, id, state.float32Buffers, id => ({ kind: "ref" as const, id })),
         state: captureArrayBufferState(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<buffer>`, state)) };
-    } else if (isFloat32Array(value)) {
-      const storage = float32Storage(value);
-      state.heap[String(id)] = { kind: "float32array", ...encodeFloat32Layout(value),
+    } else if (isNumericTypedArray(value)) {
+      const storage = typedArrayStorage(value);
+      state.heap[String(id)] = { ...encodeTypedArrayLayout(value),
         buffer: serializeHeapReference(storage.buffer, `${path}.buffer`, state)!, entries: {},
-        state: captureFloat32State(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<typed-array>`, state)) };
+        state: captureTypedArrayState(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<typed-array>`, state)) };
     } else if (isSandboxArguments(value)) {
       state.heap[String(id)] = serializeArguments(value, (entry, key) =>
         serializeValue(entry as RuntimeSnapshotValue, `${path}.${key}`, state)
@@ -688,7 +688,7 @@ function indexHeapContainers(input: SerializeInput): Pick<SerializationState, "h
         (typeof value.lastIndex === "number" && value.lastIndex < 0) || Object.is(value.lastIndex, -0))) ||
       isSandboxBox(value) ||
       isSandboxDate(value) ||
-      isFloat32Array(value) ||
+      isNumericTypedArray(value) ||
       isSandboxArrayBuffer(value) ||
       (Array.isArray(value) && requiresArrayEntries(value)) ||
       sandboxErrorTypes.has(value) ||
@@ -749,14 +749,14 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
-  if (isFloat32Array(value)) guestEntries.push(float32Storage(value).buffer);
-  const guest = isFloat32Array(value)
-    ? { kind: "float32array", state: captureFloat32State(value, entry => { guestEntries.push(entry); return null; }) }
+  if (isNumericTypedArray(value)) guestEntries.push(typedArrayStorage(value).buffer);
+  const guest = isNumericTypedArray(value)
+    ? { kind: "float32array", state: captureTypedArrayState(value, entry => { guestEntries.push(entry); return null; }) }
     : isSandboxArrayBuffer(value)
     ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
     : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
-    if (!isFloat32Array(value) && !isSandboxArrayBuffer(value)) guestValues.add(value);
+    if (!isNumericTypedArray(value) && !isSandboxArrayBuffer(value)) guestValues.add(value);
     for (const entry of guestEntries) {
       collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
       if (entry !== null && typeof entry === "object") {
@@ -769,7 +769,7 @@ function collectContainerStats(
   }
 
   if (!Array.isArray(value) && !isPlainObject(value) && !isSandboxDate(value) &&
-      !isFloat32Array(value) && !isSandboxMap(value) && !isSandboxCollectionIterator(value) &&
+      !isNumericTypedArray(value) && !isSandboxMap(value) && !isSandboxCollectionIterator(value) &&
       !isSandboxRegExpIterator(value) && !isSandboxSet(value)) {
     ancestors.delete(value);
     return;

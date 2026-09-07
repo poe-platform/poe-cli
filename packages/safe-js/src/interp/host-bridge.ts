@@ -7,12 +7,12 @@ import { SandboxError, type Budget, type CompileOwner } from "./budget.js";
 import { CompileScope } from "./regex/compile-guard.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import {
-  checkFloat32Allocation,
-  copyFloat32Storage,
-  float32DataProperties,
-  float32Storage,
-  isFloat32Array
-} from "./float32.js";
+  checkTypedArrayAllocation,
+  copyTypedArrayStorage,
+  typedArrayDataProperties,
+  typedArrayStorage,
+  isNumericTypedArray
+} from "./typed-array.js";
 import { createSubsetErrorValue } from "./exceptions.js";
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
 import {
@@ -1034,17 +1034,18 @@ export function copyHostValueToSandbox(
     return copy;
   }
 
-  if (isFloat32Array(value)) {
+  if (isNumericTypedArray(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
-    const capacity = arrayBufferOptions(float32Storage(value).buffer)?.maxByteLength;
+    const capacity = arrayBufferOptions(typedArrayStorage(value).buffer)?.maxByteLength;
     if (capacity !== undefined) budget.allocateArrayLength(capacity);
-    checkFloat32Allocation(Math.ceil(float32Storage(value).byteLength / 4), budget);
-    const copy = copyFloat32Storage(value, state);
+    const storage = typedArrayStorage(value);
+    checkTypedArrayAllocation(Math.ceil(storage.byteLength / storage.elementSize), budget, storage.elementSize);
+    const copy = copyTypedArrayStorage(value, state);
     state.seen.set(value, copy);
-    copyHostValueToSandbox(float32Storage(value).buffer, stackFrames,
+    copyHostValueToSandbox(typedArrayStorage(value).buffer, stackFrames,
       { ...options, capabilityPath: [...(options.capabilityPath ?? []), "buffer"] }, state, `${path}.buffer`);
-    for (const [key, descriptor] of float32DataProperties(value)) {
+    for (const [key, descriptor] of typedArrayDataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,
         value: copyHostValueToSandbox(

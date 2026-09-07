@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { float32DataProperties, float32Storage, float32ViewLayouts, isFloat32Array } from "./float32.js";
+import { typedArrayDataProperties, typedArrayStorage, typedArrayViewLayouts, isNumericTypedArray } from "./typed-array.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "./array-buffer.js";
 import { copyNativeDate, serializedDateTime } from "./date.js";
 import {
@@ -841,20 +841,20 @@ function normalize(value: unknown, seen: WeakSet<object>): unknown {
       return Object.assign(Object.create(null), { $type: "arraybuffer",
         bytes: normalize(Array.from(new Uint8Array(value)), seen), ...arrayBufferOptions(value), properties });
     }
-    if (isFloat32Array(value)) {
-      const storage = float32Storage(value);
+    if (isNumericTypedArray(value)) {
+      const storage = typedArrayStorage(value);
       const resizable = arrayBufferOptions(storage.buffer) !== undefined;
-      const layout = resizable ? float32ViewLayouts.get(value) : undefined;
+      const layout = resizable ? typedArrayViewLayouts.get(value) : undefined;
       if (resizable && layout === undefined)
         throw new TypeError("Resizable Float32Array host-call identity requires known view layout.");
       const properties = Object.create(null) as Record<string, unknown>;
-      for (const [key, descriptor] of float32DataProperties(value).sort(([left], [right]) =>
+      for (const [key, descriptor] of typedArrayDataProperties(value).sort(([left], [right]) =>
         left < right ? -1 : left > right ? 1 : 0
       )) {
         defineOwnDataProperty(properties, key, normalize(descriptor.value, seen));
       }
       return Object.assign(Object.create(null), {
-        $type: "float32array",
+        $type: storage.Native === Float32Array ? "float32array" : storage.Native.name,
         bytes: normalize(Array.from(new Uint8Array(storage.buffer)), seen),
         byteOffset: storage.byteOffset,
         length: storage.length,
