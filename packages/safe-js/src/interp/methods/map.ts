@@ -127,6 +127,6 @@ export async function callMapMethod(
     case "keys":
     case "values":
     case "entries":
-      return createSandboxCollectionIterator(target, methodName);
+      return createSandboxCollectionIterator(target, methodName, options.budget);
   }
 }

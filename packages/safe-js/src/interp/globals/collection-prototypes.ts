@@ -1,7 +1,9 @@
 import type { Budget } from "../budget.js";
 import { accessorAdapter } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
-import { installCollectionPrototype, materializeFunctionProperties, registerIntrinsicFunction } from "../object-model.js";
+import { installCollectionPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { collectionIteratorPrototypes, collectionIteratorState, isSandboxCollectionIterator, nextCollectionIterator } from "../collection-iterator.js";
+import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { callMapMethod, mapMethodNames } from "../methods/map.js";
 import { callSetMethod, setMethodNames } from "../methods/set.js";
 import { createSandboxClosure, isSandboxMap, isSandboxSet, type SandboxClosure, type SandboxObject } from "../values.js";
@@ -59,5 +61,30 @@ export function installCollectionPrototypes(budget: Budget, mapConstructor: Sand
     Object.defineProperty(prototype,Symbol.iterator,{value:iterator,writable:true,configurable:true});
     installCollectionPrototype(budget,name,prototype,constructor);
     for (const method of new Set([...Object.values(methods),size,species])) registerIntrinsicFunction(budget,method);
+  }
+}
+
+export function installCollectionIteratorPrototypes(budget: Budget): void {
+  for (const name of ["Map", "Set"] as const) {
+    const iteratorPrototype: SandboxObject = Object.create(null);
+    const kind = name === "Map" ? "map" : "set";
+    const next = createSandboxClosure({ guest: true, sandbox: true, name: "next", length: 0,
+      call: (_args, context) => {
+        const receiver = context?.thisValue;
+        if (!isSandboxCollectionIterator(receiver) || collectionIteratorState(receiver).collectionKind !== kind)
+          throw new TypeError("Iterator next requires a matching collection iterator receiver.");
+        return nextCollectionIterator(receiver, budget);
+      }
+    });
+    setSandboxPrototype(iteratorPrototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
+    Object.defineProperties(iteratorPrototype, {
+      next: { value: next, writable: true, configurable: true },
+      [Symbol.toStringTag]: { value: `${name} Iterator`, configurable: true }
+    });
+    const installed = collectionIteratorPrototypes.get(budget) ?? {};
+    installed[kind] = iteratorPrototype;
+    collectionIteratorPrototypes.set(budget, installed);
+    registerBuiltinIdentities(budget, { [`%${name}IteratorPrototype%`]: iteratorPrototype });
+    registerIntrinsicObject(budget, iteratorPrototype);
   }
 }

@@ -2804,7 +2804,7 @@ function getPropertyValue(
   if (isSandboxSet(target)) return getSandboxPrototype(target, context.budget) === null
     ? getSetMember(target, property, createSetMethodOptions(context)) : undefined;
   if (isSandboxCollectionIterator(target))
-    return getCollectionIteratorMember(target, property, context.budget);
+    return hasExplicitSandboxPrototype(target) ? undefined : getCollectionIteratorMember(target, property, context.budget);
   if (isSandboxGenerator(target)) return hasExplicitSandboxPrototype(target)
     ? undefined : getGeneratorMember(target, property, context.budget);
   if (isSandboxClosure(target)) return getClosureMemberValue(target, property, context);

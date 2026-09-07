@@ -11,7 +11,7 @@ import { templateOrigins, templateCookedArrays } from "../interp/template-object
 import { isSandboxBox } from "../interp/boxed.js";
 import { isRawJson } from "../interp/raw-json.js";
 import { isSandboxDate } from "../interp/date.js";
-import { isSandboxCollectionIterator } from "../interp/collection-iterator.js";
+import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
@@ -34,6 +34,8 @@ export type GuestObjectState<T> = {
 export type GuestHeapNode<T> =
   | { kind: "module-namespace"; entries: Array<[string,T]> }
   | { kind: "string-iterator"; input: T; index: number; state: GuestObjectState<T> }
+  | { kind: "guest-collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod;
+      collection: T; index: number; exhausted: boolean; state: GuestObjectState<T> }
   | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
@@ -67,6 +69,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   if (isSandboxStringIterator(value)) {
     const cursor = stringIteratorState(value);
     return { kind: "string-iterator", input: encode(cursor.input), index: cursor.index, state: captureObjectState(value, encode)! };
+  }
+  if (isSandboxCollectionIterator(value) && hasGuestObjectState(value)) {
+    const cursor = snapshotCollectionIterator(value);
+    return { kind: "guest-collection-iterator", collectionKind: cursor.collectionKind, method: cursor.method,
+      collection: encode(cursor.collection), index: cursor.index, exhausted: cursor.exhausted, state: captureObjectState(value, encode)! };
   }
   if (isRawJson(value)) return { kind: "raw-json", text: value.rawJSON };
   const intrinsic = getIntrinsicIdentity(value);

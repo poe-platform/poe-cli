@@ -97,7 +97,7 @@ export async function acquireSandboxIterator(
     // An installed guest prototype makes the absence of the method observable.
     // Only legacy callers without that prototype may use implicit built-ins.
     if (!asyncProtocol && (typeof value === "string" ? lookupTarget !== undefined
-      : (Array.isArray(value) || isSandboxBox(value) || isSandboxMap(value) || isSandboxSet(value)) &&
+      : (Array.isArray(value) || isSandboxBox(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxCollectionIterator(value)) &&
         (hasExplicitSandboxPrototype(value) || getSandboxPrototype(value, budget) !== null))) return undefined;
     if (!asyncProtocol) return getSandboxIterator(value, budget, context);
     if (isSandboxGenerator(value) && value.async && !hasExplicitSandboxPrototype(value))
@@ -373,6 +373,8 @@ export function getSandboxIterator(
       }
     };
   }
+  if (isSandboxCollectionIterator(value) && hasExplicitSandboxPrototype(value))
+    return context?.getProperty === undefined ? guestProtocolAdapter(value, budget ?? new Budget(), context, false) : undefined;
   if (isSandboxCollectionIterator(value))
     return { next: () => nextCollectionIterator(value, budget), snapshotIndex: () => 0,
       snapshot: () => ({ kind: "builtin", value, index: 0 }) };

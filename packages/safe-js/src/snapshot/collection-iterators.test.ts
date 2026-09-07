@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { Budget } from "../interp/budget.js";
 import { assertSandboxGraphDepth, assertSnapshotGraphDepth, MAX_DATA_DEPTH } from "../graph-depth.js";
-import { setSandboxPrototype } from "../interp/object-model.js";
+import { getSandboxPrototype, setSandboxPrototype } from "../interp/object-model.js";
 import { collectionIteratorState, createSandboxCollectionIterator, isSandboxCollectionIterator, nextCollectionIterator } from "../interp/collection-iterator.js";
 import { getSandboxIterator } from "../interp/iteration.js";
 import { cloneSandboxValue, createSandboxMap, createSandboxSet, isSandboxMap, type SandboxObject, type SandboxValue } from "../interp/values.js";
 import { decodeReplayData, encodeReplayData } from "./replay-data.js";
 import { restore } from "./restore.js";
-import { serialize } from "./serialize.js";
+import { serialize, type RuntimeSnapshotValue } from "./serialize.js";
 
 function roundTrip(graph: SandboxObject, format: "snapshot" | "replay" | "clone"): SandboxObject {
   if (format === "clone") return cloneSandboxValue(graph) as SandboxObject;
   if (format === "replay") return decodeReplayData(JSON.parse(JSON.stringify(encodeReplayData(graph)))) as SandboxObject;
   const source = "await task()";
-  const snapshot = serialize({ source, currentAstNodeId: 1, scopeChain: [{ id: "module", bindings: { graph } }], callStack: [], pendingPromises: [], moduleBindings: {} });
+  const snapshot = serialize({ source, currentAstNodeId: 1, scopeChain: [{ id: "module", bindings: { graph: graph as unknown as RuntimeSnapshotValue } }], callStack: [], pendingPromises: [], moduleBindings: {} });
   const binding = restore(JSON.parse(JSON.stringify(snapshot)), { source, budget: new Budget() }).currentScope.lookup("graph");
   expect(binding.found).toBe(true);
   if (!binding.found) throw new Error("Restored graph missing");
@@ -87,10 +87,16 @@ describe.each(["snapshot", "replay", "clone"] as const)("collection iterator %s 
     expect(nextCollectionIterator(graph.iterator).value).toBe(graph.shared);
   });
 
-  it("keeps the existing custom-prototype copy boundary", () => {
+  it("preserves custom prototypes in runtime snapshots but rejects data copies", () => {
     const iterator = createSandboxCollectionIterator(createSandboxSet([1]), "values");
     setSandboxPrototype(iterator, { tag: "custom" }, new Budget());
-    expect(() => roundTrip({ iterator }, format)).toThrow(/prototype|descriptor/);
+    if (format === "snapshot") {
+      const restored = roundTrip({ iterator }, format).iterator;
+      expect(getSandboxPrototype(restored as object)).toEqual({ tag: "custom" });
+      expect(isSandboxCollectionIterator(restored)).toBe(true);
+      if (!isSandboxCollectionIterator(restored)) throw new Error("Iterator brand lost");
+      expect(nextCollectionIterator(restored)).toEqual({ value: 1, done: false });
+    } else expect(() => roundTrip({ iterator }, format)).toThrow(/prototype|descriptor/);
   });
 });
 

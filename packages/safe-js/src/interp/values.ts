@@ -783,6 +783,7 @@ export function measureSandboxData(
       for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
         usage += key.length + 1;
         if ("value" in descriptor) visit(descriptor.value, depth + 1);
+        else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
       }
       return;
     }
@@ -1040,8 +1041,8 @@ function copyToSandbox(
   }
 
   if (isSandboxCollectionIterator(value)) {
-    if (hasGuestObjectState(value)) throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
     if (!cloneSandboxCollections) return value;
+    if (hasGuestObjectState(value)) throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
     const snapshot = snapshotCollectionIterator(value);

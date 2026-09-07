@@ -1,5 +1,8 @@
 import type { Budget } from "./budget.js";
-import type { SandboxMap, SandboxSet, SandboxValue } from "./values.js";
+import type { SandboxMap, SandboxSet, SandboxValue, SandboxObject } from "./values.js";
+import { setSandboxPrototype } from "./object-model.js";
+
+export const collectionIteratorPrototypes = new WeakMap<Budget, Partial<Record<"map" | "set", SandboxObject>>>();
 
 declare const collectionIteratorBrand: unique symbol;
 export type SandboxCollectionIterator = {
@@ -24,9 +27,13 @@ export function isSandboxCollectionIterator(value: unknown): value is SandboxCol
 
 export function createSandboxCollectionIterator(
   collection: SandboxMap | SandboxSet,
-  method: CollectionIterationMethod
+  method: CollectionIterationMethod,
+  budget?: Budget
 ): SandboxCollectionIterator {
-  return restoreSandboxCollectionIterator({ collection, collectionKind: collection.kind, method, index: 0, exhausted: false });
+  const iterator = restoreSandboxCollectionIterator({ collection, collectionKind: collection.kind, method, index: 0, exhausted: false });
+  const prototype = budget === undefined ? undefined : collectionIteratorPrototypes.get(budget)?.[collection.kind];
+  if (prototype !== undefined) setSandboxPrototype(iterator, prototype, budget);
+  return iterator;
 }
 
 // A registered placeholder lets snapshot readers resolve collection/iterator cycles.

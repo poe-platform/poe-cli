@@ -758,13 +758,20 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     return iterator;
   }
 
-  if (serialized.kind === "collection-iterator") {
+  if (serialized.kind === "collection-iterator" || serialized.kind === "guest-collection-iterator") {
     const iterator = restoreSandboxCollectionIterator({ collection: undefined, collectionKind: serialized.collectionKind, method: serialized.method, index: 0, exhausted: true });
     state.heapValueById.set(id, iterator);
     const collection = deserializeValue(serialized.collection, state);
     if (collection !== undefined && !isSandboxMap(collection) && !isSandboxSet(collection)) throw new TypeError("Invalid collection iterator source.");
     state.initializeIterators.push(() => { restoreSandboxCollectionIterator({ ...serialized, collection }, iterator); });
-    for (const [key, entry] of Object.entries(serialized.entries)) Object.defineProperty(iterator, key, { value: deserializeValue(entry, state), enumerable: true, configurable: true, writable: true });
+    if (serialized.kind === "guest-collection-iterator") {
+      const objectState = serialized.state;
+      state.initializeIterators.push(() => {
+        if (objectState.prototype !== undefined)
+          setSandboxPrototype(iterator, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+        restorePropertyDescriptors(iterator, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      });
+    } else for (const [key, entry] of Object.entries(serialized.entries)) Object.defineProperty(iterator, key, { value: deserializeValue(entry, state), enumerable: true, configurable: true, writable: true });
     return iterator;
   }
 

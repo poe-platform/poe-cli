@@ -1,5 +1,6 @@
 import { createConsoleJsonGlobals } from "./globals/console-json.js";
 import { createCollectionGlobals } from "./globals/collections.js";
+import { installCollectionIteratorPrototypes } from "./globals/collection-prototypes.js";
 import { createNumericTypedArrayGlobal, createNumericTypedArrayPrototypes } from "./globals/numeric-typed-array.js";
 import { numericTypedArrayConstructors } from "./typed-array.js";
 import type { SandboxClosure } from "./values.js";
@@ -43,6 +44,7 @@ export function createBuiltinBindings(
     ...createPromiseGlobals(options),
     ...createRegexGlobals(options)
   };
+  installCollectionIteratorPrototypes(options.budget);
   createFunctionPrototype(options.budget, options.functionHasInstance);
   if (options.typedArrayPrototypes !== false) createNumericTypedArrayPrototypes(options.budget, bindings);
   if (options.errorPrototypes !== false) createErrorPrototypes(options.budget, bindings);

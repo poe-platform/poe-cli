@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "guest-collection-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -129,6 +129,15 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     fields(node, ["kind", "id"], ["state"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
     if (Object.hasOwn(node, "state")) state(node.state);
+  } else if (node.kind === "guest-collection-iterator") {
+    fields(node, ["kind", "collectionKind", "method", "collection", "index", "exhausted", "state"]);
+    if (!["map", "set"].includes(String(node.collectionKind)) || !["keys", "values", "entries"].includes(String(node.method)) || typeof node.exhausted !== "boolean")
+      throw new TypeError("Invalid collection iterator state.");
+    integer(node.index);
+    if (absent(node.collection)) {
+      if (!node.exhausted || node.index !== 0) throw new TypeError("Invalid exhausted collection iterator.");
+    } else reference(node.collection, [String(node.collectionKind)]);
+    state(node.state);
   } else if (node.kind === "string-iterator") {
     fields(node, ["kind", "input", "index", "state"]);
     const index = integer(node.index);
