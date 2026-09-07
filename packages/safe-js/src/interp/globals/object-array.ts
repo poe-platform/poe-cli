@@ -12,7 +12,7 @@ import { isSandboxDate } from "../date.js";
 import { createSandboxBox } from "../boxed.js";
 import { createObjectGlobal, hasOwnSandboxProperty } from "./object.js";
 import { isGuestHostObject } from "../host-capabilities.js";
-import { float32Number, isFloat32Array, isFloat32Index } from "../float32.js";
+import { isFloat32Array, isFloat32Index } from "../float32.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
@@ -157,11 +157,12 @@ export function createObjectArrayGlobals(options: {
           call: async ([value, key, descriptor], context) => {
             objectProperties(value, true);
             const property = await toPropertyKey(key, options.budget, context);
-            defineDataProperty(
+            await defineDataProperty(
               value,
               property,
               await propertyDescriptor(descriptor, options.budget, context),
-              options.budget
+              options.budget,
+              context
             );
             return value;
           },
@@ -772,7 +773,7 @@ async function definePropertiesFromObject(
         : getSandboxDataProperty(descriptors, key, budget));
       properties.push([key, await propertyDescriptor(descriptor, budget, context)]);
     }
-    for (const [key, descriptor] of properties) defineDataProperty(target, key, descriptor, budget);
+    for (const [key, descriptor] of properties) await defineDataProperty(target, key, descriptor, budget, context);
   } finally {
     release();
   }
@@ -782,11 +783,25 @@ export function defineDataProperty(
   target: SandboxValue,
   key: PropertyKey,
   descriptor: PropertyDescriptor,
-  budget: Budget
-): void {
+  budget: Budget,
+  context?: SandboxCallContext
+): void | Promise<void> {
   budget.visitNode();
-  if (isFloat32Array(target) && typeof key !== "symbol" && isFloat32Index(String(key)) && "value" in descriptor)
-    descriptor = { ...descriptor, value: float32Number(descriptor.value) };
+  if (isFloat32Array(target) && typeof key !== "symbol" && isFloat32Index(String(key)) && "value" in descriptor) {
+    const { value, ...attributes } = descriptor;
+    // Validates index and descriptor restrictions without writing an element.
+    Object.defineProperty(target, key, attributes);
+    return (async () => {
+      const release = retainValues(budget, () => [target, value]);
+      try {
+        const number = await sandboxNumber(value, budget, context);
+        // Conversion may detach or shrink storage; TypedArraySetElement then
+        // succeeds without writing, rather than revalidating the definition.
+        Reflect.set(target, key, number);
+        markDescriptorObject(target);
+      } finally { release(); }
+    })();
+  }
   const properties = objectProperties(target, true);
   if (Array.isArray(properties)) {
     if (key === "length" && "value" in descriptor)

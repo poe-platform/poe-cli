@@ -6,7 +6,7 @@ import { createInterpretedClosure, executeClosure, type AsyncEvaluationContext, 
 import { retainValues } from "./resources.js";
 import { getSandboxPrototype, materializeFunctionProperties, setSandboxPrototype } from "./object-model.js";
 import { defineDataProperty } from "./globals/object-array.js";
-import { createPatternContext } from "./interpreter.js";
+import { createCoercionContext, createPatternContext } from "./interpreter.js";
 import type { Scope } from "./scope.js";
 import { hoistVarDeclarations } from "./var-hoist.js";
 import { propertyFunctionName } from "./property-key.js";
@@ -201,6 +201,6 @@ async function initializeElement(
     value = result.hasValue ? result.value : undefined;
   }
   if ("key" in definition) {
-    defineDataProperty(receiver, definition.key, { value, configurable: true, writable: true, enumerable: true }, context.budget);
+    await defineDataProperty(receiver, definition.key, { value, configurable: true, writable: true, enumerable: true }, context.budget, createCoercionContext(context));
   }
 }

@@ -745,11 +745,11 @@ async function evaluateObjectExpression(
         Object.defineProperty(materializeFunctionProperties(value.value), "name", {
           value: `${property.kind} ${propertyFunctionName(key.value)}`
         });
-        defineDataProperty(object, key.value, {
+        await defineDataProperty(object, key.value, {
           [property.kind]: accessorAdapter(value.value, property.kind),
           configurable: true,
           enumerable: true
-        }, context.budget);
+        }, context.budget, createCoercionContext(context));
         continue;
       }
 
