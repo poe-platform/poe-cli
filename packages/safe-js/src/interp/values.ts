@@ -755,9 +755,9 @@ export function measureSandboxData(
       const storage = typedArrayStorage(value);
       visit(storage.buffer, depth + 1);
       for (const [key, descriptor] of typedArrayProperties(value)) {
-        usage += 1;
-        if (typeof key === "string") usage += key.length;
-        else visit(key, depth + 1);
+        // Symbol properties were captured by the common object traversal above.
+        if (typeof key !== "string") continue;
+        usage += 1 + key.length;
         if ("value" in descriptor) visit(descriptor.value, depth + 1);
         else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
       }
