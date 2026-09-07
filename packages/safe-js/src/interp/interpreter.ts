@@ -2781,18 +2781,19 @@ function getPropertyValue(
     const prototype = getBoxedPrototype(target, context.budget);
     return prototype === undefined ? undefined : getPropertyValue(prototype, property, context, receiver);
   }
-  if (typeof property === "symbol") return undefined;
   if (typeof target === "string" || typeof target === "number" || typeof target === "boolean") {
     const prototype = getBoxedPrototype(target, context.budget);
     if (prototype !== undefined) {
       if (
         typeof target === "string" &&
+        typeof property !== "symbol" &&
         (property === "length" || getStringIndex(property) !== undefined)
       )
         return getStringMember(target, property, context.budget);
       return getPropertyValue(prototype, property, context, receiver);
     }
   }
+  if (typeof property === "symbol") return undefined;
   if (typeof target === "string") return getStringMember(target, property, context.budget);
   if (typeof target === "number") return getNumberMember(property, context.budget);
   if (typeof target === "boolean") return undefined;
