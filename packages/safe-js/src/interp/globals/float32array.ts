@@ -16,6 +16,7 @@ import { retainValues } from "../resources.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { acquireSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
+import { createSandboxBox } from "../boxed.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
@@ -327,29 +328,44 @@ export function getFloat32Member(
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
       const storage = float32Storage(receiver);
       if (key === "set") {
-        const [source, offsetValue = 0] = args;
-        if (!Array.isArray(source) && !isFloat32Array(source))
-          throw new TypeError("Float32Array#set requires an array or Float32Array.");
-        const number = float32Number(offsetValue);
-        const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
-        const length = isFloat32Array(source) ? float32Storage(source).length : source.length;
-        if (offset < 0 || !Number.isSafeInteger(offset) || offset + length > storage.length)
-          throw new RangeError("Float32Array#set source is out of bounds.");
-        if (isFloat32Array(source)) {
-          Float32Array.prototype.set.call(receiver, source, offset);
-          return undefined;
-        }
-        checkFloat32Allocation(length, budget);
-        const copied = new Float32Array(length);
-        for (let index = 0; index < length; index += 1) {
-          budget.visitNode();
-          const entry = Object.getOwnPropertyDescriptor(source, index);
-          if (entry !== undefined && !("value" in entry))
-            throw new TypeError("Float32Array input accessors are not supported.");
-          copied[index] = float32Number(entry?.value);
-        }
-        Float32Array.prototype.set.call(receiver, copied, offset);
-        return undefined;
+        return (async () => {
+          const [source, offsetValue = 0] = args;
+          const bridge: SandboxCallContext = {
+            ...context, stack: context?.stack ?? [], thisValue: receiver,
+            getProperty: context?.getProperty ?? ((value, property) => {
+              const descriptor = getSandboxPropertyDescriptor(value, property, budget);
+              return descriptor === undefined ? getSandboxDataProperty(value, property, budget)
+                : readPropertyDescriptor(descriptor, value, bridge);
+            }),
+            invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
+              invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
+          };
+          let current: SandboxValue;
+          let sourceObject: SandboxValue;
+          const release = retainValues(budget, () => [receiver, sourceObject, current, ...args]);
+          try {
+            const number = await sandboxNumber(offsetValue, budget, bridge);
+            const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
+            if (offset < 0) throw new RangeError("Float32Array#set offset is out of bounds.");
+            if (source === null || source === undefined) throw new TypeError("Float32Array#set requires a non-null source.");
+            let length: number;
+            if (isFloat32Array(source)) length = float32Storage(source).length;
+            else {
+              sourceObject = typeof source === "object" ? source : createSandboxBox(source);
+              current = await bridge.getProperty!(sourceObject, "length");
+              const size = await sandboxNumber(current, budget, bridge);
+              length = Number.isNaN(size) || size <= 0 ? 0 : Math.min(Math.trunc(size), Number.MAX_SAFE_INTEGER);
+            }
+            if (offset + length > storage.length) throw new RangeError("Float32Array#set source is out of bounds.");
+            if (isFloat32Array(source)) Float32Array.prototype.set.call(receiver, source, offset);
+            else for (let index = 0; index < length; index++) {
+              budget.visitNode();
+              current = await bridge.getProperty!(sourceObject, String(index));
+              receiver[offset + index] = await sandboxNumber(current, budget, bridge);
+            }
+            return undefined;
+          } finally { release(); }
+        })();
       }
       const start = relativeIndex(args[0], storage.length, 0);
       const end = relativeIndex(args[1], storage.length, storage.length);
