@@ -12,6 +12,7 @@ import { errorPrototypes } from "./error-prototypes.js";
 import { typedArrayProperties, typedArrayStorage, isNumericTypedArray, isTypedArrayIndex } from "./typed-array.js";
 import { typedArrayPrototypes } from "./typed-array-prototypes.js";
 import { arrayBufferPrototypes, isSandboxArrayBuffer } from "./array-buffer.js";
+import { dataViewPrototypes, isSandboxDataView } from "./data-view.js";
 import { sandboxErrorTypes } from "../error/shape.js";
 import { boxedValue, isSandboxBox, type BoxedKind, type BoxedPrimitive } from "./boxed.js";
 import {
@@ -330,6 +331,7 @@ export function getSandboxPrototype(value: object, budget?: Budget): object | nu
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
   if (budget === undefined) return null;
   if (isSandboxArrayBuffer(value)) return budget === undefined ? null : arrayBufferPrototypes.get(budget) ?? null;
+  if (isSandboxDataView(value)) return dataViewPrototypes.get(budget) ?? null;
   if (isNumericTypedArray(value)) return budget === undefined ? null : typedArrayPrototypes.get(budget)?.get(typedArrayStorage(value).Native) ?? null;
   // Host transport records are data-only. Resolve their default prototype in
   // the receiving realm without persisting executable intrinsic graphs.
@@ -481,6 +483,7 @@ export function setSandboxPrototype(
 }
 
 function isPrototypeRecord(value: object): boolean {
+  if (isSandboxDataView(value)) return true;
   if (isSandboxArrayBuffer(value)) return true;
   if (isNumericTypedArray(value)) return true;
   if (isGuestClosure(value)) return true;

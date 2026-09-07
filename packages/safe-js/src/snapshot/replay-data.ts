@@ -13,6 +13,8 @@ import { CompileScope } from "../interp/regex/compile-guard.js";
 import { typedArrayDataProperties, typedArrayStorage, isNumericTypedArray } from "../interp/typed-array.js";
 import { decodeTypedArrayStorage, encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
 import { arrayBufferDataProperties, isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { dataViewBuffer, dataViewDataProperties, isSandboxDataView } from "../interp/data-view.js";
+import { decodeDataViewStorage, encodeDataViewLayout, type DataViewData } from "./data-view.js";
 import { decodeArrayBufferStorage, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate, restoreDateTime, serializedDateTime } from "../interp/date.js";
 import { createRawJson, isRawJson } from "../interp/raw-json.js";
@@ -65,6 +67,7 @@ type DataNode =
   | { kind: "date"; time: number | null; properties?: Properties; symbolProperties?: Array<SerializedSymbolProperty<Atom>>; extensible?: boolean; nullPrototype?: true }
   | (TypedArrayData<Atom> & { properties: Properties; extensible: boolean })
   | (ArrayBufferData<Atom> & { properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> })
+  | (DataViewData<Atom> & { properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> })
   | { kind: "capability"; id: string; properties: Atom }
   | {
       kind: "array" | "object";
@@ -175,10 +178,11 @@ export function encodeReplayData(
         ...(symbolProperties.length === 0 ? {} : { symbolProperties }),
         ...(Object.isExtensible(entry) ? {} : { extensible: false })
       };
-    } else if (isSandboxArrayBuffer(entry)) {
-      const storage = encodeArrayBufferStorage(entry, id, float32Buffers, id => ({ tag: "ref" as const, id }));
+    } else if (isSandboxArrayBuffer(entry) || isSandboxDataView(entry)) {
+      const storage = isSandboxDataView(entry) ? { ...encodeDataViewLayout(entry), buffer: child(dataViewBuffer(entry), "<buffer>") }
+        : encodeArrayBufferStorage(entry, id, float32Buffers, id => ({ tag: "ref" as const, id }));
       const properties: Properties = Object.create(null);
-      for (const [key, descriptor] of arrayBufferDataProperties(entry)) {
+      for (const [key, descriptor] of isSandboxDataView(entry) ? dataViewDataProperties(entry) : arrayBufferDataProperties(entry)) {
         if (typeof key === "symbol") continue;
         properties[key] = { value: child(descriptor.value, key), configurable: descriptor.configurable === true,
           enumerable: descriptor.enumerable === true, writable: descriptor.writable === true };
@@ -438,9 +442,10 @@ export function decodeReplayData(
         if (node.extensible === false) Object.preventExtensions(result);
         return result;
       }
-      if (kind === "arraybuffer") {
+      if (kind === "arraybuffer" || kind === "dataview") {
         if (typeof node.extensible !== "boolean") throw new TypeError("Invalid ArrayBuffer extensibility.");
-        const result = decodeArrayBufferStorage(node, child, compilation.owner?.budget, detachBuffers);
+        const result = kind === "dataview" ? decodeDataViewStorage(node, child, compilation.owner?.budget)
+          : decodeArrayBufferStorage(node, child, compilation.owner?.budget, detachBuffers);
         restored.set(id, result);
         initializeValues.push(() => {
           defineProperties(result, record(own(node, "properties")), child, node.symbolEntries);

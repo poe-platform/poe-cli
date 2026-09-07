@@ -21,6 +21,7 @@ import { toPropertyKey } from "../interp/property-key.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
 import { decodeTypedArrayStorage, restoreTypedArrayProperties } from "./typed-array.js";
 import { decodeArrayBufferStorage } from "./array-buffer.js";
+import { decodeDataViewStorage } from "./data-view.js";
 import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxBox } from "../interp/boxed.js";
@@ -654,9 +655,11 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     restoreRegexProperties(value, serialized, entry => deserializeValue(entry, state));
     return value;
   }
-  if (serialized.kind === "arraybuffer") {
+  if (serialized.kind === "arraybuffer" || serialized.kind === "dataview") {
     initializeIntrinsicRealm(state);
-    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state), state.budget, state.detachBuffers);
+    const resolve = (reference: unknown) => deserializeValue(reference as SerializedSnapshotValue, state);
+    const value = serialized.kind === "dataview" ? decodeDataViewStorage(serialized, resolve, state.budget)
+      : decodeArrayBufferStorage(serialized, resolve, state.budget, state.detachBuffers);
     state.heapValueById.set(id, value);
     state.initializeIterators.push(() => {
       if (serialized.state.prototype !== undefined)

@@ -1,5 +1,6 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
+import { copyDataViewStorage, dataViewBuffer, dataViewDataProperties, dataViewGetters, isSandboxDataView } from "./data-view.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
 import { getGeneratorProperties } from "./generator-properties.js";
@@ -66,6 +67,7 @@ export type SandboxValue =
   | Date
   | NumericTypedArray
   | ArrayBuffer
+  | DataView<ArrayBuffer>
   | SandboxObject
   | SandboxArray
   | SandboxClosure
@@ -620,6 +622,7 @@ export function measureSandboxData(
     const prototype = getSandboxPrototype(value);
     if (prototype !== null) visit(prototype, depth + 1);
     if (isSandboxArrayBuffer(value)) usage += arrayBufferLength(value);
+    if (isSandboxDataView(value)) visit(dataViewBuffer(value), depth + 1);
     if (isNumericTypedArray(value)) {
       const storage = typedArrayStorage(value);
       visit(storage.buffer, depth + 1);
@@ -772,7 +775,7 @@ export function measureSandboxData(
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor !== undefined) descriptors.push([key, descriptor]);
     }
-    const includeNonEnumerable = isSandboxDate(value) || isSandboxArrayBuffer(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
+    const includeNonEnumerable = isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
     for (const [key, descriptor] of descriptors) {
       if (!descriptor.enumerable && !includeNonEnumerable) continue;
       usage += 1 + key.length;
@@ -947,7 +950,7 @@ function copyToSandbox(
   }
 
   if (typeof value === "object" && value !== null && hasGuestObjectState(value) &&
-      !(state.structuredClone && (isSandboxDate(value) || isSandboxArrayBuffer(value) || isNumericTypedArray(value)))) {
+      !(state.structuredClone && (isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || isNumericTypedArray(value)))) {
     throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
   }
 
@@ -1041,6 +1044,28 @@ function copyToSandbox(
       Object.defineProperty(copy, key, { ...descriptor, value: copyToSandbox(descriptor.value, state, joinPath(path, key), cloneSandboxCollections, depth + 1) });
     }
     if (!state.structuredClone && !Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
+  }
+
+  if (isSandboxDataView(value)) {
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    if (state.structuredClone) {
+      try { Reflect.apply(dataViewGetters.byteLength, value, []); }
+      catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        throw new DOMException("Cannot clone an out-of-bounds DataView.", "DataCloneError");
+      }
+    }
+    const copy = copyDataViewStorage(value, state);
+    state.seen.set(value, copy);
+    if (state.structuredClone) return copy;
+    copyToSandbox(dataViewBuffer(value), state, `${path}.buffer`, cloneSandboxCollections, depth + 1);
+    for (const [key, descriptor] of dataViewDataProperties(value)) {
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyToSandbox(descriptor.value, state, joinPath(path, key), cloneSandboxCollections, depth + 1) });
+    }
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
     return copy;
   }
 
@@ -1308,12 +1333,13 @@ function copyFromSandbox(
     return copy;
   }
 
-  if (isSandboxArrayBuffer(value)) {
+  if (isSandboxArrayBuffer(value) || isSandboxDataView(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
-    const copy = copyArrayBufferStorage(value, state);
+    const copy = isSandboxDataView(value) ? copyDataViewStorage(value, state) : copyArrayBufferStorage(value, state);
     state.seen.set(value, copy);
-    for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+    if (isSandboxDataView(value)) copyFromSandbox(dataViewBuffer(value), state, `${path}.buffer`, options, depth + 1);
+    for (const [key, descriptor] of isSandboxDataView(value) ? dataViewDataProperties(value) : arrayBufferDataProperties(value)) {
       Object.defineProperty(copy, key, { ...descriptor,
         value: copyFromSandbox(descriptor.value, state, joinPath(path, key), options, depth + 1) });
     }
@@ -1512,6 +1538,17 @@ function isHostPromise(value: unknown): value is Promise<unknown> {
 function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet<object>): void {
   if (typeof value === "string") {
     budget.allocateString(value);
+    return;
+  }
+
+  if (isSandboxDataView(value)) {
+    if (seen.has(value)) return;
+    seen.add(value);
+    allocateSandboxValue(dataViewBuffer(value), budget, seen);
+    for (const [key, descriptor] of dataViewDataProperties(value)) {
+      if (typeof key === "string") budget.allocateString(key);
+      allocateSandboxValue(descriptor.value, budget, seen);
+    }
     return;
   }
 

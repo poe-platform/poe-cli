@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { typedArrayDataProperties, typedArrayStorage, typedArrayViewLayouts, isNumericTypedArray } from "./typed-array.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "./array-buffer.js";
+import { dataViewBuffer, dataViewDataProperties, dataViewLayout, isSandboxDataView } from "./data-view.js";
 import { copyNativeDate, serializedDateTime } from "./date.js";
 import {
   cloneSandboxValue,
@@ -828,6 +829,16 @@ function normalize(value: unknown, seen: WeakSet<object>): unknown {
   try {
     const date = copyNativeDate(value);
     if (date !== undefined) return Object.assign(Object.create(null), { $type: "date", time: serializedDateTime(date) });
+    if (isSandboxDataView(value)) {
+      const properties = Object.create(null) as Record<string, unknown>;
+      const entries = dataViewDataProperties(value);
+      if (entries.some(([key]) => typeof key !== "string")) throw new TypeError("DataView symbol properties require an explicit host-call identity.");
+      for (const [key, descriptor] of entries.sort(([left], [right]) => String(left) < String(right) ? -1 : String(left) > String(right) ? 1 : 0))
+        defineOwnDataProperty(properties, String(key), normalize(descriptor.value, seen));
+      const layout = dataViewLayout(value);
+      return Object.assign(Object.create(null), { $type: "dataview", byteOffset: layout.byteOffset,
+        byteLength: layout.byteLength ?? null, buffer: normalize(dataViewBuffer(value), seen), properties });
+    }
     if (isSandboxArrayBuffer(value)) {
       arrayBufferLength(value);
       const properties = Object.create(null) as Record<string, unknown>;

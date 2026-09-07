@@ -6,6 +6,7 @@ import { attachErrorSpan, replaceErrorStack, type ErrorSourceSpan } from "../err
 import { SandboxError, type Budget, type CompileOwner } from "./budget.js";
 import { CompileScope } from "./regex/compile-guard.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
+import { copyDataViewStorage, dataViewBuffer, dataViewDataProperties, isSandboxDataView } from "./data-view.js";
 import {
   checkTypedArrayAllocation,
   copyTypedArrayStorage,
@@ -1014,6 +1015,27 @@ export function copyHostValueToSandbox(
     budget.chargeDataUsage(9);
     state.seen.set(value as object, date);
     return date;
+  }
+
+  if (isSandboxDataView(value)) {
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    const buffer = dataViewBuffer(value);
+    const length = arrayBufferLength(buffer);
+    budget.allocateArrayLength(arrayBufferOptions(buffer)?.maxByteLength ?? length);
+    budget.provisionDataUsage(length + 2)();
+    const copy = copyDataViewStorage(value, state);
+    state.seen.set(value, copy);
+    copyHostValueToSandbox(buffer, stackFrames,
+      { ...options, capabilityPath: [...(options.capabilityPath ?? []), "buffer"] }, state, `${path}.buffer`);
+    for (const [key, descriptor] of dataViewDataProperties(value)) {
+      if (typeof key !== "string") throw new TypeError("Host DataView symbol properties require an explicit capability path.");
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyHostValueToSandbox(descriptor.value, stackFrames,
+          { ...options, capabilityPath: [...(options.capabilityPath ?? []), key] }, state, joinPath(path, key)) });
+    }
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
   }
 
   if (isSandboxArrayBuffer(value)) {

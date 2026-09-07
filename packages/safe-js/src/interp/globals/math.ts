@@ -44,7 +44,7 @@ const mathMethods = {
   trunc: Math.trunc
 } satisfies Record<string, (...args: number[]) => number>;
 
-function f16round(value: number): number {
+export function f16round(value: number): number {
   const number = +value;
   if (!Number.isFinite(number) || number === 0) {
     return number;

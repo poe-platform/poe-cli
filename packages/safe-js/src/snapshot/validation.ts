@@ -9,6 +9,7 @@ import { DUMP_FORMAT_VERSION } from "./dump-format.js";
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
 import { validateTypedArrayStorage } from "./typed-array.js";
 import { validateArrayBufferStorage } from "./array-buffer.js";
+import { validateDataViewStorage } from "./data-view.js";
 import { restoreDateTime } from "../interp/date.js";
 import { validateBoxedProperties } from "./boxed.js";
 import { hasGuestObjectState } from "../interp/object-model.js";
@@ -155,8 +156,9 @@ function validateDumpHeap(root: Record<string, unknown>, state: ValidationState)
       validateDateRecord(entry, path);
       continue;
     }
-    if (entry.kind === "arraybuffer") {
-      validateArrayBufferStorage(entry);
+    if (entry.kind === "arraybuffer" || entry.kind === "dataview") {
+      if (entry.kind === "dataview") validateDataViewStorage(entry);
+      else validateArrayBufferStorage(entry);
       validateGuestHeapNode({kind:"guest-object",state:entry.state}, heap, state.limits.maxEntries);
       continue;
     }
@@ -624,7 +626,7 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
     }
   } catch (error) { fail("invalidValue", path, String(error)); }
   validateErrorType(record, path);
-  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "typedarray", "arraybuffer", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
+  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "typedarray", "arraybuffer", "dataview", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
     fail("unknownTag", `${path}.kind`, "unknown heap tag");
   validateValue(record, path, 1, state);
   if (record.kind === "symbol") validateSymbolRecord(record, path, state);
@@ -633,8 +635,9 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
   if (record.kind === "object") requireRecord(record.entries, `${path}.entries`);
   if (record.kind === "boxed") validateBoxedRecord(record, path, heap);
   if (record.kind === "date") validateDateRecord(record, path);
-  if (record.kind === "arraybuffer") {
-    validateArrayBufferStorage(record);
+  if (record.kind === "arraybuffer" || record.kind === "dataview") {
+    if (record.kind === "dataview") validateDataViewStorage(record);
+    else validateArrayBufferStorage(record);
     validateGuestHeapNode({kind:"guest-object",state:record.state}, heap, state.limits.maxEntries);
   }
   if (record.kind === "float32array" || record.kind === "typedarray") {

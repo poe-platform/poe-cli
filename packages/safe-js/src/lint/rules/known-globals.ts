@@ -2,6 +2,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "AggregateError",
   "Array",
   "ArrayBuffer",
+  "DataView",
   "Boolean",
   "BigInt",
   "Date",

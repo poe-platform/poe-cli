@@ -5,8 +5,7 @@ import { objectToPrimitive, sandboxNumber } from "../string-coercion.js";
 import { createSandboxClosure, type SandboxCallContext, type SandboxValue } from "../values.js";
 import { formatNumberLocale } from "../number-locale.js";
 
-export function createBigIntGlobal(budget: Budget) {
-  const convert = async (value: SandboxValue, context?: SandboxCallContext, allowNumber = false): Promise<bigint> => {
+export async function sandboxBigInt(value: SandboxValue, budget: Budget, context?: SandboxCallContext, allowNumber = false): Promise<bigint> {
     const primitive = value !== null && typeof value === "object"
       ? await objectToPrimitive(value, budget, context, new Set(), "number") : value;
     if (typeof primitive === "bigint") return primitive;
@@ -18,10 +17,12 @@ export function createBigIntGlobal(budget: Budget) {
     budget.setRetainedDataUsage(allocation, size);
     try { return BigInt(primitive); }
     finally { budget.setRetainedDataUsage(allocation, 0); }
-  };
+}
+
+export function createBigIntGlobal(budget: Budget) {
   const constructor = createSandboxClosure({
     guest: true, sandbox: true, name: "BigInt", length: 1,
-    call: ([value], context) => convert(value, context, true)
+    call: ([value], context) => sandboxBigInt(value, budget, context, true)
   });
   const prototype = Object.create(null);
   Object.defineProperties(prototype, {
@@ -62,7 +63,7 @@ export function createBigIntGlobal(budget: Budget) {
           const number = await sandboxNumber(bits, budget, context);
           const width = Number.isNaN(number) ? 0 : Math.trunc(number);
           if (width < 0 || !Number.isSafeInteger(width)) throw new RangeError("Invalid BigInt width.");
-          const value = await convert(input, context);
+          const value = await sandboxBigInt(input, budget, context);
           const size = value.toString(16).length;
           budget.visitNode(size);
           if (width >= size * 4 + 1 && (name === "asIntN" || value >= 0n)) return value;
