@@ -727,8 +727,13 @@ export function measureSandboxData(
     if (Array.isArray(value)) {
       usage += value.length;
       if (hasManagedDescriptors(value)) {
-        for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+        const descriptors: Array<readonly [string, PropertyDescriptor]> = [];
+        for (const key of Object.getOwnPropertyNames(value)) {
           if (key === "length") continue;
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (descriptor !== undefined) descriptors.push([key, descriptor]);
+        }
+        for (const [key, descriptor] of descriptors) {
           usage += key.length + 1;
           if ("value" in descriptor) visit(descriptor.value, depth + 1);
           else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
