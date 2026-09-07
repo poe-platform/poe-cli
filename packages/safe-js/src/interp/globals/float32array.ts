@@ -18,7 +18,7 @@ import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { acquireSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
 import { createSandboxBox } from "../boxed.js";
-import { arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
+import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
@@ -48,16 +48,21 @@ export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false
             const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
             if (!Number.isSafeInteger(offset) || offset < 0 || offset % 4 !== 0)
               throw new RangeError("Invalid Float32Array buffer offset.");
+            let length: number | undefined;
+            if (args[2] !== undefined) {
+              const size = await sandboxNumber(args[2], budget, context);
+              length = Number.isNaN(size) ? 0 : Math.trunc(size);
+              if (!Number.isSafeInteger(length) || length < 0)
+                throw new RangeError("Invalid Float32Array view length.");
+            }
+            if (arrayBufferDetached(buffer)) throw new TypeError("Cannot construct Float32Array from a detached ArrayBuffer.");
             const bytes = arrayBufferLength(buffer);
-            let length: number;
-            if (args[2] === undefined) {
+            if (length === undefined) {
               if ((arrayBufferOptions(buffer) === undefined && bytes % 4 !== 0) || offset > bytes)
                 throw new RangeError("Invalid Float32Array buffer length.");
               length = Math.floor((bytes - offset) / 4);
             } else {
-              const size = await sandboxNumber(args[2], budget, context);
-              length = Number.isNaN(size) ? 0 : Math.trunc(size);
-              if (!Number.isSafeInteger(length) || length < 0 || offset + length * 4 > arrayBufferLength(buffer))
+              if (offset + length * 4 > bytes)
                 throw new RangeError("Invalid Float32Array view length.");
             }
             budget.allocateArrayLength(length);
