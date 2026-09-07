@@ -22,6 +22,7 @@ import { acquireSandboxIterator, readIteratorResult, type SandboxIterator } from
 import { createDataCheckpoint } from "../data-checkpoint.js";
 import { createSandboxBox } from "../boxed.js";
 import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
+import { installUint8Hex } from "./uint8-hex.js";
 
 const constructors = new WeakMap<SandboxClosure, NumericTypedArrayConstructor>();
 
@@ -272,8 +273,11 @@ export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Reco
     setSandboxPrototype(constructor, typedArray);
     setSandboxPrototype(prototype, shared);
     prototypes.set(Native, prototype);
-    registerIntrinsicFunction(budget, constructor);
-    registerIntrinsicObject(budget, prototype);
+  }
+  installUint8Hex(budget, bindings.Uint8Array, prototypes.get(Uint8Array)!);
+  for (const [name, Native] of Object.entries(numericTypedArrayConstructors)) {
+    registerIntrinsicFunction(budget, bindings[name as keyof typeof bindings]);
+    registerIntrinsicObject(budget, prototypes.get(Native)!);
   }
   Object.defineProperty(shared, "constructor", { value: typedArray, writable: true, configurable: true });
   setSandboxPrototype(shared, getSandboxPrototype(Object.create(null), budget));
