@@ -1,21 +1,21 @@
 import type { Budget } from "../budget.js";
 import { sandboxString } from "../string-coercion.js";
-import { createSandboxClosure } from "../values.js";
+import { createSandboxClosure, createSandboxMap, type SandboxMap } from "../values.js";
 import { wellKnownSymbols } from "../symbols.js";
 import { primitiveReceiver } from "../boxed.js";
 import { installBoxedPrototype, materializeFunctionProperties } from "../object-model.js";
 import { accessorAdapter } from "../accessors.js";
 import { symbolRegistryOrigins } from "../symbol-registry.js";
 
-const registries = new WeakMap<Budget, Map<string, symbol>>();
+const registries = new WeakMap<Budget, SandboxMap>();
 
 export function createSymbolGlobal(budget: Budget) {
   let registry = registries.get(budget);
   if (registry === undefined) {
-    registry = new Map();
+    registry = createSandboxMap();
     registries.set(budget, registry);
   }
-  const entries = registry;
+  const entries = registry.entries as Map<string, symbol>;
   const prototype = Object.create(null);
   const valueOf = createSandboxClosure({
     sandbox: true,
@@ -68,7 +68,7 @@ export function createSymbolGlobal(budget: Budget) {
     sandbox: true,
     name: "Symbol",
     length: 0,
-    retainedValues: () => [...entries.keys(), ...entries.values()],
+    retainedValues: () => [registry],
     call: async ([description], context) =>
       Symbol(
         description === undefined ? undefined : await sandboxString(description, budget, context)
@@ -81,6 +81,7 @@ export function createSymbolGlobal(budget: Budget) {
       sandbox: true,
       name: "for",
       length: 1,
+      retainedValues: () => [registry],
       call: async ([key], context) => {
         const text = await sandboxString(key, budget, context);
         let value = entries.get(text);
@@ -95,6 +96,7 @@ export function createSymbolGlobal(budget: Budget) {
       sandbox: true,
       name: "keyFor",
       length: 1,
+      retainedValues: () => [registry],
       call: ([value]) => {
         if (typeof value !== "symbol") throw new TypeError("Symbol.keyFor requires a symbol.");
         for (const [key, registered] of entries) if (registered === value) return key;
