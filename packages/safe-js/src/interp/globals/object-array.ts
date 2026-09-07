@@ -2,6 +2,9 @@ import { isFatalSandboxError, type Budget, type CompileOwner } from "../budget.j
 import { accessorAdapter, accessorClosure, readPropertyDescriptor, retainedAccessorClosures } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
+import { restoreSandboxArrayIterator } from "../array-iterator.js";
+import { nextArrayIterator } from "../methods/array-iterator.js";
+import { registerBuiltinIdentities } from "../intrinsics.js";
 import { retainValues } from "../resources.js";
 import { isCapturedException } from "../exceptions.js";
 import { isSandboxDate } from "../date.js";
@@ -24,6 +27,7 @@ import {
   isGuestClosure,
   markDescriptorObject,
   materializeFunctionProperties,
+  registerIntrinsicObject,
   setSandboxPrototype
 } from "../object-model.js";
 import {
@@ -411,6 +415,37 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
     }), "get"), configurable: true
   });
   Object.defineProperty(prototype, "constructor", { value: constructor, writable: true, configurable: true });
+  const iteratorPrototype: SandboxObject = Object.create(null);
+  const iterablePrototype: SandboxObject = Object.create(null);
+  Object.defineProperty(iterablePrototype, Symbol.iterator, { value: createSandboxClosure({
+    guest: true, sandbox: true, name: "[Symbol.iterator]", length: 0,
+    call: (_args, context) => context?.thisValue
+  }), writable: true, configurable: true });
+  setSandboxPrototype(iterablePrototype, getSandboxPrototype(Object.create(null), budget));
+  setSandboxPrototype(iteratorPrototype, iterablePrototype);
+  Object.defineProperties(iteratorPrototype, {
+    next: { value: createSandboxClosure({ guest: true, sandbox: true, name: "next", length: 0,
+      call: (_args, context) => nextArrayIterator(context?.thisValue, budget, context)
+    }), writable: true, configurable: true },
+    [Symbol.toStringTag]: { value: "Array Iterator", configurable: true }
+  });
+  registerBuiltinIdentities(budget, { "%ArrayIteratorPrototype%": iteratorPrototype, "%IteratorPrototype%": iterablePrototype });
+  registerIntrinsicObject(budget, iterablePrototype);
+  registerIntrinsicObject(budget, iteratorPrototype);
+  for (const method of ["keys", "values", "entries"] as const) {
+    const closure = createSandboxClosure({ guest: true, sandbox: true, name: method, length: 0,
+      call: (_args, context) => {
+        const receiver = context?.thisValue;
+        if (receiver === null || receiver === undefined) throw new TypeError("Array iterator method requires a receiver.");
+        const source = typeof receiver === "object" ? receiver : createSandboxBox(receiver);
+        const iterator = restoreSandboxArrayIterator({ source, index: 0, method });
+        setSandboxPrototype(iterator, iteratorPrototype, budget);
+        return iterator;
+      }
+    });
+    Object.defineProperty(prototype, method, { value: closure, writable: true, configurable: true });
+    if (method === "values") Object.defineProperty(prototype, Symbol.iterator, { value: closure, writable: true, configurable: true });
+  }
   for (const name of arrayMethodNames) {
     const method = createSandboxClosure({
       guest: true, sandbox: true, name,

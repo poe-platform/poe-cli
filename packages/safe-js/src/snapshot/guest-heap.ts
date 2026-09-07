@@ -9,6 +9,7 @@ import { isRawJson } from "../interp/raw-json.js";
 import { isSandboxDate } from "../interp/date.js";
 import { isSandboxCollectionIterator } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator } from "../interp/regexp-iterator.js";
+import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments } from "../interp/values.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -26,6 +27,7 @@ export type GuestObjectState<T> = {
 };
 
 export type GuestHeapNode<T> =
+  | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
   | { kind: "map"; entries: Array<[T,T]>; propertyState?: PropertyDescriptorData<T>; prototype?: T }
   | { kind: "set"; values: T[]; propertyState?: PropertyDescriptorData<T>; prototype?: T }
@@ -60,6 +62,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   }
   if (isSandboxMap(value)) return { kind: "map", entries: [...value.entries].map(([key,entry]) => [encode(key),encode(entry)]), ...serializeCollectionProperties(value,encode) };
   if (isSandboxSet(value)) return { kind: "set", values: [...value.values].map(encode), ...serializeCollectionProperties(value,encode) };
+  if (isSandboxArrayIterator(value)) {
+    const cursor = arrayIteratorState(value);
+    return { kind: "array-iterator", source: encode(cursor.source), index: cursor.index, method: cursor.method,
+      state: captureObjectState(value, encode)! };
+  }
   const classOrigin = classOrigins.get(value);
   if (classOrigin !== undefined) {
     if (!classOrigin.initialized || classOrigin.node.nodeId === undefined)

@@ -1,0 +1,37 @@
+import type { Budget } from "../budget.js";
+import { arrayIteratorState, isSandboxArrayIterator } from "../array-iterator.js";
+import { float32Storage, isFloat32Array } from "../float32.js";
+import { readPropertyDescriptor } from "../accessors.js";
+import { getSandboxPropertyDescriptor } from "../object-model.js";
+import { retainValues } from "../resources.js";
+import { sandboxNumber } from "../string-coercion.js";
+import type { SandboxCallContext, SandboxValue } from "../values.js";
+
+export async function nextArrayIterator(value: SandboxValue, budget: Budget, context?: SandboxCallContext): Promise<SandboxValue> {
+  if (!isSandboxArrayIterator(value)) throw new TypeError("Array iterator next requires an Array iterator receiver.");
+  const state = arrayIteratorState(value);
+  const source = state.source;
+  if (source === undefined) return { value: undefined, done: true };
+  const index = state.index;
+  const release = retainValues(budget, () => [value, source]);
+  const read = (key: string) => context?.getProperty !== undefined ? context.getProperty(source, key)
+    : readPropertyDescriptor((isFloat32Array(source) ? Object.getOwnPropertyDescriptor(source, key) : undefined)
+      ?? getSandboxPropertyDescriptor(source, key, budget) ?? { value: undefined }, source, context);
+  try {
+    budget.visitNode();
+    const number = isFloat32Array(source) ? float32Storage(source).length
+      : await sandboxNumber(await read("length"), budget, context);
+    const length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
+    if (index >= length) {
+      state.source = undefined;
+      return { value: undefined, done: true };
+    }
+    state.index = index + 1;
+    if (state.method === "keys") return { value: index, done: false };
+    const entry = await read(String(index));
+    if (state.method === "entries") budget.allocateArrayLength(2);
+    return { value: state.method === "entries" ? [index, entry] : entry, done: false };
+  } finally {
+    release();
+  }
+}

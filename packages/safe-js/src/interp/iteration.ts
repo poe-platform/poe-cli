@@ -20,7 +20,7 @@ import { awaitSandboxValue, awaitWithSignal } from "./cancel.js";
 import { HostCallResumabilityError } from "./host-call.js";
 import { suspendJob } from "./jobs.js";
 import { invokeBuiltinClosure } from "./builtin-call.js";
-import { getSandboxPropertyDescriptor, hasExplicitSandboxPrototype } from "./object-model.js";
+import { getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype } from "./object-model.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
 
 export type SandboxIterator = {
@@ -85,6 +85,7 @@ export async function acquireSandboxIterator(
       : getSandboxIterator(value, budget, context);
   if (getSandboxPropertyDescriptor(value, key, budget) === undefined &&
       !(isSandboxRegExpIterator(value) && !asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)) {
+    if (!asyncProtocol && Array.isArray(value) && getSandboxPrototype(value, budget) !== null) return undefined;
     if (!asyncProtocol) return getSandboxIterator(value, budget, context);
     if (isSandboxGenerator(value) && value.async)
       return getSandboxAsyncIterator(value, budget, context, signal);
@@ -92,6 +93,14 @@ export async function acquireSandboxIterator(
     return iterator === undefined ? undefined : asyncFromSyncIterator(iterator, budget, signal, context);
   }
   const factory = await context.getProperty(value, key);
+  // Legacy interpret callers can supply built-ins installed under another
+  // budget while their evaluation context still uses implicit array iteration.
+  if (!asyncProtocol && factory === undefined && Array.isArray(value) && !hasExplicitSandboxPrototype(value)) {
+    const installed = getSandboxPropertyDescriptor(value, key, budget)?.value;
+    if (typeof installed === "object" && installed !== null &&
+        getIntrinsicIdentity(installed) === JSON.stringify(["Array", "prototype", "values"]))
+      return arrayIterator(value, context, budget);
+  }
   if (!asyncProtocol && (isSandboxMap(value) || isSandboxSet(value)) &&
       typeof factory === "object" && factory !== null &&
       getIntrinsicIdentity(factory) === JSON.stringify(isSandboxMap(value)

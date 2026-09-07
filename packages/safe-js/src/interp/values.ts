@@ -7,6 +7,7 @@ export { getRegexProperties } from "./regexp-properties.js";
 import { retainedAccessorClosures } from "./accessors.js";
 import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./collection-brands.js";
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
+import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
@@ -654,6 +655,7 @@ export function measureSandboxData(
       }
       return;
     }
+    if (isSandboxArrayIterator(value)) visit(arrayIteratorState(value).source, depth + 1);
     if (isSandboxRegExpIterator(value)) {
       const state = regexpIteratorState(value);
       visit(state.matcher, depth + 1);
@@ -881,6 +883,10 @@ function copyToSandbox(
     return value;
   }
 
+  if (isSandboxArrayIterator(value)) {
+    if (!cloneSandboxCollections) return value;
+    throw new TypeError("Array iterators require a portable guest snapshot, not a data copy.");
+  }
   if (isSandboxRegExpIterator(value)) {
     if (hasGuestObjectState(value)) throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
     if (!cloneSandboxCollections) return value;
@@ -1278,6 +1284,7 @@ function copyFromSandbox(
   if (isSandboxGenerator(value)) {
     throw new TypeError("Sandbox generators cannot cross into host values.");
   }
+  if (isSandboxArrayIterator(value)) throw new TypeError("Sandbox Array iterators cannot cross into host values.");
 
   if (isSandboxCollectionIterator(value)) {
     throw new TypeError("Sandbox collection iterators cannot cross into host values.");
@@ -1432,8 +1439,8 @@ function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet
 
     seen.add(value);
     budget.allocateArrayLength(value.length);
-    for (const entry of value) {
-      allocateSandboxValue(entry, budget, seen);
+    for (let index = 0; index < value.length; index++) {
+      allocateSandboxValue(value[index], budget, seen);
     }
 
     return;

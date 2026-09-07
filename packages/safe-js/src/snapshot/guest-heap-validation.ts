@@ -57,7 +57,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -113,6 +113,15 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     fields(node, ["kind", "id"], ["state"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
     if (Object.hasOwn(node, "state")) state(node.state);
+  } else if (node.kind === "array-iterator") {
+    fields(node, ["kind", "source", "index", "method", "state"]);
+    integer(node.index);
+    if (!["keys", "values", "entries"].includes(String(node.method))) throw new TypeError("Invalid Array iterator method.");
+    if (!absent(node.source)) {
+      const source = reference(node.source);
+      if (source.kind === "scope-frame" || source.kind === "symbol") throw new TypeError("Invalid Array iterator source.");
+    }
+    state(node.state);
   } else if (node.kind === "guest-object" || node.kind === "guest-array") {
     fields(node, ["kind", "state"], node.kind === "guest-array" ? ["templateNodeId", "templateOwner"] : []);
     if (Object.hasOwn(node, "templateOwner")) reference(node.templateOwner, ["guest-array"]);

@@ -1592,8 +1592,8 @@ function allocateProducedValue(value: SandboxValue, budget: Budget, seen: WeakSe
     }
 
     seen.add(value);
-    for (const entry of value) {
-      allocateProducedValue(entry, budget, seen);
+    for (let index = 0; index < value.length; index++) {
+      allocateProducedValue(value[index], budget, seen);
     }
 
     return;
