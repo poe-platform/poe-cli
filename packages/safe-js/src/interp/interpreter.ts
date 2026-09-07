@@ -122,6 +122,7 @@ import { acquireSandboxIterator, closeIterator, readIteratorResult, restoreSandb
 import type { GeneratorExpressionState } from "./generator-expression-state.js";
 import { assertCollectionMutable } from "./running-state.js";
 import { getGeneratorMember } from "./methods/generator.js";
+import { getGeneratorProperties } from "./generator-properties.js";
 import { getRegexMember, setRegexMember } from "./methods/regex.js";
 import { bindPattern, type BindPatternResult, type PatternContext } from "./patterns.js";
 import {
@@ -2047,7 +2048,7 @@ function forInKeys(object: object, budget: Budget): string[] {
   for (let current: object | null = object; current !== null; current = getSandboxPrototype(current, budget)) {
     if (depth > 0) budget.visitNode();
     assertSandboxDataDepth(depth++);
-    const properties = isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? materializeFunctionProperties(current) : isSandboxClosure(current) ? current.properties ?? {} : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? materializeFunctionProperties(current) : isSandboxClosure(current) ? current.properties ?? {} : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
     for (const key of Object.getOwnPropertyNames(properties)) {
       if (seen.has(key)) continue;
       seen.add(key);
@@ -2064,7 +2065,7 @@ function hasForInProperty(object: object, key: string, budget: Budget): boolean 
   for (let current: object | null = object; current !== null; current = getSandboxPrototype(current, budget)) {
     if (depth > 0) budget.visitNode();
     assertSandboxDataDepth(depth++);
-    const properties = isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? materializeFunctionProperties(current) : isSandboxClosure(current) ? current.properties ?? {} : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? materializeFunctionProperties(current) : isSandboxClosure(current) ? current.properties ?? {} : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
     if (Object.hasOwn(properties, key)) return true;
   }
   return false;
@@ -2803,7 +2804,8 @@ function getPropertyValue(
     ? getSetMember(target, property, createSetMethodOptions(context)) : undefined;
   if (isSandboxCollectionIterator(target))
     return getCollectionIteratorMember(target, property, context.budget);
-  if (isSandboxGenerator(target)) return getGeneratorMember(target, property, context.budget);
+  if (isSandboxGenerator(target)) return hasExplicitSandboxPrototype(target)
+    ? undefined : getGeneratorMember(target, property, context.budget);
   if (isSandboxClosure(target)) return getClosureMemberValue(target, property, context);
   if (isSandboxPromise(target)) return hasExplicitSandboxPrototype(target)
     ? undefined : getPromiseMember(property, context.budget);
@@ -3208,7 +3210,7 @@ async function evaluateMemberCallExpression(
     }
 
     if (isSandboxGenerator(member.object)) {
-      const memberValue = getGeneratorMember(member.object, member.property, context.budget);
+      const memberValue = await getPropertyValue(member.object, member.property, context);
       if (memberValue === undefined) {
         throw new TypeError(`Generator#${String(member.property)} is not a supported method.`);
       }
@@ -3585,7 +3587,7 @@ function hasSandboxProperty(value: SandboxValue, key: PropertyKey, context: Eval
   while (typeof current === "object" && current !== null) {
     if (isGuestHostObject(current)) return typeof key === "symbol" ? false : hasHostObjectMember(current, String(key));
     if (hasOwnSandboxProperty(current, key, false)) return true;
-    if (!isSandboxDate(current) && !isSandboxRegex(current) && !isSandboxMap(current) && !isSandboxSet(current) && !((isGuestClosure(current) || Array.isArray(current)) && hasExplicitSandboxPrototype(current)) &&
+    if (!isSandboxDate(current) && !isSandboxRegex(current) && !isSandboxMap(current) && !isSandboxSet(current) && !((isGuestClosure(current) || isSandboxGenerator(current) || Array.isArray(current)) && hasExplicitSandboxPrototype(current)) &&
         (Array.isArray(current) || !isPlainSandboxObject(current) ||
         isSandboxDate(current) || isFloat32Array(current) || isSandboxGenerator(current) || isSandboxCollectionIterator(current) || isSandboxRegExpIterator(current))) {
       return getPropertyValue(current, key, context) !== undefined;
@@ -3925,6 +3927,7 @@ export function setSandboxProperty(
   }
   if (isGuestClosure(target)) target = materializeFunctionProperties(target);
   if (isSandboxPromise(target)) target = getPromiseProperties(target);
+  if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
   if (isFloat32Array(target)) {
     if (typeof property === "symbol") throw new TypeError("Typed array symbol properties are not yet supported.");
@@ -3963,7 +3966,7 @@ export function setSandboxProperty(
       ) {
         budget.visitNode();
         assertSandboxDataDepth(depth++);
-        const properties = isSandboxClosure(prototype) ? prototype.properties : prototype;
+        const properties = isSandboxGenerator(prototype) ? getGeneratorProperties(prototype) : isSandboxClosure(prototype) ? prototype.properties : prototype;
         const inherited =
           properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);
         if (inherited === undefined) continue;
@@ -3994,7 +3997,7 @@ function setSuperProperty(
   ) {
     budget.visitNode();
     assertSandboxDataDepth(depth++);
-    const properties = isSandboxClosure(current) ? current.properties : current;
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxClosure(current) ? current.properties : current;
     const descriptor =
       properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);
     if (descriptor === undefined) continue;
@@ -4017,6 +4020,7 @@ export function deleteSandboxProperty(
   if (isGuestClosure(target)) target = materializeFunctionProperties(target);
   if (isSandboxRegex(target)) target = getRegexProperties(target);
   if (isSandboxPromise(target)) target = getPromiseProperties(target);
+  if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
   if (Array.isArray(target)) {
     assertCollectionMutable(target);

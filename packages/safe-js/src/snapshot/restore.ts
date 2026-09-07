@@ -1,4 +1,5 @@
 import { Budget, SandboxError, type CompileOwner } from "../interp/budget.js";
+import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { restoreRegexProperties } from "./regexp-properties.js";
 import { classOrigins, createClassConstructor, type Field } from "../interp/classes.js";
 import { mapIteratorSnapshot } from "../interp/iteration.js";
@@ -723,6 +724,13 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   if (serialized.kind === "guest-generator") {
     const generator = restoreGuestGenerator(serialized, state);
     state.heapValueById.set(id, generator);
+    const objectState = serialized.objectState;
+    if (objectState !== undefined) state.initializeIterators.push(() => {
+      if (objectState.prototype !== undefined)
+        setSandboxPrototype(generator, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(getGeneratorProperties(generator), objectState.properties,
+        entry => deserializeValue(entry as SerializedSnapshotValue, state));
+    });
     return generator;
   }
   if (serialized.kind === "intrinsic" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator") {

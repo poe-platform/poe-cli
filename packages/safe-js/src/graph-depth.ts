@@ -7,6 +7,7 @@ import { regexpIteratorState, isSandboxRegExpIterator } from "./interp/regexp-it
 import { isSandboxMap, isSandboxSet } from "./interp/collection-brands.js";
 import { boxedDataProperties, isSandboxBox } from "./interp/boxed.js";
 import { regexGuestProperties } from "./interp/regexp-properties.js";
+import { generatorGuestProperties } from "./interp/generator-properties.js";
 
 export const MAX_DATA_DEPTH = 1_024;
 
@@ -80,7 +81,7 @@ function walkGraphDepth(
 }
 
 function graphEntries(value: object): Array<[string, unknown]> {
-  const properties = regexGuestProperties.get(value);
+  const properties = regexGuestProperties.get(value) ?? generatorGuestProperties.get(value);
   if (properties !== undefined) return Reflect.ownKeys(properties).flatMap(key => {
     const descriptor = Object.getOwnPropertyDescriptor(properties, key)!;
     return "value" in descriptor ? [[`.${String(key)}`, descriptor.value] as [string, unknown]] : [];

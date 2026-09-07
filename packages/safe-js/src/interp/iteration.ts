@@ -62,8 +62,9 @@ export async function restoreSandboxIterator(snapshot: IteratorSnapshot, budget:
   if (snapshot.kind === "guest") return guestIterator(snapshot.value, snapshot.next, snapshot.async, budget, context, signal);
   if (snapshot.kind === "async-from-sync") return asyncFromSyncIterator(await restoreSandboxIterator(snapshot.inner, budget, context, signal), budget, signal, context);
   if (Array.isArray(snapshot.value)) return arrayIterator(snapshot.value, context, budget, snapshot.index);
-  const iterator = isSandboxGenerator(snapshot.value) && snapshot.value.async
-    ? getSandboxAsyncIterator(snapshot.value, budget, context, signal)
+  const iterator = isSandboxGenerator(snapshot.value)
+    ? { ...generatorObjectIterator(snapshot.value, budget, context),
+        ...(snapshot.value.async ? { asyncProtocol: true as const } : {}) }
     : getSandboxIterator(snapshot.value, budget, context);
   if (iterator === undefined) throw new TypeError("Invalid builtin iterator snapshot.");
   // Builtin cursor restoration never invokes a guest iterator factory or next getter.
@@ -85,6 +86,11 @@ export async function acquireSandboxIterator(
       : getSandboxIterator(value, budget, context);
   if (getSandboxPropertyDescriptor(value, key, budget) === undefined &&
       !(isSandboxRegExpIterator(value) && !asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)) {
+    if (isSandboxGenerator(value)) {
+      if (hasExplicitSandboxPrototype(value)) return undefined;
+      if ((value.async === true) === asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)
+        return guestIterator(value, await context.getProperty(value, "next"), asyncProtocol, budget, context, signal);
+    }
     if (!asyncProtocol && Array.isArray(value) && getSandboxPrototype(value, budget) !== null) return undefined;
     if (!asyncProtocol) return getSandboxIterator(value, budget, context);
     if (isSandboxGenerator(value) && value.async)
@@ -175,7 +181,8 @@ export function getSandboxAsyncIterator(
   signal?: AbortSignal
 ): SandboxIterator | undefined {
   if (isSandboxGenerator(value) && value.async) {
-    return { ...generatorIterator(value, budget, context), asyncProtocol: true };
+    return hasExplicitSandboxPrototype(value) ? undefined
+      : { ...generatorObjectIterator(value, budget, context), asyncProtocol: true };
   }
   if (
     value !== null &&
@@ -359,7 +366,7 @@ export function getSandboxIterator(
     return syncIterator(Float32Array.prototype.values.call(value));
   }
   if (isSandboxGenerator(value)) {
-    return value.async ? undefined : generatorIterator(value);
+    return value.async || hasExplicitSandboxPrototype(value) ? undefined : generatorObjectIterator(value, budget, context);
   }
 
   if (typeof value === "string") {
@@ -449,6 +456,28 @@ function collectionIterator(
 }
 
 const asyncGeneratorRequests = new WeakMap<SandboxGenerator, Promise<unknown>>();
+
+function generatorObjectIterator(generator: SandboxGenerator, budget?: Budget, context?: SandboxCallContext): SandboxIterator {
+  const iterator = generatorIterator(generator, budget, context);
+  if (context?.getProperty === undefined) return iterator;
+  return {
+    ...iterator,
+    getOperation: async method => {
+      if (method === "next" || (!hasExplicitSandboxPrototype(generator) &&
+          getSandboxPropertyDescriptor(generator, method, budget) === undefined)) return iterator[method];
+      const operation = await context.getProperty!(generator, method);
+      if (operation === undefined || operation === null) return undefined;
+      if (!isSandboxClosure(operation)) throw new TypeError("Iterator operation must be callable.");
+      return async (...args) => {
+        const result = await invokeBuiltinClosure(operation, args, budget ?? new Budget(), context, generator);
+        return (generator.async ? await awaitSandboxValue(result, undefined, budget, context) : result) as unknown as IteratorResult<SandboxValue>;
+      };
+    },
+    readResultProperty: async (result, property) => ({
+      value: await context.getProperty!(result as unknown as SandboxValue, property)
+    })
+  };
+}
 
 export function generatorIterator(generator: SandboxGenerator, budget?: Budget, context?: SandboxCallContext): SandboxIterator {
   const invoke = async (

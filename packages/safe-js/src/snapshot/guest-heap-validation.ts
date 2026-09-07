@@ -177,7 +177,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     state(node.state);
   } else if (node.kind === "guest-generator") {
-    fields(node, ["kind", "state", "astNodeId", "async", "scope", "closureScope", "sent"], ["suspendedScope", "yieldNodeId", "environment", "blockScopes", "finallyCompletions", "expressionStates"]);
+    fields(node, ["kind", "state", "astNodeId", "async", "scope", "closureScope", "sent"], ["suspendedScope", "yieldNodeId", "environment", "blockScopes", "finallyCompletions", "expressionStates", "objectState"]);
+    if (Object.hasOwn(node, "objectState")) state(node.objectState);
     if (!["start", "running", "suspended", "done"].includes(String(node.state)) || typeof node.async !== "boolean" || integer(node.astNodeId) < 1)
       throw new TypeError("Invalid generator state.");
     reference(node.scope, ["scope-frame"]);

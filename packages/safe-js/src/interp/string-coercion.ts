@@ -1,4 +1,5 @@
 import { sandboxErrorTypes } from "../error/shape.js";
+import { getGeneratorProperties } from "./generator-properties.js";
 import { readPropertyDescriptor } from "./accessors.js";
 import { dateString, dateTime, isSandboxDate } from "./date.js";
 import type { Budget } from "./budget.js";
@@ -164,7 +165,7 @@ function conversionHook(
   let current: object | null = value;
   let depth = 0;
   while (current !== null) {
-    const properties = isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? getGuestFunctionProperties(current)
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? getGuestFunctionProperties(current)
       : isSandboxRegex(current) ? getRegexProperties(current)
       : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
     const descriptor =

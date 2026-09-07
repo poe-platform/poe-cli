@@ -1,4 +1,5 @@
 import { assertSandboxDataDepth } from "../../graph-depth.js";
+import { getGeneratorProperties } from "../generator-properties.js";
 import { readPropertyDescriptor } from "../accessors.js";
 import { isSandboxArguments } from "../arguments.js";
 import type { Budget } from "../budget.js";
@@ -187,8 +188,7 @@ export function hasOwnSandboxProperty(
     properties = value.properties ?? (Object.create(null) as SandboxObject);
   } else if (isSandboxMap(value) || isSandboxSet(value)) properties = getCollectionProperties(value);
   else if (isSandboxPromise(value)) properties = getPromiseProperties(value);
-  else if (isSandboxGenerator(value))
-    return false;
+  else if (isSandboxGenerator(value)) properties = getGeneratorProperties(value);
   else if (isSandboxRegex(value)) properties = getRegexProperties(value);
   else properties = Object(value) as object;
   const descriptor = Object.getOwnPropertyDescriptor(properties, key);

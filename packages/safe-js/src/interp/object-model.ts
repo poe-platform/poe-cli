@@ -1,4 +1,5 @@
 import { assertSandboxDataDepth } from "../graph-depth.js";
+import { getGeneratorProperties } from "./generator-properties.js";
 import { getIntrinsicIdentity, registerBuiltinIdentities, releaseIntrinsicIdentities } from "./intrinsics.js";
 import { releaseTemplateObjects } from "./template-objects.js";
 import { isSandboxDate } from "./date.js";
@@ -319,9 +320,9 @@ export function getSandboxPropertyDescriptor(
   while (
     typeof current === "object" &&
     current !== null &&
-    (Array.isArray(current) || isSandboxDate(current) || isSandboxPromise(current) || isSandboxRegex(current) || isSandboxMap(current) || isSandboxSet(current) || isPrototypeRecord(current))
+    (Array.isArray(current) || isSandboxGenerator(current) || isSandboxDate(current) || isSandboxPromise(current) || isSandboxRegex(current) || isSandboxMap(current) || isSandboxSet(current) || isPrototypeRecord(current))
   ) {
-    const properties = isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? getGuestFunctionProperties(current)
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? getGuestFunctionProperties(current)
       : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
     const descriptor =
       properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);
@@ -346,6 +347,10 @@ export function getSandboxDataProperty(
     if (isGuestHostObject(current)) return typeof key === "symbol" ? undefined : getHostObjectMember(current, String(key));
     if (isSandboxRegex(current)) return Object.getOwnPropertyDescriptor(getRegexProperties(current), key)?.value;
     if (isSandboxPromise(current)) return Object.getOwnPropertyDescriptor(getPromiseProperties(current), key)?.value;
+    if (isSandboxGenerator(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(getGeneratorProperties(current), key);
+      if (descriptor !== undefined) return descriptor.value;
+    }
     if (isSandboxMap(current) || isSandboxSet(current)) return Object.getOwnPropertyDescriptor(getCollectionProperties(current), key)?.value;
     if (isGuestClosure(current)) {
       const entry = getGuestFunctionProperty(current, key);
@@ -360,11 +365,10 @@ export function getSandboxDataProperty(
       isSandboxMap(current) ||
       isSandboxSet(current) ||
       isSandboxPromise(current) ||
-      isSandboxRegex(current) ||
-      isSandboxGenerator(current)
+      isSandboxRegex(current)
     )
       return undefined;
-    if (!isSandboxClosure(current) && Object.hasOwn(current, key)) return (current as SandboxObject)[key];
+    if (!isSandboxClosure(current) && !isSandboxGenerator(current) && Object.hasOwn(current, key)) return (current as SandboxObject)[key];
     current = getSandboxPrototype(current, budget) as SandboxValue;
     if (current !== null) {
       budget?.visitNode();
@@ -383,8 +387,8 @@ export function setSandboxPrototype(
     throw new TypeError("Object.prototype has an immutable null prototype.");
   }
   if (
-    (!Array.isArray(value) && !isSandboxDate(value) && !isSandboxPromise(value) && !isSandboxRegex(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isPrototypeRecord(value)) ||
-    (prototype !== null && !Array.isArray(prototype) && !isSandboxDate(prototype) && !isSandboxPromise(prototype) && !isSandboxRegex(prototype) && !isSandboxMap(prototype) && !isSandboxSet(prototype) && !isPrototypeRecord(prototype))
+    (!Array.isArray(value) && !isSandboxGenerator(value) && !isSandboxDate(value) && !isSandboxPromise(value) && !isSandboxRegex(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isPrototypeRecord(value)) ||
+    (prototype !== null && !Array.isArray(prototype) && !isSandboxGenerator(prototype) && !isSandboxDate(prototype) && !isSandboxPromise(prototype) && !isSandboxRegex(prototype) && !isSandboxMap(prototype) && !isSandboxSet(prototype) && !isPrototypeRecord(prototype))
   ) {
     throw new TypeError(
       "Prototype links require supported sandbox objects."
@@ -395,7 +399,7 @@ export function setSandboxPrototype(
     if (prototype === null) prototypes.set(value, null);
     return;
   }
-  if (!Object.isExtensible(isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
+  if (!Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
     throw new TypeError("Cannot change the prototype of a non-extensible object.");
   }
   let depth = 0;

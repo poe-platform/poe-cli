@@ -1,4 +1,5 @@
 import { getClosureOrigin, getGeneratorOrigin } from "../interp/closure-origin.js";
+import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { getIntrinsicIdentity } from "../interp/intrinsics.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, isGuestClosure, materializeFunctionProperties } from "../interp/object-model.js";
 import { isLiveCapability } from "../interp/host-capabilities.js";
@@ -38,7 +39,7 @@ export type GuestHeapNode<T> =
       finallyCompletions?: Record<string, GeneratorFinallyCompletion<T>>;
       expressionStates?: Record<string, GeneratorExpressionState<T, T, IteratorSnapshot<T>>>;
       sent: Array<{ type: "normal" | "return" | "throw"; value: T }>;
-      environment?: { homeObject?: T; newTarget?: T } }
+      environment?: { homeObject?: T; newTarget?: T }; objectState?: GuestObjectState<T> }
   | { kind: "guest-object"; state: GuestObjectState<T> }
   | { kind: "guest-array"; state: GuestObjectState<T>; templateNodeId?: number; templateOwner?: T }
   | { kind: "intrinsic"; id: string; state?: GuestObjectState<T> }
@@ -95,6 +96,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     const channel = value.channel.snapshot();
     return {
       kind: "guest-generator", state: value.state, astNodeId: origin.node.nodeId, async: value.async === true,
+      objectState: captureObjectState(value, encode),
       scope: encode(origin.scope), closureScope: encode(origin.closureScope),
       ...(value.state !== "suspended" || origin.suspendedScope === undefined ? {} : { suspendedScope: encode(origin.suspendedScope) }),
       ...(value.state !== "suspended" || origin.blockScopes === undefined ? {} : {
@@ -192,6 +194,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
 
 function captureObjectState<T>(value: object, encode: (value: unknown) => T): GuestObjectState<T> | undefined {
   let properties: object | undefined = value;
+  if (isSandboxGenerator(value)) properties = getGeneratorProperties(value);
   if (isSandboxClosure(value)) {
     properties = value.properties;
     if (isGuestClosure(value)) properties = materializeFunctionProperties(value);

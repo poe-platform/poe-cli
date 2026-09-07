@@ -1,5 +1,6 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
 import { internalSymbols } from "./internal-symbols.js";
+import { getGeneratorProperties } from "./generator-properties.js";
 import { getRegexProperties, regexGuestProperties } from "./regexp-properties.js";
 import { getCollectionProperties, collectionGuestProperties, copyCollectionProperties } from "./collection-properties.js";
 export { getCollectionProperties } from "./collection-properties.js";
@@ -298,6 +299,7 @@ export function ownEnumerableSandboxEntries(
   if (isGuestClosure(value)) entries = Object.entries(value.properties ?? {});
   else if (isSandboxRegex(value)) entries = Object.entries(getRegexProperties(value));
   else if (isSandboxPromise(value)) entries = Object.entries(getPromiseProperties(value));
+  else if (isSandboxGenerator(value)) entries = Object.entries(getGeneratorProperties(value));
   else if (isSandboxMap(value) || isSandboxSet(value)) entries = Object.entries(getCollectionProperties(value));
   else if (isSandboxClosure(value) || isSandboxGenerator(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxPromise(value) || isSandboxRegex(value)) return [];
   else entries = Object.entries(Object(value)) as Array<[string, SandboxValue]>;
@@ -310,8 +312,8 @@ export function ownSandboxSymbolKeys(value: SandboxValue): symbol[] {
   if (isSandboxClosure(value)) value = value.properties ?? {};
   else if (isSandboxRegex(value)) value = getRegexProperties(value);
   else if (isSandboxPromise(value)) value = getPromiseProperties(value);
+  else if (isSandboxGenerator(value)) value = getGeneratorProperties(value);
   else if (isSandboxMap(value) || isSandboxSet(value)) value = getCollectionProperties(value);
-  else if (isSandboxGenerator(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxPromise(value) || isSandboxRegex(value)) return [];
   return Object.getOwnPropertySymbols(Object(value)).filter(key => !internalSymbols.has(key));
 }
 
@@ -319,7 +321,7 @@ export function ownEnumerableSandboxKeys(value: SandboxValue): string[];
 export function ownEnumerableSandboxKeys(value: SandboxValue, includeSymbols: true): PropertyKey[];
 export function ownEnumerableSandboxKeys(value: SandboxValue, includeSymbols = false): PropertyKey[] {
   if (includeSymbols) {
-    const properties = isSandboxClosure(value) ? value.properties ?? {} : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value)
+    const properties = isSandboxClosure(value) ? value.properties ?? {} : isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value)
       : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : Object(value);
     return [...ownEnumerableSandboxKeys(value), ...ownSandboxSymbolKeys(value).filter(key =>
       Object.getOwnPropertyDescriptor(properties, key)?.enumerable === true)];
@@ -328,6 +330,7 @@ export function ownEnumerableSandboxKeys(value: SandboxValue, includeSymbols = f
   if (value === null || value === undefined) throw new TypeError("Cannot convert undefined or null to object.");
   if (isGuestClosure(value)) return Object.keys(value.properties ?? {});
   if (isSandboxPromise(value)) return Object.keys(getPromiseProperties(value));
+  if (isSandboxGenerator(value)) return Object.keys(getGeneratorProperties(value));
   if (isSandboxRegex(value)) return Object.keys(getRegexProperties(value));
   if (isSandboxMap(value) || isSandboxSet(value)) return Object.keys(getCollectionProperties(value));
   if (isSandboxClosure(value) || isSandboxGenerator(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxPromise(value) || isSandboxRegex(value)) return [];
@@ -404,6 +407,8 @@ export function createSandboxGenerator(
     enumerable: false,
     value: true
   });
+
+  getGeneratorProperties(generator);
 
   return generator;
 }
@@ -696,6 +701,14 @@ export function measureSandboxData(
       return;
     }
     if (isSandboxGenerator(value)) {
+      const descriptors = Object.getOwnPropertyDescriptors(getGeneratorProperties(value));
+      for (const key of Reflect.ownKeys(descriptors)) {
+        const descriptor = descriptors[key as keyof typeof descriptors]!;
+        usage += typeof key === "string" ? key.length + 1 : 1;
+        if (typeof key === "symbol") visit(key, depth + 1);
+        if ("value" in descriptor) visit(descriptor.value, depth + 1);
+        else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
+      }
       const snapshot = value.channel.snapshot();
       usage += snapshot.sent.length;
       for (const completion of snapshot.sent) visit(completion.value, depth + 1);
