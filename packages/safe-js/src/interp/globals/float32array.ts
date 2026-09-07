@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,17 +352,33 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse"].includes(key)) return undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
     name: key,
-    length: key === "set" || key === "fill" ? 1 : 2,
+    length: key === "reverse" ? 0 : key === "set" || key === "fill" ? 1 : 2,
     call: (args, context) => {
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin");
+      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse");
+      if (key === "reverse") {
+        const release = retainValues(budget, () => [receiver, ...args]);
+        try {
+          const bytes = new Uint8Array(storage.buffer, storage.byteOffset, storage.length * 4);
+          for (let lower = 0; lower < Math.floor(storage.length / 2); lower++) {
+            const upper = storage.length - lower - 1;
+            for (let offset = 0; offset < 4; offset++) {
+              budget.visitNode();
+              const saved = bytes[lower * 4 + offset];
+              bytes[lower * 4 + offset] = bytes[upper * 4 + offset];
+              bytes[upper * 4 + offset] = saved;
+            }
+          }
+          return receiver;
+        } finally { release(); }
+      }
       const bridge: SandboxCallContext = {
         ...context, stack: context?.stack ?? [], thisValue: receiver,
         getProperty: context?.getProperty ?? ((value, property) => {
