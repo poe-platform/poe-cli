@@ -10,7 +10,7 @@ const createValuesIterator = Object.getOwnPropertyDescriptor(typedArrayPrototype
 const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength")!.get!;
 const bufferResizable = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resizable")?.get;
 export const float32ViewLayouts = new WeakMap<Float32Array, { byteOffset: number; length?: number }>();
-const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")!.value as (length: number) => void;
+const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value as ((length: number) => void) | undefined;
 
 export function restoreFloat32View(buffer: ArrayBuffer, byteOffset: number, length?: number, budget?: Budget): Float32Array {
   const originalLength = arrayBufferLength(buffer);
@@ -18,7 +18,7 @@ export function restoreFloat32View(buffer: ArrayBuffer, byteOffset: number, leng
   const options = arrayBufferOptions(buffer);
   const grow = required > originalLength;
   if (grow) {
-    if (options === undefined || required > options.maxByteLength)
+    if (resizeBuffer === undefined || options === undefined || required > options.maxByteLength)
       throw new RangeError("Float32Array layout exceeds backing capacity.");
     budget?.allocateArrayLength(Math.ceil(required / 4));
     budget?.provisionDataUsage(required - originalLength)();
@@ -29,7 +29,7 @@ export function restoreFloat32View(buffer: ArrayBuffer, byteOffset: number, leng
     if (options !== undefined) float32ViewLayouts.set(view, { byteOffset, ...(length === undefined ? {} : { length }) });
     return view;
   } finally {
-    if (grow) Reflect.apply(resizeBuffer, buffer, [originalLength]);
+    if (grow) Reflect.apply(resizeBuffer!, buffer, [originalLength]);
   }
 }
 

@@ -8,8 +8,7 @@ import { registerBuiltinIdentities } from "../intrinsics.js";
 import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
 
-const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")!.value as (length: number) => void;
-const detachedBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "detached")!.get!;
+const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value as ((length: number) => void) | undefined;
 
 export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   const prototype: SandboxObject = Object.create(null);
@@ -46,6 +45,8 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
         }
         const target = context?.newTarget ?? constructor;
         selected = await bridge.getProperty!(target, "prototype");
+        if (maxByteLength !== undefined && resizeBuffer === undefined)
+          throw new TypeError("Resizable ArrayBuffer requires host runtime support.");
         budget.allocateArrayLength(maxByteLength ?? length);
         budget.provisionDataUsage(length + 1)();
         const result = Reflect.construct(ArrayBuffer, [length, maxByteLength === undefined ? undefined : { maxByteLength }]) as ArrayBuffer;
@@ -76,7 +77,8 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
       call: async (args, context) => {
         const receiver = context?.thisValue;
         if (!isSandboxArrayBuffer(receiver)) throw new TypeError("ArrayBuffer slice requires a buffer receiver.");
-        if (Reflect.apply(detachedBuffer, receiver, [])) throw new TypeError("Cannot slice a detached ArrayBuffer.");
+        // A zero-length view validates detachment even on hosts without .detached.
+        new Uint8Array(receiver, 0, 0);
         const length = arrayBufferLength(receiver);
         let candidate: SandboxValue;
         let result: SandboxValue;
@@ -114,10 +116,10 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
             result = new ArrayBuffer(size);
             setSandboxPrototype(result, prototype, budget);
           } else result = await invokeBuiltinClosure(candidate as SandboxClosure, [size], budget, bridge, undefined, true);
-          if (!isSandboxArrayBuffer(result) || Reflect.apply(detachedBuffer, result, []) ||
-              result === receiver || arrayBufferLength(result) < size)
+          if (!isSandboxArrayBuffer(result) || result === receiver || arrayBufferLength(result) < size)
             throw new TypeError("ArrayBuffer species must return distinct sufficient buffer storage.");
-          if (Reflect.apply(detachedBuffer, receiver, [])) throw new TypeError("Cannot slice a detached ArrayBuffer.");
+          new Uint8Array(result, 0, 0);
+          new Uint8Array(receiver, 0, 0);
           const count = Math.min(size, Math.max(arrayBufferLength(receiver) - start, 0));
           if (count > 0) new Uint8Array(result, 0, count).set(new Uint8Array(receiver, start, count));
           return result;
@@ -129,7 +131,7 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
     value: createSandboxClosure({ guest: true, sandbox: true, name: "resize", length: 1,
       call: async (args, context) => {
         const receiver = context?.thisValue;
-        if (!isSandboxArrayBuffer(receiver) || arrayBufferOptions(receiver) === undefined)
+        if (resizeBuffer === undefined || !isSandboxArrayBuffer(receiver) || arrayBufferOptions(receiver) === undefined)
           throw new TypeError("ArrayBuffer resize requires a resizable buffer receiver.");
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
