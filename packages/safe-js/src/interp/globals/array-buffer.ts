@@ -1,7 +1,7 @@
 import type { Budget } from "../budget.js";
 import { arrayBufferLength, arrayBufferOptions, arrayBufferPrototypes, isSandboxArrayBuffer } from "../array-buffer.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
-import { createSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
+import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
@@ -9,6 +9,7 @@ import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
 
 const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")!.value as (length: number) => void;
+const detachedBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "detached")!.get!;
 
 export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   const prototype: SandboxObject = Object.create(null);
@@ -64,6 +65,66 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
     [Symbol.toStringTag]: { value: "ArrayBuffer", configurable: true }
   });
   const getters: SandboxClosure[] = [];
+  const species = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.species]", length: 0,
+    call: (_args, context) => context?.thisValue });
+  getters.push(species);
+  Object.defineProperty(materializeFunctionProperties(constructor), Symbol.species, {
+    get: accessorAdapter(species, "get"), configurable: true
+  });
+  Object.defineProperty(prototype, "slice", { writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: "slice", length: 2,
+      call: async (args, context) => {
+        const receiver = context?.thisValue;
+        if (!isSandboxArrayBuffer(receiver)) throw new TypeError("ArrayBuffer slice requires a buffer receiver.");
+        if (Reflect.apply(detachedBuffer, receiver, [])) throw new TypeError("Cannot slice a detached ArrayBuffer.");
+        const length = arrayBufferLength(receiver);
+        let candidate: SandboxValue;
+        let result: SandboxValue;
+        const bridge: SandboxCallContext = {
+          ...context, stack: context?.stack ?? [], thisValue: receiver,
+          getProperty: context?.getProperty ?? ((value, key) => {
+            const descriptor = getSandboxPropertyDescriptor(value, key, budget);
+            return descriptor === undefined ? getSandboxDataProperty(value, key, budget)
+              : readPropertyDescriptor(descriptor, value, bridge);
+          }),
+          invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
+            invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
+        };
+        const release = retainValues(budget, () => [receiver, candidate, result, ...args]);
+        const clamp = (number: number) => {
+          const integer = Number.isNaN(number) ? 0 : Math.trunc(number);
+          return integer < 0 ? Math.max(length + integer, 0) : Math.min(integer, length);
+        };
+        try {
+          const start = clamp(await sandboxNumber(args[0], budget, bridge));
+          const end = args[1] === undefined ? length : clamp(await sandboxNumber(args[1], budget, bridge));
+          const size = Math.max(end - start, 0);
+          candidate = await bridge.getProperty!(receiver, "constructor");
+          if (candidate !== undefined) {
+            if (candidate === null || typeof candidate !== "object")
+              throw new TypeError("ArrayBuffer constructor must be an object.");
+            candidate = await bridge.getProperty!(candidate, Symbol.species);
+            if (candidate !== undefined && candidate !== null &&
+                (!isSandboxClosure(candidate) || candidate.construct === undefined))
+              throw new TypeError("ArrayBuffer species must be a constructor.");
+          }
+          if (candidate === undefined || candidate === null || candidate === constructor) {
+            budget.allocateArrayLength(size);
+            budget.provisionDataUsage(size + 1)();
+            result = new ArrayBuffer(size);
+            setSandboxPrototype(result, prototype, budget);
+          } else result = await invokeBuiltinClosure(candidate as SandboxClosure, [size], budget, bridge, undefined, true);
+          if (!isSandboxArrayBuffer(result) || Reflect.apply(detachedBuffer, result, []) ||
+              result === receiver || arrayBufferLength(result) < size)
+            throw new TypeError("ArrayBuffer species must return distinct sufficient buffer storage.");
+          if (Reflect.apply(detachedBuffer, receiver, [])) throw new TypeError("Cannot slice a detached ArrayBuffer.");
+          const count = Math.min(size, Math.max(arrayBufferLength(receiver) - start, 0));
+          if (count > 0) new Uint8Array(result, 0, count).set(new Uint8Array(receiver, start, count));
+          return result;
+        } finally { release(); }
+      }
+    })
+  });
   Object.defineProperty(prototype, "resize", { writable: true, configurable: true,
     value: createSandboxClosure({ guest: true, sandbox: true, name: "resize", length: 1,
       call: async (args, context) => {
