@@ -653,7 +653,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   }
   if (serialized.kind === "arraybuffer") {
     initializeIntrinsicRealm(state);
-    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state));
+    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state), state.budget);
     state.heapValueById.set(id, value);
     state.initializeIterators.push(() => {
       if (serialized.state.prototype !== undefined)

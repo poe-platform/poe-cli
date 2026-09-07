@@ -3,6 +3,7 @@ import { float32Storage, isFloat32Array } from "../interp/float32.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { serializePropertyDescriptors } from "./property-descriptors.js";
 import type { GuestObjectState } from "./guest-heap.js";
+import type { Budget } from "../interp/budget.js";
 
 export type ArrayBufferData<TReference> = { kind: "arraybuffer" } & ({ bytes: number[]; maxByteLength?: number } | { buffer: TReference });
 
@@ -29,9 +30,10 @@ export function validateArrayBufferStorage(value: Record<string, unknown>): void
     throw new TypeError("Invalid ArrayBuffer maximum length.");
 }
 
-export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve: (reference: unknown) => unknown): ArrayBuffer {
+export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve: (reference: unknown) => unknown, budget?: Budget): ArrayBuffer {
   validateArrayBufferStorage(value);
   if (Array.isArray(value.bytes)) {
+    budget?.allocateArrayLength(Number(value.maxByteLength ?? value.bytes.length));
     const buffer = Reflect.construct(ArrayBuffer, [value.bytes.length,
       Object.hasOwn(value, "maxByteLength") ? { maxByteLength: value.maxByteLength } : undefined]) as ArrayBuffer;
     new Uint8Array(buffer).set(value.bytes);

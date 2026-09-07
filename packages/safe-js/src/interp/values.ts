@@ -1,5 +1,5 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
-import { arrayBufferDataProperties, arrayBufferLength, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
+import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
 import { getGeneratorProperties } from "./generator-properties.js";
@@ -1501,7 +1501,7 @@ function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet
   if (isSandboxArrayBuffer(value)) {
     if (seen.has(value)) return;
     seen.add(value);
-    budget.allocateArrayLength(arrayBufferLength(value));
+    budget.allocateArrayLength(arrayBufferOptions(value)?.maxByteLength ?? arrayBufferLength(value));
     for (const [key, descriptor] of arrayBufferDataProperties(value)) {
       if (typeof key === "string") budget.allocateString(key);
       allocateSandboxValue(descriptor.value, budget, seen);
@@ -1525,6 +1525,8 @@ function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet
     if (seen.has(value)) return;
     seen.add(value);
     budget.allocateArrayLength(Math.ceil(float32Storage(value).byteLength / 4));
+    const capacity = arrayBufferOptions(float32Storage(value).buffer)?.maxByteLength;
+    if (capacity !== undefined) budget.allocateArrayLength(capacity);
     for (const [key, descriptor] of float32DataProperties(value)) {
       budget.allocateString(key);
       allocateSandboxValue(descriptor.value, budget, seen);

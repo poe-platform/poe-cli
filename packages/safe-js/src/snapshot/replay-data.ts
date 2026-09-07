@@ -439,7 +439,7 @@ export function decodeReplayData(
       }
       if (kind === "arraybuffer") {
         if (typeof node.extensible !== "boolean") throw new TypeError("Invalid ArrayBuffer extensibility.");
-        const result = decodeArrayBufferStorage(node, child);
+        const result = decodeArrayBufferStorage(node, child, compilation.owner?.budget);
         restored.set(id, result);
         initializeValues.push(() => {
           defineProperties(result, record(own(node, "properties")), child, node.symbolEntries);

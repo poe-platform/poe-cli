@@ -5,7 +5,7 @@ import { exportHostCapability, importHostCapability, isLiveCapability } from "./
 import { attachErrorSpan, replaceErrorStack, type ErrorSourceSpan } from "../error/shape.js";
 import { SandboxError, type Budget, type CompileOwner } from "./budget.js";
 import { CompileScope } from "./regex/compile-guard.js";
-import { arrayBufferDataProperties, arrayBufferLength, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
+import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import {
   checkFloat32Allocation,
   copyFloat32Storage,
@@ -1020,7 +1020,7 @@ export function copyHostValueToSandbox(
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
     const length = arrayBufferLength(value);
-    budget.allocateArrayLength(length);
+    budget.allocateArrayLength(arrayBufferOptions(value)?.maxByteLength ?? length);
     budget.provisionDataUsage(length + 1)();
     const copy = copyArrayBufferStorage(value, state);
     state.seen.set(value, copy);
@@ -1037,6 +1037,8 @@ export function copyHostValueToSandbox(
   if (isFloat32Array(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
+    const capacity = arrayBufferOptions(float32Storage(value).buffer)?.maxByteLength;
+    if (capacity !== undefined) budget.allocateArrayLength(capacity);
     checkFloat32Allocation(Math.ceil(float32Storage(value).byteLength / 4), budget);
     const copy = copyFloat32Storage(value, state);
     state.seen.set(value, copy);
