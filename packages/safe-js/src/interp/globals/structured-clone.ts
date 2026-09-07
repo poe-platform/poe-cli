@@ -10,12 +10,13 @@ import { CompileScope } from "../regex/compile-guard.js";
 import { retainValues } from "../resources.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
 import {
-  allocateProducedSandboxValue, cloneSandboxValue, createSandboxClosure,
+  allocateProducedSandboxValue, cloneSandboxValue, cloneStructuredGraph, createSandboxClosure,
   isSandboxClosure, isSandboxMap, isSandboxPromise, isSandboxSet, reconcileCompiledValues,
   type SandboxCallContext, type SandboxClosure, type SandboxValue
 } from "../values.js";
 
 const transferBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "transfer")?.value;
+const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value;
 
 export function createStructuredCloneGlobal(budget: Budget): SandboxClosure {
   return createSandboxClosure({
@@ -75,47 +76,77 @@ async function cloneWithOptions(value: SandboxValue, options: SandboxValue, budg
   } finally { release(); }
 }
 
-function cloneStructuredValue(value: SandboxValue, transfers: ArrayBuffer[], budget: Budget, context?: SandboxCallContext): SandboxValue {
+function cloneStructuredValue(value: SandboxValue, transfers: ArrayBuffer[], budget: Budget, context?: SandboxCallContext): SandboxValue | Promise<SandboxValue> {
   const parent = context?.compilation;
   const operation = budget.acquireCompileOwner(false, parent?.owner);
   const compilation = parent?.owner === operation.owner ? parent : new CompileScope(operation.owner);
   const buffers = new WeakMap<ArrayBuffer, ArrayBuffer>();
   let clone: SandboxValue;
   const release = retainValues(budget, () => [value, clone, transfers]);
-  try {
-    let transferSize = 0;
-    for (const buffer of transfers) {
-      const length = arrayBufferLength(buffer);
-      budget.allocateArrayLength(arrayBufferOptions(buffer)?.maxByteLength ?? length);
-      transferSize += length + 1;
-      // Transferred buffers are placeholders during serialization. Detached
-      // entries fail in the later ordered transfer pass, not while cloning.
-      if (arrayBufferDetached(buffer)) buffers.set(buffer, new ArrayBuffer(0));
-    }
-    budget.provisionDataUsage(transferSize)();
-    clone = cloneSandboxValue(value, { compilation, resetRegexLastIndex: true, structuredClone: true, float32Buffers: buffers });
-    assertSandboxGraphDepth(clone);
-    assertStructuredCloneable(clone, new WeakSet());
-    allocateProducedSandboxValue(clone, budget);
-    if (compilation !== parent) reconcileCompiledValues(budget, [clone], compilation);
-    if (transfers.length > 0) {
-      createDataCheckpoint(budget, context)(clone, 0, true);
-      // Pay every fallible SafeJS budget charge before committing ownership loss.
-      budget.visitNode(transferSize + transfers.length);
-      budget.provisionDataUsage(transferBuffer === undefined ? transferSize : transfers.length)();
+  function* execute(): Generator<{ descriptor: PropertyDescriptor; receiver: SandboxValue }, SandboxValue, SandboxValue> {
+    try {
+      let transferSize = 0;
       for (const buffer of transfers) {
-        if (arrayBufferDetached(buffer)) throw new DOMException("Cannot transfer a detached ArrayBuffer.", "DataCloneError");
-        if (transferBuffer !== undefined) Reflect.apply(transferBuffer, buffer, [0]);
-        else structuredClone(buffer, { transfer: [buffer] });
-        if (!arrayBufferDetached(buffer)) throw new DOMException("ArrayBuffer cannot be transferred.", "DataCloneError");
+        const length = arrayBufferLength(buffer);
+        budget.allocateArrayLength(arrayBufferOptions(buffer)?.maxByteLength ?? length);
+        transferSize += length + 1;
+        // Transferred buffers are placeholders during serialization. Detached
+        // entries fail in the later ordered transfer pass, not while cloning.
       }
+      budget.provisionDataUsage(transferSize)();
+      for (const buffer of transfers) buffers.set(buffer, Reflect.construct(ArrayBuffer, [arrayBufferLength(buffer), arrayBufferOptions(buffer)]) as ArrayBuffer);
+      const state = { seen: new WeakMap<object, SandboxValue>(), compilation, resetRegexLastIndex: true, structuredClone: true, float32Buffers: buffers };
+      clone = context?.invokeClosure === undefined ? cloneSandboxValue(value, state) : yield* cloneStructuredGraph(value, state, budget);
+      // A transferred buffer is serialized as a reference, not an early byte copy.
+      // Getter writes and resizes must be reflected in its eventual destination.
+      transferSize = 0;
+      for (const buffer of transfers) {
+        if (arrayBufferDetached(buffer)) continue;
+        const length = arrayBufferLength(buffer);
+        transferSize += length + 1;
+        budget.allocateArrayLength(arrayBufferOptions(buffer)?.maxByteLength ?? length);
+        const destination = buffers.get(buffer)!;
+        budget.provisionDataUsage(Math.max(0, length - arrayBufferLength(destination)))();
+        if (arrayBufferLength(destination) !== length) Reflect.apply(resizeBuffer, destination, [length]);
+        new Uint8Array(destination).set(new Uint8Array(buffer));
+      }
+      assertSandboxGraphDepth(clone);
+      assertStructuredCloneable(clone, new WeakSet());
+      allocateProducedSandboxValue(clone, budget);
+      if (compilation !== parent) reconcileCompiledValues(budget, [clone], compilation);
+      if (transfers.length > 0) {
+        createDataCheckpoint(budget, context)(clone, 0, true);
+        // Pay every fallible SafeJS budget charge before committing ownership loss.
+        budget.visitNode(transferSize + transfers.length);
+        budget.provisionDataUsage(transferBuffer === undefined ? transferSize : transfers.length)();
+        for (const buffer of transfers) {
+          if (arrayBufferDetached(buffer)) throw new DOMException("Cannot transfer a detached ArrayBuffer.", "DataCloneError");
+          if (transferBuffer !== undefined) Reflect.apply(transferBuffer, buffer, [0]);
+          else structuredClone(buffer, { transfer: [buffer] });
+          if (!arrayBufferDetached(buffer)) throw new DOMException("ArrayBuffer cannot be transferred.", "DataCloneError");
+        }
+      }
+      return clone;
+    } finally {
+      release();
+      if (compilation !== parent) compilation.dispose();
+      operation.release();
     }
-    return clone;
-  } finally {
-    release();
-    if (compilation !== parent) compilation.dispose();
-    operation.release();
   }
+  const iterator = execute();
+  const first = iterator.next();
+  if (first.done) return first.value;
+  return (async () => {
+    let step: ReturnType<typeof iterator.next> = first;
+    try {
+      while (!step.done) {
+        const { descriptor, receiver } = step.value;
+        createDataCheckpoint(budget, context)(receiver, 0, true);
+        step = iterator.next(await readPropertyDescriptor(descriptor, receiver, context));
+      }
+      return step.value;
+    } finally { iterator.return(undefined); }
+  })();
 }
 
 function assertStructuredCloneable(value: SandboxValue, seen: WeakSet<object>): void {

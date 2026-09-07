@@ -9,6 +9,7 @@ import { getCollectionProperties, collectionGuestProperties, copyCollectionPrope
 export { getCollectionProperties } from "./collection-properties.js";
 export { getRegexProperties } from "./regexp-properties.js";
 import { retainedAccessorClosures } from "./accessors.js";
+import { retainValues } from "./resources.js";
 import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./collection-brands.js";
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
@@ -553,6 +554,70 @@ export function cloneSandboxValue(value: SandboxValue, options: { compilation?: 
 export function allocateProducedSandboxValue(value: SandboxValue, budget: Budget): SandboxValue {
   allocateSandboxValue(value, budget, new WeakSet());
   return value;
+}
+
+/** Serialization pauses only for guest accessor reads; ordinary data stays synchronous. */
+export function* cloneStructuredGraph(
+  value: SandboxValue, state: CopyState<SandboxValue>, budget: Budget, depth = 0
+): Generator<{ descriptor: PropertyDescriptor; receiver: SandboxValue }, SandboxValue, SandboxValue> {
+  assertSandboxDataDepth(depth);
+  budget.visitNode();
+  if (typeof value === "symbol" || isSandboxClosure(value) || isSandboxPromise(value) ||
+      isSandboxGenerator(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value) ||
+      isSandboxArrayIterator(value) || isSandboxArguments(value))
+    throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
+  if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
+  if (isLiveCapability(value)) throw new DOMException("Capabilities cannot be structured cloned.", "DataCloneError");
+  const existing = state.seen.get(value);
+  if (existing !== undefined) return existing;
+  const map = isSandboxMap(value);
+  const set = isSandboxSet(value);
+  const array = isPlainArray(value);
+  const plain = isPlainObject(value) && !isSandboxRegex(value) && !isRawJson(value) && nativeBoxedValue(value) === undefined;
+  if (!map && !set && !array && !plain) {
+    const copy = copyToSandbox(value, state, "<root>", true, depth);
+    allocateProducedSandboxValue(copy, budget);
+    return copy;
+  }
+  if (array) budget.allocateArrayLength(value.length);
+  budget.provisionDataUsage(1)();
+  const copy = map ? createSandboxMap() : set ? createSandboxSet() : array ? new Array(value.length) as SandboxArray : createPlainObject(Object.getPrototypeOf(value) === null);
+  state.seen.set(value, copy);
+  const errorType = sandboxErrorTypes.get(value);
+  if (errorType !== undefined) sandboxErrorTypes.set(copy, errorType);
+  let pending: unknown;
+  let current: SandboxValue;
+  const release = retainValues(budget, () => [value, copy, pending, current]);
+  try {
+    if (map && isSandboxMap(copy)) {
+      budget.allocateArrayLength(value.entries.size);
+      budget.provisionDataUsage(value.entries.size * 3 + 1)();
+      const entries = [...value.entries];
+      pending = entries;
+      for (const [key, entry] of entries) {
+        current = yield* cloneStructuredGraph(key, state, budget, depth + 1);
+        copy.entries.set(current, yield* cloneStructuredGraph(entry, state, budget, depth + 1));
+      }
+    } else if (set && isSandboxSet(copy)) {
+      budget.allocateArrayLength(value.values.size);
+      budget.provisionDataUsage(value.values.size + 1)();
+      const entries = [...value.values];
+      pending = entries;
+      for (const entry of entries) copy.values.add(yield* cloneStructuredGraph(entry, state, budget, depth + 1));
+    } else {
+      const keys = Object.keys(value);
+      budget.allocateArrayLength(keys.length);
+      budget.provisionDataUsage(keys.length + 1)();
+      pending = keys;
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor === undefined) continue;
+        current = "value" in descriptor ? descriptor.value : yield { descriptor, receiver: value };
+        defineOwnDataProperty(copy, key, yield* cloneStructuredGraph(current, state, budget, depth + 1));
+      }
+    }
+    return copy;
+  } finally { release(); }
 }
 
 export function measureSandboxData(
