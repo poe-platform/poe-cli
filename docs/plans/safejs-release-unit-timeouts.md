@@ -44,3 +44,21 @@ A CPU-profiled first fixture run took 3,956 ms for 11,558 interpreter steps and
 7,123 peak retained-data units. Most samples are in values/object-model retained
 accounting rather than camera arithmetic. Preserve the complete fixture and
 budget checks while validating a specific accounting optimization next.
+
+## Follow-up CI evidence, 2026-09-07
+
+CLI release run 34071655189 for species commit 7846dd0a5 failed its fresh shared
+unit job on the inverse-coordinate-transforms camera case: the 5000 ms timeout
+still occurs after the retained-accounting optimization. The run reported 34,146
+passes, one failure and 42 skips. All Bash shards, build, audit and checks passed.
+Scoped publication succeeded independently as SafeJS 0.1.296; this is not a
+successful CLI release. Receipt: /tmp/poe-safejs-species-cli-release-failed.log.
+
+Re-profile or improve the unit workload without raising its timeout, skipping
+the case, weakening trace assertions or removing budget checks. The earlier
+local speedup remains real, but is insufficient evidence of CI reliability.
+
+The next isolated allocation improvement is recorded in
+`safejs-float32-metadata-accounting.md`. It avoids numeric-element descriptor
+allocation during metadata inspection, but its profile share is small; keep the
+camera timeout investigation open after delivering that improvement.

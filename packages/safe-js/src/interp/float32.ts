@@ -41,8 +41,9 @@ export function float32DataProperties(value: Float32Array): Array<[string, Prope
   if (Object.getOwnPropertySymbols(value).length > 0)
     throw new TypeError("Float32Array symbol properties are not supported.");
   const properties: Array<[string, PropertyDescriptor]> = [];
-  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+  for (const key of Object.getOwnPropertyNames(value)) {
     if (isFloat32Index(key)) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
     if (!("value" in descriptor))
       throw new TypeError(`Float32Array accessor property '${key}' is not supported.`);
     properties.push([key, descriptor]);
