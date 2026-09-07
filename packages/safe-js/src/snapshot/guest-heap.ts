@@ -23,6 +23,7 @@ import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
 import { promiseContinuations, promiseReactionResults, promiseProducers, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
+import { promiseAggregateStates, promiseAggregateEntries, promiseAggregateHandlers, type PromiseAggregateState } from "../interp/promise-continuations.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
@@ -45,6 +46,9 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | { kind: "promise-aggregate"; method: PromiseAggregateState["method"]; capability: {promise: T; resolve: T; reject: T}; values: T; remaining: number; size: number; iteration: "complete" | "abrupt" }
+  | { kind: "aggregate-entry"; aggregate: T; index: number; called: boolean }
+  | { kind: "aggregate-handler"; entry: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T> }
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
   | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; producers?: T[]; state: GuestObjectState<T> }
   | { kind: "promise-resolver"; promise: T; action?: "fulfilled" | "rejected"; state: GuestObjectState<T> }
@@ -52,6 +56,7 @@ export type GuestHeapNode<T> =
   | { kind: "promise-adoption"; owner: T; source: T }
   | { kind: "adoption-resolver"; bridge: T; action: "fulfilled" | "rejected" }
   | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; producers?: T[];
+      aggregate?: T;
       capability?: {promise: T; resolve: T; reject: T}; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
@@ -93,6 +98,20 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const aggregate = promiseAggregateStates.get(value);
+  if (aggregate !== undefined) {
+    if (aggregate.iteration === "active") throw new TypeError("Cannot snapshot an active promise aggregate iterator.");
+    return {kind: "promise-aggregate", method: aggregate.method, remaining: aggregate.remaining,
+      size: aggregate.size, iteration: aggregate.iteration,
+      values: encode(aggregate.values), capability: {promise: encode(aggregate.capability.promise),
+        resolve: encode(aggregate.capability.resolve), reject: encode(aggregate.capability.reject)}};
+  }
+  const aggregateEntry = promiseAggregateEntries.get(value);
+  if (aggregateEntry !== undefined)
+    return {kind: "aggregate-entry", aggregate: encode(aggregateEntry.aggregate), index: aggregateEntry.index, called: aggregateEntry.called};
+  const aggregateHandler = isSandboxClosure(value) ? promiseAggregateHandlers.get(value) : undefined;
+  if (aggregateHandler !== undefined)
+    return {kind: "aggregate-handler", entry: encode(aggregateHandler.entry), action: aggregateHandler.action, state: captureObjectState(value, encode)!};
   const bridge = promiseAdoptionBridges.get(value);
   if (bridge !== undefined) {
     if (bridge.settled || bridge.owner === undefined) return undefined;
@@ -135,6 +154,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     if (continuation?.kind === "reaction" && continuation.phase === "waiting")
       return {kind: "promise-reaction", source: encode(continuation.source),
         ...producerState,
+        ...(continuation.aggregate === undefined ? {} : {aggregate: encode(continuation.aggregate)}),
         ...(continuation.capability === undefined ? {} : {capability: {
           promise: encode(continuation.capability.promise), resolve: encode(continuation.capability.resolve), reject: encode(continuation.capability.reject)
         }}),

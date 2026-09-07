@@ -1,5 +1,26 @@
 import type { SandboxClosure, SandboxObject, SandboxPromise, SandboxValue } from "./values.js";
 
+export type PromiseAggregateState = {
+  method: "all" | "allSettled" | "race" | "any";
+  capability: {promise: SandboxValue; resolve: SandboxClosure; reject: SandboxClosure};
+  values: SandboxValue[];
+  remaining: number;
+  size: number;
+  iteration: "active" | "complete" | "abrupt";
+};
+
+export type PromiseAggregateEntry = {
+  aggregate: PromiseAggregateState;
+  index: number;
+  called: boolean;
+};
+
+export const promiseAggregateHandlers = new WeakMap<SandboxClosure, {
+  entry: PromiseAggregateEntry; action: "fulfilled" | "rejected"
+}>();
+export const promiseAggregateStates = new WeakMap<object, PromiseAggregateState>();
+export const promiseAggregateEntries = new WeakMap<object, PromiseAggregateEntry>();
+
 export type PromiseAdoptionBridge = {
   source: SandboxPromise;
   owner: SandboxPromise | undefined;
@@ -20,11 +41,21 @@ export type PromiseContinuation =
   | { kind: "capability"; state: {promise: SandboxPromise; settled: boolean};
       resolution?: {status: "fulfilled" | "rejected"; value: SandboxValue} }
   | { kind: "reaction"; phase: "waiting" | "running"; source: SandboxPromise; onFulfilled: SandboxValue; onRejected: SandboxValue;
+      aggregate?: SandboxPromise;
       capability?: {promise: SandboxPromise; resolve: SandboxClosure; reject: SandboxClosure} };
 
 export const promiseContinuations = new WeakMap<SandboxPromise, PromiseContinuation>();
 export const promiseReactionResults = new WeakMap<SandboxPromise, Set<SandboxPromise>>();
 export const promiseProducers = new WeakMap<SandboxPromise, Set<SandboxPromise>>();
+
+export function linkPromiseAggregateProducer(producer: SandboxPromise, aggregate: SandboxPromise): void {
+  const continuation = promiseContinuations.get(producer);
+  if (continuation?.kind !== "reaction") return;
+  continuation.aggregate = aggregate;
+  let producers = promiseProducers.get(aggregate);
+  if (producers === undefined) promiseProducers.set(aggregate, producers = new Set());
+  producers.add(producer);
+}
 
 export function trackPromiseContinuation(promise: SandboxPromise, continuation: PromiseContinuation): void {
   promiseContinuations.set(promise, continuation);
@@ -49,6 +80,11 @@ export function trackPromiseContinuation(promise: SandboxPromise, continuation: 
         const producers = promiseProducers.get(continuation.capability.promise);
         producers?.delete(promise);
         if (producers?.size === 0) promiseProducers.delete(continuation.capability.promise);
+      }
+      if (continuation.aggregate !== undefined) {
+        const producers = promiseProducers.get(continuation.aggregate);
+        producers?.delete(promise);
+        if (producers?.size === 0) promiseProducers.delete(continuation.aggregate);
       }
     }
   };

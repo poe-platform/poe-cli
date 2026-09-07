@@ -7,7 +7,8 @@ import { retainValues } from "./resources.js";
 import { runPromiseJob } from "./jobs.js";
 import { observeSandboxPromise, unrepresentedPromiseContinuations } from "./promise-tracker.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "./promise-resolvers.js";
-import { trackPromiseContinuation, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers, type PromiseAdoptionBridge, type PromiseContinuation } from "./promise-continuations.js";
+import { promiseContinuations, promiseReactionResults, linkPromiseAggregateProducer } from "./promise-continuations.js";
+import { trackPromiseContinuation, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers, promiseAggregateHandlers, promiseAggregateStates, promiseAggregateEntries, type PromiseAggregateState, type PromiseAggregateEntry, type PromiseAdoptionBridge, type PromiseContinuation } from "./promise-continuations.js";
 import {
   createSandboxClosure,
   createSandboxPromise,
@@ -620,34 +621,9 @@ async function settleIterable(
   const prototype = getPromisePrototype(budget);
   if (isSandboxPromise(capability.promise)) unrepresentedPromiseContinuations.add(capability.promise);
   const values: SandboxValue[] = [];
-  let remaining = 1;
-  const complete = async () => {
-    if (remaining !== 0 || method === "race") return;
-    if (method === "any") {
-      const error = createSubsetErrorValue(
-        "AggregateError",
-        "All promises were rejected",
-        [],
-        budget
-      );
-      error.errors = values;
-      await callPromiseClosure(
-        capability.reject,
-        [budgetSandboxValue(error, budget)],
-        undefined,
-        budget,
-        context
-      );
-    } else {
-      await callPromiseClosure(
-        capability.resolve,
-        [budgetSandboxValue(values, budget)],
-        undefined,
-        budget,
-        context
-      );
-    }
-  };
+  const aggregate: PromiseAggregateState = {method, capability, values, remaining: 1, size: 0, iteration: "active"};
+  promiseAggregateStates.set(aggregate, aggregate);
+  let represented = true;
   try {
     const promiseResolve = await readPromiseReceiverProperty(constructor, "resolve", prototype, context);
     if (!isSandboxClosure(promiseResolve))
@@ -656,7 +632,6 @@ async function settleIterable(
     if (iterator === undefined) throw new TypeError("Promise helpers require an iterable.");
     const releaseIterator = retainValues(budget, () => [iterator.retainedValue]);
     try {
-      let index = 0;
       while (true) {
         budget.visitNode();
         const next =
@@ -668,8 +643,8 @@ async function settleIterable(
         if ((await readIteratorResult(iterator, next, "done")).value) break;
         const value = (await readIteratorResult(iterator, next, "value")).value;
         try {
-          budget.allocateArrayLength(index + 1);
-          const entryIndex = index++;
+          budget.allocateArrayLength(aggregate.size + 1);
+          const entryIndex = aggregate.size++;
           if (method !== "race") values.push(undefined);
           const entry = await callPromiseClosure(
             promiseResolve,
@@ -678,50 +653,42 @@ async function settleIterable(
             budget,
             context
           );
-          let called = false;
+          const aggregateEntry: PromiseAggregateEntry = {aggregate, index: entryIndex, called: false};
           const handlers = (["fulfilled", "rejected"] as const).map((state) => {
             if (method === "race" || (method === "any" && state === "fulfilled"))
               return state === "fulfilled" ? capability.resolve : capability.reject;
             if (method === "all" && state === "rejected") return capability.reject;
-            return createSandboxClosure({
-              sandbox: true,
-              retainedValues: () => [
-                capability.promise,
-                capability.resolve,
-                capability.reject,
-                values
-              ],
-              call: async ([settlement]) => {
-                if (called) return undefined;
-                called = true;
-                values[entryIndex] =
-                  method === "allSettled"
-                    ? state === "fulfilled"
-                      ? { status: state, value: settlement }
-                      : { status: state, reason: settlement }
-                    : settlement;
-                remaining--;
-                await complete();
-                return undefined;
-              }
-            });
+            return createPromiseAggregateHandler(aggregateEntry, state, budget, context);
           });
-          remaining++;
+          aggregate.remaining++;
           const then = await readPromiseProperty(entry, "then", prototype, budget, context);
           if (!isSandboxClosure(then))
             throw new TypeError("Promise resolver result requires a callable then.");
-          await callPromiseClosure(then, handlers, entry, budget, context);
+          const previousReactions = isSandboxPromise(entry) ? new Set(promiseReactionResults.get(entry)) : undefined;
+          const completion = await callPromiseClosure(then, handlers, entry, budget, context);
+          if (!intrinsicPromiseThenMethods.has(then) || !isSandboxPromise(entry) || !isSandboxPromise(completion)) represented = false;
+          else if (isSandboxPromise(capability.promise)) {
+            for (const producer of promiseReactionResults.get(entry) ?? []) {
+              const reaction = promiseContinuations.get(producer);
+              if (!previousReactions?.has(producer) && reaction?.kind === "reaction" &&
+                  reaction.onFulfilled === handlers[0] && reaction.onRejected === handlers[1])
+                linkPromiseAggregateProducer(producer, capability.promise);
+            }
+          }
         } catch (error) {
           await closeIterator(iterator, true);
           throw error;
         }
       }
-      remaining--;
-      await complete();
+      aggregate.remaining--;
+      aggregate.iteration = "complete";
+      await completePromiseAggregate(aggregate, budget, context);
+      if (represented && isSandboxPromise(capability.promise)) unrepresentedPromiseContinuations.delete(capability.promise);
     } finally {
       releaseIterator();
     }
   } catch (error) {
+    aggregate.iteration = "abrupt";
     if (
       error instanceof SandboxError &&
       (error.code === "budgetExceeded" || error.code === "reentry")
@@ -738,6 +705,40 @@ async function settleIterable(
     );
   }
   return capability.promise;
+}
+
+async function completePromiseAggregate(aggregate: PromiseAggregateState, budget: Budget, context?: SandboxCallContext): Promise<void> {
+  const {method, capability, values, remaining} = aggregate;
+  if (remaining !== 0 || method === "race") return;
+  if (method === "any") {
+    const error = createSubsetErrorValue("AggregateError", "All promises were rejected", [], budget);
+    error.errors = values;
+    await callPromiseClosure(capability.reject, [budgetSandboxValue(error, budget)], undefined, budget, context);
+  } else {
+    await callPromiseClosure(capability.resolve, [budgetSandboxValue(values, budget)], undefined, budget, context);
+  }
+}
+
+export function createPromiseAggregateHandler(entry: PromiseAggregateEntry, action: "fulfilled" | "rejected", budget: Budget, context?: SandboxCallContext): SandboxClosure {
+  const {aggregate} = entry;
+  promiseAggregateEntries.set(entry, entry);
+  const handler = createSandboxClosure({
+    sandbox: true, guest: true, name: "", length: 1,
+    retainedValues: () => [aggregate.capability.promise, aggregate.capability.resolve, aggregate.capability.reject, aggregate.values],
+    call: async ([settlement]) => {
+      if (entry.called) return undefined;
+      entry.called = true;
+      const {method, values} = aggregate;
+      values[entry.index] = method === "allSettled"
+        ? action === "fulfilled" ? {status: action, value: settlement} : {status: action, reason: settlement}
+        : settlement;
+      aggregate.remaining--;
+      await completePromiseAggregate(aggregate, budget, context);
+      return undefined;
+    }
+  });
+  promiseAggregateHandlers.set(handler, {entry, action});
+  return handler;
 }
 
 function schedulePromise(promise: Promise<SandboxValue>, budget: Budget): Promise<SandboxValue> {

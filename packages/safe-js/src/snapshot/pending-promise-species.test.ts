@@ -12,7 +12,7 @@ it.each([
   ["const result = P.all([c.promise])", [7]],
   ["const result = Promise.all([c.promise])", [7]],
   ["const result = Promise.race([c.promise])", 7]
-] as const)("does not silently omit unresolved custom capability callbacks: %s", async (expression, expected) => {
+] as const)("restores unresolved aggregate capability callbacks: %s", async (expression, expected) => {
   const source = `const c=Promise.withResolvers();class P extends Promise{};${expression};Object.setPrototypeOf(result,Promise.prototype);return [result,c.resolve]`;
   const control = await run(source);
   assert(control.ok && Array.isArray(control.returnValue));
@@ -25,10 +25,17 @@ it.each([
   const fresh = await run(source);
   assert(fresh.ok && Array.isArray(fresh.returnValue));
   const snapshotPromise = fresh.returnValue[0] as RuntimeSnapshotValue;
-  expect(() => serialize({source, currentAstNodeId: 1,
-    scopeChain: [{id: "module", bindings: {promise: snapshotPromise}}],
-    callStack: [], pendingPromises: [], moduleBindings: {}}))
-    .toThrow("Cannot serialize host reference");
+  const snapshot = serialize({source, currentAstNodeId: 1,
+    scopeChain: [{id: "module", bindings: {promise: snapshotPromise, resolve: fresh.returnValue[1] as RuntimeSnapshotValue}}],
+    callStack: [], pendingPromises: [], moduleBindings: {}});
+  const restoredBudget = new Budget();
+  const scope = restore(JSON.parse(JSON.stringify(snapshot)), {source, budget: restoredBudget}).currentScope;
+  const restoredPromise = scope.lookup("promise");
+  const restoredResolve = scope.lookup("resolve");
+  assert(restoredPromise.found && isSandboxPromise(restoredPromise.value));
+  assert(restoredResolve.found && isSandboxClosure(restoredResolve.value));
+  await invokeBuiltinClosure(restoredResolve.value, [7], restoredBudget, undefined, undefined);
+  expect(await awaitSandboxValue(restoredPromise.value, undefined, restoredBudget)).toEqual(expected);
 });
 
 it("retains subclass producer links when only its result is a snapshot root", async () => {

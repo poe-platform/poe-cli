@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -146,7 +146,9 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     const producers = new Set<unknown>();
     for (const entry of array(node.producers)) {
       const producer = reference(entry, ["promise-reaction"]);
-      if (producers.has(producer) || reference(record(producer.capability).promise) !== node)
+      const capabilityOwner = producer.capability === undefined ? undefined : reference(record(producer.capability).promise);
+      const aggregateOwner = producer.aggregate === undefined ? undefined : reference(producer.aggregate);
+      if (producers.has(producer) || (capabilityOwner !== node && aggregateOwner !== node))
         throw new TypeError("Invalid promise producer ownership.");
       producers.add(producer);
     }
@@ -158,7 +160,32 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "promise-adoption") {
+  if (node.kind === "promise-aggregate") {
+    fields(node, ["kind", "method", "capability", "values", "remaining", "size", "iteration"]);
+    if (!["all", "allSettled", "race", "any"].includes(String(node.method))) throw new TypeError("Invalid promise aggregate method.");
+    const size = integer(node.size);
+    if (size > maxArrayLength || (node.iteration !== "complete" && node.iteration !== "abrupt")) throw new TypeError("Invalid promise aggregate iteration.");
+    if (integer(node.remaining) > size + (node.iteration === "abrupt" ? 1 : 0)) throw new TypeError("Invalid promise aggregate remaining count.");
+    reference(node.values, ["array", "guest-array"]);
+    const capability = record(node.capability);
+    fields(capability, ["promise", "resolve", "reject"]);
+    if (absent(capability.resolve) || absent(capability.reject)) throw new TypeError("Missing promise aggregate resolver.");
+    callable(capability.resolve);
+    callable(capability.reject);
+  } else if (node.kind === "aggregate-entry") {
+    fields(node, ["kind", "aggregate", "index", "called"]);
+    const aggregate = reference(node.aggregate, ["promise-aggregate"]);
+    if (integer(node.index) >= integer(aggregate.size) || typeof node.called !== "boolean") throw new TypeError("Invalid promise aggregate entry.");
+  } else if (node.kind === "aggregate-handler") {
+    fields(node, ["kind", "entry", "action", "state"]);
+    state(node.state);
+    const entry = reference(node.entry, ["aggregate-entry"]);
+    const aggregate = reference(entry.aggregate, ["promise-aggregate"]);
+    if ((node.action !== "fulfilled" && node.action !== "rejected") ||
+        (aggregate.method === "all" && node.action !== "fulfilled") ||
+        (aggregate.method === "any" && node.action !== "rejected") || aggregate.method === "race")
+      throw new TypeError("Invalid promise aggregate handler action.");
+  } else if (node.kind === "promise-adoption") {
     fields(node, ["kind", "owner", "source"]);
     const owner = reference(node.owner, ["pending-promise"]);
     if (reference(owner.adoption, ["promise-adoption"]) !== node) throw new TypeError("Invalid promise adoption owner.");
@@ -190,12 +217,29 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       throw new TypeError("Invalid promise resolver action.");
     state(node.state);
   } else if (node.kind === "pending-promise" || node.kind === "promise-reaction") {
-    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "producers"] : ["capability", "producers"]);
+    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "producers"] : ["capability", "aggregate", "producers"]);
     if (node.kind === "pending-promise" && Object.hasOwn(node, "adoption")) {
       const bridge = reference(node.adoption, ["promise-adoption"]);
       if (reference(bridge.owner, ["pending-promise"]) !== node) throw new TypeError("Invalid promise adoption owner.");
     }
     if (node.kind === "promise-reaction") {
+      if (Object.hasOwn(node, "aggregate")) {
+        const aggregate = reference(node.aggregate, ["pending-promise", "guest-promise", "promise-reaction"]);
+        if (aggregate === node || !Array.isArray(aggregate.producers) || !aggregate.producers.some(entry => reference(entry, ["promise-reaction"]) === node))
+          throw new TypeError("Invalid promise aggregate producer ownership.");
+        for (const value of [node.onFulfilled, node.onRejected]) {
+          if (absent(value)) continue;
+          const handler = reference(value);
+          let owner: Record<string, unknown> | undefined;
+          if (handler.kind === "promise-resolver") owner = reference(handler.promise);
+          else if (handler.kind === "aggregate-handler") {
+            const entry = reference(handler.entry, ["aggregate-entry"]);
+            const state = reference(entry.aggregate, ["promise-aggregate"]);
+            owner = reference(record(state.capability).promise);
+          }
+          if (owner !== undefined && owner !== aggregate) throw new TypeError("Invalid promise aggregate handler ownership.");
+        }
+      }
       if (Object.hasOwn(node, "capability")) {
         const capability = record(node.capability);
         fields(capability, ["promise", "resolve", "reject"]);

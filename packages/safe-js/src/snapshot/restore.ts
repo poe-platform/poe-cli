@@ -42,7 +42,8 @@ import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
-import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge } from "../interp/promise.js";
+import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge, createPromiseAggregateHandler } from "../interp/promise.js";
+import { promiseAggregateStates, promiseAggregateEntries, linkPromiseAggregateProducer, type PromiseAggregateState } from "../interp/promise-continuations.js";
 import { promiseAdoptionBridges, promiseContinuations, type PromiseContinuation } from "../interp/promise-continuations.js";
 import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
@@ -163,6 +164,7 @@ export type RestoredSnapshot = {
 
 type RestoreState = {
   promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue;
+    aggregate?: SandboxPromise;
     reactionCapability?: Extract<PromiseContinuation, {kind: "reaction"}>["capability"]}>;
   promiseReactionOrders: Map<SandboxPromise, SandboxPromise[]>;
   pendingCapabilities: WeakMap<SandboxPromise, ReturnType<typeof createPendingPromiseCapability>>;
@@ -275,6 +277,7 @@ export function restore(
           const record = state.promiseReactionRecords.get(reaction);
           if (record === undefined || record.source !== source) throw new TypeError("Invalid restored promise reaction.");
           attachPendingPromiseReaction(source, record.capability, record.onFulfilled, record.onRejected, budget, undefined, record.reactionCapability);
+          if (record.aggregate !== undefined) linkPromiseAggregateProducer(reaction, record.aggregate);
           state.promiseReactionRecords.delete(reaction);
         }
       }
@@ -882,6 +885,47 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
+  if (serialized.kind === "promise-aggregate") {
+    const aggregate = {} as PromiseAggregateState;
+    state.heapValueById.set(id, aggregate as unknown as RuntimeSnapshotValue);
+    promiseAggregateStates.set(aggregate, aggregate);
+    state.initializeIterators.push(() => {
+      const promise = deserializeValue(serialized.capability.promise, state) as SandboxValue;
+      const resolve = deserializeValue(serialized.capability.resolve, state);
+      const reject = deserializeValue(serialized.capability.reject, state);
+      const values = deserializeValue(serialized.values, state);
+      if (!isSandboxClosure(resolve) || !isSandboxClosure(reject) || !Array.isArray(values)) throw new TypeError("Invalid promise aggregate state.");
+      Object.assign(aggregate, {method: serialized.method, remaining: serialized.remaining, size: serialized.size, iteration: serialized.iteration,
+        values, capability: {promise, resolve, reject}});
+    });
+    return aggregate as unknown as RuntimeSnapshotValue;
+  }
+  if (serialized.kind === "aggregate-entry") {
+    const value = deserializeValue(serialized.aggregate, state);
+    const aggregate = value !== null && typeof value === "object" ? promiseAggregateStates.get(value) : undefined;
+    if (aggregate === undefined) throw new TypeError("Invalid promise aggregate owner.");
+    const entry = {aggregate, index: serialized.index, called: serialized.called};
+    promiseAggregateEntries.set(entry, entry);
+    state.heapValueById.set(id, entry as unknown as RuntimeSnapshotValue);
+    return entry as unknown as RuntimeSnapshotValue;
+  }
+  if (serialized.kind === "aggregate-handler") {
+    const value = deserializeValue(serialized.entry, state);
+    const entry = value !== null && typeof value === "object" ? promiseAggregateEntries.get(value) : undefined;
+    if (entry === undefined) throw new TypeError("Invalid promise aggregate handler entry.");
+    const handler = createPromiseAggregateHandler(entry, serialized.action, state.budget);
+    state.heapValueById.set(id, handler);
+    state.initializeIterators.push(() => {
+      const objectState = serialized.state;
+      if (objectState.prototype !== undefined)
+        setSandboxPrototype(handler, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(materializeFunctionProperties(handler), objectState.properties,
+        value => deserializeValue(value as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined) privateElements.set(handler,
+        restorePrivateElements(objectState.privateElements, value => deserializeValue(value, state) as SandboxValue));
+    });
+    return handler;
+  }
   if (serialized.kind === "promise-adoption") {
     const owner = deserializeValue(serialized.owner, state);
     const source = deserializeValue(serialized.source, state);
@@ -941,7 +985,10 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
               throw new TypeError("Invalid promise reaction capability.");
             reactionCapability = {promise, resolve, reject};
           }
+          const aggregate = serialized.aggregate === undefined ? undefined : deserializeValue(serialized.aggregate, state);
+          if (aggregate !== undefined && !isSandboxPromise(aggregate)) throw new TypeError("Invalid promise aggregate result.");
           state.promiseReactionRecords.set(capability.promise, {source, capability,
+            ...(aggregate === undefined ? {} : {aggregate}),
             ...(reactionCapability === undefined ? {} : {reactionCapability}),
             onFulfilled: deserializeValue(serialized.onFulfilled, state) as SandboxValue,
             onRejected: deserializeValue(serialized.onRejected, state) as SandboxValue});

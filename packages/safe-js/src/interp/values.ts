@@ -874,6 +874,7 @@ export function measureSandboxData(
           visit(continuation.capability.resolve, depth + 1);
           visit(continuation.capability.reject, depth + 1);
         }
+        if (continuation.aggregate !== undefined) visit(continuation.aggregate, depth + 1);
       }
       for (const reaction of promiseReactionResults.get(value) ?? []) visit(reaction, depth + 1);
       for (const producer of promiseProducers.get(value) ?? []) visit(producer, depth + 1);
