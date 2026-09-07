@@ -129,8 +129,8 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
       }
     })
   });
-  Object.defineProperty(prototype, "transfer", { writable: true, configurable: true,
-    value: createSandboxClosure({ guest: true, sandbox: true, name: "transfer", length: 0,
+  for (const key of ["transfer", "transferToFixedLength"]) Object.defineProperty(prototype, key, { writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: key, length: 0,
       call: async (args, context) => {
         const receiver = context?.thisValue;
         if (!isSandboxArrayBuffer(receiver)) throw new TypeError("ArrayBuffer transfer requires a buffer receiver.");
@@ -142,7 +142,7 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
           const length = Number.isNaN(number) ? 0 : Math.trunc(number);
           if (!Number.isSafeInteger(length) || length < 0) throw new RangeError("Invalid ArrayBuffer transfer length.");
           if (arrayBufferDetached(receiver)) throw new TypeError("Cannot transfer a detached ArrayBuffer.");
-          const options = arrayBufferOptions(receiver);
+          const options = key === "transfer" ? arrayBufferOptions(receiver) : undefined;
           if (options !== undefined && length > options.maxByteLength) throw new RangeError("Transfer length exceeds ArrayBuffer capacity.");
           budget.allocateArrayLength(options?.maxByteLength ?? length);
           checkData(receiver, 0, true);
