@@ -779,10 +779,21 @@ export function measureSandboxData(
         }
         return;
       }
-      for (let index = 0; index < value.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, index);
-        if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value, depth + 1);
+      const elements: unknown[] = [];
+      if (nodeTypes.isProxy(value)) {
+        // ownKeys traps can omit indices that descriptor lookup still exposes.
+        for (let index = 0; index < value.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, index);
+          if (descriptor !== undefined && "value" in descriptor) elements.push(descriptor.value);
+        }
+      } else {
+        for (const key of Object.getOwnPropertyNames(value)) {
+          if (!isArrayIndexKey(key)) continue;
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (descriptor !== undefined && "value" in descriptor) elements.push(descriptor.value);
+        }
       }
+      for (const element of elements) visit(element, depth + 1);
       return;
     }
     if (isSandboxMap(value) || isSandboxSet(value)) {
