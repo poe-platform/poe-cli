@@ -692,6 +692,30 @@ export function measureSandboxData(
     seen.add(value);
 
     usage += 1;
+    const arrayLength = Array.isArray(value) ? value.length : undefined;
+    const managedArray = arrayLength !== undefined && hasManagedDescriptors(value);
+    let arrayDescriptors: Array<readonly [string, PropertyDescriptor]> | undefined;
+    let arrayElements: unknown[] | undefined;
+    if (arrayLength !== undefined) {
+      if (managedArray) arrayDescriptors = [];
+      else arrayElements = [];
+      if (!managedArray && nodeTypes.isProxy(value)) {
+        // ownKeys traps can omit indices that descriptor lookup still exposes.
+        for (let index = 0; index < arrayLength; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, index);
+          if (descriptor !== undefined && "value" in descriptor) arrayElements!.push(descriptor.value);
+        }
+      } else {
+        for (const key of Object.getOwnPropertyNames(value)) {
+          if (key === "length" || (!managedArray && !isArrayIndexKey(key))) continue;
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (descriptor !== undefined) {
+            if (arrayDescriptors !== undefined) arrayDescriptors.push([key, descriptor]);
+            else if ("value" in descriptor) arrayElements!.push(descriptor.value);
+          }
+        }
+      }
+    }
     const privateSlots = privateElements.get(value);
     if (privateSlots !== undefined) {
       for (const [name, element] of privateSlots) {
@@ -763,37 +787,17 @@ export function measureSandboxData(
       }
       return;
     }
-    if (Array.isArray(value)) {
-      usage += value.length;
-      if (hasManagedDescriptors(value)) {
-        const descriptors: Array<readonly [string, PropertyDescriptor]> = [];
-        for (const key of Object.getOwnPropertyNames(value)) {
-          if (key === "length") continue;
-          const descriptor = Object.getOwnPropertyDescriptor(value, key);
-          if (descriptor !== undefined) descriptors.push([key, descriptor]);
-        }
-        for (const [key, descriptor] of descriptors) {
+    if (arrayLength !== undefined) {
+      usage += arrayLength;
+      if (arrayDescriptors !== undefined) {
+        for (const [key, descriptor] of arrayDescriptors) {
           usage += key.length + 1;
           if ("value" in descriptor) visit(descriptor.value, depth + 1);
           else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
         }
-        return;
-      }
-      const elements: unknown[] = [];
-      if (nodeTypes.isProxy(value)) {
-        // ownKeys traps can omit indices that descriptor lookup still exposes.
-        for (let index = 0; index < value.length; index += 1) {
-          const descriptor = Object.getOwnPropertyDescriptor(value, index);
-          if (descriptor !== undefined && "value" in descriptor) elements.push(descriptor.value);
-        }
       } else {
-        for (const key of Object.getOwnPropertyNames(value)) {
-          if (!isArrayIndexKey(key)) continue;
-          const descriptor = Object.getOwnPropertyDescriptor(value, key);
-          if (descriptor !== undefined && "value" in descriptor) elements.push(descriptor.value);
-        }
+        for (const element of arrayElements!) visit(element, depth + 1);
       }
-      for (const element of elements) visit(element, depth + 1);
       return;
     }
     if (isSandboxMap(value) || isSandboxSet(value)) {
