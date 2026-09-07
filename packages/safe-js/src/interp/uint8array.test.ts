@@ -79,7 +79,7 @@ it.each([
   await expect(run(source,{budget:new Budget(limits)})).rejects.toMatchObject({code:"budgetExceeded",budget});
 });
 
-it.each([undefined,"Float16Array","constructor","__proto__",1])("rejects unregistered snapshot type %j", arrayType => {
+it.each([undefined,"Float128Array","constructor","__proto__",1])("rejects unregistered snapshot type %j", arrayType => {
   expect(()=>decodeTypedArrayStorage({kind:"typedarray",arrayType,bytes:[0],byteOffset:0,length:1},()=>undefined)).toThrow("Invalid typed array storage type.");
 });
 

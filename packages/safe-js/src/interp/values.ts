@@ -1319,7 +1319,7 @@ function copyFromSandbox(
     return options.unwrapHostObject(value);
   }
 
-  if (nodeTypes.isProxy(value)) throw new TypeError("Unsupported proxy sandbox value.");
+  if (nodeTypes.isProxy(value) && !isNumericTypedArray(value)) throw new TypeError("Unsupported proxy sandbox value.");
   if (sandboxErrorTypes.has(value) && hasExplicitSandboxPrototype(value)) {
     const prototype = getSandboxPrototype(value);
     let nativePrototype: object | null = null;

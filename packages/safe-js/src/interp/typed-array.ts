@@ -1,5 +1,6 @@
 import type { Budget } from "./budget.js";
 import { arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage } from "./array-buffer.js";
+import { float16BackingViews, Float16Array } from "./float16-array.js";
 
 import { numericTypedArrayConstructors, type NumericTypedArrayConstructor, type NumericTypedArray } from "./typed-array-constructors.js";
 export { numericTypedArrayConstructors, type NumericTypedArrayConstructor, type NumericTypedArray } from "./typed-array-constructors.js";
@@ -37,6 +38,8 @@ export function restoreTypedArrayView(buffer: ArrayBuffer, byteOffset: number, l
 }
 
 export function isNumericTypedArray(value: unknown): value is NumericTypedArray {
+  if (typeof value === "object" && value !== null && float16BackingViews.has(value))
+    return Object.getPrototypeOf(value) === Float16Array.prototype;
   if (!ArrayBuffer.isView(value)) return false;
   const tag = Reflect.apply(readTag, value, []);
   return Object.hasOwn(numericTypedArrayConstructors, tag) &&
@@ -51,20 +54,24 @@ export function typedArrayStorage(value: NumericTypedArray, requireInBounds = fa
   Native: NumericTypedArrayConstructor;
   elementSize: number;
 } {
-  if (requireInBounds) Reflect.apply(createValuesIterator, value, []);
-  const buffer = Reflect.apply(readBuffer, value, []) as ArrayBuffer;
+  const backingView = float16BackingViews.get(value);
+  const view = backingView ?? value;
+  if (requireInBounds) Reflect.apply(createValuesIterator, view, []);
+  const buffer = Reflect.apply(readBuffer, view, []) as ArrayBuffer;
   if (
     Object.getPrototypeOf(buffer) !== ArrayBuffer.prototype
   ) {
     throw new TypeError("Float32Array requires a non-shared ArrayBuffer.");
   }
-  const Native = numericTypedArrayConstructors[Reflect.apply(readTag, value, []) as keyof typeof numericTypedArrayConstructors];
+  const Native = backingView === undefined
+    ? numericTypedArrayConstructors[Reflect.apply(readTag, value, []) as keyof typeof numericTypedArrayConstructors]
+    : Float16Array;
   return {
     Native,
     elementSize: Native.BYTES_PER_ELEMENT,
     buffer,
-    byteOffset: Reflect.apply(readOffset, value, []) as number,
-    length: Reflect.apply(readLength, value, []) as number,
+    byteOffset: Reflect.apply(readOffset, view, []) as number,
+    length: Reflect.apply(readLength, view, []) as number,
     byteLength: Reflect.apply(bufferLength, buffer, []) as number
   };
 }

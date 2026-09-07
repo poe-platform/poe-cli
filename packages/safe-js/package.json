@@ -24,6 +24,7 @@
     }
   },
   "dependencies": {
+    "@petamoriken/float16": "^3.9.3",
     "@poe-code/agent-spawn": "*",
     "@poe-code/frontmatter": "*",
     "@poe-code/safe-fs": "*",

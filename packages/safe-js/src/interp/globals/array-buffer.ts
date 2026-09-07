@@ -61,7 +61,7 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   Object.defineProperty(materializeFunctionProperties(constructor), "isView", {
     writable: true, configurable: true,
     value: createSandboxClosure({ guest: true, sandbox: true, name: "isView", length: 1,
-      call: args => ArrayBuffer.isView(args[0]) })
+      call: args => ArrayBuffer.isView(args[0]) || isNumericTypedArray(args[0]) })
   });
   Object.defineProperties(prototype, {
     constructor: { value: constructor, writable: true, configurable: true },
@@ -210,3 +210,4 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   registerIntrinsicObject(budget, prototype);
   return constructor;
 }
+import { isNumericTypedArray } from "../typed-array.js";

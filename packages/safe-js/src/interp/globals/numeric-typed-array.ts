@@ -25,11 +25,39 @@ import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxAr
 import { installUint8Hex } from "./uint8-hex.js";
 import { installUint8Base64 } from "./uint8-base64.js";
 import { budgetedBigInt, sandboxBigInt } from "./bigint.js";
+import { float16BackingViews } from "../float16-array.js";
 
 const constructors = new WeakMap<SandboxClosure, NumericTypedArrayConstructor>();
 
 function hasBigIntContent(Native: NumericTypedArrayConstructor): boolean {
   return Native === BigInt64Array || Native === BigUint64Array;
+}
+
+function copyTypedArrayElements(target: NumericTypedArray, source: NumericTypedArray, offset: number, budget: Budget): void {
+  if (!float16BackingViews.has(target) && !float16BackingViews.has(source)) {
+    Reflect.apply(Float32Array.prototype.set, target, [source, offset]);
+    return;
+  }
+  const to = typedArrayStorage(target, true);
+  const from = typedArrayStorage(source, true);
+  if (hasBigIntContent(to.Native) !== hasBigIntContent(from.Native))
+    throw new TypeError("Cannot mix BigInt and Number typed arrays.");
+  if (to.Native === from.Native) {
+    new Uint8Array(to.buffer, to.byteOffset + offset * to.elementSize, from.length * from.elementSize)
+      .set(new Uint8Array(from.buffer, from.byteOffset, from.length * from.elementSize));
+    return;
+  }
+  if (to.buffer === from.buffer) {
+    checkTypedArrayAllocation(from.length, budget, from.elementSize);
+    const copy = new from.Native(from.length);
+    const copyStorage = typedArrayStorage(copy);
+    new Uint8Array(copyStorage.buffer).set(new Uint8Array(from.buffer, from.byteOffset, from.length * from.elementSize));
+    source = copy;
+  }
+  for (let index = 0; index < from.length; index++) {
+    budget.visitNode();
+    target[offset + index] = source[index];
+  }
 }
 
 export function typedArrayElement(value: SandboxValue, Native: NumericTypedArrayConstructor, budget: Budget, context?: SandboxCallContext): number | Promise<number | bigint> {
@@ -153,7 +181,12 @@ function allocateTypedArray(source: SandboxValue, budget: Budget, Native: Numeri
       if (Array.isArray(source) || isNumericTypedArray(source)) {
         const length = isNumericTypedArray(source) ? typedArrayStorage(source).length : source.length;
         checkTypedArrayAllocation(length, budget, Native.BYTES_PER_ELEMENT);
-        if (isNumericTypedArray(source)) return Reflect.construct(Native, [source]) as NumericTypedArray;
+        if (isNumericTypedArray(source)) {
+          typedArrayStorage(source, true);
+          const result = new Native(length);
+          copyTypedArrayElements(result, source, 0, budget);
+          return result;
+        }
         const result = new Native(length);
         for (let index = 0; index < length; index += 1) {
           budget.visitNode();
@@ -687,7 +720,7 @@ export function getTypedArrayMember(
               length = Number.isNaN(size) || size <= 0 ? 0 : Math.min(Math.trunc(size), Number.MAX_SAFE_INTEGER);
             }
             if (offset + length > targetStorage.length) throw new RangeError("Float32Array#set source is out of bounds.");
-            if (isNumericTypedArray(source)) Reflect.apply(Float32Array.prototype.set, receiver, [source, offset]);
+            if (isNumericTypedArray(source)) copyTypedArrayElements(receiver, source, offset, budget);
             else for (let index = 0; index < length; index++) {
               budget.visitNode();
               current = await bridge.getProperty!(sourceObject, String(index));
