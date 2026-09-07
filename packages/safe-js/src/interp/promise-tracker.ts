@@ -11,6 +11,8 @@ type TrackedPromise = {
   rejected: boolean;
 };
 
+export const unrepresentedPromiseContinuations = new WeakSet<SandboxPromise>();
+
 export class SandboxPromiseRejectionTracker {
   private readonly records = new Set<TrackedPromise>();
   private readonly recordsByPromise = new WeakMap<SandboxPromise, TrackedPromise>();
@@ -139,7 +141,8 @@ export function createSandboxPromiseRejectionTracker(): SandboxPromiseRejectionT
   return new SandboxPromiseRejectionTracker();
 }
 
-export function observeSandboxPromise(promise: SandboxPromise): void {
+export function observeSandboxPromise(promise: SandboxPromise, represented = false): void {
+  if (!represented) unrepresentedPromiseContinuations.add(promise);
   activePromiseTracker.getStore()?.observe(promise);
 }
 

@@ -7,6 +7,7 @@ import { restore } from "./restore.js";
 import { Budget } from "../interp/budget.js";
 import { isSandboxClosure } from "../interp/values.js";
 import { invokeBuiltinClosure } from "../interp/builtin-call.js";
+import { awaitSandboxValue } from "../interp/cancel.js";
 
 it("rejects fields substituted into private method blueprints", async () => {
   const source = "class C{#m(){return 9}read(){return this.#m()}}return ()=>new C().read()";
@@ -100,9 +101,14 @@ it.each([
   expect(replay.returnValue).toEqual(expected);
 });
 
-it("identifies the low-level pending-promise limitation independently of private slots", async () => {
-  const source="const p=new Promise(()=>{});return async()=>await p";
+it("restores a pending promise and its resolver in private slots", async () => {
+  const source="class C{#c=Promise.withResolvers();async read(){this.#c.resolve(7);return await this.#c.promise}}const c=new C();return ()=>c.read()";
   const result=await run(source);
   assert(result.ok);
-  expect(()=>serialize({source,currentAstNodeId:1,scopeChain:[{id:"module",bindings:{read:result.returnValue as RuntimeSnapshotValue}}],callStack:[],pendingPromises:[],moduleBindings:{}})).toThrow("Cannot serialize host reference");
+  const snapshot=serialize({source,currentAstNodeId:1,scopeChain:[{id:"module",bindings:{read:result.returnValue as RuntimeSnapshotValue}}],callStack:[],pendingPromises:[],moduleBindings:{}});
+  const budget=new Budget();
+  const binding=restore(JSON.parse(JSON.stringify(snapshot)),{source,budget}).currentScope.lookup("read");
+  assert(binding.found && isSandboxClosure(binding.value));
+  const value=await invokeBuiltinClosure(binding.value,[],budget,undefined,undefined);
+  expect(await awaitSandboxValue(value,undefined,budget)).toBe(7);
 });

@@ -20,7 +20,9 @@ import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterat
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
 import { promiseStates } from "../interp/promise-state.js";
-import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
+import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
+import { promiseContinuations, promiseReactionResults, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
+import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
@@ -44,8 +46,12 @@ export type PrivateElementData<T> = { name: T } & (
 
 export type GuestHeapNode<T> =
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
-  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; state: GuestObjectState<T> }
-  | { kind: "promise-resolver"; promise: T; state: GuestObjectState<T> }
+  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; state: GuestObjectState<T> }
+  | { kind: "promise-resolver"; promise: T; action?: "fulfilled" | "rejected"; state: GuestObjectState<T> }
+  | { kind: "pending-promise"; adoption?: T; reactions: T[]; state: GuestObjectState<T> }
+  | { kind: "promise-adoption"; owner: T; source: T }
+  | { kind: "adoption-resolver"; bridge: T; action: "fulfilled" | "rejected" }
+  | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
@@ -86,16 +92,46 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const bridge = promiseAdoptionBridges.get(value);
+  if (bridge !== undefined) {
+    if (bridge.settled || bridge.owner === undefined) return undefined;
+    return {kind: "promise-adoption", owner: encode(bridge.owner), source: encode(bridge.source)};
+  }
+  const adoptionResolver = isSandboxClosure(value) ? promiseAdoptionResolvers.get(value) : undefined;
+  if (adoptionResolver !== undefined)
+    return {kind: "adoption-resolver", bridge: encode(adoptionResolver.bridge), action: adoptionResolver.action};
   const resolver = isSandboxClosure(value) ? promiseResolvingFunctions.get(value) : undefined;
   if (resolver !== undefined) {
     const settlement = promiseStates.get(resolver.promise);
-    if (!resolver.settled || settlement === undefined || settlement.status === "pending") return undefined;
+    if (settlement?.status === "pending") {
+      const action = isSandboxClosure(value) ? promiseResolverActions.get(value) : undefined;
+      if (action === undefined) return undefined;
+      return {kind: "promise-resolver", promise: encode(resolver.promise), action, state: captureObjectState(value, encode)!};
+    }
+    if (!resolver.settled || settlement === undefined) return undefined;
     return {kind: "promise-resolver", promise: encode(resolver.promise), state: captureObjectState(value, encode)!};
   }
   if (isSandboxPromise(value)) {
     const settlement = promiseStates.get(value);
     if (settlement !== undefined && settlement.status !== "pending")
-      return {kind: "guest-promise", status: settlement.status, value: encode(settlement.value), state: captureObjectState(value, encode)!};
+      return {kind: "guest-promise", status: settlement.status, value: encode(settlement.value),
+        ...(promiseReactionResults.has(value) ? {reactions: [...promiseReactionResults.get(value)!].map(encode)} : {}),
+        state: captureObjectState(value, encode)!};
+    const continuation = promiseContinuations.get(value);
+    if (unrepresentedPromiseContinuations.has(value))
+      throw new TypeError("Cannot serialize host reference: unrepresented promise continuation.");
+    if (continuation?.kind === "capability") {
+      const adoption = promiseAdoptions.get(value);
+      const bridge = adoption === undefined ? undefined : promiseAdoptionBridges.get(adoption);
+      if (continuation.state.settled && (bridge === undefined || bridge.settled || bridge.owner !== value ||
+          continuation.resolution?.status !== "fulfilled" || continuation.resolution.value !== bridge.source)) return undefined;
+      return {kind: "pending-promise", ...(continuation.state.settled ? {adoption: encode(adoption)} : {}),
+        reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
+    }
+    if (continuation?.kind === "reaction" && continuation.phase === "waiting")
+      return {kind: "promise-reaction", source: encode(continuation.source),
+        onFulfilled: encode(continuation.onFulfilled), onRejected: encode(continuation.onRejected),
+        reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
     return undefined;
   }
   if (hasGuestObjectState(value) || privateElements.has(value)) {

@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -149,12 +149,68 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "promise-resolver") {
-    fields(node, ["kind", "promise", "state"]);
-    reference(node.promise, ["guest-promise"]);
+  if (node.kind === "promise-adoption") {
+    fields(node, ["kind", "owner", "source"]);
+    const owner = reference(node.owner, ["pending-promise"]);
+    if (reference(owner.adoption, ["promise-adoption"]) !== node) throw new TypeError("Invalid promise adoption owner.");
+    const source = reference(node.source, ["pending-promise", "promise-reaction", "guest-promise"]);
+    if (source === owner)
+      throw new TypeError("A promise cannot adopt itself.");
+    let matchingCallbacks = 0;
+    for (const entry of array(source.reactions)) {
+      const reaction = reference(entry, ["promise-reaction"]);
+      const handlers = [reaction.onFulfilled, reaction.onRejected].map(value => {
+        if (value === null || typeof value !== "object" || record(value).kind !== "ref") return undefined;
+        const handler = reference(value);
+        return handler.kind === "adoption-resolver" && reference(handler.bridge, ["promise-adoption"]) === node ? handler : undefined;
+      });
+      if (handlers.every(handler => handler === undefined)) continue;
+      if (handlers[0]?.action !== "fulfilled" || handlers[1]?.action !== "rejected")
+        throw new TypeError("Invalid promise adoption callbacks.");
+      matchingCallbacks++;
+    }
+    if (matchingCallbacks !== 1) throw new TypeError("Invalid promise adoption callbacks.");
+  } else if (node.kind === "adoption-resolver") {
+    fields(node, ["kind", "bridge", "action"]);
+    reference(node.bridge, ["promise-adoption"]);
+    if (node.action !== "fulfilled" && node.action !== "rejected") throw new TypeError("Invalid adoption resolver action.");
+  } else if (node.kind === "promise-resolver") {
+    fields(node, ["kind", "promise", "state"], ["action"]);
+    const target = reference(node.promise, ["guest-promise", "pending-promise"]);
+    if ((target.kind === "pending-promise" || Object.hasOwn(node, "action")) && node.action !== "fulfilled" && node.action !== "rejected")
+      throw new TypeError("Invalid promise resolver action.");
+    state(node.state);
+  } else if (node.kind === "pending-promise" || node.kind === "promise-reaction") {
+    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption"] : []);
+    if (node.kind === "pending-promise" && Object.hasOwn(node, "adoption")) {
+      const bridge = reference(node.adoption, ["promise-adoption"]);
+      if (reference(bridge.owner, ["pending-promise"]) !== node) throw new TypeError("Invalid promise adoption owner.");
+    }
+    if (node.kind === "promise-reaction") {
+      const source = reference(node.source, ["pending-promise", "promise-reaction", "guest-promise"]);
+      if (!Array.isArray(source.reactions) || !source.reactions.some(entry => reference(entry, ["promise-reaction"]) === node))
+        throw new TypeError("Unlisted promise reaction.");
+    }
+    if (!Array.isArray(node.reactions)) throw new TypeError("Invalid promise reactions.");
+    const reactions = new Set<unknown>();
+    for (const entry of node.reactions) {
+      const reaction = reference(entry, ["promise-reaction"]);
+      if (reactions.has(reaction)) throw new TypeError("Duplicate promise reaction.");
+      if (reference(reaction.source) !== node) throw new TypeError("Invalid promise reaction source.");
+      reactions.add(reaction);
+    }
     state(node.state);
   } else if (node.kind === "guest-promise") {
-    fields(node, ["kind", "status", "value", "state"]);
+    fields(node, ["kind", "status", "value", "state"], ["reactions"]);
+    if (Object.hasOwn(node, "reactions")) {
+      if (!Array.isArray(node.reactions)) throw new TypeError("Invalid promise reactions.");
+      const reactions = new Set<unknown>();
+      for (const entry of node.reactions) {
+        const reaction = reference(entry, ["promise-reaction"]);
+        if (reactions.has(reaction) || reference(reaction.source) !== node) throw new TypeError("Invalid promise reaction source.");
+        reactions.add(reaction);
+      }
+    }
     if (node.status !== "fulfilled" && node.status !== "rejected") throw new TypeError("Invalid guest promise settlement.");
     if (node.status === "fulfilled" && node.value !== null && typeof node.value === "object" &&
         record(node.value).kind === "ref" && reference(node.value) === node)
@@ -548,18 +604,25 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   return true;
 }
 
-export function validateGuestScopeParents(heap: Record<string, unknown>): void {
-  const finished = new Set<string>();
-  for (const [id, raw] of Object.entries(heap)) {
-    if (record(raw).kind !== "scope-frame" || finished.has(id)) continue;
-    const path = new Set<string>();
-    let current: string | undefined = id;
-    while (current !== undefined && !finished.has(current)) {
-      if (path.has(current)) throw new TypeError("Cyclic guest scope parent graph.");
-      path.add(current);
-      const parent: unknown = record(heap[current]).parent;
-      current = absent(parent) ? undefined : String(record(parent).id);
+export function validateGuestHeapGraphs(heap: Record<string, unknown>): void {
+  for (const [kind, edge, message] of [
+    ["scope-frame", "parent", "Cyclic guest scope parent graph."],
+    ["promise-reaction", "source", "Cyclic promise reaction source graph."]
+  ] as const) {
+    const finished = new Set<string>();
+    for (const [id, raw] of Object.entries(heap)) {
+      if (record(raw).kind !== kind || finished.has(id)) continue;
+      const path = new Set<string>();
+      let current: string | undefined = id;
+      while (current !== undefined && !finished.has(current)) {
+        if (path.has(current)) throw new TypeError(message);
+        const node = record(heap[current]);
+        if (node.kind !== kind) break;
+        path.add(current);
+        const parent: unknown = node[edge];
+        current = absent(parent) ? undefined : String(record(parent).id);
+      }
+      for (const visited of path) finished.add(visited);
     }
-    for (const visited of path) finished.add(visited);
   }
 }

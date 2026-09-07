@@ -42,6 +42,9 @@ import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
+import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge } from "../interp/promise.js";
+import { promiseAdoptionBridges, promiseContinuations } from "../interp/promise-continuations.js";
+import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
@@ -159,6 +162,9 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
+  promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue}>;
+  promiseReactionOrders: Map<SandboxPromise, SandboxPromise[]>;
+  pendingCapabilities: WeakMap<SandboxPromise, ReturnType<typeof createPendingPromiseCapability>>;
   symbolRegistry?: Map<string, symbol>;
   guestScopes: Map<number, Scope>;
   rootNode: ParseResult;
@@ -212,6 +218,9 @@ export function restore(
     }
 
     const state: RestoreState = {
+      promiseReactionRecords: new Map(),
+      promiseReactionOrders: new Map(),
+      pendingCapabilities: new WeakMap(),
       guestScopes: new Map(),
       rootNode: currentNode,
       signal: options.signal,
@@ -259,6 +268,17 @@ export function restore(
 
     const callStack = snapshot.callStack.map((frame) => restoreCallFrame(frame, state));
     for (const initialize of state.initializeIterators) initialize();
+    new SandboxJobQueue().bind(() => {
+      for (const [source, reactions] of state.promiseReactionOrders) {
+        for (const reaction of reactions) {
+          const record = state.promiseReactionRecords.get(reaction);
+          if (record === undefined || record.source !== source) throw new TypeError("Invalid restored promise reaction.");
+          attachPendingPromiseReaction(source, record.capability, record.onFulfilled, record.onRejected, budget);
+          state.promiseReactionRecords.delete(reaction);
+        }
+      }
+      if (state.promiseReactionRecords.size !== 0) throw new TypeError("Unlisted restored promise reaction.");
+    });
     for (const detach of state.detachBuffers) detach();
     reconcileCompiledValues(
       budget,
@@ -861,21 +881,60 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "promise-adoption") {
+    const owner = deserializeValue(serialized.owner, state);
+    const source = deserializeValue(serialized.source, state);
+    if (!isSandboxPromise(owner) || !isSandboxPromise(source)) throw new TypeError("Invalid promise adoption.");
+    const {token, bridge} = createPromiseAdoptionBridge(source, state.budget, owner);
+    state.heapValueById.set(id, token);
+    const capability = state.pendingCapabilities.get(owner);
+    const continuation = promiseContinuations.get(owner);
+    if (capability === undefined || continuation?.kind !== "capability") throw new TypeError("Invalid promise adoption capability.");
+    continuation.state.settled = true;
+    continuation.resolution = {status: "fulfilled", value: source};
+    capability.fulfill(bridge.promise);
+    return token;
+  }
+  if (serialized.kind === "adoption-resolver") {
+    const token = deserializeValue(serialized.bridge, state);
+    const bridge = token !== null && typeof token === "object" ? promiseAdoptionBridges.get(token) : undefined;
+    if (bridge === undefined) throw new TypeError("Invalid promise adoption bridge.");
+    const resolver = serialized.action === "fulfilled" ? bridge.resolve : bridge.reject;
+    state.heapValueById.set(id, resolver);
+    return resolver;
+  }
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "promise-resolver") {
-      let promise: SandboxPromise | undefined;
-      const resolver = createSandboxClosure({
-        guest: true, sandbox: true, name: "", length: 1,
-        retainedValues: () => [promise],
-        call: () => undefined
-      });
-      value = resolver;
-      state.initializeIterators.push(() => {
-        const target = deserializeValue(serialized.promise, state);
-        if (!isSandboxPromise(target)) throw new TypeError("Invalid promise resolver target.");
-        promise = target;
+      const promise = deserializeValue(serialized.promise, state);
+      if (!isSandboxPromise(promise)) throw new TypeError("Invalid promise resolver target.");
+      const capability = state.pendingCapabilities.get(promise);
+      if (capability !== undefined) {
+        if (serialized.action !== "fulfilled" && serialized.action !== "rejected") throw new TypeError("Invalid promise resolver action.");
+        value = serialized.action === "fulfilled" ? capability.resolve : capability.reject;
+      } else {
+        const resolver = createSandboxClosure({
+          guest: true, sandbox: true, name: "", length: 1,
+          retainedValues: () => [promise], call: () => undefined
+        });
+        value = resolver;
         promiseResolvingFunctions.set(resolver, {promise, settled: true});
+      }
+    } else if (serialized.kind === "pending-promise" || serialized.kind === "promise-reaction") {
+      initializeIntrinsicRealm(state);
+      const capability = createPendingPromiseCapability(state.budget);
+      value = capability.promise;
+      state.pendingCapabilities.set(capability.promise, capability);
+      state.initializeIterators.push(() => {
+        if (serialized.kind === "pending-promise" && serialized.adoption !== undefined)
+          deserializeValue(serialized.adoption, state);
+        if (serialized.kind === "promise-reaction") {
+          const source = deserializeValue(serialized.source, state);
+          if (!isSandboxPromise(source)) throw new TypeError("Invalid promise reaction source.");
+          state.promiseReactionRecords.set(capability.promise, {source, capability,
+            onFulfilled: deserializeValue(serialized.onFulfilled, state) as SandboxValue,
+            onRejected: deserializeValue(serialized.onRejected, state) as SandboxValue});
+        }
       });
     } else if (serialized.kind === "guest-promise") {
       let fulfill!: (value: SandboxValue) => void;
@@ -1015,6 +1074,15 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       restoreSandboxArrayIterator({ source: source as SandboxValue & object | undefined, index: serialized.index, method: serialized.method }, value as SandboxObject);
     }
     const objectState = serialized.state;
+    if ("reactions" in serialized && serialized.reactions !== undefined) state.initializeIterators.push(() => {
+      if (!isSandboxPromise(value)) throw new TypeError("Invalid promise reaction owner.");
+      const reactions = serialized.reactions!.map(reference => {
+        const reaction = deserializeValue(reference, state);
+        if (!isSandboxPromise(reaction)) throw new TypeError("Invalid promise reaction result.");
+        return reaction;
+      });
+      state.promiseReactionOrders.set(value, reactions);
+    });
     if (serialized.kind === "guest-array" && serialized.templateOwner !== undefined)
       deserializeValue(serialized.templateOwner, state);
     if (objectState !== undefined) state.initializeIterators.push(() => {

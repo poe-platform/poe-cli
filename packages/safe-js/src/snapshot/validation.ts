@@ -13,7 +13,7 @@ import { validateDataViewStorage } from "./data-view.js";
 import { restoreDateTime } from "../interp/date.js";
 import { validateBoxedProperties } from "./boxed.js";
 import { hasGuestObjectState } from "../interp/object-model.js";
-import { validateGuestHeapNode, validateGuestScopeParents } from "./guest-heap-validation.js";
+import { validateGuestHeapNode, validateGuestHeapGraphs } from "./guest-heap-validation.js";
 import { validateGuestFunctionAst } from "./guest-ast-validation.js";
 import { validateTemplateObjects } from "./template-validation.js";
 
@@ -193,7 +193,7 @@ function validateDumpHeap(root: Record<string, unknown>, state: ValidationState)
   }
 
   validateDumpReferences(root, "$", 0, state, heapIds, heap, "root");
-  try { validateGuestScopeParents(heap); }
+  try { validateGuestHeapGraphs(heap); }
   catch (error) { fail("invalidCycle", "$.heap", error instanceof Error ? error.message : "invalid guest scope parent graph"); }
 }
 
@@ -404,7 +404,7 @@ export function validateInterpreterSnapshot(
   }
   validateReferences(root, "$", 0, state, { heapIds, nodeById, promiseIds, scopeIds });
   validateDumpReferences(root, "$", 0, state, heapIds, heap, "root");
-  try { validateGuestScopeParents(heap); }
+  try { validateGuestHeapGraphs(heap); }
   catch (error) { fail("invalidValue", "$.heap", String(error)); }
   for (const [key, value] of Object.entries(heap)) {
     const record = value as Record<string, unknown>;

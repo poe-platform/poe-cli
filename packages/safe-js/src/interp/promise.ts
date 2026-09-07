@@ -5,8 +5,9 @@ import { coerceThrownValue, createSubsetErrorValue } from "./exceptions.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult } from "./iteration.js";
 import { retainValues } from "./resources.js";
 import { runPromiseJob } from "./jobs.js";
-import { observeSandboxPromise } from "./promise-tracker.js";
-import { promiseResolvingFunctions } from "./promise-resolvers.js";
+import { observeSandboxPromise, unrepresentedPromiseContinuations } from "./promise-tracker.js";
+import { promiseResolvingFunctions, promiseResolverActions } from "./promise-resolvers.js";
+import { trackPromiseContinuation, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers, type PromiseAdoptionBridge, type PromiseContinuation } from "./promise-continuations.js";
 import {
   createSandboxClosure,
   createSandboxPromise,
@@ -36,6 +37,70 @@ export function isPromiseResolvingFunction(value: unknown): value is SandboxClos
   return isSandboxClosure(value) && promiseResolvingFunctions.has(value);
 }
 
+export function createPendingPromiseCapability(budget: Budget, context?: SandboxCallContext): {
+  promise: SandboxPromise; resolve: SandboxClosure; reject: SandboxClosure;
+  fulfill: (value: SandboxValue | PromiseLike<SandboxValue>) => void; rejectNative: (reason: unknown) => void
+} {
+  let fulfill!: (value: SandboxValue | PromiseLike<SandboxValue>) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = createSandboxPromise(new Promise<SandboxValue>((resolve, rejectPromise) => {
+    fulfill = resolve;
+    reject = rejectPromise;
+  }), {span: context?.span});
+  const resolverState = {promise, settled: false};
+  const continuation: Extract<PromiseContinuation, {kind: "capability"}> = {kind: "capability", state: resolverState};
+  trackPromiseContinuation(promise, continuation);
+  const resolvers = (["fulfilled", "rejected"] as const).map(status => {
+    const resolver = createSandboxClosure({
+      sandbox: true, guest: true, name: "", length: 1,
+      retainedValues: () => [promise],
+      call: ([value]) => {
+        if (resolverState.settled) return undefined;
+        resolverState.settled = true;
+        continuation.resolution = {status, value};
+        try {
+          if (status === "rejected") reject(budgetSandboxValue(value, budget));
+          else if (value === promise)
+            reject(createSubsetErrorValue("TypeError", "Promise cannot resolve to itself.", context?.stack ?? [], budget));
+          else fulfill(resolveSandboxValue(value, {budget, self: promise, context}));
+        } catch (error) {
+          reject(error);
+        }
+        return undefined;
+      }
+    });
+    promiseResolvingFunctions.set(resolver, resolverState);
+    promiseResolverActions.set(resolver, status);
+    return resolver;
+  });
+  return {promise, resolve: resolvers[0], reject: resolvers[1], fulfill, rejectNative: reject};
+}
+
+export function attachPendingPromiseReaction(
+  source: SandboxPromise,
+  capability: ReturnType<typeof createPendingPromiseCapability>,
+  onFulfilled: SandboxValue,
+  onRejected: SandboxValue,
+  budget: Budget,
+  context?: SandboxCallContext
+): void {
+  const continuation: Extract<PromiseContinuation, {kind: "reaction"}> = {
+    kind: "reaction", phase: "waiting", source, onFulfilled, onRejected
+  };
+  observeSandboxPromise(source, true);
+  const react = (handler: SandboxValue, value: SandboxValue, status: "fulfilled" | "rejected") => {
+    continuation.phase = "running";
+    try {
+      consumeSettledHostCall(source);
+      capability.fulfill(runPromiseReaction(handler, value, status, budget, capability.promise, context));
+    } catch (error) {
+      capability.rejectNative(error);
+    }
+  };
+  source.promise.then(value => react(onFulfilled, value, "fulfilled"), reason => react(onRejected, reason, "rejected"));
+  trackPromiseContinuation(capability.promise, continuation);
+}
+
 export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobals {
   promisePrototypes.delete(options.budget);
   const prototype = getPromisePrototype(options.budget);
@@ -46,53 +111,12 @@ export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobal
         ? getSandboxDataProperty(context.newTarget, "prototype", options.budget)
         : context.getProperty(context.newTarget, "prototype");
     const targetPrototype = prototypeValue instanceof Promise ? await prototypeValue : prototypeValue;
-    let fulfill!: (value: SandboxValue | PromiseLike<SandboxValue>) => void;
-    let reject!: (reason: unknown) => void;
-    const pending = createSandboxPromise(
-      new Promise<SandboxValue>((resolve, rejectPromise) => {
-        fulfill = resolve;
-        reject = rejectPromise;
-      }),
-      { span: context?.span }
-    );
+    const capability = createPendingPromiseCapability(options.budget, context);
+    const pending = capability.promise;
     if (typeof targetPrototype === "object" && targetPrototype !== null && targetPrototype !== prototype)
       setSandboxPrototype(pending, targetPrototype, options.budget);
-    const resolverState = {promise: pending, settled: false};
-    const settle = (state: "fulfilled" | "rejected", value: SandboxValue) => {
-      if (resolverState.settled) return;
-      resolverState.settled = true;
-      try {
-        if (state === "rejected") {
-          reject(budgetSandboxValue(value, options.budget));
-        } else if (value === pending) {
-          reject(
-            createSubsetErrorValue(
-              "TypeError",
-              "Promise cannot resolve to itself.",
-              context?.stack ?? [],
-              options.budget
-            )
-          );
-        } else {
-          fulfill(resolveSandboxValue(value, { budget: options.budget, self: pending, context }));
-        }
-      } catch (error) {
-        reject(error);
-      }
-    };
     try {
-      const resolvers = (["fulfilled", "rejected"] as const).map(state => {
-        const resolver = createSandboxClosure({
-          sandbox: true, guest: true, name: "", length: 1,
-          retainedValues: () => [pending],
-          call: ([value]) => {
-            settle(state, value);
-            return undefined;
-          }
-        });
-        promiseResolvingFunctions.set(resolver, resolverState);
-        return resolver;
-      });
+      const resolvers = [capability.resolve, capability.reject];
       const result = executor.call(resolvers, { stack: context?.stack ?? [], thisValue: undefined });
       if (executor.async !== true) await result;
       else if (isSandboxPromise(result) && result.synchronousPrefix !== undefined)
@@ -106,7 +130,7 @@ export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobal
         observeSandboxPromise(pending);
         throw error;
       }
-      settle("rejected", error as SandboxValue);
+      capability.reject.call([error as SandboxValue]);
     }
     return pending;
   };
@@ -365,6 +389,7 @@ function getPromisePrototype(budget: Budget): SandboxObject {
         const finish = (constructor: SandboxClosure) => {
           if (!isSandboxPromiseConstructor(constructor)) {
             return createPromiseCapability(constructor, budget, context).then(capability => {
+              if (isSandboxPromise(capability.promise)) unrepresentedPromiseContinuations.add(capability.promise);
               observeSandboxPromise(target);
               createSandboxPromise(target.promise.then(
                 value => {
@@ -379,19 +404,25 @@ function getPromisePrototype(budget: Budget): SandboxObject {
               return capability.promise;
             });
           }
-          observeSandboxPromise(target);
+          observeSandboxPromise(target, true);
+          const continuation: Extract<PromiseContinuation, {kind: "reaction"}> = {
+            kind: "reaction", phase: "waiting", source: target, onFulfilled, onRejected
+          };
           const chained = createSandboxPromise(
             target.promise.then(
               (value) => {
+                continuation.phase = "running";
                 consumeSettledHostCall(target);
                 return runPromiseReaction(onFulfilled, value, "fulfilled", budget, chained, context);
               },
               (reason: SandboxValue) => {
+                continuation.phase = "running";
                 consumeSettledHostCall(target);
                 return runPromiseReaction(onRejected, reason, "rejected", budget, chained, context);
               }
             )
           );
+          trackPromiseContinuation(chained, continuation);
           return chained;
         };
         const constructor = getPromiseSpeciesConstructor(target, prototype, budget, context);
@@ -577,6 +608,7 @@ async function settleIterable(
 ): Promise<SandboxValue> {
   const capability = await createPromiseCapability(constructor, budget, context);
   const prototype = getPromisePrototype(budget);
+  if (isSandboxPromise(capability.promise)) unrepresentedPromiseContinuations.add(capability.promise);
   const values: SandboxValue[] = [];
   let remaining = 1;
   const complete = async () => {
@@ -1003,6 +1035,58 @@ function callInPromiseJob(
   });
 }
 
+export function createPromiseAdoptionBridge(
+  source: SandboxPromise,
+  budget: Budget,
+  owner: SandboxPromise | undefined,
+  context?: SandboxCallContext
+): {token: SandboxObject; bridge: PromiseAdoptionBridge} {
+  let fulfill!: (value: SandboxValue | PromiseLike<SandboxValue>) => void;
+  let rejectNative!: (reason: unknown) => void;
+  const promise = new Promise<SandboxValue>((resolve, reject) => {
+    fulfill = resolve;
+    rejectNative = reject;
+  });
+  const token: SandboxObject = Object.create(null);
+  const settle = (status: "fulfilled" | "rejected", value: SandboxValue) => {
+    if (bridge.settled) return;
+    bridge.settled = true;
+    try {
+      if (status === "rejected") rejectNative(budgetSandboxValue(value, budget));
+      else if (requiresPromiseResolution(value, budget)) {
+        fulfill(resolvePromiseResult(value, budget, owner, context));
+      } else fulfill(budgetSandboxValue(value, budget));
+    } catch (error) {
+      rejectNative(error);
+    }
+  };
+  const resolvers = (["fulfilled", "rejected"] as const).map(action => {
+    const resolver = createSandboxClosure({
+      sandbox: true,
+      retainedValues: () => [source, owner],
+      call: ([value]) => {
+        settle(action, value);
+        return undefined;
+      }
+    });
+    promiseAdoptionResolvers.set(resolver, {bridge: token, action});
+    return resolver;
+  });
+  const bridge: PromiseAdoptionBridge = {
+    source, owner, settled: false, promise,
+    resolve: resolvers[0], reject: resolvers[1], rejectNative
+  };
+  promiseAdoptionBridges.set(token, bridge);
+  if (owner !== undefined) promiseAdoptions.set(owner, token);
+  const release = () => {
+    if (owner !== undefined && promiseAdoptions.get(owner) === token) promiseAdoptions.delete(owner);
+    promiseAdoptionBridges.delete(token);
+    for (const resolver of resolvers) promiseAdoptionResolvers.delete(resolver);
+  };
+  promise.then(release, release);
+  return {token, bridge};
+}
+
 function resolvePromiseResult(
   result: SandboxValue | Promise<SandboxValue> | PromiseLike<SandboxValue>,
   budget: Budget,
@@ -1022,42 +1106,12 @@ function resolvePromiseResult(
   }
   const then = getSandboxPropertyDescriptor(result, "then", budget)?.value ?? getPromiseMember("then", budget);
   if (!isSandboxClosure(then)) return Promise.resolve(result);
-  return new Promise<SandboxValue>((resolve, reject) => {
-    let settled = false;
-    const settle = (state: "fulfilled" | "rejected", value: SandboxValue) => {
-      if (settled) return;
-      settled = true;
-      try {
-        if (state === "rejected") reject(budgetSandboxValue(value, budget));
-        else if (requiresPromiseResolution(value, budget)) {
-          resolve(resolvePromiseResult(value, budget, self, context));
-        } else {
-          resolve(budgetSandboxValue(value, budget));
-        }
-      } catch (error) {
-        reject(error);
-      }
-    };
-    runPromiseJob(async () => {
+  const {bridge} = createPromiseAdoptionBridge(result, budget, self, context);
+  runPromiseJob(async () => {
       try {
         const completion = await callPromiseClosure(
           then,
-          [
-            createSandboxClosure({
-              sandbox: true,
-              call: ([value]) => {
-                settle("fulfilled", value);
-                return undefined;
-              }
-            }),
-            createSandboxClosure({
-              sandbox: true,
-              call: ([reason]) => {
-                settle("rejected", reason);
-                return undefined;
-              }
-            })
-          ],
+          [bridge.resolve, bridge.reject],
           result,
           budget,
           context
@@ -1068,15 +1122,15 @@ function resolvePromiseResult(
               reason instanceof SandboxError &&
               (reason.code === "budgetExceeded" || reason.code === "reentry")
             ) {
-              reject(reason);
+              bridge.rejectNative(reason);
             }
           });
         }
       } catch (error) {
-        settle("rejected", error as SandboxValue);
+        bridge.reject.call([error as SandboxValue]);
       }
-    }).catch(reject);
-  });
+    }).catch(bridge.rejectNative);
+  return bridge.promise;
 }
 
 function isSelfResolution(result: SandboxValue, self: SandboxPromise | undefined): boolean {

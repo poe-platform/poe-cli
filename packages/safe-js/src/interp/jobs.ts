@@ -15,6 +15,10 @@ export class SandboxJobQueue {
   private readonly idle: Array<() => void> = [];
   private generation = 0;
 
+  bind<T>(task: () => T): T {
+    return activeJob.run({queue: this, ownsExecution: false}, task);
+  }
+
   acquire(job: ExecutionJob): Promise<void> {
     return new Promise((resolve) => {
       this.pending.push(() => {
