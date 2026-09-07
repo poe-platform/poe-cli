@@ -968,7 +968,7 @@ function callStringRegexCursor(
     const finish = (lastIndex: number) => {
       if (matcher !== undefined) {
         matcher.lastIndex = normalizeLastIndex(lastIndex);
-        return restoreSandboxRegExpIterator({ matcher, input: value, exhausted: false });
+        return restoreSandboxRegExpIterator({ matcher, input: value, exhausted: false }, undefined, budget);
       }
       return callMatchLikeMethod(value, methodName, [regex], compilation, lastIndex);
     };
@@ -1033,7 +1033,7 @@ function callMatchLikeMethod(
       ? createSandboxRegex(regex.source, regex.flags, normalizeLastIndex(lastIndex ?? Number(regex.lastIndex)), compilation)
       : regex;
   if (methodName === "matchAll")
-    return restoreSandboxRegExpIterator({ matcher, input: value, exhausted: false });
+    return restoreSandboxRegExpIterator({ matcher, input: value, exhausted: false }, undefined, compilation.owner?.budget);
   const matches = collectRegexMatches(matcher, value, matcher.flags.includes("g"), compilation.owner?.budget, Number(matcher.lastIndex));
   return matches.length === 0 ? null : matches.map((match) => match.text);
 }

@@ -744,7 +744,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     return args as RuntimeSnapshotValue;
   }
 
-  if (serialized.kind === "regexp-iterator") {
+  if (serialized.kind === "regexp-iterator" || serialized.kind === "guest-regexp-iterator") {
     const iterator = restoreSandboxRegExpIterator({ matcher: undefined, input: undefined, exhausted: true });
     state.heapValueById.set(id, iterator);
     const matcher = deserializeValue(serialized.matcher, state);
@@ -753,8 +753,17 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     if (input !== undefined && typeof input !== "string") throw new TypeError("Invalid RegExp iterator input.");
     restoreSandboxRegExpIterator({ matcher: matcher as SandboxValue, input, exhausted: serialized.exhausted,
       ...(serialized.global === undefined ? {} : { global: serialized.global, unicode: serialized.unicode }) }, iterator);
-    for (const [key, entry] of Object.entries(serialized.entries)) Object.defineProperty(iterator, key, { value: deserializeValue(entry, state), enumerable: true, configurable: true, writable: true });
-    restoreSymbolProperties(iterator, serialized.symbolEntries, entry => deserializeValue(entry, state));
+    if (serialized.kind === "guest-regexp-iterator") {
+      const objectState = serialized.state;
+      state.initializeIterators.push(() => {
+        if (objectState.prototype !== undefined)
+          setSandboxPrototype(iterator, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+        restorePropertyDescriptors(iterator, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      });
+    } else {
+      for (const [key, entry] of Object.entries(serialized.entries)) Object.defineProperty(iterator, key, { value: deserializeValue(entry, state), enumerable: true, configurable: true, writable: true });
+      restoreSymbolProperties(iterator, serialized.symbolEntries, entry => deserializeValue(entry, state));
+    }
     return iterator;
   }
 

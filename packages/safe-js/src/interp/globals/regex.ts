@@ -13,16 +13,30 @@ import {
 import { CompileScope } from "../regex/compile-guard.js";
 import { SandboxError, type Budget, type CompileOwner } from "../budget.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
-import { getSandboxPropertyDescriptor, installRegexPrototype, materializeFunctionProperties, setSandboxPrototype } from "../object-model.js";
+import { getSandboxPropertyDescriptor, installRegexPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { callRegexMethod, getRegexMember, regexFlagProperties, regexSearch, type RegexMethodName } from "../methods/regex.js";
 import { regexMatch, regexReplace } from "../methods/string.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
-import { restoreSandboxRegExpIterator } from "../regexp-iterator.js";
+import { regexpIteratorPrototypes, restoreSandboxRegExpIterator } from "../regexp-iterator.js";
+import { getRegExpIteratorMember } from "../methods/regexp-iterator.js";
+import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { normalizeLastIndex } from "../regex/engine.js";
 import { retainValues } from "../resources.js";
 import { setSandboxProperty } from "../interpreter.js";
 import { regexSplit } from "../methods/regex-split.js";
+
+export function installRegExpIteratorPrototype(budget: Budget): void {
+  const prototype: SandboxObject = Object.create(null);
+  setSandboxPrototype(prototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
+  Object.defineProperties(prototype, {
+    next: { value: getRegExpIteratorMember("next", budget), writable: true, configurable: true },
+    [Symbol.toStringTag]: { value: "RegExp String Iterator", configurable: true }
+  });
+  regexpIteratorPrototypes.set(budget, prototype);
+  registerBuiltinIdentities(budget, { "%RegExpStringIteratorPrototype%": prototype });
+  registerIntrinsicObject(budget, prototype);
+}
 
 export function createRegexGlobals(options: { budget: Budget; compileOwner?: CompileOwner }): { RegExp: SandboxClosure } {
   const invoke = (construct: boolean) => async (args: readonly SandboxValue[], context?: SandboxCallContext) => {
@@ -185,7 +199,7 @@ export function createRegexGlobals(options: { budget: Budget; compileOwner?: Com
           field = undefined;
           await setSandboxProperty(matcher, "lastIndex", cursor, options.budget, true, context);
           return restoreSandboxRegExpIterator({ matcher, input: string, exhausted: false,
-            global: flags.includes("g"), unicode: flags.includes("u") || flags.includes("v") });
+            global: flags.includes("g"), unicode: flags.includes("u") || flags.includes("v") }, undefined, options.budget);
         } finally {
           release();
         }

@@ -87,8 +87,10 @@ export function getRegExpIteratorMember(property: PropertyKey, budget: Budget): 
   });
   if (property !== "next") return undefined;
   return createSandboxClosure({
+    guest: true,
     sandbox: true,
     name: "next",
+    length: 0,
     call: (_args, context) => {
       const receiver = context?.thisValue;
       if (!isSandboxRegExpIterator(receiver))

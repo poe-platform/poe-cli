@@ -2776,7 +2776,7 @@ function getPropertyValue(
   const descriptor = getSandboxPropertyDescriptor(target, property, context.budget);
   if (descriptor !== undefined)
     return readPropertyDescriptor(descriptor, receiver, createCoercionContext(context), true);
-  if (isSandboxRegExpIterator(target)) return getRegExpIteratorMember(property, context.budget);
+  if (isSandboxRegExpIterator(target)) return hasExplicitSandboxPrototype(target) ? undefined : getRegExpIteratorMember(property, context.budget);
   if (typeof target === "symbol" || typeof target === "bigint") {
     const prototype = getBoxedPrototype(target, context.budget);
     return prototype === undefined ? undefined : getPropertyValue(prototype, property, context, receiver);

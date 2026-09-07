@@ -378,6 +378,8 @@ export function getSandboxIterator(
   if (isSandboxCollectionIterator(value))
     return { next: () => nextCollectionIterator(value, budget), snapshotIndex: () => 0,
       snapshot: () => ({ kind: "builtin", value, index: 0 }) };
+  if (isSandboxRegExpIterator(value) && hasExplicitSandboxPrototype(value))
+    return context?.getProperty === undefined ? guestProtocolAdapter(value, budget ?? new Budget(), context, false) : undefined;
   if (isSandboxRegExpIterator(value)) {
     if (context !== undefined && budget !== undefined)
       return { asynchronous: true, next: () => nextObservableRegExpIterator(value, budget, context), snapshotIndex: () => 0,

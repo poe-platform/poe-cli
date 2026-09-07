@@ -12,7 +12,7 @@ import { isSandboxBox } from "../interp/boxed.js";
 import { isRawJson } from "../interp/raw-json.js";
 import { isSandboxDate } from "../interp/date.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
-import { isSandboxRegExpIterator } from "../interp/regexp-iterator.js";
+import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
@@ -36,6 +36,7 @@ export type GuestHeapNode<T> =
   | { kind: "string-iterator"; input: T; index: number; state: GuestObjectState<T> }
   | { kind: "guest-collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod;
       collection: T; index: number; exhausted: boolean; state: GuestObjectState<T> }
+  | { kind: "guest-regexp-iterator"; matcher: T; input: T; exhausted: boolean; global?: boolean; unicode?: boolean; state: GuestObjectState<T> }
   | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
@@ -74,6 +75,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     const cursor = snapshotCollectionIterator(value);
     return { kind: "guest-collection-iterator", collectionKind: cursor.collectionKind, method: cursor.method,
       collection: encode(cursor.collection), index: cursor.index, exhausted: cursor.exhausted, state: captureObjectState(value, encode)! };
+  }
+  if (isSandboxRegExpIterator(value) && hasGuestObjectState(value)) {
+    const cursor = regexpIteratorState(value);
+    return { kind: "guest-regexp-iterator", matcher: encode(cursor.matcher), input: encode(cursor.input), exhausted: cursor.exhausted,
+      ...(cursor.global === undefined ? {} : { global: cursor.global, unicode: cursor.unicode }), state: captureObjectState(value, encode)! };
   }
   if (isRawJson(value)) return { kind: "raw-json", text: value.rawJSON };
   const intrinsic = getIntrinsicIdentity(value);

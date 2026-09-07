@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "guest-collection-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -129,6 +129,21 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     fields(node, ["kind", "id"], ["state"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
     if (Object.hasOwn(node, "state")) state(node.state);
+  } else if (node.kind === "guest-regexp-iterator") {
+    fields(node, ["kind", "matcher", "input", "exhausted", "state"], ["global", "unicode"]);
+    if (typeof node.exhausted !== "boolean" || (typeof node.input !== "string" && !absent(node.input)))
+      throw new TypeError("Invalid RegExp iterator state.");
+    if ((Object.hasOwn(node, "global") || Object.hasOwn(node, "unicode")) &&
+        (typeof node.global !== "boolean" || typeof node.unicode !== "boolean"))
+      throw new TypeError("Invalid RegExp iterator modes.");
+    if (absent(node.matcher)) {
+      if (!node.exhausted) throw new TypeError("Live RegExp iterator requires a matcher.");
+    } else {
+      const matcher = reference(node.matcher);
+      if (matcher.kind === "symbol" || matcher.kind === "scope-frame") throw new TypeError("Invalid RegExp iterator matcher.");
+    }
+    if (!node.exhausted && absent(node.input)) throw new TypeError("Live RegExp iterator requires input.");
+    state(node.state);
   } else if (node.kind === "guest-collection-iterator") {
     fields(node, ["kind", "collectionKind", "method", "collection", "index", "exhausted", "state"]);
     if (!["map", "set"].includes(String(node.collectionKind)) || !["keys", "values", "entries"].includes(String(node.method)) || typeof node.exhausted !== "boolean")

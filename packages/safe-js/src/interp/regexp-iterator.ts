@@ -1,4 +1,8 @@
-import type { SandboxValue } from "./values.js";
+import type { SandboxObject, SandboxValue } from "./values.js";
+import type { Budget } from "./budget.js";
+import { setSandboxPrototype } from "./object-model.js";
+
+export const regexpIteratorPrototypes = new WeakMap<Budget, SandboxObject>();
 
 declare const regexpIteratorBrand: unique symbol;
 export type SandboxRegExpIterator = { readonly [regexpIteratorBrand]: true };
@@ -17,7 +21,8 @@ export function isSandboxRegExpIterator(value: unknown): value is SandboxRegExpI
 
 export function restoreSandboxRegExpIterator(
   state: RegExpIteratorState,
-  target = Object.create(null) as SandboxRegExpIterator
+  target = Object.create(null) as SandboxRegExpIterator,
+  budget?: Budget
 ): SandboxRegExpIterator {
   if ((state.global !== undefined || state.unicode !== undefined) &&
       (typeof state.global !== "boolean" || typeof state.unicode !== "boolean"))
@@ -29,6 +34,8 @@ export function restoreSandboxRegExpIterator(
   states.set(target, state.exhausted
     ? { ...state, matcher: undefined, input: undefined, exhausted: true }
     : { ...state });
+  const prototype = budget === undefined ? undefined : regexpIteratorPrototypes.get(budget);
+  if (prototype !== undefined) setSandboxPrototype(target, prototype, budget);
   return target;
 }
 

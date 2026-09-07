@@ -6,7 +6,7 @@ import { numericTypedArrayConstructors } from "./typed-array.js";
 import type { SandboxClosure } from "./values.js";
 import { createErrorGlobals, createErrorPrototypes } from "./globals/error.js";
 import { createMathGlobals } from "./globals/math.js";
-import { createRegexGlobals } from "./globals/regex.js";
+import { createRegexGlobals, installRegExpIteratorPrototype } from "./globals/regex.js";
 import { createMiscGlobals } from "./globals/misc.js";
 import { createUriGlobals } from "./globals/uri.js";
 import { createObjectArrayGlobals } from "./globals/object-array.js";
@@ -45,6 +45,7 @@ export function createBuiltinBindings(
     ...createRegexGlobals(options)
   };
   installCollectionIteratorPrototypes(options.budget);
+  installRegExpIteratorPrototype(options.budget);
   createFunctionPrototype(options.budget, options.functionHasInstance);
   if (options.typedArrayPrototypes !== false) createNumericTypedArrayPrototypes(options.budget, bindings);
   if (options.errorPrototypes !== false) createErrorPrototypes(options.budget, bindings);
