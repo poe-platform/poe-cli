@@ -12,8 +12,8 @@ import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { getSandboxArgumentEntries, isSandboxArguments } from "../interp/arguments.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
-import { typedArrayDataProperties, typedArrayStorage, isNumericTypedArray, type NumericTypedArray } from "../interp/typed-array.js";
-import { encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
+import { typedArrayStorage, isNumericTypedArray, type NumericTypedArray } from "../interp/typed-array.js";
+import { captureTypedArrayState, encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
 import { isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import { dataViewBuffer, isSandboxDataView } from "../interp/data-view.js";
 import { captureDataViewState, encodeDataViewLayout, type DataViewData } from "./data-view.js";
@@ -42,7 +42,7 @@ type DumpHeapValue =
   | SerializedSymbol
   | BoxedData<DumpValue>
   | SerializedDate<DumpValue>
-  | (TypedArrayData<DumpValue> & { entries: Record<string, DumpValue> })
+  | (TypedArrayData<DumpValue> & { entries: Record<string, DumpValue>; state: ReturnType<typeof captureTypedArrayState<DumpValue>> })
   | (ArrayBufferData<DumpValue> & { state: ReturnType<typeof captureArrayBufferState<DumpValue>> })
   | (DataViewData<DumpValue> & { state: ReturnType<typeof captureDataViewState<DumpValue>> })
   | SerializedArguments<DumpValue>
@@ -173,7 +173,7 @@ function serializeDumpValue(
   // Trusted run snapshots rebuild Date, promise and resolver properties by replay;
   // retain their ordinary runtime metadata below. Arbitrary snapshot inputs
   // still cannot serialize their managed state through this path.
-  if (hasGuestObjectState(value) && !isSandboxDataView(value) && !(state.trustedRunReplay && (isSandboxDate(value) || isSandboxPromise(value) || isPromiseResolvingFunction(value)))) {
+  if (hasGuestObjectState(value) && !isSandboxDataView(value) && !isNumericTypedArray(value) && !(state.trustedRunReplay && (isSandboxDate(value) || isSandboxPromise(value) || isPromiseResolvingFunction(value)))) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
 
@@ -281,12 +281,14 @@ function serializeHeapReference(
       const backing = typedArrayStorage(value);
       const storage: TypedArrayData<DumpValue> = { ...encodeTypedArrayLayout(value),
         buffer: serializeHeapReference(backing.buffer, `${path}.buffer`, state)! };
-      const entries: Record<string, DumpValue> = Object.create(null);
-      state.heap[String(id)] = { ...storage, entries };
-      for (const [key, descriptor] of typedArrayDataProperties(value)) {
-        const serialized = serializeDumpValue(descriptor.value, `${path}.${key}`, state);
-        entries[key] = serialized === SKIP_VALUE ? { kind: "undefined" } : serialized;
-      }
+      state.heap[String(id)] = { ...storage, entries: {},
+        state: captureTypedArrayState(value, entry => {
+          if (entry === undefined) return { kind: "undefined" };
+          if (Object.is(entry, -0)) return { kind: "number", value: "-0" };
+          const serialized = serializeDumpValue(entry, `${path}.<typed-array>`, state);
+          if (serialized === SKIP_VALUE) throw new TypeError("Unsupported typed array property in public dump.");
+          return serialized;
+        }) };
     } else if (isSandboxArguments(value)) {
       state.heap[String(id)] = serializeArguments(value, (entry, key) => {
         const serialized = serializeDumpValue(entry, `${path}.${key}`, state);
@@ -426,11 +428,13 @@ function collectContainerStats(
   if (isNumericTypedArray(value)) guestEntries.push(typedArrayStorage(value).buffer);
   const guest = isSandboxDataView(value)
     ? { kind: "dataview", state: captureDataViewState(value, entry => { guestEntries.push(entry); return null; }) }
+    : isNumericTypedArray(value)
+    ? { kind: "typedarray", state: captureTypedArrayState(value, entry => { guestEntries.push(entry); return null; }) }
     : isSandboxArrayBuffer(value)
     ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
     : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
-    if (!isSandboxArrayBuffer(value) && !isSandboxDataView(value)) guestValues.add(value);
+    if (!isSandboxArrayBuffer(value) && !isSandboxDataView(value) && !isNumericTypedArray(value)) guestValues.add(value);
     for (const entry of guestEntries) {
       collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
       if (entry !== null && typeof entry === "object") stats.get(entry)!.forceHeap = true;
