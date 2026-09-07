@@ -20,6 +20,7 @@ import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterat
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
 import { promiseStates } from "../interp/promise-state.js";
+import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { classOrigins } from "../interp/classes.js";
@@ -43,6 +44,7 @@ export type PrivateElementData<T> = { name: T } & (
 export type GuestHeapNode<T> =
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
   | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; state: GuestObjectState<T> }
+  | { kind: "promise-resolver"; promise: T; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
@@ -83,6 +85,12 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const resolver = isSandboxClosure(value) ? promiseResolvingFunctions.get(value) : undefined;
+  if (resolver !== undefined) {
+    const settlement = promiseStates.get(resolver.promise);
+    if (!resolver.settled || settlement === undefined || settlement.status === "pending") return undefined;
+    return {kind: "promise-resolver", promise: encode(resolver.promise), state: captureObjectState(value, encode)!};
+  }
   if (isSandboxPromise(value)) {
     const settlement = promiseStates.get(value);
     if (settlement !== undefined && settlement.status !== "pending")

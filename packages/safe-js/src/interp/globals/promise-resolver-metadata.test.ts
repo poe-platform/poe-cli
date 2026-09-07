@@ -8,7 +8,7 @@ it.each(["resolve", "reject"])("exposes native Promise %s function metadata", as
   const result = await run(`let resolver;new Promise((resolve,reject)=>{resolver=${name};resolve()});
     return resolver.name==="" && resolver.length===1 &&
       Object.getOwnPropertyNames(resolver).join(",")==="length,name";`);
-  expect(result.returnValue).toBe(true);
+  expect(result).toMatchObject({ok: true, returnValue: true});
 });
 
 it.each(["resolve", "reject"])("uses standard configurable metadata on %s", async name => {
@@ -21,7 +21,7 @@ it.each(["resolve", "reject"])("uses standard configurable metadata on %s", asyn
     Object.defineProperty(resolver,"length",{value:7});
     capability.resolve(42);
     return resolver.name==="changed" && resolver.length===7 && (await capability.promise)===42;`);
-  expect(result.returnValue).toBe(true);
+  expect(result).toMatchObject({ok: true, returnValue: true});
 });
 
 it.each(["pending", "completed"])("preserves resolver metadata mutations across %s replay", async mode => {
@@ -38,10 +38,15 @@ it.each(["pending", "completed"])("preserves resolver metadata mutations across 
   } finally { await completed; }
 });
 
-it("does not permit resolver state in arbitrary snapshot roots", async () => {
-  const result = await run(`const capability=Promise.withResolvers();capability.resolve(42);
-    Object.defineProperty(capability.resolve,"name",{value:"custom"});return 42;`);
-  expect(() => serializeSafeJSSnapshot({ ...result.snapshot })).toThrow("Guest function properties");
+it("preserves settled resolver state in copied snapshot roots", async () => {
+  const source = `const capability=Promise.withResolvers();capability.resolve(42);await capability.promise;
+    Object.defineProperty(capability.resolve,"name",{value:"custom"});await 0;
+    capability.resolve(99);return [capability.resolve.name,await capability.promise];`;
+  const result = await run(source);
+  expect(result).toMatchObject({ok: true, returnValue: ["custom",42]});
+  const portable = JSON.parse(serializeSafeJSSnapshot({ ...result.snapshot }));
+  const snapshot = restore(portable, {source});
+  expect(await run(source, {snapshot})).toMatchObject({ok: true, returnValue: ["custom",42]});
 });
 
 it("replays resolver metadata without repeating completed host effects", async () => {

@@ -41,6 +41,7 @@ import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
+import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
 
@@ -858,9 +859,23 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "guest-promise") {
+    if (serialized.kind === "promise-resolver") {
+      let promise: SandboxPromise | undefined;
+      const resolver = createSandboxClosure({
+        guest: true, sandbox: true, name: "", length: 1,
+        retainedValues: () => [promise],
+        call: () => undefined
+      });
+      value = resolver;
+      state.initializeIterators.push(() => {
+        const target = deserializeValue(serialized.promise, state);
+        if (!isSandboxPromise(target)) throw new TypeError("Invalid promise resolver target.");
+        promise = target;
+        promiseResolvingFunctions.set(resolver, {promise, settled: true});
+      });
+    } else if (serialized.kind === "guest-promise") {
       let fulfill!: (value: SandboxValue) => void;
       let reject!: (value: SandboxValue) => void;
       const restored = createSandboxPromise(new Promise<SandboxValue>((resolve, rejectPromise) => {

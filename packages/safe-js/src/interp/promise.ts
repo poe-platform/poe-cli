@@ -6,6 +6,7 @@ import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIterator
 import { retainValues } from "./resources.js";
 import { runPromiseJob } from "./jobs.js";
 import { observeSandboxPromise } from "./promise-tracker.js";
+import { promiseResolvingFunctions } from "./promise-resolvers.js";
 import {
   createSandboxClosure,
   createSandboxPromise,
@@ -23,7 +24,6 @@ export type PromiseGlobals = {
 };
 
 const promiseConstructors = new WeakSet<SandboxClosure>();
-const promiseResolvingFunctions = new WeakSet<SandboxClosure>();
 const intrinsicPromiseThenMethods = new WeakSet<SandboxClosure>();
 const intrinsicPromiseConstructors = new WeakMap<Budget, SandboxClosure>();
 const promisePrototypes = new WeakMap<Budget, SandboxObject>();
@@ -57,10 +57,10 @@ export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobal
     );
     if (typeof targetPrototype === "object" && targetPrototype !== null && targetPrototype !== prototype)
       setSandboxPrototype(pending, targetPrototype, options.budget);
-    let settled = false;
+    const resolverState = {promise: pending, settled: false};
     const settle = (state: "fulfilled" | "rejected", value: SandboxValue) => {
-      if (settled) return;
-      settled = true;
+      if (resolverState.settled) return;
+      resolverState.settled = true;
       try {
         if (state === "rejected") {
           reject(budgetSandboxValue(value, options.budget));
@@ -90,7 +90,7 @@ export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobal
             return undefined;
           }
         });
-        promiseResolvingFunctions.add(resolver);
+        promiseResolvingFunctions.set(resolver, resolverState);
         return resolver;
       });
       const result = executor.call(resolvers, { stack: context?.stack ?? [], thisValue: undefined });
