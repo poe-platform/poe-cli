@@ -9,6 +9,7 @@ import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
 
 const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value as ((length: number) => void) | undefined;
+const readDetached = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "detached")?.get;
 
 export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   const prototype: SandboxObject = Object.create(null);
@@ -147,11 +148,21 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
       }
     })
   });
-  for (const key of ["byteLength", "maxByteLength", "resizable"] as const) {
+  for (const key of ["byteLength", "maxByteLength", "resizable", "detached"] as const) {
     const getter = createSandboxClosure({ guest: true, sandbox: true, name: `get ${key}`, length: 0,
       call: (_args, context) => {
         if (!isSandboxArrayBuffer(context?.thisValue)) throw new TypeError(`ArrayBuffer ${key} requires a buffer receiver.`);
         if (key === "byteLength") return arrayBufferLength(context.thisValue);
+        if (key === "detached") {
+          if (readDetached !== undefined) return Reflect.apply(readDetached, context.thisValue, []);
+          try {
+            new Uint8Array(context.thisValue, 0, 0);
+            return false;
+          } catch (error) {
+            if (error instanceof TypeError) return true;
+            throw error;
+          }
+        }
         const options = arrayBufferOptions(context.thisValue);
         return key === "resizable" ? options !== undefined : options?.maxByteLength ?? arrayBufferLength(context.thisValue);
       }
