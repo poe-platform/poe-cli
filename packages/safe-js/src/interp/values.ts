@@ -39,7 +39,7 @@ import type { GeneratorChannel } from "./generator.js";
 import { SandboxError } from "./budget.js";
 import { observeSandboxPromise, trackSandboxPromise } from "./promise-tracker.js";
 import { promiseStates } from "./promise-state.js";
-import { promiseContinuations, promiseReactionResults } from "./promise-continuations.js";
+import { promiseContinuations, promiseReactionResults, promiseProducers } from "./promise-continuations.js";
 import { promiseReplayContext } from "./promise-replay.js";
 import {
   invokeCancelableClosure,
@@ -869,8 +869,14 @@ export function measureSandboxData(
         visit(continuation.source, depth + 1);
         visit(continuation.onFulfilled, depth + 1);
         visit(continuation.onRejected, depth + 1);
+        if (continuation.capability !== undefined) {
+          visit(continuation.capability.promise, depth + 1);
+          visit(continuation.capability.resolve, depth + 1);
+          visit(continuation.capability.reject, depth + 1);
+        }
       }
       for (const reaction of promiseReactionResults.get(value) ?? []) visit(reaction, depth + 1);
+      for (const producer of promiseProducers.get(value) ?? []) visit(producer, depth + 1);
       for (const key of Reflect.ownKeys(getPromiseProperties(value))) {
         const descriptor = Object.getOwnPropertyDescriptor(getPromiseProperties(value), key)!;
         usage += typeof key === "string" ? key.length + 1 : 1;

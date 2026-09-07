@@ -82,17 +82,21 @@ export function attachPendingPromiseReaction(
   onFulfilled: SandboxValue,
   onRejected: SandboxValue,
   budget: Budget,
-  context?: SandboxCallContext
+  context?: SandboxCallContext,
+  reactionCapability?: Extract<PromiseContinuation, {kind: "reaction"}>["capability"]
 ): void {
   const continuation: Extract<PromiseContinuation, {kind: "reaction"}> = {
-    kind: "reaction", phase: "waiting", source, onFulfilled, onRejected
+    kind: "reaction", phase: "waiting", source, onFulfilled, onRejected,
+    ...(reactionCapability === undefined ? {} : {capability: reactionCapability})
   };
   observeSandboxPromise(source, true);
   const react = (handler: SandboxValue, value: SandboxValue, status: "fulfilled" | "rejected") => {
     continuation.phase = "running";
     try {
       consumeSettledHostCall(source);
-      capability.fulfill(runPromiseReaction(handler, value, status, budget, capability.promise, context));
+      capability.fulfill(reactionCapability === undefined
+        ? runPromiseReaction(handler, value, status, budget, capability.promise, context)
+        : runCapabilityReaction(handler, value, status, reactionCapability, budget, context));
     } catch (error) {
       capability.rejectNative(error);
     }
@@ -389,18 +393,24 @@ function getPromisePrototype(budget: Budget): SandboxObject {
         const finish = (constructor: SandboxClosure) => {
           if (!isSandboxPromiseConstructor(constructor)) {
             return createPromiseCapability(constructor, budget, context).then(capability => {
-              if (isSandboxPromise(capability.promise)) unrepresentedPromiseContinuations.add(capability.promise);
-              observeSandboxPromise(target);
-              createSandboxPromise(target.promise.then(
+              observeSandboxPromise(target, isSandboxPromise(capability.promise));
+              const continuation: Extract<PromiseContinuation, {kind: "reaction"}> | undefined = isSandboxPromise(capability.promise)
+                ? {kind: "reaction", phase: "waiting", source: target, onFulfilled, onRejected,
+                    capability: {...capability, promise: capability.promise}}
+                : undefined;
+              const completion = createSandboxPromise(target.promise.then(
                 value => {
+                  if (continuation !== undefined) continuation.phase = "running";
                   consumeSettledHostCall(target);
                   return runCapabilityReaction(onFulfilled, value, "fulfilled", capability, budget, context);
                 },
                 (reason: SandboxValue) => {
+                  if (continuation !== undefined) continuation.phase = "running";
                   consumeSettledHostCall(target);
                   return runCapabilityReaction(onRejected, reason, "rejected", capability, budget, context);
                 }
               ));
+              if (continuation !== undefined) trackPromiseContinuation(completion, continuation);
               return capability.promise;
             });
           }

@@ -21,7 +21,7 @@ import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
-import { promiseContinuations, promiseReactionResults, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
+import { promiseContinuations, promiseReactionResults, promiseProducers, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -46,12 +46,13 @@ export type PrivateElementData<T> = { name: T } & (
 
 export type GuestHeapNode<T> =
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
-  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; state: GuestObjectState<T> }
+  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; producers?: T[]; state: GuestObjectState<T> }
   | { kind: "promise-resolver"; promise: T; action?: "fulfilled" | "rejected"; state: GuestObjectState<T> }
-  | { kind: "pending-promise"; adoption?: T; reactions: T[]; state: GuestObjectState<T> }
+  | { kind: "pending-promise"; adoption?: T; reactions: T[]; producers?: T[]; state: GuestObjectState<T> }
   | { kind: "promise-adoption"; owner: T; source: T }
   | { kind: "adoption-resolver"; bridge: T; action: "fulfilled" | "rejected" }
-  | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; state: GuestObjectState<T> }
+  | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; producers?: T[];
+      capability?: {promise: T; resolve: T; reject: T}; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
@@ -112,9 +113,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     return {kind: "promise-resolver", promise: encode(resolver.promise), state: captureObjectState(value, encode)!};
   }
   if (isSandboxPromise(value)) {
+    const producerState = promiseProducers.has(value) ? {producers: [...promiseProducers.get(value)!].map(encode)} : {};
     const settlement = promiseStates.get(value);
     if (settlement !== undefined && settlement.status !== "pending")
       return {kind: "guest-promise", status: settlement.status, value: encode(settlement.value),
+        ...producerState,
         ...(promiseReactionResults.has(value) ? {reactions: [...promiseReactionResults.get(value)!].map(encode)} : {}),
         state: captureObjectState(value, encode)!};
     const continuation = promiseContinuations.get(value);
@@ -126,10 +129,15 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       if (continuation.state.settled && (bridge === undefined || bridge.settled || bridge.owner !== value ||
           continuation.resolution?.status !== "fulfilled" || continuation.resolution.value !== bridge.source)) return undefined;
       return {kind: "pending-promise", ...(continuation.state.settled ? {adoption: encode(adoption)} : {}),
+        ...producerState,
         reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
     }
     if (continuation?.kind === "reaction" && continuation.phase === "waiting")
       return {kind: "promise-reaction", source: encode(continuation.source),
+        ...producerState,
+        ...(continuation.capability === undefined ? {} : {capability: {
+          promise: encode(continuation.capability.promise), resolve: encode(continuation.capability.resolve), reject: encode(continuation.capability.reject)
+        }}),
         onFulfilled: encode(continuation.onFulfilled), onRejected: encode(continuation.onRejected),
         reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
     return undefined;

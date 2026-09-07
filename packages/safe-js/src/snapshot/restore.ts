@@ -43,7 +43,7 @@ import { privateElements, type PrivateName, type PrivateElement } from "../inter
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge } from "../interp/promise.js";
-import { promiseAdoptionBridges, promiseContinuations } from "../interp/promise-continuations.js";
+import { promiseAdoptionBridges, promiseContinuations, type PromiseContinuation } from "../interp/promise-continuations.js";
 import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
@@ -162,7 +162,8 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
-  promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue}>;
+  promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue;
+    reactionCapability?: Extract<PromiseContinuation, {kind: "reaction"}>["capability"]}>;
   promiseReactionOrders: Map<SandboxPromise, SandboxPromise[]>;
   pendingCapabilities: WeakMap<SandboxPromise, ReturnType<typeof createPendingPromiseCapability>>;
   symbolRegistry?: Map<string, symbol>;
@@ -273,7 +274,7 @@ export function restore(
         for (const reaction of reactions) {
           const record = state.promiseReactionRecords.get(reaction);
           if (record === undefined || record.source !== source) throw new TypeError("Invalid restored promise reaction.");
-          attachPendingPromiseReaction(source, record.capability, record.onFulfilled, record.onRejected, budget);
+          attachPendingPromiseReaction(source, record.capability, record.onFulfilled, record.onRejected, budget, undefined, record.reactionCapability);
           state.promiseReactionRecords.delete(reaction);
         }
       }
@@ -931,7 +932,17 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         if (serialized.kind === "promise-reaction") {
           const source = deserializeValue(serialized.source, state);
           if (!isSandboxPromise(source)) throw new TypeError("Invalid promise reaction source.");
+          let reactionCapability: Extract<PromiseContinuation, {kind: "reaction"}>["capability"];
+          if (serialized.capability !== undefined) {
+            const promise = deserializeValue(serialized.capability.promise, state);
+            const resolve = deserializeValue(serialized.capability.resolve, state);
+            const reject = deserializeValue(serialized.capability.reject, state);
+            if (!isSandboxPromise(promise) || !isSandboxClosure(resolve) || !isSandboxClosure(reject))
+              throw new TypeError("Invalid promise reaction capability.");
+            reactionCapability = {promise, resolve, reject};
+          }
           state.promiseReactionRecords.set(capability.promise, {source, capability,
+            ...(reactionCapability === undefined ? {} : {reactionCapability}),
             onFulfilled: deserializeValue(serialized.onFulfilled, state) as SandboxValue,
             onRejected: deserializeValue(serialized.onRejected, state) as SandboxValue});
         }
@@ -1074,6 +1085,9 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       restoreSandboxArrayIterator({ source: source as SandboxValue & object | undefined, index: serialized.index, method: serialized.method }, value as SandboxObject);
     }
     const objectState = serialized.state;
+    if ("producers" in serialized && serialized.producers !== undefined) state.initializeIterators.push(() => {
+      for (const producer of serialized.producers!) deserializeValue(producer, state);
+    });
     if ("reactions" in serialized && serialized.reactions !== undefined) state.initializeIterators.push(() => {
       if (!isSandboxPromise(value)) throw new TypeError("Invalid promise reaction owner.");
       const reactions = serialized.reactions!.map(reference => {

@@ -142,6 +142,15 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       if (typeof descriptor.enumerable !== "boolean" || typeof descriptor.configurable !== "boolean") throw new TypeError("Invalid guest descriptor flags.");
     }
   };
+  if (Object.hasOwn(node, "producers")) {
+    const producers = new Set<unknown>();
+    for (const entry of array(node.producers)) {
+      const producer = reference(entry, ["promise-reaction"]);
+      if (producers.has(producer) || reference(record(producer.capability).promise) !== node)
+        throw new TypeError("Invalid promise producer ownership.");
+      producers.add(producer);
+    }
+  }
   if (node.kind === "map" || node.kind === "set") {
     fields(node, ["kind", node.kind === "map" ? "entries" : "values"], ["propertyState", "prototype", "privateElements"]);
     if (node.privateElements !== undefined) privateState(node.privateElements);
@@ -181,12 +190,23 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       throw new TypeError("Invalid promise resolver action.");
     state(node.state);
   } else if (node.kind === "pending-promise" || node.kind === "promise-reaction") {
-    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption"] : []);
+    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "producers"] : ["capability", "producers"]);
     if (node.kind === "pending-promise" && Object.hasOwn(node, "adoption")) {
       const bridge = reference(node.adoption, ["promise-adoption"]);
       if (reference(bridge.owner, ["pending-promise"]) !== node) throw new TypeError("Invalid promise adoption owner.");
     }
     if (node.kind === "promise-reaction") {
+      if (Object.hasOwn(node, "capability")) {
+        const capability = record(node.capability);
+        fields(capability, ["promise", "resolve", "reject"]);
+        const result = reference(capability.promise, ["pending-promise", "guest-promise", "promise-reaction"]);
+        if (result === node) throw new TypeError("Invalid promise producer ownership.");
+        if (!Array.isArray(result.producers) || !result.producers.some(entry => reference(entry, ["promise-reaction"]) === node))
+          throw new TypeError("Unlisted promise producer.");
+        if (absent(capability.resolve) || absent(capability.reject)) throw new TypeError("Missing promise producer resolver.");
+        callable(capability.resolve);
+        callable(capability.reject);
+      }
       const source = reference(node.source, ["pending-promise", "promise-reaction", "guest-promise"]);
       if (!Array.isArray(source.reactions) || !source.reactions.some(entry => reference(entry, ["promise-reaction"]) === node))
         throw new TypeError("Unlisted promise reaction.");
@@ -201,7 +221,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     state(node.state);
   } else if (node.kind === "guest-promise") {
-    fields(node, ["kind", "status", "value", "state"], ["reactions"]);
+    fields(node, ["kind", "status", "value", "state"], ["reactions", "producers"]);
     if (Object.hasOwn(node, "reactions")) {
       if (!Array.isArray(node.reactions)) throw new TypeError("Invalid promise reactions.");
       const reactions = new Set<unknown>();
