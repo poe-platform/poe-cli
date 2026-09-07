@@ -19,7 +19,7 @@ import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { toPropertyKey } from "../property-key.js";
 import { createNumericParsers } from "./numeric-parsers.js";
 import { createPrimitiveConstructor } from "./primitives.js";
-import { arrayMethodNames, callArrayMethod } from "../methods/array.js";
+import { arrayMethodLengths, arrayMethodNames, callArrayMethod } from "../methods/array.js";
 import {
   getSandboxDataProperty,
   getSandboxPropertyDescriptor,
@@ -469,7 +469,7 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
   for (const name of arrayMethodNames) {
     const method = createSandboxClosure({
       guest: true, sandbox: true, name,
-      length: Object.getOwnPropertyDescriptor(Array.prototype, name)!.value.length,
+      length: arrayMethodLengths[name],
       call: (args, context) => callArrayMethod(context?.thisValue, name, args, {
         budget, context,
         hasProperty: (value, key) => hasOwnSandboxProperty(value, key, false) || getSandboxPropertyDescriptor(value, key, budget) !== undefined,
