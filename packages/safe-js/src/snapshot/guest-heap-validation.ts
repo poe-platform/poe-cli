@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -149,7 +149,14 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "guest-regex") {
+  if (node.kind === "guest-promise") {
+    fields(node, ["kind", "status", "value", "state"]);
+    if (node.status !== "fulfilled" && node.status !== "rejected") throw new TypeError("Invalid guest promise settlement.");
+    if (node.status === "fulfilled" && node.value !== null && typeof node.value === "object" &&
+        record(node.value).kind === "ref" && reference(node.value) === node)
+      throw new TypeError("A promise cannot fulfill with itself.");
+    state(node.state);
+  } else if (node.kind === "guest-regex") {
     fields(node, ["kind", "source", "flags", "state"]);
     if (typeof node.source !== "string" || typeof node.flags !== "string") throw new TypeError("Invalid guest RegExp payload.");
     state(node.state);

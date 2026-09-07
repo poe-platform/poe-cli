@@ -38,6 +38,7 @@ import {
 import type { GeneratorChannel } from "./generator.js";
 import { SandboxError } from "./budget.js";
 import { observeSandboxPromise, trackSandboxPromise } from "./promise-tracker.js";
+import { promiseStates } from "./promise-state.js";
 import { promiseReplayContext } from "./promise-replay.js";
 import {
   invokeCancelableClosure,
@@ -401,6 +402,11 @@ export function createSandboxPromise(
     });
   }
 
+  promiseStates.set(sandboxPromise, {status: "pending"});
+  original.then(
+    value => { promiseStates.set(sandboxPromise, {status: "fulfilled", value}); },
+    value => { promiseStates.set(sandboxPromise, {status: "rejected", value}); }
+  );
   trackSandboxPromise(sandboxPromise);
   registerPromiseCancellation(sandboxPromise);
 
@@ -853,6 +859,8 @@ export function measureSandboxData(
       return;
     }
     if (isSandboxPromise(value)) {
+      const settlement = promiseStates.get(value);
+      if (settlement !== undefined && settlement.status !== "pending") visit(settlement.value, depth + 1);
       for (const key of Reflect.ownKeys(getPromiseProperties(value))) {
         const descriptor = Object.getOwnPropertyDescriptor(getPromiseProperties(value), key)!;
         usage += typeof key === "string" ? key.length + 1 : 1;

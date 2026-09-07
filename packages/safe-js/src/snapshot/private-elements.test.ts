@@ -100,8 +100,8 @@ it.each([
   expect(replay.returnValue).toEqual(expected);
 });
 
-it("identifies the low-level serializer promise limitation independently of private slots", async () => {
-  const source="const p=Promise.resolve(2);return async()=>await p";
+it("identifies the low-level pending-promise limitation independently of private slots", async () => {
+  const source="const p=new Promise(()=>{});return async()=>await p";
   const result=await run(source);
   assert(result.ok);
   expect(()=>serialize({source,currentAstNodeId:1,scopeChain:[{id:"module",bindings:{read:result.returnValue as RuntimeSnapshotValue}}],callStack:[],pendingPromises:[],moduleBindings:{}})).toThrow("Cannot serialize host reference");

@@ -18,7 +18,8 @@ import { isSandboxStringIterator, stringIteratorState } from "../interp/string-i
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
-import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties } from "../interp/values.js";
+import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
+import { promiseStates } from "../interp/promise-state.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { classOrigins } from "../interp/classes.js";
@@ -41,6 +42,7 @@ export type PrivateElementData<T> = { name: T } & (
 
 export type GuestHeapNode<T> =
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
+  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
@@ -81,6 +83,12 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  if (isSandboxPromise(value)) {
+    const settlement = promiseStates.get(value);
+    if (settlement !== undefined && settlement.status !== "pending")
+      return {kind: "guest-promise", status: settlement.status, value: encode(settlement.value), state: captureObjectState(value, encode)!};
+    return undefined;
+  }
   if (hasGuestObjectState(value) || privateElements.has(value)) {
     if (isSandboxRegex(value)) return { kind: "guest-regex", source: value.source, flags: value.flags, state: captureObjectState(value, encode)! };
     if (isSandboxBox(value)) return { kind: "guest-boxed", value: encode(boxedValue(value)), state: captureObjectState(value, encode)! };
@@ -271,6 +279,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
 function captureObjectState<T>(value: object, encode: (value: unknown) => T): GuestObjectState<T> | undefined {
   let properties: object | undefined = value;
   if (isSandboxRegex(value)) properties = getRegexProperties(value);
+  if (isSandboxPromise(value)) properties = getPromiseProperties(value);
   if (isSandboxGenerator(value)) properties = getGeneratorProperties(value);
   if (isSandboxClosure(value)) {
     properties = value.properties;

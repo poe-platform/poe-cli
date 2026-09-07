@@ -40,6 +40,8 @@ import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
+import { promiseStates } from "../interp/promise-state.js";
+import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
 
 function restorePrivateElements<T>(entries: PrivateElementData<T>[], decode: (entry: T) => SandboxValue): Map<PrivateName, PrivateElement> {
@@ -856,9 +858,23 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "guest-regex") {
+    if (serialized.kind === "guest-promise") {
+      let fulfill!: (value: SandboxValue) => void;
+      let reject!: (value: SandboxValue) => void;
+      const restored = createSandboxPromise(new Promise<SandboxValue>((resolve, rejectPromise) => {
+        fulfill = resolve;
+        reject = rejectPromise;
+      }), {trackReplay: false});
+      value = restored;
+      state.initializeIterators.push(() => {
+        const outcome = deserializeValue(serialized.value, state) as SandboxValue;
+        promiseStates.set(restored, {status: serialized.status, value: outcome});
+        if (serialized.status === "fulfilled") fulfill(outcome);
+        else reject(outcome);
+      });
+    } else if (serialized.kind === "guest-regex") {
       value = createSandboxRegex(serialized.source, serialized.flags, 0, state.compilation);
     } else if (serialized.kind === "guest-boxed") {
       value = createSandboxBox(deserializeValue(serialized.value, state));
@@ -972,7 +988,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       const intrinsicProperties = isSandboxClosure(value) ? value.properties : undefined;
       const target = isSandboxClosure(value)
         ? isGuestClosure(value) ? materializeFunctionProperties(value) : intrinsicProperties
-        : isSandboxRegex(value) ? getRegexProperties(value) : value as object;
+        : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : value as object;
       if (target === undefined) throw new TypeError(`Missing restored function properties for ${serialized.kind === "intrinsic" ? serialized.id : serialized.kind}.`);
       if (objectState.prototype !== undefined)
         setSandboxPrototype(value as object, deserializeValue(objectState.prototype, state) as object | null, state.budget);

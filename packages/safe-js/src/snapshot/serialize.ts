@@ -32,6 +32,7 @@ import {
   type SandboxMap,
   type SandboxClosure,
   type SandboxGenerator,
+  type SandboxPromise,
   type SandboxRegex,
   type SandboxSet
 } from "../interp/values.js";
@@ -167,6 +168,7 @@ export type RuntimeSnapshotValue =
   | SandboxCollectionIterator
   | SandboxRegExpIterator
   | RuntimePromiseValue
+  | SandboxPromise
   | SandboxMap
   | SandboxRegex
   | SandboxSet
