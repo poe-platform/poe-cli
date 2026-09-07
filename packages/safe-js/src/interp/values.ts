@@ -575,7 +575,8 @@ export function* cloneStructuredGraph(
       isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
-  if (iteratorHelperStates.has(value)) throw new DOMException("Iterator helpers cannot be structured cloned.", "DataCloneError");
+  if (iteratorHelperStates.has(value) || iteratorWrapperStates.has(value))
+    throw new DOMException("Iterator objects cannot be structured cloned.", "DataCloneError");
   if (isLiveCapability(value)) throw new DOMException("Capabilities cannot be structured cloned.", "DataCloneError");
   const existing = state.seen.get(value);
   if (existing !== undefined) return existing;

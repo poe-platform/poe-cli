@@ -45,6 +45,16 @@ it("retains the wrapped iterator and cached next in its data budget",()=>{
   expect(measureSandboxData([wrapper])).toBeGreaterThanOrEqual(200);
 });
 
+it.each([
+  "Iterator.from({next(){return {done:true}}})",
+  "{nested:Iterator.from({next(){return {done:true}}})}",
+  "new Map([[1,Iterator.from({next(){return {done:true}}})]])"
+])("rejects structured cloning of wrapped iterators: %s",async expression=>{
+  const result=await run("try{structuredClone("+expression+");return 'cloned'}catch(error){return error.name}");
+  assert(result.ok);
+  expect(result.returnValue).toBe("DataCloneError");
+});
+
 it("restores private wrapper state and cyclic custom properties",async()=>{
   const source="const source={index:0,next(){return {value:this.index++,done:false}}};const it=Iterator.from(source);it.self=it;it.next();return it";
   const result=await run(source);
