@@ -130,6 +130,9 @@ export async function acquireSandboxIterator(
   const iterator = await invokeBuiltinClosure(factory, [], budget, context, value);
   if ((typeof iterator !== "object" && typeof iterator !== "function") || iterator === null)
     throw new TypeError("Iterator must be an object.");
+  if (!asyncProtocol && isSandboxGenerator(iterator) && !iterator.async &&
+      !hasExplicitSandboxPrototype(iterator) && getSandboxPropertyDescriptor(iterator, "next", budget) === undefined)
+    return getSandboxIterator(iterator, budget, context);
   const next = await context.getProperty(iterator, "next");
   return guestIterator(iterator, next, asyncProtocol, budget, context, signal);
 }

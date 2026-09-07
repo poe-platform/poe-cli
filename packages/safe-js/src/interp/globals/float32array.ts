@@ -6,14 +6,16 @@ import {
   isFloat32Array,
   isFloat32Index
 } from "../float32.js";
-import { createSandboxClosure, isSandboxClosure, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
-import { accessorAdapter } from "../accessors.js";
+import { createSandboxClosure, isSandboxClosure, measureSandboxData, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
+import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { float32Prototypes } from "../float32-prototypes.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { retainValues } from "../resources.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
+import { acquireSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
+import { createDataCheckpoint } from "../data-checkpoint.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
@@ -78,6 +80,74 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
   const typedArray = createSandboxClosure({ guest: true, sandbox: true, name: "TypedArray", length: 0,
     call: abstractCall, construct: abstractCall });
   Object.defineProperty(materializeFunctionProperties(typedArray), "prototype", { value: shared, writable: false });
+  Object.defineProperty(materializeFunctionProperties(typedArray), "from", {
+    writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: "from", length: 1,
+      call: async (args, context) => {
+        const target = context?.thisValue;
+        const [source, mapper, receiver] = args;
+        if (!isSandboxClosure(target) || target.construct === undefined)
+          throw new TypeError("TypedArray.from requires a constructor receiver.");
+        if (mapper !== undefined && !isSandboxClosure(mapper))
+          throw new TypeError("TypedArray.from mapper must be callable.");
+        if (source === null || source === undefined)
+          throw new TypeError("TypedArray.from requires a non-null source.");
+        const callerContext = context;
+        context = {
+          ...callerContext,
+          stack: callerContext?.stack ?? [],
+          thisValue: target,
+          getProperty: callerContext?.getProperty ?? ((value, key) => {
+            const descriptor = getSandboxPropertyDescriptor(value, key, budget);
+            return descriptor === undefined ? getSandboxDataProperty(value, key, budget)
+              : readPropertyDescriptor(descriptor, value, context);
+          }),
+          invokeClosure: callerContext?.invokeClosure ?? ((callee, values, thisValue, construct) =>
+            invokeBuiltinClosure(callee, values, budget, callerContext, thisValue, construct))
+        };
+        let result: SandboxValue;
+        let current: SandboxValue;
+        let iterator: SandboxIterator | undefined;
+        const values: SandboxValue[] = [];
+        const release = retainValues(budget, () => [target, result, current, iterator?.retainedValue, values, ...args]);
+        const checkData = createDataCheckpoint(budget, context);
+        const read = (key: string) => context?.getProperty === undefined
+          ? getSandboxDataProperty(source, key, budget) : context.getProperty(source, key);
+        try {
+          iterator = await acquireSandboxIterator(source, budget, context);
+          let length: number;
+          if (iterator !== undefined) {
+            while (true) {
+              budget.visitNode();
+              const next = await iterator.next();
+              if (typeof next !== "object" || next === null) throw new TypeError("Iterator result must be an object.");
+              if ((await readIteratorResult(iterator, next, "done")).value) break;
+              current = (await readIteratorResult(iterator, next, "value")).value;
+              budget.allocateArrayLength(values.length + 1);
+              values.push(current);
+              checkData(values, 1 + (budget.limits.dataSize === undefined ? 0 : measureSandboxData([current])));
+            }
+            length = values.length;
+          } else {
+            const number = await sandboxNumber(await read("length"), budget, context);
+            length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
+          }
+          result = await invokeBuiltinClosure(target, [length], budget, context, undefined, true);
+          if (!isFloat32Array(result) || float32Storage(result).length < length)
+            throw new TypeError("TypedArray.from constructor must return sufficient typed storage.");
+          checkData(result, 0, true);
+          for (let index = 0; index < length; index++) {
+            budget.visitNode();
+            current = iterator === undefined ? await read(String(index)) : values[index];
+            if (mapper !== undefined)
+              current = await invokeBuiltinClosure(mapper, [current, index], budget, context, receiver);
+            result[index] = await sandboxNumber(current, budget, context);
+          }
+          return result;
+        } finally { release(); }
+      }
+    })
+  });
   Object.defineProperty(materializeFunctionProperties(typedArray), "of", {
     writable: true, configurable: true,
     value: createSandboxClosure({ guest: true, sandbox: true, name: "of", length: 0,
