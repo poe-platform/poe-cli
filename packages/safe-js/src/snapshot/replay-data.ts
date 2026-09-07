@@ -10,8 +10,10 @@ import { isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshot
 import { isSandboxRegExpIterator, regexpIteratorState, restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { hasGuestObjectState, hasNullObjectPrototype, setSandboxPrototype } from "../interp/object-model.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
-import { float32DataProperties, isFloat32Array } from "../interp/float32.js";
-import { decodeFloat32Storage, encodeFloat32Storage, type Float32Data } from "./float32array.js";
+import { float32DataProperties, float32Storage, isFloat32Array } from "../interp/float32.js";
+import { decodeFloat32Storage, encodeFloat32Layout, type Float32Data } from "./float32array.js";
+import { arrayBufferDataProperties, isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { decodeArrayBufferStorage, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate, restoreDateTime, serializedDateTime } from "../interp/date.js";
 import { createRawJson, isRawJson } from "../interp/raw-json.js";
 import { boxedDataProperties, createSandboxBox, nativeBoxedValue } from "../interp/boxed.js";
@@ -62,6 +64,7 @@ type DataNode =
   | { kind: "collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod; collection: Atom; index: number; exhausted: boolean; properties: Properties; extensible: boolean }
   | { kind: "date"; time: number | null; properties?: Properties; symbolProperties?: Array<SerializedSymbolProperty<Atom>>; extensible?: boolean; nullPrototype?: true }
   | (Float32Data<Atom> & { properties: Properties; extensible: boolean })
+  | (ArrayBufferData<Atom> & { properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> })
   | { kind: "capability"; id: string; properties: Atom }
   | {
       kind: "array" | "object";
@@ -172,11 +175,20 @@ export function encodeReplayData(
         ...(symbolProperties.length === 0 ? {} : { symbolProperties }),
         ...(Object.isExtensible(entry) ? {} : { extensible: false })
       };
+    } else if (isSandboxArrayBuffer(entry)) {
+      const storage = encodeArrayBufferStorage(entry, id, float32Buffers, id => ({ tag: "ref" as const, id }));
+      const properties: Properties = Object.create(null);
+      for (const [key, descriptor] of arrayBufferDataProperties(entry)) {
+        if (typeof key === "symbol") continue;
+        properties[key] = { value: child(descriptor.value, key), configurable: descriptor.configurable === true,
+          enumerable: descriptor.enumerable === true, writable: descriptor.writable === true };
+      }
+      let symbolIndex = 0;
+      const symbolEntries = serializeSymbolProperties(entry, value => encode(value as SandboxValue, depth + 1, [...path, { symbol: Math.floor(symbolIndex++ / 2) }]));
+      nodes[id] = { ...storage, properties, extensible: Object.isExtensible(entry), symbolEntries };
     } else if (isFloat32Array(entry)) {
-      const storage = encodeFloat32Storage(entry, id, float32Buffers, (id) => ({
-        tag: "ref" as const,
-        id
-      }));
+      const backing = float32Storage(entry);
+      const storage: Float32Data<Atom> = { kind: "float32array", ...encodeFloat32Layout(entry), buffer: child(backing.buffer, "<buffer>") };
       const properties: Properties = Object.create(null);
       for (const [key, descriptor] of float32DataProperties(entry)) {
         properties[key] = {
@@ -282,7 +294,7 @@ export function decodeReplayData(
     const graph = record(input);
     const nodes = list(own(graph, "nodes"));
     const restored = new Map<number, SandboxValue>();
-    const initializeIterators: Array<() => void> = [];
+    const initializeValues: Array<() => void> = [];
     const decode = (entry: unknown, depth = 0): SandboxValue => {
       if (depth > MAX_DATA_DEPTH) throw new TypeError("Replay data exceeds the nesting limit.");
       if (entry === null || typeof entry === "boolean" || typeof entry === "string") return entry;
@@ -425,10 +437,20 @@ export function decodeReplayData(
         if (node.extensible === false) Object.preventExtensions(result);
         return result;
       }
+      if (kind === "arraybuffer") {
+        if (typeof node.extensible !== "boolean") throw new TypeError("Invalid ArrayBuffer extensibility.");
+        const result = decodeArrayBufferStorage(node, child);
+        restored.set(id, result);
+        initializeValues.push(() => {
+          defineProperties(result, record(own(node, "properties")), child, node.symbolEntries);
+          if (!node.extensible) Object.preventExtensions(result);
+        });
+        return result;
+      }
       if (kind === "float32array") {
         if (typeof node.extensible !== "boolean")
           throw new TypeError("Invalid Float32Array extensibility.");
-        const result = decodeFloat32Storage(node, child);
+        const result = decodeFloat32Storage(node, child, compilation.owner?.budget);
         restored.set(id, result);
         defineProperties(result, record(own(node, "properties")), child);
         if (!node.extensible) Object.preventExtensions(result);
@@ -460,7 +482,7 @@ export function decodeReplayData(
         restored.set(id, result);
         const collection = child(own(node, "collection"));
         if (collection !== undefined && !isSandboxMap(collection) && !isSandboxSet(collection)) throw new TypeError("Invalid replay collection iterator source.");
-        initializeIterators.push(() => { restoreSandboxCollectionIterator({ collection, collectionKind, method, index, exhausted }, result); });
+        initializeValues.push(() => { restoreSandboxCollectionIterator({ collection, collectionKind, method, index, exhausted }, result); });
         defineProperties(result, record(own(node, "properties")), child);
         if (!node.extensible) Object.preventExtensions(result);
         return result;
@@ -534,7 +556,7 @@ export function decodeReplayData(
       return result;
     };
     const result = decode(own(graph, "root"));
-    for (const initialize of initializeIterators) initialize();
+    for (const initialize of initializeValues) initialize();
     if (parent !== undefined) compilation.forward(compilation.tickets, parent);
     return result;
   } finally {

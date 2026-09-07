@@ -14,8 +14,8 @@ import { parseModule } from "../parse/parser.js";
 describe("Float32Array", () => {
   it("rejects an incomplete backing-byte record rather than filling a missing byte", () => {
     const encoded = encodeReplayData(deepCopyToSandbox(new Float32Array([1])));
-    const storage = encoded.nodes.find((node) => node.kind === "float32array");
-    if (storage?.kind !== "float32array" || !("bytes" in storage))
+    const storage = encoded.nodes.find((node) => node.kind === "arraybuffer");
+    if (storage?.kind !== "arraybuffer" || !("bytes" in storage))
       throw new Error("Missing typed storage");
     delete storage.bytes[0];
     expect(() => decodeReplayData(encoded)).toThrowError(
@@ -210,10 +210,10 @@ describe("Float32Array", () => {
     expect(result.returnValue).toEqual({
       bounds: true,
       arrayLike: false,
-      buffer: "undefined",
+      buffer: "object",
       from: "function",
       factory: "function",
-      arrayBuffer: "undefined",
+      arrayBuffer: "function",
       other: "undefined",
       constructorLength: 3,
       width: 4,

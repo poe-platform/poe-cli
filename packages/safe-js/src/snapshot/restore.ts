@@ -20,6 +20,7 @@ import type { CompletionResult } from "../interp/exceptions.js";
 import { toPropertyKey } from "../interp/property-key.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
 import { decodeFloat32Storage, restoreFloat32Properties } from "./float32array.js";
+import { decodeArrayBufferStorage } from "./array-buffer.js";
 import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxBox } from "../interp/boxed.js";
@@ -650,11 +651,21 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     restoreRegexProperties(value, serialized, entry => deserializeValue(entry, state));
     return value;
   }
+  if (serialized.kind === "arraybuffer") {
+    initializeIntrinsicRealm(state);
+    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state));
+    state.heapValueById.set(id, value);
+    state.initializeIterators.push(() => {
+      if (serialized.state.prototype !== undefined)
+        setSandboxPrototype(value, deserializeValue(serialized.state.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(value, serialized.state.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+    });
+    return value;
+  }
   if (serialized.kind === "float32array") {
     if (serialized.state !== undefined) initializeIntrinsicRealm(state);
     const value = decodeFloat32Storage(serialized, (reference) =>
-      deserializeValue(reference as SerializedSnapshotValue, state)
-    );
+      deserializeValue(reference as SerializedSnapshotValue, state), state.budget);
     state.heapValueById.set(id, value);
     if (serialized.state !== undefined) {
       const objectState = serialized.state;

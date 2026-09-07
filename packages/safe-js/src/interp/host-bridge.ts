@@ -5,6 +5,7 @@ import { exportHostCapability, importHostCapability, isLiveCapability } from "./
 import { attachErrorSpan, replaceErrorStack, type ErrorSourceSpan } from "../error/shape.js";
 import { SandboxError, type Budget, type CompileOwner } from "./budget.js";
 import { CompileScope } from "./regex/compile-guard.js";
+import { arrayBufferDataProperties, arrayBufferLength, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import {
   checkFloat32Allocation,
   copyFloat32Storage,
@@ -913,6 +914,7 @@ export function copyHostValueToSandbox(
   options: HostBridgeOptions & { errorData?: boolean },
   state: {
     seen: WeakMap<object, SandboxValue>;
+    float32Buffers?: WeakMap<ArrayBuffer, ArrayBuffer>;
   },
   path: string
 ): SandboxValue {
@@ -1014,12 +1016,32 @@ export function copyHostValueToSandbox(
     return date;
   }
 
+  if (isSandboxArrayBuffer(value)) {
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    const length = arrayBufferLength(value);
+    budget.allocateArrayLength(length);
+    budget.provisionDataUsage(length + 1)();
+    const copy = copyArrayBufferStorage(value, state);
+    state.seen.set(value, copy);
+    for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+      if (typeof key === "symbol") throw new TypeError("Host ArrayBuffer symbol properties require an explicit capability path.");
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyHostValueToSandbox(descriptor.value, stackFrames,
+          { ...options, capabilityPath: [...(options.capabilityPath ?? []), key] }, state, joinPath(path, key)) });
+    }
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
+  }
+
   if (isFloat32Array(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
     checkFloat32Allocation(Math.ceil(float32Storage(value).byteLength / 4), budget);
     const copy = copyFloat32Storage(value, state);
     state.seen.set(value, copy);
+    copyHostValueToSandbox(float32Storage(value).buffer, stackFrames,
+      { ...options, capabilityPath: [...(options.capabilityPath ?? []), "buffer"] }, state, `${path}.buffer`);
     for (const [key, descriptor] of float32DataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,

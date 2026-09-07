@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { float32DataProperties, float32Storage, isFloat32Array } from "./float32.js";
+import { float32DataProperties, float32Storage, float32ViewLayouts, isFloat32Array } from "./float32.js";
+import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "./array-buffer.js";
 import { copyNativeDate, serializedDateTime } from "./date.js";
 import {
   cloneSandboxValue,
@@ -827,8 +828,25 @@ function normalize(value: unknown, seen: WeakSet<object>): unknown {
   try {
     const date = copyNativeDate(value);
     if (date !== undefined) return Object.assign(Object.create(null), { $type: "date", time: serializedDateTime(date) });
+    if (isSandboxArrayBuffer(value)) {
+      arrayBufferLength(value);
+      const properties = Object.create(null) as Record<string, unknown>;
+      const entries: Array<[string, PropertyDescriptor]> = [];
+      for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+        if (typeof key === "symbol") throw new TypeError("ArrayBuffer symbol properties require an explicit host-call identity.");
+        entries.push([key, descriptor]);
+      }
+      for (const [key, descriptor] of entries.sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+        defineOwnDataProperty(properties, key, normalize(descriptor.value, seen));
+      return Object.assign(Object.create(null), { $type: "arraybuffer",
+        bytes: normalize(Array.from(new Uint8Array(value)), seen), ...arrayBufferOptions(value), properties });
+    }
     if (isFloat32Array(value)) {
       const storage = float32Storage(value);
+      const resizable = arrayBufferOptions(storage.buffer) !== undefined;
+      const layout = resizable ? float32ViewLayouts.get(value) : undefined;
+      if (resizable && layout === undefined)
+        throw new TypeError("Resizable Float32Array host-call identity requires known view layout.");
       const properties = Object.create(null) as Record<string, unknown>;
       for (const [key, descriptor] of float32DataProperties(value).sort(([left], [right]) =>
         left < right ? -1 : left > right ? 1 : 0
@@ -840,7 +858,12 @@ function normalize(value: unknown, seen: WeakSet<object>): unknown {
         bytes: normalize(Array.from(new Uint8Array(storage.buffer)), seen),
         byteOffset: storage.byteOffset,
         length: storage.length,
-        properties
+        properties,
+        ...(resizable || Reflect.ownKeys(storage.buffer).length > 0
+          ? { buffer: normalize(storage.buffer, seen) } : {}),
+        ...(layout === undefined ? {} : { viewLayout: {
+          byteOffset: layout.byteOffset, length: layout.length ?? null
+        } })
       });
     }
     if (Array.isArray(value)) {

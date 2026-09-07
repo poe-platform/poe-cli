@@ -1,6 +1,7 @@
 export const KNOWN_RUNTIME_GLOBALS = [
   "AggregateError",
   "Array",
+  "ArrayBuffer",
   "Boolean",
   "BigInt",
   "Date",

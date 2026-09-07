@@ -1,4 +1,5 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
+import { arrayBufferDataProperties, arrayBufferLength, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
 import { getGeneratorProperties } from "./generator-properties.js";
@@ -63,6 +64,7 @@ export type SandboxValue =
   | SandboxPrimitive
   | Date
   | Float32Array
+  | ArrayBuffer
   | SandboxObject
   | SandboxArray
   | SandboxClosure
@@ -191,6 +193,7 @@ type CopyFromSandboxOptions = {
 };
 
 type CopyState<TValue> = {
+  float32Buffers?: WeakMap<ArrayBuffer, ArrayBuffer>;
   seen: WeakMap<object, TValue>;
   initializeIterators?: Array<() => void>;
   compilation?: CompileScope;
@@ -615,12 +618,10 @@ export function measureSandboxData(
     }
     const prototype = getSandboxPrototype(value);
     if (prototype !== null) visit(prototype, depth + 1);
+    if (isSandboxArrayBuffer(value)) usage += arrayBufferLength(value);
     if (isFloat32Array(value)) {
       const storage = float32Storage(value);
-      if (!seen.has(storage.buffer)) {
-        seen.add(storage.buffer);
-        usage += storage.byteLength;
-      }
+      visit(storage.buffer, depth + 1);
       for (const [key, descriptor] of float32Properties(value)) {
         usage += 1;
         if (typeof key === "string") usage += key.length;
@@ -765,7 +766,7 @@ export function measureSandboxData(
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor !== undefined) descriptors.push([key, descriptor]);
     }
-    const includeNonEnumerable = isSandboxDate(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
+    const includeNonEnumerable = isSandboxDate(value) || isSandboxArrayBuffer(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
     for (const [key, descriptor] of descriptors) {
       if (!descriptor.enumerable && !includeNonEnumerable) continue;
       usage += 1 + key.length;
@@ -1008,6 +1009,19 @@ function copyToSandbox(
     return sandboxPromise;
   }
 
+  if (isSandboxArrayBuffer(value)) {
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    const copy = copyArrayBufferStorage(value, state);
+    state.seen.set(value, copy);
+    for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyToSandbox(descriptor.value, state, joinPath(path, key), cloneSandboxCollections, depth + 1) });
+    }
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
+  }
+
   if (nodeTypes.isDate(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
@@ -1027,6 +1041,7 @@ function copyToSandbox(
     if (existing !== undefined) return existing;
     const copy = copyFloat32Storage(value, state);
     state.seen.set(value, copy);
+    copyToSandbox(float32Storage(value).buffer, state, `${path}.buffer`, cloneSandboxCollections, depth + 1);
     for (const [key, descriptor] of float32DataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,
@@ -1265,11 +1280,25 @@ function copyFromSandbox(
     if (existing !== undefined) return existing;
     const copy = copyFloat32Storage(value, state);
     state.seen.set(value, copy);
+    copyFromSandbox(float32Storage(value).buffer, state, `${path}.buffer`, options, depth + 1);
     for (const [key, descriptor] of float32DataProperties(value)) {
       Object.defineProperty(copy, key, {
         ...descriptor,
         value: copyFromSandbox(descriptor.value, state, joinPath(path, key), options, depth + 1)
       });
+    }
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
+  }
+
+  if (isSandboxArrayBuffer(value)) {
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    const copy = copyArrayBufferStorage(value, state);
+    state.seen.set(value, copy);
+    for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyFromSandbox(descriptor.value, state, joinPath(path, key), options, depth + 1) });
     }
     if (!Object.isExtensible(value)) Object.preventExtensions(copy);
     return copy;
@@ -1466,6 +1495,17 @@ function isHostPromise(value: unknown): value is Promise<unknown> {
 function allocateSandboxValue(value: SandboxValue, budget: Budget, seen: WeakSet<object>): void {
   if (typeof value === "string") {
     budget.allocateString(value);
+    return;
+  }
+
+  if (isSandboxArrayBuffer(value)) {
+    if (seen.has(value)) return;
+    seen.add(value);
+    budget.allocateArrayLength(arrayBufferLength(value));
+    for (const [key, descriptor] of arrayBufferDataProperties(value)) {
+      if (typeof key === "string") budget.allocateString(key);
+      allocateSandboxValue(descriptor.value, budget, seen);
+    }
     return;
   }
 

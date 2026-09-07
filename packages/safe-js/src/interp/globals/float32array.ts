@@ -3,6 +3,7 @@ import {
   checkFloat32Allocation,
   float32Number,
   float32Storage,
+  float32ViewLayouts,
   isFloat32Array,
   isFloat32Index
 } from "../float32.js";
@@ -17,6 +18,7 @@ import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { acquireSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
 import { createSandboxBox } from "../boxed.js";
+import { arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
@@ -40,6 +42,31 @@ export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false
         const prototype = candidate !== null && typeof candidate === "object" ? candidate : float32Prototypes.get(budget)!;
         const release = retainValues(budget, () => [prototype, ...args]);
         try {
+          if (isSandboxArrayBuffer(args[0])) {
+            const buffer = args[0];
+            const number = await sandboxNumber(args[1], budget, context);
+            const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
+            if (!Number.isSafeInteger(offset) || offset < 0 || offset % 4 !== 0)
+              throw new RangeError("Invalid Float32Array buffer offset.");
+            const bytes = arrayBufferLength(buffer);
+            let length: number;
+            if (args[2] === undefined) {
+              if ((arrayBufferOptions(buffer) === undefined && bytes % 4 !== 0) || offset > bytes)
+                throw new RangeError("Invalid Float32Array buffer length.");
+              length = Math.floor((bytes - offset) / 4);
+            } else {
+              const size = await sandboxNumber(args[2], budget, context);
+              length = Number.isNaN(size) ? 0 : Math.trunc(size);
+              if (!Number.isSafeInteger(length) || length < 0 || offset + length * 4 > arrayBufferLength(buffer))
+                throw new RangeError("Invalid Float32Array view length.");
+            }
+            budget.allocateArrayLength(length);
+            const result = new Float32Array(buffer, offset, args[2] === undefined ? undefined : length);
+            if (arrayBufferOptions(buffer) !== undefined)
+              float32ViewLayouts.set(result, { byteOffset: offset, ...(args[2] === undefined ? {} : { length }) });
+            setSandboxPrototype(result, prototype, budget);
+            return result;
+          }
           const result = args[0] !== null && typeof args[0] === "object" && !isFloat32Array(args[0])
             ? await allocateFloat32Input(args[0], budget, context)
             : allocateFloat32Array(args[0], budget);
@@ -236,7 +263,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
   setSandboxPrototype(prototype, shared);
   setSandboxPrototype(shared, getSandboxPrototype(Object.create(null), budget));
   const getters: SandboxClosure[] = [];
-  for (const key of ["length", "byteLength", "byteOffset"] as const) {
+  for (const key of ["length", "byteLength", "byteOffset", "buffer"] as const) {
     const getter = createSandboxClosure({ guest: true, sandbox: true, name: `get ${key}`, length: 0,
       call: (_args, context) => {
         if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
@@ -256,7 +283,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
       call: async (args, context) => {
         if (!isFloat32Array(context?.thisValue)) throw new TypeError("TypedArray join requires a typed array receiver.");
         const receiver = context.thisValue;
-        const length = float32Storage(receiver).length;
+        const length = float32Storage(receiver, true).length;
         let separator = ",";
         let text = "";
         const release = retainValues(budget, () => [receiver, separator, text, ...args]);
@@ -280,6 +307,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     const closure = createSandboxClosure({ guest: true, sandbox: true, name: key, length: 0,
       call: (args, context) => {
         if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
+        float32Storage(context.thisValue, true);
         return invokeBuiltinClosure(method, args, budget, context, context.thisValue);
       }
     });
@@ -326,7 +354,7 @@ export function getFloat32Member(
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver);
+      const storage = float32Storage(receiver, key === "slice");
       const bridge: SandboxCallContext = {
         ...context, stack: context?.stack ?? [], thisValue: receiver,
         getProperty: context?.getProperty ?? ((value, property) => {
@@ -347,16 +375,17 @@ export function getFloat32Member(
             const number = await sandboxNumber(offsetValue, budget, bridge);
             const offset = Number.isNaN(number) ? 0 : Math.trunc(number);
             if (offset < 0) throw new RangeError("Float32Array#set offset is out of bounds.");
+            const targetStorage = float32Storage(receiver, true);
             if (source === null || source === undefined) throw new TypeError("Float32Array#set requires a non-null source.");
             let length: number;
-            if (isFloat32Array(source)) length = float32Storage(source).length;
+            if (isFloat32Array(source)) length = float32Storage(source, true).length;
             else {
               sourceObject = typeof source === "object" ? source : createSandboxBox(source);
               current = await bridge.getProperty!(sourceObject, "length");
               const size = await sandboxNumber(current, budget, bridge);
               length = Number.isNaN(size) || size <= 0 ? 0 : Math.min(Math.trunc(size), Number.MAX_SAFE_INTEGER);
             }
-            if (offset + length > storage.length) throw new RangeError("Float32Array#set source is out of bounds.");
+            if (offset + length > targetStorage.length) throw new RangeError("Float32Array#set source is out of bounds.");
             if (isFloat32Array(source)) Float32Array.prototype.set.call(receiver, source, offset);
             else for (let index = 0; index < length; index++) {
               budget.visitNode();
@@ -374,8 +403,15 @@ export function getFloat32Member(
           const end = args[1] === undefined ? storage.length
             : relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
           const length = Math.max(end - start, 0);
-          if (key === "subarray")
-            return new Float32Array(storage.buffer, storage.byteOffset + start * 4, length);
+          if (key === "subarray") {
+            const layout = float32ViewLayouts.get(receiver);
+            const offset = (layout?.byteOffset ?? storage.byteOffset) + start * 4;
+            const tracking = layout !== undefined && layout.length === undefined && args[1] === undefined;
+            const result = new Float32Array(storage.buffer, offset, tracking ? undefined : length);
+            if (arrayBufferOptions(storage.buffer) !== undefined)
+              float32ViewLayouts.set(result, { byteOffset: offset, ...(tracking ? {} : { length }) });
+            return result;
+          }
           checkFloat32Allocation(length, budget);
           const result = new Float32Array(length);
           new Uint8Array(result.buffer).set(

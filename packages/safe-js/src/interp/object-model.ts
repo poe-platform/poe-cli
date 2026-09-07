@@ -11,6 +11,7 @@ import type { Budget } from "./budget.js";
 import { errorPrototypes } from "./error-prototypes.js";
 import { float32Properties, isFloat32Array, isFloat32Index } from "./float32.js";
 import { float32Prototypes } from "./float32-prototypes.js";
+import { arrayBufferPrototypes, isSandboxArrayBuffer } from "./array-buffer.js";
 import { sandboxErrorTypes } from "../error/shape.js";
 import { boxedValue, isSandboxBox, type BoxedKind, type BoxedPrimitive } from "./boxed.js";
 import {
@@ -320,12 +321,14 @@ export function releaseObjectPrototype(budget: Budget): void {
   generatorPrototypes.delete(budget);
   errorPrototypes.delete(budget);
   float32Prototypes.delete(budget);
+  arrayBufferPrototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
 }
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  if (isSandboxArrayBuffer(value)) return budget === undefined ? null : arrayBufferPrototypes.get(budget) ?? null;
   if (isFloat32Array(value)) return budget === undefined ? null : float32Prototypes.get(budget) ?? null;
   // Host transport records are data-only. Resolve their default prototype in
   // the receiving realm without persisting executable intrinsic graphs.
@@ -477,6 +480,7 @@ export function setSandboxPrototype(
 }
 
 function isPrototypeRecord(value: object): boolean {
+  if (isSandboxArrayBuffer(value)) return true;
   if (isFloat32Array(value)) return true;
   if (isGuestClosure(value)) return true;
   if (isGuestHostObject(value)) return false;

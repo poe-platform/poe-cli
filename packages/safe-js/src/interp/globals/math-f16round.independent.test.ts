@@ -207,6 +207,7 @@ describe("Math.f16round independent review", () => {
       ...capture.completed,
       bindings: {
         ...capture.completed.bindings,
+        ArrayBuffer: { kind: "fn", name: "ArrayBuffer" },
         Symbol: { kind: "fn", name: "Symbol" },
         BigInt: { kind: "fn", name: "BigInt" },
         Date: { kind: "fn", name: "Date" },

@@ -12,8 +12,10 @@ import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { getSandboxArgumentEntries, isSandboxArguments } from "../interp/arguments.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
-import { float32DataProperties, isFloat32Array } from "../interp/float32.js";
-import { encodeFloat32Storage, type Float32Data } from "./float32array.js";
+import { float32DataProperties, float32Storage, isFloat32Array } from "../interp/float32.js";
+import { encodeFloat32Layout, type Float32Data } from "./float32array.js";
+import { isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { captureArrayBufferState, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate } from "../interp/date.js";
 import { serializeDate, type SerializedDate } from "./date-properties.js";
 import { boxedDataProperties, isSandboxBox } from "../interp/boxed.js";
@@ -39,6 +41,7 @@ type DumpHeapValue =
   | BoxedData<DumpValue>
   | SerializedDate<DumpValue>
   | (Float32Data<DumpValue> & { entries: Record<string, DumpValue> })
+  | (ArrayBufferData<DumpValue> & { state: ReturnType<typeof captureArrayBufferState<DumpValue>> })
   | SerializedArguments<DumpValue>
   | SerializedArray<DumpValue>
   | {
@@ -171,7 +174,7 @@ function serializeDumpValue(
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
 
-  if (isSandboxRegExpIterator(value) || (isSandboxRegex(value) && hasCustomRegexProperties(value)) || isSandboxBox(value) || isSandboxDate(value) || isFloat32Array(value)) return serializeHeapReference(value, path, state)!;
+  if (isSandboxArrayBuffer(value) || isSandboxRegExpIterator(value) || (isSandboxRegex(value) && hasCustomRegexProperties(value)) || isSandboxBox(value) || isSandboxDate(value) || isFloat32Array(value)) return serializeHeapReference(value, path, state)!;
 
   if (Array.isArray(value)) {
     const reference = serializeHeapReference(value, path, state);
@@ -195,7 +198,7 @@ function serializeDumpValue(
 }
 
 function serializeHeapReference(
-  value: unknown[] | Record<string, unknown> | Float32Array | Date,
+  value: unknown[] | Record<string, unknown> | Float32Array | Date | ArrayBuffer,
   path: string,
   state: DumpState
 ):
@@ -255,11 +258,16 @@ function serializeHeapReference(
         const serialized = serializeDumpValue(entry, `${path}.<date-property>`, state);
         return serialized === SKIP_VALUE ? { kind: "undefined" } : serialized;
       });
+    } else if (isSandboxArrayBuffer(value)) {
+      state.heap[String(id)] = { ...encodeArrayBufferStorage(value, id, state.float32Buffers, id => ({ kind: "ref", id })),
+        state: captureArrayBufferState(value, entry => {
+          const serialized = serializeDumpValue(entry, `${path}.<buffer>`, state);
+          return serialized === SKIP_VALUE ? { kind: "undefined" } : serialized;
+        }) };
     } else if (isFloat32Array(value)) {
-      const storage = encodeFloat32Storage(value, id, state.float32Buffers, (id) => ({
-        kind: "ref",
-        id
-      }));
+      const backing = float32Storage(value);
+      const storage: Float32Data<DumpValue> = { kind: "float32array", ...encodeFloat32Layout(value),
+        buffer: serializeHeapReference(backing.buffer, `${path}.buffer`, state)! };
       const entries: Record<string, DumpValue> = Object.create(null);
       state.heap[String(id)] = { ...storage, entries };
       for (const [key, descriptor] of float32DataProperties(value)) {
@@ -349,6 +357,7 @@ function indexHeapContainers(snapshot: DumpableSnapshot): Pick<DumpState, "heapI
       (isSandboxRegex(value) && hasCustomRegexProperties(value)) ||
       isSandboxDate(value) ||
       isFloat32Array(value) ||
+      isSandboxArrayBuffer(value) ||
       (Array.isArray(value) && requiresArrayEntries(value)) ||
       isSandboxArguments(value) ||
       sandboxErrorTypes.has(value)
@@ -399,9 +408,12 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
-  const guest = captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
+  if (isFloat32Array(value)) guestEntries.push(float32Storage(value).buffer);
+  const guest = isSandboxArrayBuffer(value)
+    ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
+    : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
-    guestValues.add(value);
+    if (!isSandboxArrayBuffer(value)) guestValues.add(value);
     for (const entry of guestEntries) {
       collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
       if (entry !== null && typeof entry === "object") stats.get(entry)!.forceHeap = true;
@@ -409,6 +421,7 @@ function collectContainerStats(
     ancestors.delete(value);
     return;
   }
+  for (const entry of guestEntries) collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
   if (!Array.isArray(value) && !isPlainObject(value) && !isFloat32Array(value) && !isSandboxDate(value)) {
     ancestors.delete(value);
     return;

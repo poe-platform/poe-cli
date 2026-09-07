@@ -12,8 +12,10 @@ import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState } from 
 import { getGeneratorOrigin } from "../interp/closure-origin.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
-import { isFloat32Array } from "../interp/float32.js";
-import { captureFloat32State, encodeFloat32Storage, type Float32Data } from "./float32array.js";
+import { float32Storage, isFloat32Array } from "../interp/float32.js";
+import { captureFloat32State, encodeFloat32Layout, type Float32Data } from "./float32array.js";
+import { isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { captureArrayBufferState, encodeArrayBufferStorage, type ArrayBufferData } from "./array-buffer.js";
 import { dateDataProperties, isSandboxDate } from "../interp/date.js";
 import { serializeDate, type SerializedDate } from "./date-properties.js";
 import { boxedDataProperties, isSandboxBox, type SandboxBox } from "../interp/boxed.js";
@@ -80,6 +82,7 @@ export type SerializedReferenceValue = {
 };
 
 export type SerializedHeapValue =
+  | (ArrayBufferData<SerializedReferenceValue> & { state: GuestObjectState<SerializedSnapshotValue> })
   | GuestHeapNode<SerializedSnapshotValue>
   | { kind: "regexp-iterator"; matcher: SerializedSnapshotValue; input: SerializedSnapshotValue; exhausted: boolean; global?: boolean; unicode?: boolean; entries: Record<string, SerializedSnapshotValue>; symbolEntries?: Array<SerializedSymbolProperty<SerializedSnapshotValue>> }
   | SerializedSymbol
@@ -146,6 +149,7 @@ export type RuntimeSnapshotValue =
   | SandboxBox
   | Date
   | Float32Array
+  | ArrayBuffer
   | boolean
   | null
   | number
@@ -339,7 +343,7 @@ function serializeValue(
     }
     return { kind: "ref", id };
   }
-  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isFloat32Array(value)) {
+  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isFloat32Array(value) && !isSandboxArrayBuffer(value)) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
   if (value === null || typeof value === "string" || typeof value === "boolean") {
@@ -444,7 +448,7 @@ function serializeValue(
     return { kind: "regex", source: value.source, flags: value.flags, lastIndex: value.lastIndex };
   }
 
-  if (isSandboxBox(value) || isSandboxDate(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxRegExpIterator(value) || isSandboxCollectionIterator(value) || isFloat32Array(value)) {
+  if (isSandboxArrayBuffer(value) || isSandboxBox(value) || isSandboxDate(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxRegExpIterator(value) || isSandboxCollectionIterator(value) || isFloat32Array(value)) {
     const reference = serializeHeapReference(value, path, state);
     if (reference === undefined) {
       throw new TypeError(`Cannot serialize collection without a heap reference at ${path}.`);
@@ -483,7 +487,8 @@ function serializeHeapReference(
     | SandboxCollectionIterator
     | SandboxRegExpIterator
     | Date
-    | Float32Array,
+    | Float32Array
+    | ArrayBuffer,
   path: string,
   state: SerializationState
 ): SerializedReferenceValue | undefined {
@@ -522,12 +527,13 @@ function serializeHeapReference(
       state.heap[String(id)] = encodeBoxedData(value, (entry, key) => serializeValue(entry as RuntimeSnapshotValue, `${path}.${key}`, state));
     } else if (isSandboxDate(value)) {
       state.heap[String(id)] = serializeDate(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<date-property>`, state));
+    } else if (isSandboxArrayBuffer(value)) {
+      state.heap[String(id)] = { ...encodeArrayBufferStorage(value, id, state.float32Buffers, id => ({ kind: "ref" as const, id })),
+        state: captureArrayBufferState(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<buffer>`, state)) };
     } else if (isFloat32Array(value)) {
-      const storage = encodeFloat32Storage(value, id, state.float32Buffers, (id) => ({
-        kind: "ref" as const,
-        id
-      }));
-      state.heap[String(id)] = { ...storage, entries: {},
+      const storage = float32Storage(value);
+      state.heap[String(id)] = { kind: "float32array", ...encodeFloat32Layout(value),
+        buffer: serializeHeapReference(storage.buffer, `${path}.buffer`, state)!, entries: {},
         state: captureFloat32State(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<typed-array>`, state)) };
     } else if (isSandboxArguments(value)) {
       state.heap[String(id)] = serializeArguments(value, (entry, key) =>
@@ -683,6 +689,7 @@ function indexHeapContainers(input: SerializeInput): Pick<SerializationState, "h
       isSandboxBox(value) ||
       isSandboxDate(value) ||
       isFloat32Array(value) ||
+      isSandboxArrayBuffer(value) ||
       (Array.isArray(value) && requiresArrayEntries(value)) ||
       sandboxErrorTypes.has(value) ||
       isSandboxArguments(value) ||
@@ -742,11 +749,14 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
+  if (isFloat32Array(value)) guestEntries.push(float32Storage(value).buffer);
   const guest = isFloat32Array(value)
     ? { kind: "float32array", state: captureFloat32State(value, entry => { guestEntries.push(entry); return null; }) }
+    : isSandboxArrayBuffer(value)
+    ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
     : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
-    if (!isFloat32Array(value)) guestValues.add(value);
+    if (!isFloat32Array(value) && !isSandboxArrayBuffer(value)) guestValues.add(value);
     for (const entry of guestEntries) {
       collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
       if (entry !== null && typeof entry === "object") {

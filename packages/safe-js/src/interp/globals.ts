@@ -13,6 +13,7 @@ import { createPromiseGlobals } from "./promise.js";
 import { createDateGlobal } from "./globals/date.js";
 import { createSymbolGlobal } from "./globals/symbol.js";
 import { createBigIntGlobal } from "./globals/bigint.js";
+import { createArrayBufferGlobal } from "./globals/array-buffer.js";
 import type { RunClock } from "../run.js";
 import { registerBuiltinIdentities } from "./intrinsics.js";
 
@@ -29,6 +30,7 @@ export function createBuiltinBindings(
     ...createErrorGlobals({ ...options, errorPrototypes: options.errorPrototypes !== false }),
     ...createMathGlobals({ random: options.random, budget: options.budget }),
     ...createObjectArrayGlobals(options),
+    ArrayBuffer: createArrayBufferGlobal(options.budget),
     ...createMiscGlobals(options),
     ...createUriGlobals(options.budget),
     ...createPromiseGlobals(options),

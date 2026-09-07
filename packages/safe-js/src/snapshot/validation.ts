@@ -8,6 +8,7 @@ import type { ParseResult } from "../parse/parser.js";
 import { DUMP_FORMAT_VERSION } from "./dump-format.js";
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
 import { validateFloat32Storage } from "./float32array.js";
+import { validateArrayBufferStorage } from "./array-buffer.js";
 import { restoreDateTime } from "../interp/date.js";
 import { validateBoxedProperties } from "./boxed.js";
 import { hasGuestObjectState } from "../interp/object-model.js";
@@ -152,6 +153,11 @@ function validateDumpHeap(root: Record<string, unknown>, state: ValidationState)
     }
     if (entry.kind === "date") {
       validateDateRecord(entry, path);
+      continue;
+    }
+    if (entry.kind === "arraybuffer") {
+      validateArrayBufferStorage(entry);
+      validateGuestHeapNode({kind:"guest-object",state:entry.state}, heap, state.limits.maxEntries);
       continue;
     }
     if (entry.kind === "float32array") {
@@ -618,7 +624,7 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
     }
   } catch (error) { fail("invalidValue", path, String(error)); }
   validateErrorType(record, path);
-  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
+  if (!["symbol", "arguments", "array", "object", "map", "set", "float32array", "arraybuffer", "date", "boxed", "collection-iterator", "regexp-iterator", "regex-object"].includes(String(record.kind)))
     fail("unknownTag", `${path}.kind`, "unknown heap tag");
   validateValue(record, path, 1, state);
   if (record.kind === "symbol") validateSymbolRecord(record, path, state);
@@ -627,6 +633,10 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
   if (record.kind === "object") requireRecord(record.entries, `${path}.entries`);
   if (record.kind === "boxed") validateBoxedRecord(record, path, heap);
   if (record.kind === "date") validateDateRecord(record, path);
+  if (record.kind === "arraybuffer") {
+    validateArrayBufferStorage(record);
+    validateGuestHeapNode({kind:"guest-object",state:record.state}, heap, state.limits.maxEntries);
+  }
   if (record.kind === "float32array") {
     validateFloat32Storage(record);
     requireRecord(record.entries, `${path}.entries`);

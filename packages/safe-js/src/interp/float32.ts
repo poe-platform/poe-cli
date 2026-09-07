@@ -1,12 +1,37 @@
 import type { Budget } from "./budget.js";
+import { arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage } from "./array-buffer.js";
 
 const typedArrayPrototype = Object.getPrototypeOf(Float32Array.prototype);
 const readLength = Object.getOwnPropertyDescriptor(typedArrayPrototype, "length")!.get!;
 const readOffset = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteOffset")!.get!;
 const readBuffer = Object.getOwnPropertyDescriptor(typedArrayPrototype, "buffer")!.get!;
 const readTag = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symbol.toStringTag)!.get!;
+const createValuesIterator = Object.getOwnPropertyDescriptor(typedArrayPrototype, "values")!.value;
 const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength")!.get!;
 const bufferResizable = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resizable")?.get;
+export const float32ViewLayouts = new WeakMap<Float32Array, { byteOffset: number; length?: number }>();
+const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")!.value as (length: number) => void;
+
+export function restoreFloat32View(buffer: ArrayBuffer, byteOffset: number, length?: number, budget?: Budget): Float32Array {
+  const originalLength = arrayBufferLength(buffer);
+  const required = byteOffset + (length ?? 0) * 4;
+  const options = arrayBufferOptions(buffer);
+  const grow = required > originalLength;
+  if (grow) {
+    if (options === undefined || required > options.maxByteLength)
+      throw new RangeError("Float32Array layout exceeds backing capacity.");
+    budget?.allocateArrayLength(Math.ceil(required / 4));
+    budget?.provisionDataUsage(required - originalLength)();
+    Reflect.apply(resizeBuffer, buffer, [required]);
+  }
+  try {
+    const view = new Float32Array(buffer, byteOffset, length);
+    if (options !== undefined) float32ViewLayouts.set(view, { byteOffset, ...(length === undefined ? {} : { length }) });
+    return view;
+  } finally {
+    if (grow) Reflect.apply(resizeBuffer, buffer, [originalLength]);
+  }
+}
 
 export function isFloat32Array(value: unknown): value is Float32Array {
   return (
@@ -16,18 +41,18 @@ export function isFloat32Array(value: unknown): value is Float32Array {
   );
 }
 
-export function float32Storage(value: Float32Array): {
+export function float32Storage(value: Float32Array, requireInBounds = false): {
   buffer: ArrayBuffer;
   byteOffset: number;
   length: number;
   byteLength: number;
 } {
+  if (requireInBounds) Reflect.apply(createValuesIterator, value, []);
   const buffer = Reflect.apply(readBuffer, value, []) as ArrayBuffer;
   if (
-    Object.getPrototypeOf(buffer) !== ArrayBuffer.prototype ||
-    (bufferResizable !== undefined && Reflect.apply(bufferResizable, buffer, []))
+    Object.getPrototypeOf(buffer) !== ArrayBuffer.prototype
   ) {
-    throw new TypeError("Float32Array requires a fixed, non-shared ArrayBuffer.");
+    throw new TypeError("Float32Array requires a non-shared ArrayBuffer.");
   }
   return {
     buffer,
@@ -90,12 +115,11 @@ export function copyFloat32Storage<TValue>(
   }
 ): Float32Array {
   const storage = float32Storage(value);
-  state.float32Buffers ??= new WeakMap();
-  let buffer = state.float32Buffers.get(storage.buffer);
-  if (buffer === undefined) {
-    buffer = new ArrayBuffer(storage.byteLength);
-    new Uint8Array(buffer).set(new Uint8Array(storage.buffer));
-    state.float32Buffers.set(storage.buffer, buffer);
+  const buffer = copyArrayBufferStorage(storage.buffer, state);
+  if (bufferResizable !== undefined && Reflect.apply(bufferResizable, storage.buffer, [])) {
+    const layout = float32ViewLayouts.get(value);
+    if (layout === undefined) throw new TypeError("Resizable Float32Array copies require known view layout.");
+    return restoreFloat32View(buffer, layout.byteOffset, layout.length);
   }
   return new Float32Array(buffer, storage.byteOffset, storage.length);
 }
