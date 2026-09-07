@@ -752,11 +752,16 @@ export function measureSandboxData(
     }
 
     if (isSandboxArguments(value)) {
-      const entries = getSandboxArgumentEntries(value);
-      usage += entries.length;
-      for (const [key, entry] of entries) {
-        usage += key.length;
-        visit(entry, depth + 1);
+      const entries: Array<[string, unknown[]]> = [];
+      for (const key of Object.getOwnPropertyNames(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+        const retained = "value" in descriptor ? [descriptor.value] : retainedAccessorClosures(descriptor);
+        // The native restricted callee accessor retains no sandbox data.
+        if (retained.length > 0) entries.push([key, retained]);
+      }
+      for (const [key, retained] of entries) {
+        usage += 1 + key.length;
+        for (const entry of retained) visit(entry, depth + 1);
       }
       return;
     }
