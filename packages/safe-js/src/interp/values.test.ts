@@ -397,9 +397,7 @@ describe("sandbox values", () => {
     expect(() => deepCopyToSandbox(/SafeJS/giu)).toThrowError(
       "Unsupported sandbox value at <root>: RegExp"
     );
-    expect(() => deepCopyToSandbox(new BigInt64Array([1n, 2n, 3n]))).toThrowError(
-      "Unsupported sandbox value at <root>: BigInt64Array"
-    );
+    expect(deepCopyToSandbox(new BigInt64Array([1n, 2n, 3n]))).toEqual(new BigInt64Array([1n, 2n, 3n]));
   });
 
   it("rejects non-plain objects and arrays", () => {

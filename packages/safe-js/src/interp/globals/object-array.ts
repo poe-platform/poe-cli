@@ -12,7 +12,8 @@ import { isSandboxDate } from "../date.js";
 import { createSandboxBox } from "../boxed.js";
 import { createObjectGlobal, hasOwnSandboxProperty } from "./object.js";
 import { isGuestHostObject } from "../host-capabilities.js";
-import { isNumericTypedArray, isTypedArrayIndex } from "../typed-array.js";
+import { isNumericTypedArray, isTypedArrayIndex, typedArrayStorage } from "../typed-array.js";
+import { typedArrayElement } from "./numeric-typed-array.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
@@ -794,7 +795,7 @@ export function defineDataProperty(
     return (async () => {
       const release = retainValues(budget, () => [target, value]);
       try {
-        const number = await sandboxNumber(value, budget, context);
+        const number = await typedArrayElement(value, typedArrayStorage(target).Native, budget, context);
         // Conversion may detach or shrink storage; TypedArraySetElement then
         // succeeds without writing, rather than revalidating the definition.
         Reflect.set(target, key, number);

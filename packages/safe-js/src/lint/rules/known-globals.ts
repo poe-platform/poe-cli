@@ -1,3 +1,5 @@
+import { numericTypedArrayConstructors } from "../../interp/typed-array-constructors.js";
+
 export const KNOWN_RUNTIME_GLOBALS = [
   "AggregateError",
   "Array",
@@ -17,15 +19,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "isNaN",
   "JSON",
   "Map",
-  "Float32Array",
-  "Uint8Array",
-  "Int8Array",
-  "Uint8ClampedArray",
-  "Int16Array",
-  "Uint16Array",
-  "Int32Array",
-  "Uint32Array",
-  "Float64Array",
+  ...Object.keys(numericTypedArrayConstructors),
   "Math",
   "NaN",
   "Number",

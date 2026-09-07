@@ -24,8 +24,17 @@ import { createSandboxBox } from "../boxed.js";
 import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../array-buffer.js";
 import { installUint8Hex } from "./uint8-hex.js";
 import { installUint8Base64 } from "./uint8-base64.js";
+import { budgetedBigInt, sandboxBigInt } from "./bigint.js";
 
 const constructors = new WeakMap<SandboxClosure, NumericTypedArrayConstructor>();
+
+function hasBigIntContent(Native: NumericTypedArrayConstructor): boolean {
+  return Native === BigInt64Array || Native === BigUint64Array;
+}
+
+export function typedArrayElement(value: SandboxValue, Native: NumericTypedArrayConstructor, budget: Budget, context?: SandboxCallContext): number | Promise<number | bigint> {
+  return hasBigIntContent(Native) ? sandboxBigInt(value, budget, context) : sandboxNumber(value, budget, context);
+}
 
 export function createNumericTypedArrayGlobal(budget: Budget, nativePrototype = false, Native: NumericTypedArrayConstructor = Float32Array): SandboxClosure {
   const constructor = createSandboxClosure({
@@ -134,7 +143,7 @@ async function allocateTypedArrayInput(source: SandboxValue, budget: Budget, Nat
     for (let index = 0; index < length; index++) {
       budget.visitNode();
       current = iterator === undefined ? await bridge.getProperty!(source, String(index)) : values[index];
-      result[index] = await sandboxNumber(current, budget, bridge);
+      result[index] = await typedArrayElement(current, Native, budget, bridge);
     }
     return result;
   } finally { release(); }
@@ -144,14 +153,15 @@ function allocateTypedArray(source: SandboxValue, budget: Budget, Native: Numeri
       if (Array.isArray(source) || isNumericTypedArray(source)) {
         const length = isNumericTypedArray(source) ? typedArrayStorage(source).length : source.length;
         checkTypedArrayAllocation(length, budget, Native.BYTES_PER_ELEMENT);
-        if (isNumericTypedArray(source)) return new Native(source);
+        if (isNumericTypedArray(source)) return Reflect.construct(Native, [source]) as NumericTypedArray;
         const result = new Native(length);
         for (let index = 0; index < length; index += 1) {
           budget.visitNode();
           const descriptor = Object.getOwnPropertyDescriptor(source, index);
           if (descriptor !== undefined && !("value" in descriptor))
             throw new TypeError("Float32Array input accessors are not supported.");
-          result[index] = typedArrayNumber(descriptor?.value);
+          const value = descriptor?.value;
+          result[index] = hasBigIntContent(Native) ? budgetedBigInt(value, budget) : typedArrayNumber(value);
         }
         return result;
       }
@@ -230,7 +240,7 @@ export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Reco
             current = iterator === undefined ? await read(String(index)) : values[index];
             if (mapper !== undefined)
               current = await invokeBuiltinClosure(mapper, [current, index], budget, context, receiver);
-            result[index] = await sandboxNumber(current, budget, context);
+            result[index] = await typedArrayElement(current, typedArrayStorage(result).Native, budget, context);
           }
           return result;
         } finally { release(); }
@@ -252,7 +262,7 @@ export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Reco
             throw new TypeError("TypedArray.of constructor must return sufficient typed storage.");
           for (let index = 0; index < args.length; index++) {
             budget.visitNode();
-            result[index] = await sandboxNumber(args[index], budget, context);
+            result[index] = await typedArrayElement(args[index], typedArrayStorage(result).Native, budget, context);
           }
           return result;
         } finally { release(); }
@@ -373,6 +383,7 @@ export function getTypedArrayMember(
   if (key === "BYTES_PER_ELEMENT") return storage.elementSize;
   if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "toReversed", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "with", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
+  const bigintPrototype = key === "toLocaleString" ? getBoxedPrototype(0n, budget) : undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
@@ -385,6 +396,7 @@ export function getTypedArrayMember(
       if (!isNumericTypedArray(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
       const storage = typedArrayStorage(receiver, key === "sort" || key === "toSorted" || key === "with" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "toReversed" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const elementPrototype = hasBigIntContent(storage.Native) ? bigintPrototype : numberPrototype;
       const defaultConstructor = bindings?.[storage.Native.name as keyof typeof bindings];
       if (key === "toReversed") {
         let result: NumericTypedArray | undefined;
@@ -496,9 +508,9 @@ export function getTypedArrayMember(
               const element = receiver[index];
               let part = "";
               if (element !== undefined) {
-                const descriptor = context?.getProperty === undefined && numberPrototype !== undefined
-                  ? getSandboxPropertyDescriptor(numberPrototype, "toLocaleString", budget) : undefined;
-                const method = context?.getProperty === undefined && numberPrototype !== undefined
+                const descriptor = context?.getProperty === undefined && elementPrototype !== undefined
+                  ? getSandboxPropertyDescriptor(elementPrototype, "toLocaleString", budget) : undefined;
+                const method = context?.getProperty === undefined && elementPrototype !== undefined
                   ? descriptor === undefined ? undefined : await readPropertyDescriptor(descriptor, element, bridge)
                   : await bridge.getProperty!(element, "toLocaleString");
                 if (!isSandboxClosure(method)) throw new TypeError("Element toLocaleString must be callable.");
@@ -583,7 +595,7 @@ export function getTypedArrayMember(
             const number = await sandboxNumber(args[0], budget, bridge);
             const relative = Number.isNaN(number) ? 0 : Math.trunc(number);
             const index = relative < 0 ? storage.length + relative : relative;
-            const replacement = await sandboxNumber(args[1], budget, bridge);
+            const replacement = await typedArrayElement(args[1], storage.Native, budget, bridge);
             if (index < 0 || index >= typedArrayStorage(receiver).length)
               throw new RangeError("Float32Array#with index is out of bounds.");
             checkTypedArrayAllocation(storage.length, budget, storage.elementSize);
@@ -641,7 +653,7 @@ export function getTypedArrayMember(
         return (async () => {
           const release = retainValues(budget, () => [receiver, ...args]);
           try {
-            const value = await sandboxNumber(args[0], budget, bridge);
+            const value = await typedArrayElement(args[0], storage.Native, budget, bridge);
             const start = relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
             const end = args[2] === undefined ? storage.length
               : relativeIndex(await sandboxNumber(args[2], budget, bridge), storage.length);
@@ -675,11 +687,11 @@ export function getTypedArrayMember(
               length = Number.isNaN(size) || size <= 0 ? 0 : Math.min(Math.trunc(size), Number.MAX_SAFE_INTEGER);
             }
             if (offset + length > targetStorage.length) throw new RangeError("Float32Array#set source is out of bounds.");
-            if (isNumericTypedArray(source)) Float32Array.prototype.set.call(receiver, source, offset);
+            if (isNumericTypedArray(source)) Reflect.apply(Float32Array.prototype.set, receiver, [source, offset]);
             else for (let index = 0; index < length; index++) {
               budget.visitNode();
               current = await bridge.getProperty!(sourceObject, String(index));
-              receiver[offset + index] = await sandboxNumber(current, budget, bridge);
+              receiver[offset + index] = await typedArrayElement(current, targetStorage.Native, budget, bridge);
             }
             return undefined;
           } finally { release(); }
@@ -691,7 +703,7 @@ export function getTypedArrayMember(
         let candidate: SandboxValue;
         let result: SandboxValue;
         let mapped: SandboxValue;
-        const kept: Array<number | undefined> = [];
+        const kept: Array<number | bigint | undefined> = [];
         const release = retainValues(budget, () => [receiver, candidate, result, mapped, kept, ...args]);
         try {
           const start = key === "map" || key === "filter" ? 0 : relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
@@ -732,6 +744,8 @@ export function getTypedArrayMember(
             result = await invokeBuiltinClosure(candidate as SandboxClosure, values, budget, bridge, undefined, true);
             if (!isNumericTypedArray(result)) throw new TypeError("TypedArray species must return typed storage.");
             const target = typedArrayStorage(result, key !== "subarray");
+            if (hasBigIntContent(target.Native) !== hasBigIntContent(storage.Native))
+              throw new TypeError("TypedArray species must preserve content type.");
             if (key !== "subarray" && target.length < length)
               throw new TypeError("TypedArray species returned insufficient storage.");
           }
@@ -759,7 +773,7 @@ export function getTypedArrayMember(
             for (let index = 0; index < length; index++) {
               budget.visitNode();
               mapped = await invokeBuiltinClosure(callback as SandboxClosure, [receiver[index], index, receiver], budget, bridge, args[1]);
-              result[index] = await sandboxNumber(mapped, budget, bridge);
+              result[index] = await typedArrayElement(mapped, typedArrayStorage(result).Native, budget, bridge);
             }
             return result;
           }
@@ -803,7 +817,7 @@ export function setTypedArrayMember(
     return (async () => {
       const release = retainValues(budget, () => [value, entry]);
       try {
-        const number = await sandboxNumber(entry, budget, context);
+        const number = await typedArrayElement(entry, typedArrayStorage(value).Native, budget, context);
         Reflect.set(value, key, number);
       } finally { release(); }
     })();

@@ -1,12 +1,8 @@
 import type { Budget } from "./budget.js";
 import { arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage } from "./array-buffer.js";
 
-export const numericTypedArrayConstructors = {
-  Float32Array, Uint8Array, Int8Array, Uint8ClampedArray,
-  Int16Array, Uint16Array, Int32Array, Uint32Array, Float64Array
-};
-export type NumericTypedArrayConstructor = typeof numericTypedArrayConstructors[keyof typeof numericTypedArrayConstructors];
-export type NumericTypedArray = InstanceType<NumericTypedArrayConstructor>;
+import { numericTypedArrayConstructors, type NumericTypedArrayConstructor, type NumericTypedArray } from "./typed-array-constructors.js";
+export { numericTypedArrayConstructors, type NumericTypedArrayConstructor, type NumericTypedArray } from "./typed-array-constructors.js";
 
 const typedArrayPrototype = Object.getPrototypeOf(Float32Array.prototype);
 const readLength = Object.getOwnPropertyDescriptor(typedArrayPrototype, "length")!.get!;

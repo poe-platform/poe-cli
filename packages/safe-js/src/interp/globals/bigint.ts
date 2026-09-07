@@ -8,6 +8,10 @@ import { formatNumberLocale } from "../number-locale.js";
 export async function sandboxBigInt(value: SandboxValue, budget: Budget, context?: SandboxCallContext, allowNumber = false): Promise<bigint> {
     const primitive = value !== null && typeof value === "object"
       ? await objectToPrimitive(value, budget, context, new Set(), "number") : value;
+    return budgetedBigInt(primitive, budget, allowNumber);
+}
+
+export function budgetedBigInt(primitive: SandboxValue, budget: Budget, allowNumber = false): bigint {
     if (typeof primitive === "bigint") return primitive;
     if (typeof primitive !== "string" && typeof primitive !== "boolean" && !(allowNumber && typeof primitive === "number"))
       throw new TypeError("Cannot convert value to BigInt.");
