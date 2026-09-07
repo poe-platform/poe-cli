@@ -12,7 +12,7 @@ import { isSandboxDate } from "../date.js";
 import { createSandboxBox } from "../boxed.js";
 import { createObjectGlobal, hasOwnSandboxProperty } from "./object.js";
 import { isGuestHostObject } from "../host-capabilities.js";
-import { isFloat32Array } from "../float32.js";
+import { float32Number, isFloat32Array, isFloat32Index } from "../float32.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
@@ -785,8 +785,8 @@ export function defineDataProperty(
   budget: Budget
 ): void {
   budget.visitNode();
-  if (isFloat32Array(target))
-    throw new TypeError("Typed array property descriptors are not supported.");
+  if (isFloat32Array(target) && typeof key !== "symbol" && isFloat32Index(String(key)) && "value" in descriptor)
+    descriptor = { ...descriptor, value: float32Number(descriptor.value) };
   const properties = objectProperties(target, true);
   if (Array.isArray(properties)) {
     if (key === "length" && "value" in descriptor)

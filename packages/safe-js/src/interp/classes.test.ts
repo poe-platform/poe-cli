@@ -7,8 +7,9 @@ describe("class construction and public elements", () => {
     const source = "class A{constructor(){return new Date(0)}}class B extends A{x=7}const value=new B();return [value.getTime(),Object.getOwnPropertyDescriptor(value,'x')];";
     expect(await run(source)).toMatchObject({ ok: true, returnValue: new Function(source)() });
   });
-  it.each(['new Float32Array([7])'])("does not bypass unsupported field descriptors on %s", async receiver => {
-    expect(await run(`class A{constructor(){return ${receiver}}}class B extends A{x=7}try{new B()}catch(error){return error.name}`)).toMatchObject({ ok: true, returnValue: "TypeError" });
+  it("defines public fields on a returned Float32Array with native descriptors", async () => {
+    const source = "class A{constructor(){return new Float32Array([7])}}class B extends A{x=7}const value=new B();return [value[0],Object.getOwnPropertyDescriptor(value,'x')];";
+    expect(await run(source)).toMatchObject({ ok: true, returnValue: runInNewContext(`(function(){${source}})()`) });
   });
   it("does not let super assignment mutate private regex metadata", async () => {
     const source = 'const value=/a/;class A{}class B extends A{write(){super.source="b"}}B.prototype.write.call(value);return [value.source,value.test("a"),value.test("b"),Object.hasOwn(value,"source")];';

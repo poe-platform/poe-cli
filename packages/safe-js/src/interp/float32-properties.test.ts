@@ -1,5 +1,19 @@
 import { expect, it, vi } from "vitest";
 import { float32DataProperties } from "./float32.js";
+import { hasGuestObjectState, markDescriptorObject } from "./object-model.js";
+
+it("checks descriptor-marked typed-array state without materializing numeric descriptors", () => {
+  const value = new Float32Array(16);
+  Object.defineProperty(value, "extra", { value: 7 });
+  markDescriptorObject(value);
+  const all = vi.spyOn(Object, "getOwnPropertyDescriptors");
+  try {
+    expect(hasGuestObjectState(value)).toBe(true);
+    expect(all.mock.calls.filter(([target]) => target === value)).toHaveLength(0);
+  } finally {
+    all.mockRestore();
+  }
+});
 
 it("collects metadata without allocating numeric element descriptors", () => {
   const value = new Float32Array(16);

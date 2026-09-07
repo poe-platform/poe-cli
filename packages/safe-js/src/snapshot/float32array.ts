@@ -1,4 +1,23 @@
-import { float32Storage, isFloat32Array } from "../interp/float32.js";
+import { float32Properties, float32Storage, isFloat32Array, isFloat32Index } from "../interp/float32.js";
+import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
+import { restorePropertyDescriptors, serializePropertyDescriptors } from "./property-descriptors.js";
+import type { GuestObjectState } from "./guest-heap.js";
+
+export function captureFloat32State<T>(value: Float32Array, encode: (value: unknown) => T): GuestObjectState<T> {
+  const metadata = Object.defineProperties(Object.create(null), Object.fromEntries(float32Properties(value)));
+  if (!Object.isExtensible(value)) Object.preventExtensions(metadata);
+  return { properties: serializePropertyDescriptors(metadata, encode),
+    ...(hasExplicitSandboxPrototype(value) ? { prototype: encode(getSandboxPrototype(value)) } : {}) };
+}
+
+export function restoreFloat32Properties<T>(value: Float32Array, state: GuestObjectState<T>, decode: (value: T) => unknown): void {
+  const metadata = Object.create(null) as object;
+  restorePropertyDescriptors(metadata, state.properties, decode);
+  const descriptors = Object.getOwnPropertyDescriptors(metadata);
+  if (Object.keys(descriptors).some(isFloat32Index)) throw new TypeError("Float32Array metadata cannot replace numeric storage.");
+  Object.defineProperties(value, descriptors);
+  if (!Object.isExtensible(metadata)) Object.preventExtensions(value);
+}
 
 export type Float32Data<TReference> = {
   kind: "float32array";

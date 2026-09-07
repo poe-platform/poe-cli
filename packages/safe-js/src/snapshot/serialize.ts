@@ -8,12 +8,12 @@ import { isSandboxRegExpIterator, regexpIteratorState, type SandboxRegExpIterato
 import { hasGuestObjectState, hasNullObjectPrototype } from "../interp/object-model.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { assertSnapshotDataDepth, assertSnapshotGraphDepth } from "../graph-depth.js";
-import { captureGuestHeapNode, type GuestHeapNode } from "./guest-heap.js";
+import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState } from "./guest-heap.js";
 import { getGeneratorOrigin } from "../interp/closure-origin.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
-import { float32DataProperties, isFloat32Array } from "../interp/float32.js";
-import { encodeFloat32Storage, type Float32Data } from "./float32array.js";
+import { isFloat32Array } from "../interp/float32.js";
+import { captureFloat32State, encodeFloat32Storage, type Float32Data } from "./float32array.js";
 import { dateDataProperties, isSandboxDate } from "../interp/date.js";
 import { serializeDate, type SerializedDate } from "./date-properties.js";
 import { boxedDataProperties, isSandboxBox, type SandboxBox } from "../interp/boxed.js";
@@ -87,7 +87,7 @@ export type SerializedHeapValue =
   | ({ kind: "regex-object"; source: string; flags: string; lastIndex: SerializedSnapshotValue } & RegexPropertyData<SerializedSnapshotValue>)
   | { kind: "collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod; collection: SerializedSnapshotValue; index: number; exhausted: boolean; entries: Record<string, SerializedSnapshotValue> }
   | SerializedDate<SerializedSnapshotValue>
-  | (Float32Data<SerializedReferenceValue> & { entries: Record<string, SerializedSnapshotValue> })
+  | (Float32Data<SerializedReferenceValue> & { entries: Record<string, SerializedSnapshotValue>; state?: GuestObjectState<SerializedSnapshotValue> })
   | SerializedArguments<SerializedSnapshotValue>
   | SerializedArray<SerializedSnapshotValue>
   | {
@@ -339,7 +339,7 @@ function serializeValue(
     }
     return { kind: "ref", id };
   }
-  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value)) {
+  if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isFloat32Array(value)) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
   if (value === null || typeof value === "string" || typeof value === "boolean") {
@@ -527,10 +527,8 @@ function serializeHeapReference(
         kind: "ref" as const,
         id
       }));
-      const entries: Record<string, SerializedSnapshotValue> = Object.create(null);
-      state.heap[String(id)] = { ...storage, entries };
-      for (const [key, descriptor] of float32DataProperties(value))
-        entries[key] = serializeValue(descriptor.value, `${path}.${key}`, state);
+      state.heap[String(id)] = { ...storage, entries: {},
+        state: captureFloat32State(value, entry => serializeValue(entry as RuntimeSnapshotValue, `${path}.<typed-array>`, state)) };
     } else if (isSandboxArguments(value)) {
       state.heap[String(id)] = serializeArguments(value, (entry, key) =>
         serializeValue(entry as RuntimeSnapshotValue, `${path}.${key}`, state)
@@ -744,9 +742,11 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
-  const guest = captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
+  const guest = isFloat32Array(value)
+    ? { kind: "float32array", state: captureFloat32State(value, entry => { guestEntries.push(entry); return null; }) }
+    : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
-    guestValues.add(value);
+    if (!isFloat32Array(value)) guestValues.add(value);
     for (const entry of guestEntries) {
       collectContainerStats(entry, stats, ancestors, guestValues, depth + 1);
       if (entry !== null && typeof entry === "object") {

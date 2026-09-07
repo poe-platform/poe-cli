@@ -6,12 +6,20 @@ import {
   isFloat32Array,
   isFloat32Index
 } from "../float32.js";
-import { createSandboxClosure, type SandboxClosure, type SandboxValue } from "../values.js";
+import { createSandboxClosure, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
+import { accessorAdapter } from "../accessors.js";
+import { float32Prototypes } from "../float32-prototypes.js";
+import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
+import { invokeBuiltinClosure } from "../builtin-call.js";
+import { retainValues } from "../resources.js";
+import { sandboxString } from "../string-coercion.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
-export function createFloat32ArrayGlobal(budget: Budget): SandboxClosure {
+export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false): SandboxClosure {
   const constructor = createSandboxClosure({
+    guest: nativePrototype,
     sandbox: true,
     name: "Float32Array",
     length: 3,
@@ -19,7 +27,28 @@ export function createFloat32ArrayGlobal(budget: Budget): SandboxClosure {
     call: () => {
       throw new TypeError("Constructor Float32Array requires 'new'.");
     },
-    construct: ([source]) => {
+    construct: (args, context) => {
+      if (!nativePrototype) return allocateFloat32Array(args[0], budget);
+      return (async () => {
+        const newTarget = context?.newTarget ?? constructor;
+        const candidate = context?.getProperty === undefined
+          ? getSandboxDataProperty(newTarget, "prototype", budget)
+          : await context.getProperty(newTarget, "prototype");
+        const prototype = candidate !== null && typeof candidate === "object" ? candidate : float32Prototypes.get(budget)!;
+        const release = retainValues(budget, () => [prototype, ...args]);
+        try {
+          const result = allocateFloat32Array(args[0], budget);
+          setSandboxPrototype(result, prototype, budget);
+          return result;
+        } finally { release(); }
+      })();
+    }
+  });
+  constructors.add(constructor);
+  return constructor;
+}
+
+function allocateFloat32Array(source: SandboxValue, budget: Budget): Float32Array {
       if (Array.isArray(source) || isFloat32Array(source)) {
         const length = isFloat32Array(source) ? float32Storage(source).length : source.length;
         checkFloat32Allocation(length, budget);
@@ -40,10 +69,85 @@ export function createFloat32ArrayGlobal(budget: Budget): SandboxClosure {
         throw new RangeError("Invalid typed array length.");
       checkFloat32Allocation(length, budget);
       return new Float32Array(length);
-    }
+}
+
+export function createFloat32ArrayPrototypes(budget: Budget, constructor: SandboxClosure): void {
+  const prototype = Object.create(null) as SandboxObject;
+  const shared = Object.create(null) as SandboxObject;
+  const abstractCall = () => { throw new TypeError("Abstract TypedArray constructor cannot be called."); };
+  const typedArray = createSandboxClosure({ guest: true, sandbox: true, name: "TypedArray", length: 0,
+    call: abstractCall, construct: abstractCall });
+  Object.defineProperty(materializeFunctionProperties(typedArray), "prototype", { value: shared, writable: false });
+  Object.defineProperties(materializeFunctionProperties(constructor), {
+    prototype: { value: prototype, writable: false },
+    BYTES_PER_ELEMENT: { value: 4, writable: false, enumerable: false, configurable: false }
   });
-  constructors.add(constructor);
-  return constructor;
+  Object.defineProperties(prototype, {
+    constructor: { value: constructor, writable: true, configurable: true },
+    BYTES_PER_ELEMENT: { value: 4 }
+  });
+  Object.defineProperty(shared, "constructor", { value: typedArray, writable: true, configurable: true });
+  setSandboxPrototype(constructor, typedArray);
+  setSandboxPrototype(prototype, shared);
+  setSandboxPrototype(shared, getSandboxPrototype(Object.create(null), budget));
+  const getters: SandboxClosure[] = [];
+  for (const key of ["length", "byteLength", "byteOffset"] as const) {
+    const getter = createSandboxClosure({ guest: true, sandbox: true, name: `get ${key}`, length: 0,
+      call: (_args, context) => {
+        if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
+        const storage = float32Storage(context.thisValue);
+        return key === "byteLength" ? storage.length * 4 : storage[key];
+      }
+    });
+    getters.push(getter);
+    Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
+  }
+  for (const key of ["set", "slice", "subarray"])
+    Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget), writable: true, configurable: true });
+  const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
+  Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
+  Object.defineProperty(shared, "join", { writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: "join", length: 1,
+      call: async (args, context) => {
+        if (!isFloat32Array(context?.thisValue)) throw new TypeError("TypedArray join requires a typed array receiver.");
+        const receiver = context.thisValue;
+        const length = float32Storage(receiver).length;
+        let separator = ",";
+        let text = "";
+        const release = retainValues(budget, () => [receiver, separator, text, ...args]);
+        try {
+          if (args[0] !== undefined) separator = await sandboxString(args[0], budget, context);
+          for (let index = 0; index < length; index++) {
+            budget.visitNode();
+            text = budget.allocateString(text + (index === 0 ? "" : separator) + String(receiver[index]));
+          }
+          return text;
+        } finally { release(); }
+      }
+    })
+  });
+  const tagGetter = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.toStringTag]", length: 0,
+    call: (_args, context) => isFloat32Array(context?.thisValue) ? "Float32Array" : undefined });
+  getters.push(tagGetter);
+  Object.defineProperty(shared, Symbol.toStringTag, { get: accessorAdapter(tagGetter, "get"), configurable: true });
+  for (const key of ["values", "keys", "entries"] as const) {
+    const method = getSandboxDataProperty(arrayPrototype, key, budget) as SandboxClosure;
+    const closure = createSandboxClosure({ guest: true, sandbox: true, name: key, length: 0,
+      call: (args, context) => {
+        if (!isFloat32Array(context?.thisValue)) throw new TypeError(`TypedArray ${key} requires a typed array receiver.`);
+        return invokeBuiltinClosure(method, args, budget, context, context.thisValue);
+      }
+    });
+    Object.defineProperty(shared, key, { value: closure, writable: true, configurable: true });
+    if (key === "values") Object.defineProperty(shared, Symbol.iterator, { value: closure, writable: true, configurable: true });
+  }
+  float32Prototypes.set(budget, prototype);
+  registerBuiltinIdentities(budget, { Float32Array: constructor, "%TypedArray%": typedArray });
+  registerIntrinsicFunction(budget, constructor);
+  registerIntrinsicFunction(budget, typedArray);
+  registerIntrinsicObject(budget, prototype);
+  registerIntrinsicObject(budget, shared);
+  for (const getter of getters) registerIntrinsicFunction(budget, getter);
 }
 
 export function isFloat32ArrayConstructor(value: unknown): boolean {
@@ -61,6 +165,7 @@ export function getFloat32Member(
     if (!("value" in descriptor)) throw new TypeError("Float32Array accessors are not supported.");
     return descriptor.value;
   }
+  if (float32Prototypes.has(budget)) return undefined;
   const storage = float32Storage(value);
   if (key === "length") return storage.length;
   if (key === "byteLength") return storage.length * 4;
@@ -68,6 +173,7 @@ export function getFloat32Member(
   if (key === "BYTES_PER_ELEMENT") return 4;
   if (!["set", "slice", "subarray"].includes(key)) return undefined;
   return createSandboxClosure({
+    guest: true,
     sandbox: true,
     name: key,
     length: key === "set" ? 1 : 2,
@@ -118,22 +224,25 @@ export function getFloat32Member(
 
 export function setFloat32Member(
   value: Float32Array,
-  property: string | number,
-  entry: SandboxValue
+  property: PropertyKey,
+  entry: SandboxValue,
+  budget?: Budget
 ): void {
-  const key = String(property);
-  if (isFloat32Index(key)) {
+  const key = typeof property === "symbol" ? property : String(property);
+  if (typeof key !== "symbol" && isFloat32Index(key)) {
     Reflect.set(value, key, float32Number(entry));
     return;
   }
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  const inherited = descriptor ?? (budget === undefined ? undefined : getSandboxPropertyDescriptor(value, key, budget));
   if (
-    descriptor === undefined &&
+    descriptor === undefined && typeof key === "string" &&
+    (budget === undefined || !float32Prototypes.has(budget)) &&
     ["length", "byteLength", "byteOffset", "buffer", "BYTES_PER_ELEMENT"].includes(key)
   )
-    throw new TypeError(`Cannot assign to read only property '${key}'.`);
-  if (descriptor !== undefined && (!("value" in descriptor) || !descriptor.writable))
-    throw new TypeError(`Cannot assign to read only property '${key}'.`);
+    throw new TypeError(`Cannot assign to read only property '${String(key)}'.`);
+  if (inherited !== undefined && (!("value" in inherited) || !inherited.writable))
+    throw new TypeError(`Cannot assign to read only property '${String(key)}'.`);
   Object.defineProperty(
     value,
     key,

@@ -9,6 +9,8 @@ import { retainedAccessorClosures } from "./accessors.js";
 import { getHostObjectMember, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
 import type { Budget } from "./budget.js";
 import { errorPrototypes } from "./error-prototypes.js";
+import { float32Properties, isFloat32Array, isFloat32Index } from "./float32.js";
+import { float32Prototypes } from "./float32-prototypes.js";
 import { sandboxErrorTypes } from "../error/shape.js";
 import { boxedValue, isSandboxBox, type BoxedKind, type BoxedPrimitive } from "./boxed.js";
 import {
@@ -317,12 +319,14 @@ export function releaseObjectPrototype(budget: Budget): void {
   functionPrototypes.delete(budget);
   generatorPrototypes.delete(budget);
   errorPrototypes.delete(budget);
+  float32Prototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
 }
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  if (isFloat32Array(value)) return budget === undefined ? null : float32Prototypes.get(budget) ?? null;
   // Host transport records are data-only. Resolve their default prototype in
   // the receiving realm without persisting executable intrinsic graphs.
   const errorType = sandboxErrorTypes.get(value);
@@ -372,6 +376,10 @@ export function getSandboxPropertyDescriptor(
     current !== null &&
     (Array.isArray(current) || isSandboxGenerator(current) || isSandboxDate(current) || isSandboxPromise(current) || isSandboxRegex(current) || isSandboxMap(current) || isSandboxSet(current) || isPrototypeRecord(current))
   ) {
+    // An integer-indexed object stops numeric-key lookup even when it occurs
+    // inside another object's prototype chain and the index is invalid.
+    if (isFloat32Array(current) && typeof key !== "symbol" && isFloat32Index(String(key)))
+      return Object.getOwnPropertyDescriptor(current, key);
     const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current)
       ? key === "prototype" && current.construct !== undefined && current.boundTarget === undefined
         ? materializeFunctionProperties(current) : getGuestFunctionProperties(current)
@@ -399,6 +407,8 @@ export function getSandboxDataProperty(
   let current = value;
   let depth = 0;
   while (typeof current === "object" && current !== null) {
+    if (isFloat32Array(current) && typeof key !== "symbol" && isFloat32Index(String(key)))
+      return Object.getOwnPropertyDescriptor(current, key)?.value;
     if (isGuestHostObject(current)) return typeof key === "symbol" ? undefined : getHostObjectMember(current, String(key));
     if (isSandboxRegex(current)) return Object.getOwnPropertyDescriptor(getRegexProperties(current), key)?.value;
     if (isSandboxPromise(current)) return Object.getOwnPropertyDescriptor(getPromiseProperties(current), key)?.value;
@@ -467,6 +477,7 @@ export function setSandboxPrototype(
 }
 
 function isPrototypeRecord(value: object): boolean {
+  if (isFloat32Array(value)) return true;
   if (isGuestClosure(value)) return true;
   if (isGuestHostObject(value)) return false;
   if (
@@ -498,7 +509,9 @@ export function hasGuestObjectState(value: object): boolean {
   if (isSandboxBox(value) || isSandboxDate(value)) return false;
   return (
     descriptorObjects.has(value) &&
-    Object.values(Object.getOwnPropertyDescriptors(value)).some(
+    (isFloat32Array(value)
+      ? float32Properties(value).map(([, descriptor]) => descriptor)
+      : Object.values(Object.getOwnPropertyDescriptors(value))).some(
       (descriptor) => !descriptor.enumerable || !descriptor.configurable || !descriptor.writable
     )
   );

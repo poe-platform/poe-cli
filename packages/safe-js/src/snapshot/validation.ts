@@ -157,6 +157,10 @@ function validateDumpHeap(root: Record<string, unknown>, state: ValidationState)
     if (entry.kind === "float32array") {
       validateFloat32Storage(entry);
       requireRecord(entry.entries, `${path}.entries`);
+      if (Object.hasOwn(entry, "state")) {
+        if (Object.keys(entry.entries as object).length !== 0) fail("invalidValue", path, "ambiguous Float32Array property state");
+        validateGuestHeapNode({kind:"guest-object",state:entry.state}, heap, state.limits.maxEntries);
+      }
       continue;
     }
     if (entry.kind === "arguments") {
@@ -626,6 +630,10 @@ function validateHeapValue(value: unknown, path: string, state: ValidationState,
   if (record.kind === "float32array") {
     validateFloat32Storage(record);
     requireRecord(record.entries, `${path}.entries`);
+    if (Object.hasOwn(record, "state")) {
+      if (Object.keys(record.entries as object).length !== 0) fail("invalidValue", path, "ambiguous Float32Array property state");
+      validateGuestHeapNode({kind:"guest-object",state:record.state}, heap, state.limits.maxEntries);
+    }
   }
   if (record.kind === "map") {
     const entries = requireArray(record.entries, `${path}.entries`, state);

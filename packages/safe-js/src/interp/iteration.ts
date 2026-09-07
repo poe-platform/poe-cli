@@ -9,6 +9,7 @@ import {
 } from "./values.js";
 import { enterRunningState } from "./running-state.js";
 import { isFloat32Array } from "./float32.js";
+import { float32Prototypes } from "./float32-prototypes.js";
 import { boxedValue, isSandboxBox } from "./boxed.js";
 import { getHostObjectIterator, isGuestHostObject } from "./host-capabilities.js";
 import { isSandboxCollectionIterator, nextCollectionIterator } from "./collection-iterator.js";
@@ -182,7 +183,7 @@ export function getSandboxAsyncIterator(
 ): SandboxIterator | undefined {
   if (isSandboxGenerator(value) && value.async) {
     return hasExplicitSandboxPrototype(value) ? context?.getProperty === undefined
-      ? generatorProtocolAdapter(value, budget, context, true, signal) : undefined
+      ? guestProtocolAdapter(value, budget, context, true, signal) : undefined
       : { ...generatorObjectIterator(value, budget, context), asyncProtocol: true };
   }
   if (
@@ -364,12 +365,16 @@ export function getSandboxIterator(
   }
   if (isGuestHostObject(value)) return getHostObjectIterator(value);
   if (isFloat32Array(value)) {
+    if (hasExplicitSandboxPrototype(value) || (budget !== undefined && float32Prototypes.has(budget))) {
+      if (getSandboxPropertyDescriptor(value, Symbol.iterator, budget) === undefined) return undefined;
+      return guestProtocolAdapter(value, budget ?? new Budget(), context, false);
+    }
     return syncIterator(Float32Array.prototype.values.call(value));
   }
   if (isSandboxGenerator(value)) {
     if (value.async) return undefined;
     if (hasExplicitSandboxPrototype(value)) return context?.getProperty === undefined
-      ? generatorProtocolAdapter(value, budget ?? new Budget(), context, false) : undefined;
+      ? guestProtocolAdapter(value, budget ?? new Budget(), context, false) : undefined;
     return generatorObjectIterator(value, budget, context);
   }
 
@@ -461,15 +466,15 @@ function collectionIterator(
 
 const asyncGeneratorRequests = new WeakMap<SandboxGenerator, Promise<unknown>>();
 
-function generatorProtocolAdapter(
-  value: SandboxGenerator,
+function guestProtocolAdapter(
+  value: SandboxValue,
   budget: Budget,
   context: SandboxCallContext | undefined,
   asyncProtocol: boolean,
   signal?: AbortSignal
 ): SandboxIterator {
-  // Direct host adapters still need guest property reads, receiver binding and
-  // cached next methods, but retain their asynchronous generator result channel.
+  // Direct adapters still need guest property reads, receiver binding and
+  // cached next methods without exposing native iterator objects.
   const bridge: SandboxCallContext = {
     ...context,
     stack: context?.stack ?? [],
@@ -483,7 +488,7 @@ function generatorProtocolAdapter(
   let resolved: SandboxIterator | undefined;
   let pending: Promise<SandboxIterator> | undefined;
   const initialize = () => pending ??= acquireSandboxIterator(value, budget, bridge, asyncProtocol, signal).then(iterator => {
-    if (iterator === undefined) throw new TypeError("Generator does not provide an iterator protocol.");
+    if (iterator === undefined) throw new TypeError("Value does not provide an iterator protocol.");
     return resolved = iterator;
   });
   return {

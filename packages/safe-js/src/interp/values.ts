@@ -21,6 +21,7 @@ import { CompileScope, RegexCompileGuard, regexCompiledData } from "./regex/comp
 import {
   copyFloat32Storage,
   float32DataProperties,
+  float32Properties,
   float32Storage,
   isFloat32Array
 } from "./float32.js";
@@ -620,9 +621,12 @@ export function measureSandboxData(
         seen.add(storage.buffer);
         usage += storage.byteLength;
       }
-      for (const [key, descriptor] of float32DataProperties(value)) {
-        usage += key.length + 1;
-        visit(descriptor.value, depth + 1);
+      for (const [key, descriptor] of float32Properties(value)) {
+        usage += 1;
+        if (typeof key === "string") usage += key.length;
+        else visit(key, depth + 1);
+        if ("value" in descriptor) visit(descriptor.value, depth + 1);
+        else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
       }
       return;
     }

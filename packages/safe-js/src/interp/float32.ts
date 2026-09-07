@@ -37,13 +37,21 @@ export function float32Storage(value: Float32Array): {
   };
 }
 
+export function float32Properties(value: Float32Array): Array<[PropertyKey, PropertyDescriptor]> {
+  const properties: Array<[PropertyKey, PropertyDescriptor]> = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "string" && isFloat32Index(key)) continue;
+    properties.push([key, Object.getOwnPropertyDescriptor(value, key)!]);
+  }
+  return properties;
+}
+
 export function float32DataProperties(value: Float32Array): Array<[string, PropertyDescriptor]> {
   if (Object.getOwnPropertySymbols(value).length > 0)
     throw new TypeError("Float32Array symbol properties are not supported.");
   const properties: Array<[string, PropertyDescriptor]> = [];
-  for (const key of Object.getOwnPropertyNames(value)) {
-    if (isFloat32Index(key)) continue;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+  for (const [key, descriptor] of float32Properties(value)) {
+    if (typeof key !== "string") throw new TypeError("Float32Array symbol properties are not supported.");
     if (!("value" in descriptor))
       throw new TypeError(`Float32Array accessor property '${key}' is not supported.`);
     properties.push([key, descriptor]);

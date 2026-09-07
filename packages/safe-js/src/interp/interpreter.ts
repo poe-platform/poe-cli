@@ -3192,7 +3192,7 @@ async function evaluateMemberCallExpression(
     if (isFloat32Array(member.object)) {
       return evaluateResolvedCallExpression(
         node,
-        getFloat32Member(member.object, member.property, context.budget),
+        await getPropertyValue(member.object, member.property, context),
         context,
         member.object
       );
@@ -3888,8 +3888,7 @@ export function setSandboxProperty(
   if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
   if (isFloat32Array(target)) {
-    if (typeof property === "symbol") throw new TypeError("Typed array symbol properties are not yet supported.");
-    setFloat32Member(target, property, value);
+    setFloat32Member(target, property, value, budget);
     return;
   }
   if (isSandboxRegex(target)) {

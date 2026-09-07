@@ -19,7 +19,7 @@ import { runAsyncPrefix } from "../interp/jobs.js";
 import type { CompletionResult } from "../interp/exceptions.js";
 import { toPropertyKey } from "../interp/property-key.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
-import { decodeFloat32Storage } from "./float32array.js";
+import { decodeFloat32Storage, restoreFloat32Properties } from "./float32array.js";
 import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxBox } from "../interp/boxed.js";
@@ -602,7 +602,11 @@ function initializeIntrinsicRealm(state: RestoreState): void {
       return prototype?.kind === "intrinsic" &&
         prototype.id === JSON.stringify([...JSON.parse(node.id) as string[], "prototype"]);
     }));
-  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance, errorPrototypes });
+  const float32 = Object.values(state.heap).find(node => node.kind === "intrinsic" && node.id === '["Float32Array"]');
+  const float32Prototypes = float32?.kind !== "intrinsic" ||
+    float32.state?.properties.properties.some(([key, descriptor]) => key === "prototype" && descriptor.kind === "data" &&
+      !descriptor.writable && !descriptor.enumerable && !descriptor.configurable) === true;
+  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance, errorPrototypes, float32Prototypes });
   state.intrinsicsInitialized = true;
 }
 
@@ -647,10 +651,20 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     return value;
   }
   if (serialized.kind === "float32array") {
+    if (serialized.state !== undefined) initializeIntrinsicRealm(state);
     const value = decodeFloat32Storage(serialized, (reference) =>
       deserializeValue(reference as SerializedSnapshotValue, state)
     );
     state.heapValueById.set(id, value);
+    if (serialized.state !== undefined) {
+      const objectState = serialized.state;
+      state.initializeIterators.push(() => {
+        if (objectState.prototype !== undefined)
+          setSandboxPrototype(value, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+        restoreFloat32Properties(value, objectState, entry => deserializeValue(entry, state));
+      });
+      return value;
+    }
     for (const [key, entry] of Object.entries(serialized.entries)) {
       Object.defineProperty(value, key, {
         value: deserializeValue(entry, state),

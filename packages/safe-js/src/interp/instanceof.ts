@@ -38,7 +38,7 @@ export async function ordinaryHasInstance(
     return evaluateInstanceof(value, constructor.boundTarget, budget, context);
   }
   // These existing built-ins do not yet have ordinary prototype graphs.
-  if (isFloat32ArrayConstructor(constructor)) return isFloat32Array(value);
+  if (isFloat32ArrayConstructor(constructor) && !isGuestClosure(constructor)) return isFloat32Array(value);
   if ((!isGuestClosure(constructor) || (value !== null && typeof value === "object" && !hasExplicitSandboxPrototype(value))) &&
       isSandboxErrorConstructorInstance(value, constructor)) return true;
   if (!isGuestClosure(constructor) || typeof value !== "object" || value === null) return false;
