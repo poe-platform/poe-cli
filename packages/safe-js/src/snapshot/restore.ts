@@ -3,7 +3,8 @@ import { createBoundFunction } from "../interp/bound-function.js";
 import { invokeBuiltinClosure } from "../interp/builtin-call.js";
 import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { restoreRegexProperties } from "./regexp-properties.js";
-import { classOrigins, createClassConstructor, type Field } from "../interp/classes.js";
+import { classOrigins, createClassConstructor, createConstructionEnvironment, type Field } from "../interp/classes.js";
+import { constructionStates, type ConstructionState } from "../interp/construction-state.js";
 import { mapIteratorSnapshot } from "../interp/iteration.js";
 import { createInterpretedClosure, executeAsyncFunction, type AsyncEvaluationContext } from "../interp/async.js";
 import { createBuiltinBindings } from "../interp/globals.js";
@@ -165,6 +166,7 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
+  constructionEnvironments: Map<number, NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]>>;
   promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue;
     aggregate?: SandboxPromise;
     reactionCapability?: Extract<PromiseContinuation, {kind: "reaction"}>["capability"]}>;
@@ -224,6 +226,7 @@ export function restore(
 
     const state: RestoreState = {
       promiseReactionRecords: new Map(),
+      constructionEnvironments: new Map(),
       promiseReactionOrders: new Map(),
       pendingCapabilities: new WeakMap(),
       guestScopes: new Map(),
@@ -471,6 +474,38 @@ function restoreParentScope(scopeId: SnapshotId, state: RestoreState): Scope {
   }
 
   throw new Error(`Snapshot references unknown scope ${String(scopeId)}.`);
+}
+
+function restoreConstructionEnvironment(value: SerializedSnapshotValue, state: RestoreState): NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]> {
+  const reference = value as SerializedReferenceValue;
+  if (reference?.kind !== "ref") throw new TypeError("Invalid construction environment reference.");
+  const serialized = state.heap[String(reference.id)];
+  if (serialized?.kind !== "construction-environment") throw new TypeError("Invalid construction environment record.");
+  const existing = state.constructionEnvironments.get(reference.id);
+  if (existing !== undefined) return existing;
+  const environment = {} as NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]>;
+  const construction = {} as ConstructionState;
+  state.constructionEnvironments.set(reference.id, environment);
+  constructionStates.set(environment, construction);
+  state.initializeIterators.push(() => {
+    const constructor = deserializeValue(serialized.constructor, state);
+    const newTarget = deserializeValue(serialized.newTarget, state);
+    const prototype = deserializeValue(serialized.prototype, state);
+    const scopeRef = serialized.thisScope as SerializedReferenceValue;
+    const scope = state.guestScopes.get(scopeRef.id);
+    const origin = constructor !== null && typeof constructor === "object" ? classOrigins.get(constructor) : undefined;
+    if (!isSandboxClosure(constructor) || origin === undefined || !isSandboxClosure(newTarget) || newTarget.construct === undefined ||
+        prototype === null || typeof prototype !== "object" || scope === undefined)
+      throw new TypeError("Invalid restored construction state.");
+    Object.assign(construction, {constructor, newTarget, prototype, thisScope: scope,
+      thisValue: deserializeValue(serialized.thisValue, state), initialized: serialized.initialized, activeCalls: 0});
+    Object.assign(environment, createConstructionEnvironment(construction, {
+      scope: origin.scope, budget: state.budget, compilation: state.compilation, rootNode: state.rootNode,
+      signal: state.signal, callStack: [], activeLoopIterations: new Map(), restoredLoopIterations: new Map(),
+      stats: {currentDataSize: 0, nodeVisits: 0, peakDataSize: 0}
+    }, evaluateNode));
+  });
+  return environment;
 }
 
 function deserializeValue(
@@ -873,6 +908,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   }
 
   if (serialized.kind === "scope-frame") throw new TypeError("Internal scopes cannot be guest data.");
+  if (serialized.kind === "construction-environment") throw new TypeError("Internal construction environments cannot be guest data.");
   if (serialized.kind === "guest-generator") {
     const generator = restoreGuestGenerator(serialized, state);
     state.heapValueById.set(id, generator);
@@ -1094,7 +1130,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       if (scope === undefined) throw new TypeError("Missing guest function scope.");
       const environment: AsyncEvaluationContext["functionEnvironment"] = serialized.environment === undefined ? undefined : {
         homeObject: serialized.environment.homeObject === undefined ? undefined : deserializeValue(serialized.environment.homeObject, state) as NonNullable<AsyncEvaluationContext["functionEnvironment"]>["homeObject"],
-        newTarget: serialized.environment.newTarget === undefined ? undefined : deserializeValue(serialized.environment.newTarget, state) as SandboxClosure
+        newTarget: serialized.environment.newTarget === undefined ? undefined : deserializeValue(serialized.environment.newTarget, state) as SandboxClosure,
+        construction: serialized.environment.construction === undefined ? undefined : restoreConstructionEnvironment(serialized.environment.construction, state)
       };
       // Current generator functions need their realm before creation, not only
       // when a later prototype reference is decoded. Earlier heaps can lack the
@@ -1324,7 +1361,8 @@ function restoreGuestGenerator(
     if (serialized.environment !== undefined) {
       context.functionEnvironment = {
         homeObject: serialized.environment.homeObject === undefined ? undefined : deserializeValue(serialized.environment.homeObject, state) as NonNullable<AsyncEvaluationContext["functionEnvironment"]>["homeObject"],
-        newTarget: serialized.environment.newTarget === undefined ? undefined : deserializeValue(serialized.environment.newTarget, state) as SandboxClosure
+        newTarget: serialized.environment.newTarget === undefined ? undefined : deserializeValue(serialized.environment.newTarget, state) as SandboxClosure,
+        construction: serialized.environment.construction === undefined ? undefined : restoreConstructionEnvironment(serialized.environment.construction, state)
       };
       origin.environment = context.functionEnvironment;
     }

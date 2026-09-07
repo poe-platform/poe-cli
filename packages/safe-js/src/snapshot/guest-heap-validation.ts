@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -160,7 +160,26 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "capability-executor") {
+  if (node.kind === "construction-environment") {
+    fields(node, ["kind", "constructor", "newTarget", "prototype", "thisValue", "thisScope", "initialized"]);
+    const owner = reference(node.constructor, ["guest-class"]);
+    callable(node.newTarget);
+    const prototype = reference(node.prototype);
+    const scope = reference(node.thisScope, ["scope-frame"]);
+    if (typeof node.initialized !== "boolean") throw new TypeError("Invalid construction initialization flag.");
+    if (!node.initialized && !absent(node.thisValue)) throw new TypeError("Uninitialized construction cannot have this value.");
+    const property = array(record(record(owner.state).properties).properties).map(array).find(entry => entry[0] === "prototype");
+    if (property === undefined || record(property[1]).kind !== "data" || reference(record(property[1]).value) !== prototype)
+      throw new TypeError("Invalid construction prototype ownership.");
+    if (absent(scope.parent) || reference(scope.parent, ["scope-frame"]) !== reference(owner.scope, ["scope-frame"]))
+      throw new TypeError("Invalid construction scope ownership.");
+    const binding = array(scope.bindings).map(array).find(entry => entry[0] === "this");
+    if (binding === undefined) throw new TypeError("Invalid construction this binding.");
+    const cell = record(array(scope.cells)[integer(binding[1])]);
+    if (cell.kind !== "const" || cell.initialized !== node.initialized ||
+        (node.initialized && reference(cell.value) !== reference(node.thisValue)))
+      throw new TypeError("Invalid construction this binding.");
+  } else if (node.kind === "capability-executor") {
     fields(node, ["kind", "resolve", "reject", "state"]);
     state(node.state);
   } else if (node.kind === "promise-aggregate") {
@@ -458,9 +477,10 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (Object.hasOwn(node, "name") && typeof node.name !== "string") throw new TypeError("Invalid guest function name.");
     if (Object.hasOwn(node, "environment")) {
       const environment = record(node.environment);
-      fields(environment, [], ["homeObject", "newTarget"]);
+      fields(environment, [], ["homeObject", "newTarget", "construction"]);
       if (Object.hasOwn(environment, "homeObject")) reference(environment.homeObject);
       if (Object.hasOwn(environment, "newTarget")) callable(environment.newTarget);
+      if (Object.hasOwn(environment, "construction")) reference(environment.construction, ["construction-environment"]);
     }
     state(node.state);
   } else if (node.kind === "guest-generator") {
@@ -625,9 +645,10 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     if (Object.hasOwn(node, "environment")) {
       const environment = record(node.environment);
-      fields(environment, [], ["homeObject", "newTarget"]);
+      fields(environment, [], ["homeObject", "newTarget", "construction"]);
       if (Object.hasOwn(environment, "homeObject")) reference(environment.homeObject);
       if (Object.hasOwn(environment, "newTarget")) callable(environment.newTarget);
+      if (Object.hasOwn(environment, "construction")) reference(environment.construction, ["construction-environment"]);
     }
   } else {
     fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames"]);

@@ -29,6 +29,7 @@ import { generatorPrototypes } from "./generator-prototypes.js";
 import { retainValues, runResources } from "./resources.js";
 import { functionSources } from "../parse/function-source.js";
 import { registerClosureOrigin, registerGeneratorOrigin } from "./closure-origin.js";
+import { constructionStates } from "./construction-state.js";
 import {
   boundIdentifiers,
   containsParameterExpression,
@@ -180,6 +181,8 @@ export function createInterpretedClosure(
   if (node.type !== "ArrowFunctionExpression" && node.generator) {
     return createGeneratorClosure(node, context, evaluateNode, initializeGeneratorPrototype);
   }
+  const construction = context.functionEnvironment?.construction;
+  const constructionState = construction === undefined ? undefined : constructionStates.get(construction);
 
   const construct =
     node.type !== "ArrowFunctionExpression" &&
@@ -220,7 +223,15 @@ export function createInterpretedClosure(
         : { name: node.id.name }
       : { name: context.inferredName }),
     ...(construct === undefined ? {} : { construct }),
-    retainedValues: () => [...context.scope.retainedValues(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget],
+    retainedValues: () => {
+      const values = [...context.scope.retainedValues(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget];
+      if (constructionState !== undefined) {
+        values.push(constructionState.constructor, constructionState.newTarget,
+          constructionState.prototype, constructionState.thisValue);
+        if (constructionState.thisScope !== undefined) values.push(...constructionState.thisScope.retainedValues());
+      }
+      return values;
+    },
     call: (args, callContext) => {
       const invocationContext = {
         ...context,

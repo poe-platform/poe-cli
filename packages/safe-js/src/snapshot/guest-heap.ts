@@ -29,6 +29,7 @@ import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { classOrigins } from "../interp/classes.js";
+import { constructionStates } from "../interp/construction-state.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import type { CompletionResult } from "../interp/exceptions.js";
 import type { GeneratorExpressionState } from "../interp/generator-expression-state.js";
@@ -47,6 +48,7 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | { kind: "construction-environment"; constructor: T; newTarget: T; prototype: T; thisValue: T; thisScope: T; initialized: boolean }
   | { kind: "capability-executor"; resolve: T; reject: T; state: GuestObjectState<T> }
   | { kind: "promise-aggregate"; method: PromiseAggregateState["method"]; capability: {promise: T; resolve: T; reject: T}; values: T; remaining: number; size: number; iteration: "complete" | "abrupt" }
   | { kind: "aggregate-entry"; aggregate: T; index: number; called: boolean }
@@ -83,12 +85,12 @@ export type GuestHeapNode<T> =
       finallyCompletions?: Record<string, GeneratorFinallyCompletion<T>>;
       expressionStates?: Record<string, GeneratorExpressionState<T, T, IteratorSnapshot<T>>>;
       sent: Array<{ type: "normal" | "return" | "throw"; value: T }>;
-      environment?: { homeObject?: T; newTarget?: T }; objectState?: GuestObjectState<T> }
+      environment?: { homeObject?: T; newTarget?: T; construction?: T }; objectState?: GuestObjectState<T> }
   | { kind: "guest-object"; state: GuestObjectState<T>; errorType?: SandboxErrorName }
   | { kind: "guest-array"; state: GuestObjectState<T>; templateNodeId?: number; templateOwner?: T }
   | { kind: "intrinsic"; id: string; state?: GuestObjectState<T>; symbolRegistry?: Array<[string, T]> }
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
-      environment?: { homeObject?: T; newTarget?: T } }
+      environment?: { homeObject?: T; newTarget?: T; construction?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
       privateNames?: Array<[string, T]>;
       bindings: Array<[string, number]>;
@@ -100,6 +102,14 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const construction = constructionStates.get(value);
+  if (construction !== undefined) {
+    if (construction.activeCalls !== 0 || construction.thisScope === undefined)
+      throw new TypeError("Active class construction environments cannot yet be serialized.");
+    return {kind: "construction-environment", constructor: encode(construction.constructor),
+      newTarget: encode(construction.newTarget), prototype: encode(construction.prototype),
+      thisValue: encode(construction.thisValue), thisScope: encode(construction.thisScope), initialized: construction.initialized};
+  }
   const executor = isSandboxClosure(value) ? promiseCapabilityExecutors.get(value) : undefined;
   if (executor !== undefined)
     return {kind: "capability-executor", resolve: encode(executor.resolve), reject: encode(executor.reject), state: captureObjectState(value, encode)!};
@@ -250,7 +260,6 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   if (isSandboxGenerator(value)) {
     const origin = getGeneratorOrigin(value);
     if (origin?.node.nodeId === undefined) throw new TypeError("Generators require a captured origin for public dumps.");
-    if (origin.environment?.construction !== undefined) throw new TypeError("Active class construction environments cannot yet be serialized.");
     const channel = value.channel.snapshot();
     return {
       kind: "guest-generator", state: value.state, astNodeId: origin.node.nodeId, async: value.async === true,
@@ -306,7 +315,8 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       sent: channel.sent.map(completion => ({ type: completion.type, value: encode(completion.value) })),
       ...(origin.environment === undefined ? {} : { environment: {
         ...(origin.environment.homeObject === undefined ? {} : { homeObject: encode(origin.environment.homeObject) }),
-        ...(origin.environment.newTarget === undefined ? {} : { newTarget: encode(origin.environment.newTarget) })
+        ...(origin.environment.newTarget === undefined ? {} : { newTarget: encode(origin.environment.newTarget) }),
+        ...(origin.environment.construction === undefined ? {} : {construction: encode(origin.environment.construction)})
       } })
     };
   }
@@ -342,8 +352,6 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     return undefined;
   }
   if (origin.node.nodeId === undefined) throw new TypeError("Guest closures require an AST node identity.");
-  if (origin.environment?.construction !== undefined)
-    throw new TypeError("Active class construction environments cannot yet be serialized.");
   const state = captureObjectState(value, encode);
   if (state === undefined) throw new TypeError("Guest closures require a property state.");
   return {
@@ -351,7 +359,8 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     ...(isSandboxClosure(value) && value.name !== undefined ? { name: value.name } : {}),
     ...(origin.environment === undefined ? {} : { environment: {
       ...(origin.environment.homeObject === undefined ? {} : { homeObject: encode(origin.environment.homeObject) }),
-      ...(origin.environment.newTarget === undefined ? {} : { newTarget: encode(origin.environment.newTarget) })
+      ...(origin.environment.newTarget === undefined ? {} : { newTarget: encode(origin.environment.newTarget) }),
+      ...(origin.environment.construction === undefined ? {} : {construction: encode(origin.environment.construction)})
     } })
   };
 }

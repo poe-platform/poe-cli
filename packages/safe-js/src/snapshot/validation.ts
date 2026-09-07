@@ -204,8 +204,9 @@ function validateDumpReferences(
   state: ValidationState,
   heapIds: Set<number>,
   heap: Record<string, unknown>,
-  role: "root" | "heap" | "heap-node" | "scope-map" | "expressions" | "expression" | "data" = "data",
-  allowScopeReference = false
+  role: "root" | "heap" | "heap-node" | "scope-map" | "expressions" | "expression" | "function-environment" | "data" = "data",
+  allowScopeReference = false,
+  allowConstructionReference = false
 ): void {
   if (value === null || typeof value !== "object") return;
   if (depth > state.limits.maxDepth)
@@ -223,9 +224,12 @@ function validateDumpReferences(
     if (!heapIds.has(id)) fail("danglingReference", `${path}.id`, `unknown heap value ${id}`);
     if ((heap[String(id)] as Record<string, unknown>).kind === "scope-frame" && !allowScopeReference)
       fail("invalidValue", path, "Internal scopes cannot be guest data");
+    if ((heap[String(id)] as Record<string, unknown>).kind === "construction-environment" && !allowConstructionReference)
+      fail("invalidValue", path, "Internal construction environments cannot be guest data");
   }
   for (const [key, entry] of Object.entries(record)) {
     const childRole = role === "root" && key === "heap" ? "heap" : role === "heap" ? "heap-node"
+      : role === "heap-node" && (record.kind === "guest-function" || record.kind === "guest-generator") && key === "environment" ? "function-environment"
       : role === "heap-node" && record.kind === "guest-generator" && key === "blockScopes" ? "scope-map"
       : role === "heap-node" && record.kind === "guest-generator" && key === "expressionStates" ? "expressions"
       : role === "expressions" ? "expression" : "data";
@@ -233,10 +237,12 @@ function validateDumpReferences(
       (record.kind === "for" && ["loopScope", "activeScope"].includes(key)) || (["switch", "for-in", "for-of-array", "for-of-iterator"].includes(String(record.kind)) && key === "scope")
     )) || role === "heap-node" && (
       (record.kind === "scope-frame" && key === "parent") ||
+      (record.kind === "construction-environment" && key === "thisScope") ||
       ((record.kind === "guest-function" || record.kind === "guest-class") && key === "scope") ||
       (record.kind === "guest-generator" && ["scope", "closureScope", "suspendedScope"].includes(key))
     );
-    validateDumpReferences(entry, `${path}${formatKey(key)}`, depth + 1, state, heapIds, heap, childRole, scopeField);
+    validateDumpReferences(entry, `${path}${formatKey(key)}`, depth + 1, state, heapIds, heap, childRole, scopeField,
+      role === "function-environment" && key === "construction");
   }
 }
 
