@@ -62,3 +62,8 @@ must be tested and added in subsequent atomic improvements.
 
 Uint8Array-specific hexadecimal/base64 methods also require a separate pass;
 the shared typed-array methods do not implement these concrete-type extensions.
+
+Number-valued family follow-up: Int8Array, Uint8ClampedArray, Int16Array,
+Uint16Array, Int32Array, Uint32Array and Float64Array are now registered through
+the same machinery. Validation and remaining gaps are recorded in
+`safejs-number-typed-arrays.md`. This does not add Float16, BigInt kinds or DataView.

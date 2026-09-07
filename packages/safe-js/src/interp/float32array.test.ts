@@ -214,7 +214,7 @@ describe("Float32Array", () => {
       from: "function",
       factory: "function",
       arrayBuffer: "function",
-      other: "undefined",
+      other: "function",
       constructorLength: 3,
       width: 4,
       copy: [2, 3],
@@ -401,7 +401,7 @@ describe("Float32Array", () => {
 
   it("keeps generic native functions and unsupported typed-array kinds rejected", () => {
     expect(deepCopyToSandbox(new Uint8Array([1]))).toEqual(new Uint8Array([1]));
-    expect(() => deepCopyToSandbox(new Float64Array([1]))).toThrow(/Unsupported sandbox value/);
+    expect(() => deepCopyToSandbox(new BigInt64Array([1n]))).toThrow(/Unsupported sandbox value/);
     const values = Object.assign(new Float32Array([1]), { callback: () => 1 });
     expect(() => deepCopyToSandbox(values)).toThrow(/Unsupported sandbox value/);
   });

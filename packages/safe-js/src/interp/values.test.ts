@@ -397,8 +397,8 @@ describe("sandbox values", () => {
     expect(() => deepCopyToSandbox(/SafeJS/giu)).toThrowError(
       "Unsupported sandbox value at <root>: RegExp"
     );
-    expect(() => deepCopyToSandbox(new Float64Array([1, 2, 3]))).toThrowError(
-      "Unsupported sandbox value at <root>: Float64Array"
+    expect(() => deepCopyToSandbox(new BigInt64Array([1n, 2n, 3n]))).toThrowError(
+      "Unsupported sandbox value at <root>: BigInt64Array"
     );
   });
 
