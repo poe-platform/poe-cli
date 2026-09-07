@@ -295,6 +295,7 @@ export function decodeReplayData(
     const nodes = list(own(graph, "nodes"));
     const restored = new Map<number, SandboxValue>();
     const initializeValues: Array<() => void> = [];
+    const detachBuffers: Array<() => void> = [];
     const decode = (entry: unknown, depth = 0): SandboxValue => {
       if (depth > MAX_DATA_DEPTH) throw new TypeError("Replay data exceeds the nesting limit.");
       if (entry === null || typeof entry === "boolean" || typeof entry === "string") return entry;
@@ -439,7 +440,7 @@ export function decodeReplayData(
       }
       if (kind === "arraybuffer") {
         if (typeof node.extensible !== "boolean") throw new TypeError("Invalid ArrayBuffer extensibility.");
-        const result = decodeArrayBufferStorage(node, child, compilation.owner?.budget);
+        const result = decodeArrayBufferStorage(node, child, compilation.owner?.budget, detachBuffers);
         restored.set(id, result);
         initializeValues.push(() => {
           defineProperties(result, record(own(node, "properties")), child, node.symbolEntries);
@@ -557,6 +558,7 @@ export function decodeReplayData(
     };
     const result = decode(own(graph, "root"));
     for (const initialize of initializeValues) initialize();
+    for (const detach of detachBuffers) detach();
     if (parent !== undefined) compilation.forward(compilation.tickets, parent);
     return result;
   } finally {

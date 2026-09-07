@@ -133,6 +133,7 @@ type RestoreState = {
   signal?: AbortSignal;
   intrinsicsInitialized: boolean;
   initializeIterators: Array<() => void>;
+  detachBuffers: Array<() => void>;
   budget: Budget;
   compilation: CompileScope;
   heap: Record<string, SerializedHeapValue>;
@@ -184,6 +185,7 @@ export function restore(
       signal: options.signal,
       intrinsicsInitialized: false,
       initializeIterators: [],
+      detachBuffers: [],
       budget,
       compilation,
       heap: snapshot.heap ?? {},
@@ -225,6 +227,7 @@ export function restore(
 
     const callStack = snapshot.callStack.map((frame) => restoreCallFrame(frame, state));
     for (const initialize of state.initializeIterators) initialize();
+    for (const detach of state.detachBuffers) detach();
     reconcileCompiledValues(
       budget,
       [
@@ -653,7 +656,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   }
   if (serialized.kind === "arraybuffer") {
     initializeIntrinsicRealm(state);
-    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state), state.budget);
+    const value = decodeArrayBufferStorage(serialized, reference => deserializeValue(reference as SerializedSnapshotValue, state), state.budget, state.detachBuffers);
     state.heapValueById.set(id, value);
     state.initializeIterators.push(() => {
       if (serialized.state.prototype !== undefined)

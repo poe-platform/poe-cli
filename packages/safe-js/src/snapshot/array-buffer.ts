@@ -1,11 +1,11 @@
-import { arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import { float32Storage, isFloat32Array } from "../interp/float32.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { serializePropertyDescriptors } from "./property-descriptors.js";
 import type { GuestObjectState } from "./guest-heap.js";
 import type { Budget } from "../interp/budget.js";
 
-export type ArrayBufferData<TReference> = { kind: "arraybuffer" } & ({ bytes: number[]; maxByteLength?: number } | { buffer: TReference });
+export type ArrayBufferData<TReference> = { kind: "arraybuffer" } & ({ bytes: number[]; maxByteLength?: number; detached?: true } | { buffer: TReference });
 
 export function captureArrayBufferState<T>(value: ArrayBuffer, encode: (value: unknown) => T): GuestObjectState<T> {
   return { properties: serializePropertyDescriptors(value, encode),
@@ -16,10 +16,17 @@ export function encodeArrayBufferStorage<T>(value: ArrayBuffer, id: number, buff
   arrayBufferLength(value);
   const existing = buffers.get(value);
   if (existing === undefined) buffers.set(value, id);
-  return { kind: "arraybuffer", ...(existing === undefined ? { bytes: Array.from(new Uint8Array(value)), ...arrayBufferOptions(value) } : { buffer: reference(existing) }) };
+  const detached = arrayBufferDetached(value);
+  return { kind: "arraybuffer", ...(existing === undefined ? {
+    bytes: detached ? [] : Array.from(new Uint8Array(value)), ...arrayBufferOptions(value),
+    ...(detached ? { detached: true as const } : {})
+  } : { buffer: reference(existing) }) };
 }
 
 export function validateArrayBufferStorage(value: Record<string, unknown>): void {
+  if (Object.hasOwn(value, "detached") && (value.detached !== true || !Array.isArray(value.bytes) ||
+      value.bytes.length !== 0 || (Object.hasOwn(value, "maxByteLength") && value.maxByteLength !== 0)))
+    throw new TypeError("Invalid detached ArrayBuffer storage.");
   if (Object.hasOwn(value, "bytes") === Object.hasOwn(value, "buffer"))
     throw new TypeError("ArrayBuffer requires one backing storage description.");
   if (Object.hasOwn(value, "bytes") && (!Array.isArray(value.bytes) ||
@@ -30,7 +37,7 @@ export function validateArrayBufferStorage(value: Record<string, unknown>): void
     throw new TypeError("Invalid ArrayBuffer maximum length.");
 }
 
-export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve: (reference: unknown) => unknown, budget?: Budget): ArrayBuffer {
+export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve: (reference: unknown) => unknown, budget?: Budget, deferredDetachment?: Array<() => void>): ArrayBuffer {
   validateArrayBufferStorage(value);
   if (Array.isArray(value.bytes)) {
     budget?.allocateArrayLength(Number(value.maxByteLength ?? value.bytes.length));
@@ -39,6 +46,15 @@ export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve
     if (Object.hasOwn(value, "maxByteLength") && arrayBufferOptions(buffer)?.maxByteLength !== value.maxByteLength)
       throw new TypeError("Resizable ArrayBuffer restoration is not supported by this host.");
     new Uint8Array(buffer).set(value.bytes);
+    if (value.detached === true) {
+      const detach = () => {
+        budget?.visitNode();
+        structuredClone(buffer, { transfer: [buffer] });
+        if (!arrayBufferDetached(buffer)) throw new TypeError("Restored ArrayBuffer could not be detached.");
+      };
+      if (deferredDetachment === undefined) detach();
+      else deferredDetachment.push(detach);
+    }
     return buffer;
   }
   const referenced = resolve(value.buffer);

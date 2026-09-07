@@ -2,7 +2,7 @@ import { float32Properties, float32Storage, float32ViewLayouts, restoreFloat32Vi
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { restorePropertyDescriptors, serializePropertyDescriptors } from "./property-descriptors.js";
 import type { GuestObjectState } from "./guest-heap.js";
-import { arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
+import { arrayBufferDetached, arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import type { Budget } from "../interp/budget.js";
 
 export function captureFloat32State<T>(value: Float32Array, encode: (value: unknown) => T): GuestObjectState<T> {
@@ -30,6 +30,7 @@ export type Float32Data<TReference> = {
 
 export function encodeFloat32Layout(value: Float32Array): { byteOffset: number; length: number; lengthTracking?: true } {
   const storage = float32Storage(value);
+  if (arrayBufferDetached(storage.buffer)) return { byteOffset: 0, length: 0 };
   if (arrayBufferOptions(storage.buffer) === undefined) return { byteOffset: storage.byteOffset, length: storage.length };
   const layout = float32ViewLayouts.get(value);
   if (layout === undefined) throw new TypeError("Resizable Float32Array snapshots require known view layout.");
