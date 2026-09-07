@@ -38,6 +38,13 @@ const functionPropertyRevisions = new WeakMap<object, {
   measuredDescriptors?: Array<[string, PropertyDescriptor]>;
 }>();
 const prototypes = new WeakMap<object, object | null>();
+const trackedPrototypes = new WeakMap<object, { current: object | null }>();
+
+function storePrototype(value: object, prototype: object | null): void {
+  prototypes.set(value, prototype);
+  const tracked = trackedPrototypes.get(value);
+  if (tracked !== undefined) tracked.current = prototype;
+}
 const intrinsicPrototypes = new WeakMap<Budget, SandboxObject>();
 const boxedPrototypes = new WeakMap<Budget, Map<BoxedKind, SandboxObject>>();
 const regexPrototypes = new WeakMap<Budget, SandboxObject>();
@@ -137,7 +144,7 @@ export function getGuestFunctionProperty(closure: SandboxClosure, key: PropertyK
 }
 
 export function installObjectPrototype(budget: Budget, prototype: SandboxObject, constructor: SandboxClosure): void {
-  prototypes.set(prototype, null);
+  storePrototype(prototype, null);
   intrinsicPrototypes.set(budget, prototype);
   registerIntrinsicPrototype(budget, prototype, constructor);
 }
@@ -186,7 +193,7 @@ export function installDatePrototype(budget: Budget, prototype: SandboxObject, c
 
 export function installArrayPrototype(budget: Budget, prototype: SandboxValue[], constructor: SandboxClosure): void {
   arrayPrototypes.set(budget, prototype);
-  prototypes.set(prototype, intrinsicPrototypes.get(budget) ?? null);
+  storePrototype(prototype, intrinsicPrototypes.get(budget) ?? null);
   initialArrayMethods.set(prototype, new Map(Object.entries(Object.getOwnPropertyDescriptors(prototype)).map(([key, descriptor]) => [key, descriptor.value])));
   registerIntrinsicPrototype(budget, prototype as unknown as SandboxObject, constructor);
 }
@@ -261,12 +268,20 @@ function trackIntrinsicState(
   if (roots === undefined) intrinsicPrototypeRoots.set(budget, (roots = new Set()));
   roots.add(root);
   const records = [...new Set(targets)]
-    .map((target) => ({
-      target,
-      value: isGuestClosure(target) ? materializeFunctionProperties(target) : target,
-      prototype: getSandboxPrototype(target),
-      explicit: hasExplicitSandboxPrototype(target)
-    }))
+    .map((target) => {
+      let tracked = trackedPrototypes.get(target);
+      if (tracked === undefined) {
+        tracked = { current: getSandboxPrototype(target) };
+        trackedPrototypes.set(target, tracked);
+      }
+      return {
+        target,
+        value: isGuestClosure(target) ? materializeFunctionProperties(target) : target,
+        prototype: tracked.current,
+        tracked,
+        explicit: hasExplicitSandboxPrototype(target)
+      };
+    })
     .map((record) => ({
       ...record,
       revision: functionPropertyRevisions.get(record.value),
@@ -305,8 +320,8 @@ function trackIntrinsicState(
     // Capture every change before measurement invokes retained-value callbacks.
     const retained: unknown[] = [];
     for (const record of records) {
-      const { target, value, descriptors, prototype: parent, revision } = record;
-      const currentPrototype = getSandboxPrototype(target);
+      const { value, descriptors, prototype: parent, revision } = record;
+      const currentPrototype = record.tracked.current;
       if (currentPrototype !== parent) retained.push(currentPrototype);
       if (revision === undefined || revision.revision !== record.capturedRevision) {
         const captured: unknown[] = [];
@@ -487,7 +502,7 @@ export function setSandboxPrototype(
   }
   if (getSandboxPrototype(value, budget) === prototype) {
     // Null is also the budget-free fallback; retain an explicit null link for snapshots.
-    if (prototype === null) prototypes.set(value, null);
+    if (prototype === null) storePrototype(value, null);
     return true;
   }
   if (!Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
@@ -503,7 +518,7 @@ export function setSandboxPrototype(
       throw new TypeError("Cyclic prototype value.");
     }
   }
-  prototypes.set(value, prototype);
+  storePrototype(value, prototype);
   return true;
 }
 
