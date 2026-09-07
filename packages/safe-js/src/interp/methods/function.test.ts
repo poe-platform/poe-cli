@@ -71,8 +71,9 @@ describe("function methods", () => {
     expect(apply?.call(["receiver", null], { stack: [], thisValue: target })).toEqual([
       "receiver"
     ]);
-    expect(() => apply?.call(["receiver", {}], { stack: [], thisValue: target })).toThrow(
-      "Function#apply requires an array or nullish arguments value."
+    expect(await apply?.call(["receiver", {}], { stack: [], thisValue: target })).toEqual(["receiver"]);
+    expect(() => apply?.call(["receiver", 1], { stack: [], thisValue: target })).toThrow(
+      "Function#apply requires an object or nullish arguments value."
     );
   });
 

@@ -7,16 +7,19 @@ import {
 } from "../values.js";
 import {
   getGuestFunctionProperty,
+  getSandboxPropertyDescriptor,
   getSandboxPrototype,
   hasExplicitSandboxPrototype,
   isGuestClosure,
   setSandboxPrototype
 } from "../object-model.js";
 import { assertSandboxDataDepth } from "../../graph-depth.js";
-import type { Budget } from "../budget.js";
+import { Budget } from "../budget.js";
 import { functionString } from "../function-string.js";
 import { retainValues, runResources } from "../resources.js";
 import { createBoundFunction } from "../bound-function.js";
+import { sandboxNumber } from "../string-coercion.js";
+import { readPropertyDescriptor } from "../accessors.js";
 
 export type FunctionMethodOptions = {
   budget?: Budget;
@@ -146,26 +149,39 @@ export function callFunctionMethod(
   if (applyArgs === null || applyArgs === undefined) {
     return options.callClosure(target, [], stack, thisValue);
   }
-  if (!Array.isArray(applyArgs)) {
-    throw new TypeError("Function#apply requires an array or nullish arguments value.");
+  if (typeof applyArgs !== "object") {
+    throw new TypeError("Function#apply requires an object or nullish arguments value.");
   }
 
-  if (context?.getProperty === undefined)
+  if (context?.getProperty === undefined && Array.isArray(applyArgs))
     return options.callClosure(target, applyArgs, stack, thisValue);
   return (async () => {
+    const budget = options.budget ?? new Budget();
+    const invocationContext: SandboxCallContext = {
+      ...context,
+      stack,
+      thisValue: context?.thisValue,
+      invokeClosure: context?.invokeClosure ?? ((callee, values, receiver) =>
+        Promise.resolve(options.callClosure(callee, values, stack, receiver)))
+    };
+    const read = (value: SandboxValue, key: PropertyKey) => {
+      if (context?.getProperty !== undefined) return context.getProperty(value, key);
+      const descriptor = getSandboxPropertyDescriptor(value, key, budget);
+      return descriptor === undefined ? undefined : readPropertyDescriptor(descriptor, value, invocationContext);
+    };
     const values: SandboxValue[] = [];
-    const length = applyArgs.length;
-    options.budget?.allocateArrayLength(length);
-    const retained = {};
-    options.budget?.setRetainedValues(retained, () => values);
+    const release = retainValues(budget, () => [applyArgs, ...values]);
     try {
+      const number = await sandboxNumber(await read(applyArgs, "length"), budget, invocationContext);
+      const length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
+      budget.allocateArrayLength(length);
       for (let index = 0; index < length; index++) {
-        options.budget?.visitNode();
-        values.push(await context.getProperty!(applyArgs, index));
+        budget.visitNode();
+        values.push(await read(applyArgs, String(index)));
       }
       return await options.callClosure(target, values, stack, thisValue);
     } finally {
-      options.budget?.setRetainedValues(retained, undefined);
+      release();
     }
   })();
 }
