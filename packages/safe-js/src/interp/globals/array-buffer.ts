@@ -1,5 +1,5 @@
 import type { Budget } from "../budget.js";
-import { arrayBufferLength, arrayBufferOptions, arrayBufferPrototypes, isSandboxArrayBuffer } from "../array-buffer.js";
+import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, arrayBufferPrototypes, isSandboxArrayBuffer } from "../array-buffer.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
@@ -7,9 +7,10 @@ import { invokeBuiltinClosure } from "../builtin-call.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
+import { createDataCheckpoint } from "../data-checkpoint.js";
 
 const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resize")?.value as ((length: number) => void) | undefined;
-const readDetached = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "detached")?.get;
+const transferBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "transfer")?.value as ((length?: number) => ArrayBuffer) | undefined;
 
 export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
   const prototype: SandboxObject = Object.create(null);
@@ -128,6 +129,46 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
       }
     })
   });
+  Object.defineProperty(prototype, "transfer", { writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: "transfer", length: 0,
+      call: async (args, context) => {
+        const receiver = context?.thisValue;
+        if (!isSandboxArrayBuffer(receiver)) throw new TypeError("ArrayBuffer transfer requires a buffer receiver.");
+        let result: ArrayBuffer | undefined;
+        const release = retainValues(budget, () => [receiver, result, ...args]);
+        const checkData = createDataCheckpoint(budget, context);
+        try {
+          const number = args[0] === undefined ? arrayBufferLength(receiver) : await sandboxNumber(args[0], budget, context);
+          const length = Number.isNaN(number) ? 0 : Math.trunc(number);
+          if (!Number.isSafeInteger(length) || length < 0) throw new RangeError("Invalid ArrayBuffer transfer length.");
+          if (arrayBufferDetached(receiver)) throw new TypeError("Cannot transfer a detached ArrayBuffer.");
+          const options = arrayBufferOptions(receiver);
+          if (options !== undefined && length > options.maxByteLength) throw new RangeError("Transfer length exceeds ArrayBuffer capacity.");
+          budget.allocateArrayLength(options?.maxByteLength ?? length);
+          checkData(receiver, 0, true);
+          budget.provisionDataUsage(length + 1)();
+          result = Reflect.construct(ArrayBuffer, [length, options]) as ArrayBuffer;
+          setSandboxPrototype(result, prototype, budget);
+          checkData(result, 0, true);
+          const count = Math.min(length, arrayBufferLength(receiver));
+          budget.visitNode(count);
+          new Uint8Array(result, 0, count).set(new Uint8Array(receiver, 0, count));
+          if (transferBuffer !== undefined) {
+            budget.provisionDataUsage(1)();
+            Reflect.apply(transferBuffer, receiver, [0]);
+          } else {
+            // Some old hosts copy non-detachable buffers instead of throwing.
+            // Bound that temporary copy and verify that transfer really occurred.
+            budget.provisionDataUsage(arrayBufferLength(receiver) + 1)();
+            budget.visitNode(arrayBufferLength(receiver));
+            structuredClone(receiver, { transfer: [receiver] });
+            if (!arrayBufferDetached(receiver)) throw new TypeError("ArrayBuffer cannot be detached.");
+          }
+          return result;
+        } finally { release(); }
+      }
+    })
+  });
   Object.defineProperty(prototype, "resize", { writable: true, configurable: true,
     value: createSandboxClosure({ guest: true, sandbox: true, name: "resize", length: 1,
       call: async (args, context) => {
@@ -153,16 +194,7 @@ export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
       call: (_args, context) => {
         if (!isSandboxArrayBuffer(context?.thisValue)) throw new TypeError(`ArrayBuffer ${key} requires a buffer receiver.`);
         if (key === "byteLength") return arrayBufferLength(context.thisValue);
-        if (key === "detached") {
-          if (readDetached !== undefined) return Reflect.apply(readDetached, context.thisValue, []);
-          try {
-            new Uint8Array(context.thisValue, 0, 0);
-            return false;
-          } catch (error) {
-            if (error instanceof TypeError) return true;
-            throw error;
-          }
-        }
+        if (key === "detached") return arrayBufferDetached(context.thisValue);
         const options = arrayBufferOptions(context.thisValue);
         return key === "resizable" ? options !== undefined : options?.maxByteLength ?? arrayBufferLength(context.thisValue);
       }

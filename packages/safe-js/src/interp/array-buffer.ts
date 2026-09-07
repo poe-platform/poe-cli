@@ -5,6 +5,7 @@ import type { SandboxObject } from "./values.js";
 const readLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength")!.get!;
 const readResizable = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "resizable")?.get;
 const readMaxLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "maxByteLength")?.get;
+const readDetached = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "detached")?.get;
 
 export const arrayBufferPrototypes = new WeakMap<Budget, SandboxObject>();
 
@@ -14,6 +15,17 @@ export function isSandboxArrayBuffer(value: unknown): value is ArrayBuffer {
 
 export function arrayBufferLength(value: ArrayBuffer): number {
   return Reflect.apply(readLength, value, []) as number;
+}
+
+export function arrayBufferDetached(value: ArrayBuffer): boolean {
+  if (readDetached !== undefined) return Reflect.apply(readDetached, value, []) as boolean;
+  try {
+    new Uint8Array(value, 0, 0);
+    return false;
+  } catch (error) {
+    if (error instanceof TypeError) return true;
+    throw error;
+  }
 }
 
 export function arrayBufferOptions(value: ArrayBuffer): { maxByteLength: number } | undefined {
