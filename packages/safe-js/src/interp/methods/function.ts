@@ -15,7 +15,7 @@ import {
 import { assertSandboxDataDepth } from "../../graph-depth.js";
 import type { Budget } from "../budget.js";
 import { functionString } from "../function-string.js";
-import { runResources } from "../resources.js";
+import { retainValues, runResources } from "../resources.js";
 
 export type FunctionMethodOptions = {
   budget?: Budget;
@@ -100,6 +100,8 @@ export function callFunctionMethod(
 
   if (methodName === "bind") {
     const boundArgs = args.slice(1);
+    const explicitPrototype = hasExplicitSandboxPrototype(target);
+    const prototype = getSandboxPrototype(target, options.budget);
     const bind = (length: number | undefined, name: string) => {
       const bound = createSandboxClosure({
         guest: true,
@@ -124,8 +126,7 @@ export function callFunctionMethod(
                 )
             })
       });
-      if (hasExplicitSandboxPrototype(target))
-        setSandboxPrototype(bound, getSandboxPrototype(target, options.budget), options.budget);
+      if (explicitPrototype) setSandboxPrototype(bound, prototype, options.budget);
       return bound;
     };
     if (context?.getProperty === undefined)
@@ -134,23 +135,27 @@ export function callFunctionMethod(
         target.name ?? ""
       );
     return (async () => {
-      const properties = target.properties;
-      const defaultName = target.name;
-      const hasLength =
-        !isGuestClosure(target) ||
-        target.properties === undefined ||
-        Object.hasOwn(target.properties, "length");
-      const length = hasLength ? await context.getProperty!(target, "length") : undefined;
-      const name =
-        !isGuestClosure(target) && !Object.hasOwn(properties ?? {}, "name")
-          ? defaultName
-          : await context.getProperty!(target, "name");
-      return bind(
-        typeof length === "number" && !Number.isNaN(length)
-          ? Math.max(0, Math.trunc(length) - boundArgs.length)
-          : 0,
-        typeof name === "string" ? name : ""
-      );
+      const release = options.budget !== undefined && explicitPrototype && prototype !== null
+        ? retainValues(options.budget, () => [prototype]) : undefined;
+      try {
+        const properties = target.properties;
+        const defaultName = target.name;
+        const hasLength =
+          !isGuestClosure(target) ||
+          target.properties === undefined ||
+          Object.hasOwn(target.properties, "length");
+        const length = hasLength ? await context.getProperty!(target, "length") : undefined;
+        const name =
+          !isGuestClosure(target) && !Object.hasOwn(properties ?? {}, "name")
+            ? defaultName
+            : await context.getProperty!(target, "name");
+        return bind(
+          typeof length === "number" && !Number.isNaN(length)
+            ? Math.max(0, Math.trunc(length) - boundArgs.length)
+            : 0,
+          typeof name === "string" ? name : ""
+        );
+      } finally { release?.(); }
     })();
   }
 
