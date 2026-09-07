@@ -17,6 +17,7 @@ import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCol
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
 import { iteratorWrapperStates } from "./iterator-wrapper.js";
+import { iteratorHelperStates } from "./iterator-helper.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
@@ -574,6 +575,7 @@ export function* cloneStructuredGraph(
       isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
+  if (iteratorHelperStates.has(value)) throw new DOMException("Iterator helpers cannot be structured cloned.", "DataCloneError");
   if (isLiveCapability(value)) throw new DOMException("Capabilities cannot be structured cloned.", "DataCloneError");
   const existing = state.seen.get(value);
   if (existing !== undefined) return existing;
@@ -710,6 +712,16 @@ export function measureSandboxData(
     if (wrapperState !== undefined) {
       visit(wrapperState.iterator, depth + 1);
       visit(wrapperState.next, depth + 1);
+    }
+    const helperState = iteratorHelperStates.get(value);
+    if (helperState !== undefined) {
+      for (const record of [helperState.outer, helperState.inner]) {
+        if (record !== undefined) {
+          visit(record.iterator, depth + 1);
+          visit(record.next, depth + 1);
+        }
+      }
+      visit(helperState.callback, depth + 1);
     }
     if (isSandboxDate(value)) usage += 8;
     if (isGuestHostObject(value)) {

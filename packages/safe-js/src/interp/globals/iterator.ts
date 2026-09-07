@@ -8,6 +8,7 @@ import { createSandboxClosure, defineOwnDataProperty, type SandboxClosure, type 
 import { objectProperties } from "./object-array.js";
 import { installIteratorFrom } from "./iterator-from.js";
 import { installIteratorConsumers } from "./iterator-consumers.js";
+import { installLazyIteratorHelpers } from "./iterator-lazy.js";
 
 export function createIteratorGlobal(budget: Budget): SandboxClosure {
   const prototype = resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]') as SandboxObject;
@@ -44,6 +45,7 @@ export function createIteratorGlobal(budget: Budget): SandboxClosure {
   registerIntrinsicFunction(budget,setter);
   installIteratorFrom(constructor,budget);
   installIteratorConsumers(prototype,budget);
+  installLazyIteratorHelpers(prototype,budget);
   registerIntrinsicFunction(budget,constructor);
   registerIntrinsicObject(budget,prototype);
   return constructor;

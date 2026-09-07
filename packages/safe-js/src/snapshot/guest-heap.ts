@@ -16,6 +16,7 @@ import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-i
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
+import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments } from "../interp/values.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -33,6 +34,9 @@ export type GuestObjectState<T> = {
 };
 
 export type GuestHeapNode<T> =
+  | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
+      outer?: { iterator: T; next: T }; inner?: { iterator: T; next: T }; callback: T;
+      remaining: number | "Infinity"; index: number; state: GuestObjectState<T> }
   | { kind: "iterator-wrapper"; iterator: T; next: T; state: GuestObjectState<T> }
   | { kind: "module-namespace"; entries: Array<[string,T]> }
   | { kind: "string-iterator"; input: T; index: number; state: GuestObjectState<T> }
@@ -67,6 +71,15 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const helper = iteratorHelperStates.get(value);
+  if (helper !== undefined) {
+    if (helper.status === "executing") throw new TypeError("Cannot snapshot an executing iterator helper.");
+    return { kind: "iterator-helper", method: helper.method, status: helper.status,
+      ...(helper.outer === undefined ? {} : { outer: { iterator: encode(helper.outer.iterator), next: encode(helper.outer.next) } }),
+      ...(helper.inner === undefined ? {} : { inner: { iterator: encode(helper.inner.iterator), next: encode(helper.inner.next) } }),
+      callback: encode(helper.callback), remaining: helper.remaining === Infinity ? "Infinity" : helper.remaining,
+      index: helper.index, state: captureObjectState(value, encode)! };
+  }
   const wrapper = iteratorWrapperStates.get(value);
   if (wrapper !== undefined)
     return {kind:"iterator-wrapper",iterator:encode(wrapper.iterator),next:encode(wrapper.next),state:captureObjectState(value,encode)!};

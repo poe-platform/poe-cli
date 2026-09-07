@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "iterator-wrapper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -125,7 +125,31 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "iterator-wrapper") {
+  if (node.kind === "iterator-helper") {
+    fields(node, ["kind", "method", "status", "callback", "remaining", "index", "state"], ["outer", "inner"]);
+    if (!["map", "filter", "take", "drop", "flatMap"].includes(String(node.method)) ||
+        !["start", "yield", "done"].includes(String(node.status))) throw new TypeError("Invalid iterator helper mode.");
+    integer(node.index);
+    if (node.remaining !== "Infinity" && (typeof node.remaining !== "number" || !Number.isInteger(node.remaining) || node.remaining < 0))
+      throw new TypeError("Invalid iterator helper limit.");
+    for (const key of ["outer", "inner"]) {
+      if (!Object.hasOwn(node, key)) continue;
+      const cursor = record(node[key]);
+      fields(cursor, ["iterator", "next"]);
+      const target = reference(cursor.iterator);
+      if (target.kind === "symbol" || target.kind === "scope-frame") throw new TypeError("Invalid helper iterator.");
+    }
+    if ((node.status === "done") === Object.hasOwn(node, "outer") ||
+        (Object.hasOwn(node, "inner") && (node.method !== "flatMap" || node.status !== "yield")))
+      throw new TypeError("Invalid iterator helper cursor state.");
+    if (node.status === "done" || node.method === "take" || node.method === "drop") {
+      if (!absent(node.callback)) throw new TypeError("Unexpected iterator helper callback.");
+    } else {
+      if (absent(node.callback)) throw new TypeError("Missing iterator helper callback.");
+      callable(node.callback);
+    }
+    state(node.state);
+  } else if (node.kind === "iterator-wrapper") {
     fields(node,["kind","iterator","next","state"]);
     const iterator=reference(node.iterator);
     if (iterator.kind === "symbol" || iterator.kind === "scope-frame") throw new TypeError("Invalid wrapped iterator.");
