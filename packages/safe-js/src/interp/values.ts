@@ -935,6 +935,9 @@ function copyToSandbox(
     return value;
   }
 
+  if (state.structuredClone && nodeTypes.isSymbolObject(value))
+    throw new DOMException("Cannot clone a boxed symbol.", "DataCloneError");
+
   if (isLiveCapability(value)) throw new TypeError("Live capabilities require their owning realm bridge.");
 
   if (isRawJson(value)) {
