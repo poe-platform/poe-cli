@@ -204,8 +204,23 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (iterator.kind === "symbol" || iterator.kind === "scope-frame") throw new TypeError("Invalid wrapped iterator.");
     state(node.state);
   } else if (node.kind === "intrinsic") {
-    fields(node, ["kind", "id"], ["state"]);
+    fields(node, ["kind", "id"], ["state", "symbolRegistry"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
+    if (Object.hasOwn(node, "symbolRegistry")) {
+      if (![JSON.stringify(["Symbol"]), JSON.stringify(["Symbol", "for"]), JSON.stringify(["Symbol", "keyFor"])].includes(node.id) || !Array.isArray(node.symbolRegistry))
+        throw new TypeError("Invalid symbol registry owner.");
+      const keys = new Set<string>();
+      const symbols = new Set<unknown>();
+      for (const entry of node.symbolRegistry) {
+        if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" || keys.has(entry[0]))
+          throw new TypeError("Invalid symbol registry entry.");
+        const symbol = reference(entry[1], ["symbol"]);
+        if (symbol.wellKnown !== undefined || symbol.description !== entry[0] || symbols.has(symbol))
+          throw new TypeError("Invalid registered symbol identity.");
+        keys.add(entry[0]);
+        symbols.add(symbol);
+      }
+    }
     if (Object.hasOwn(node, "state")) state(node.state);
   } else if (node.kind === "guest-regexp-iterator") {
     fields(node, ["kind", "matcher", "input", "exhausted", "state"], ["global", "unicode"]);

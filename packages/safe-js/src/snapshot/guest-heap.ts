@@ -21,6 +21,7 @@ import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
+import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { classOrigins } from "../interp/classes.js";
@@ -71,7 +72,7 @@ export type GuestHeapNode<T> =
       environment?: { homeObject?: T; newTarget?: T }; objectState?: GuestObjectState<T> }
   | { kind: "guest-object"; state: GuestObjectState<T>; errorType?: SandboxErrorName }
   | { kind: "guest-array"; state: GuestObjectState<T>; templateNodeId?: number; templateOwner?: T }
-  | { kind: "intrinsic"; id: string; state?: GuestObjectState<T> }
+  | { kind: "intrinsic"; id: string; state?: GuestObjectState<T>; symbolRegistry?: Array<[string, T]> }
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
       environment?: { homeObject?: T; newTarget?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
@@ -134,7 +135,9 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   const intrinsic = getIntrinsicIdentity(value);
   if (intrinsic !== undefined) {
     const state = captureObjectState(value, encode);
-    return { kind: "intrinsic", id: intrinsic, ...(state === undefined ? {} : { state }) };
+    const registry = isSandboxClosure(value) ? symbolRegistryOrigins.get(value) : undefined;
+    return { kind: "intrinsic", id: intrinsic, ...(state === undefined ? {} : { state }),
+      ...(registry === undefined ? {} : {symbolRegistry: [...registry].map(([key, symbol]) => [key, encode(symbol)] as [string, T])}) };
   }
   const bound = boundFunctionStates.get(value);
   if (bound !== undefined && isSandboxClosure(value)) {

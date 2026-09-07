@@ -5,6 +5,7 @@ import { wellKnownSymbols } from "../symbols.js";
 import { primitiveReceiver } from "../boxed.js";
 import { installBoxedPrototype, materializeFunctionProperties } from "../object-model.js";
 import { accessorAdapter } from "../accessors.js";
+import { symbolRegistryOrigins } from "../symbol-registry.js";
 
 const registries = new WeakMap<Budget, Map<string, symbol>>();
 
@@ -102,8 +103,10 @@ export function createSymbolGlobal(budget: Budget) {
     })
   };
   for (const [name, method] of Object.entries(methods)) {
+    symbolRegistryOrigins.set(method, entries);
     Object.defineProperty(properties, name, { value: method, writable: true, configurable: true });
   }
+  symbolRegistryOrigins.set(constructor, entries);
   for (const [name, value] of Object.entries(wellKnownSymbols)) {
     Object.defineProperty(properties, name, { value });
   }

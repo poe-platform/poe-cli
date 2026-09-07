@@ -42,6 +42,7 @@ import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
+import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
 
@@ -158,6 +159,7 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
+  symbolRegistry?: Map<string, symbol>;
   guestScopes: Map<number, Scope>;
   rootNode: ParseResult;
   signal?: AbortSignal;
@@ -916,6 +918,22 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     } else if (serialized.kind === "intrinsic") {
       initializeIntrinsicRealm(state);
       value = resolveIntrinsicIdentity(state.budget, serialized.id) as RuntimeSnapshotValue;
+      if (serialized.symbolRegistry !== undefined) state.initializeIterators.push(() => {
+        const registry = isSandboxClosure(value) ? symbolRegistryOrigins.get(value) : undefined;
+        if (registry === undefined) throw new TypeError("Invalid symbol registry owner.");
+        const entries = new Map<string, symbol>();
+        for (const [key, reference] of serialized.symbolRegistry!) {
+          const symbol = deserializeValue(reference, state);
+          if (typeof symbol !== "symbol") throw new TypeError("Invalid registered symbol.");
+          entries.set(key, symbol);
+        }
+        if (state.symbolRegistry !== undefined && (entries.size !== state.symbolRegistry.size ||
+          [...entries].some(([key, symbol]) => state.symbolRegistry!.get(key) !== symbol)))
+          throw new TypeError("Conflicting symbol registries.");
+        state.symbolRegistry = entries;
+        registry.clear();
+        for (const [key, symbol] of entries) registry.set(key, symbol);
+      });
     } else if (serialized.kind === "guest-class") {
       const node = state.nodeById.get(serialized.astNodeId);
       if (node?.type !== "ClassDeclaration" && node?.type !== "ClassExpression") throw new TypeError("Invalid class origin.");
