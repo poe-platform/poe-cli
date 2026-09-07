@@ -7,6 +7,7 @@ import { createRegexGlobals } from "./globals/regex.js";
 import { createMiscGlobals } from "./globals/misc.js";
 import { createUriGlobals } from "./globals/uri.js";
 import { createObjectArrayGlobals } from "./globals/object-array.js";
+import { createFunctionPrototype } from "./globals/function.js";
 import { createPromiseGlobals } from "./promise.js";
 import { createDateGlobal } from "./globals/date.js";
 import { createSymbolGlobal } from "./globals/symbol.js";
@@ -32,6 +33,7 @@ export function createBuiltinBindings(
     ...createPromiseGlobals(options),
     ...createRegexGlobals(options)
   };
+  createFunctionPrototype(options.budget);
   registerBuiltinIdentities(options.budget, bindings);
   return bindings;
 }

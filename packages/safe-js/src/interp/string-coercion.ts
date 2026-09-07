@@ -153,7 +153,7 @@ function conversionHook(
     ((Array.isArray(value) && getSandboxPrototype(value, budget) === null) ||
       isFloat32Array(value) ||
       sandboxErrorTypes.has(value) ||
-      isSandboxClosure(value) ||
+      (isSandboxClosure(value) && getSandboxPrototype(value, budget) === null) ||
       isSandboxMap(value) ||
       isSandboxSet(value) ||
       isSandboxCollectionIterator(value) ||

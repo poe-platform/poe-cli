@@ -1,5 +1,6 @@
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { getGeneratorProperties } from "./generator-properties.js";
+import { runResources } from "./resources.js";
 import { getIntrinsicIdentity, registerBuiltinIdentities, releaseIntrinsicIdentities } from "./intrinsics.js";
 import { releaseTemplateObjects } from "./template-objects.js";
 import { isSandboxDate } from "./date.js";
@@ -32,6 +33,7 @@ const collectionPrototypes = new WeakMap<Budget, Map<"Map" | "Set", SandboxObjec
 const promisePrototypes = new WeakMap<Budget, SandboxObject>();
 const datePrototypes = new WeakMap<Budget, SandboxObject>();
 const arrayPrototypes = new WeakMap<Budget, SandboxValue[]>();
+const functionPrototypes = new WeakMap<Budget, SandboxClosure>();
 const initialArrayMethods = new WeakMap<object, Map<string, SandboxValue>>();
 const initialRegexDescriptors = new WeakMap<Budget, PropertyDescriptorMap>();
 const intrinsicPrototypeRoots = new WeakMap<Budget, Set<object>>();
@@ -98,6 +100,13 @@ export function installObjectPrototype(budget: Budget, prototype: SandboxObject,
   prototypes.set(prototype, null);
   intrinsicPrototypes.set(budget, prototype);
   registerIntrinsicPrototype(budget, prototype, constructor);
+}
+
+export function installFunctionPrototype(budget: Budget, prototype: SandboxClosure): void {
+  functionPrototypes.set(budget, prototype);
+  registerBuiltinIdentities(budget, { "%FunctionPrototype%": prototype });
+  registerIntrinsicFunction(budget, prototype);
+  registerIntrinsicObject(budget, materializeFunctionProperties(prototype));
 }
 
 export function installBoxedPrototype(budget: Budget, prototype: SandboxObject, constructor: SandboxClosure, kind: BoxedKind = typeof boxedValue(prototype) as BoxedKind): void {
@@ -276,12 +285,15 @@ export function releaseObjectPrototype(budget: Budget): void {
   promisePrototypes.delete(budget);
   datePrototypes.delete(budget);
   arrayPrototypes.delete(budget);
+  functionPrototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
 }
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  if (budget !== undefined && isGuestClosure(value) && runResources.getStore()?.functionSourceText !== false)
+    return functionPrototypes.get(budget) ?? null;
   if (budget !== undefined && Array.isArray(value)) return arrayPrototypes.get(budget) ?? null;
   if (budget !== undefined && isSandboxDate(value)) return datePrototypes.get(budget) ?? null;
   if (budget !== undefined && isSandboxPromise(value)) return promisePrototypes.get(budget) ?? null;
@@ -322,8 +334,13 @@ export function getSandboxPropertyDescriptor(
     current !== null &&
     (Array.isArray(current) || isSandboxGenerator(current) || isSandboxDate(current) || isSandboxPromise(current) || isSandboxRegex(current) || isSandboxMap(current) || isSandboxSet(current) || isPrototypeRecord(current))
   ) {
-    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current) ? getGuestFunctionProperties(current)
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current)
+      ? key === "prototype" && current.construct !== undefined && current.boundTarget === undefined
+        ? materializeFunctionProperties(current) : getGuestFunctionProperties(current)
       : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
+    if (properties === undefined && isGuestClosure(current) && (key === "name" || key === "length"))
+      return { value: key === "name" ? current.name ?? "" : current.length ?? 0,
+        writable: false, enumerable: false, configurable: true };
     const descriptor =
       properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);
     if (descriptor !== undefined) return descriptor;

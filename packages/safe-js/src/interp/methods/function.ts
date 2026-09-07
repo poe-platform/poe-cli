@@ -52,7 +52,7 @@ export function getFunctionMember(
     } else if (Object.hasOwn(current, String(property))) {
       return (current as Record<string, SandboxValue>)[String(property)];
     }
-    if (isSandboxClosure(current) && !hasExplicitSandboxPrototype(current)) break;
+    if (isSandboxClosure(current) && !hasExplicitSandboxPrototype(current) && getSandboxPrototype(current, options.budget) === null) break;
     current = getSandboxPrototype(current, options.budget);
     if (current !== null) {
       options.budget?.visitNode();
@@ -81,7 +81,7 @@ function isFunctionMethodName(property: string | number): property is FunctionMe
   return typeof property === "string" && functionMethodNames.has(property as FunctionMethodName);
 }
 
-function callFunctionMethod(
+export function callFunctionMethod(
   target: SandboxValue,
   methodName: FunctionMethodName,
   args: readonly SandboxValue[],
