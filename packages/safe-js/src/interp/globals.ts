@@ -14,6 +14,7 @@ import { createFunctionPrototype } from "./globals/function.js";
 import { createGeneratorPrototypes } from "./globals/generator.js";
 import { createPromiseGlobals } from "./promise.js";
 import { createDateGlobal } from "./globals/date.js";
+import { createIteratorGlobal } from "./globals/iterator.js";
 import { createSymbolGlobal } from "./globals/symbol.js";
 import { createBigIntGlobal } from "./globals/bigint.js";
 import { createArrayBufferGlobal } from "./globals/array-buffer.js";
@@ -36,6 +37,7 @@ export function createBuiltinBindings(
     ...createErrorGlobals({ ...options, errorPrototypes: options.errorPrototypes !== false }),
     ...createMathGlobals({ random: options.random, budget: options.budget }),
     ...createObjectArrayGlobals(options),
+    Iterator: createIteratorGlobal(options.budget),
     Reflect: createReflectGlobal(options.budget),
     ArrayBuffer: createArrayBufferGlobal(options.budget),
     DataView: createDataViewGlobal(options.budget),

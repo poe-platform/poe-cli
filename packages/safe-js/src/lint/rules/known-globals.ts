@@ -17,6 +17,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "Infinity",
   "isFinite",
   "isNaN",
+  "Iterator",
   "JSON",
   "Map",
   ...Object.keys(numericTypedArrayConstructors),

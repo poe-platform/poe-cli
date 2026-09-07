@@ -152,6 +152,7 @@ describe("compile checkpoint hash compatibility", () => {
         BigInt64Array: { kind: "fn", name: "BigInt64Array" },
         BigUint64Array: { kind: "fn", name: "BigUint64Array" },
         Float16Array: { kind: "fn", name: "Float16Array" },
+        Iterator: { kind: "fn", name: "Iterator" },
         Reflect: {
           apply: { kind: "fn", name: "apply" },
           construct: { kind: "fn", name: "construct" },
