@@ -80,3 +80,30 @@ These are small local samples, not a stable performance guarantee or evidence
 that CI timeouts are resolved. Continue profiling the larger intrinsic-state
 and graph-traversal costs while monitoring the new release gate. No matching
 open GitHub issue was returned by the camera-timeout search.
+
+## Second optimization: realm-free prototype lookup
+
+The post-first-fix in-memory CPU profile still showed `getSandboxPrototype`
+among the hotspots (169 plus 28 self-samples); graph visiting and intrinsic
+retention remained larger. Inspection confirmed that after explicit links are
+checked, every default-prototype result requires a supplied budget/realm.
+Nevertheless, calls without that realm still classified buffer/view kinds.
+
+A focused regression reproduced four redundant view-brand checks for five
+realm-free values (one failure, two passing controls, 1.07s). Return null after
+the explicit-link check when no realm exists. Keep explicit links, including
+explicit null, and all realm-specific fallback behavior intact. This does not
+cache prototypes or alter graph measurement.
+
+Focused verification: 182 tests passed across nine files (9.59s), including
+intrinsic mutation tracking, explicit/prototype boundaries, data budgets,
+generator prototypes, Uint8Array persistence and all unchanged camera traces.
+
+TypeScript and ESLint passed. The same real harness passed after 70 uncached
+workspace build tasks (57.89s) and root stages; the new screenshot was inspected.
+The next two built-SDK camera rounds were axis 1963/1748ms, oblique 1564/1676ms,
+offset 1252/1186ms. All traces, step counts and peak-data measurements were
+unchanged. These samples do **not** establish an end-to-end speedup from this
+second change (aggregate 9389ms versus 8751ms in the preceding sample). Its
+verified improvement is eliminating unnecessary classification work. The CI
+timeout investigation remains open; pursue the larger accounting hotspots.

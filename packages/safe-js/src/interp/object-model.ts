@@ -328,6 +328,7 @@ export function releaseObjectPrototype(budget: Budget): void {
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  if (budget === undefined) return null;
   if (isSandboxArrayBuffer(value)) return budget === undefined ? null : arrayBufferPrototypes.get(budget) ?? null;
   if (isNumericTypedArray(value)) return budget === undefined ? null : typedArrayPrototypes.get(budget)?.get(typedArrayStorage(value).Native) ?? null;
   // Host transport records are data-only. Resolve their default prototype in
