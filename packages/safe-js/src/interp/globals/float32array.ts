@@ -263,6 +263,12 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
   setSandboxPrototype(prototype, shared);
   setSandboxPrototype(shared, getSandboxPrototype(Object.create(null), budget));
   const getters: SandboxClosure[] = [];
+  const species = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.species]", length: 0,
+    call: (_args, context) => context?.thisValue });
+  getters.push(species);
+  Object.defineProperty(materializeFunctionProperties(typedArray), Symbol.species, {
+    get: accessorAdapter(species, "get"), configurable: true
+  });
   for (const key of ["length", "byteLength", "byteOffset", "buffer"] as const) {
     const getter = createSandboxClosure({ guest: true, sandbox: true, name: `get ${key}`, length: 0,
       call: (_args, context) => {
@@ -275,7 +281,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
   for (const key of ["set", "slice", "subarray"])
-    Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget), writable: true, configurable: true });
+    Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
   Object.defineProperty(shared, "join", { writable: true, configurable: true,
@@ -331,7 +337,8 @@ export function isFloat32ArrayConstructor(value: unknown): boolean {
 export function getFloat32Member(
   value: Float32Array,
   property: string | number,
-  budget: Budget
+  budget: Budget,
+  defaultConstructor?: SandboxClosure
 ): SandboxValue {
   const key = String(property);
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -398,29 +405,65 @@ export function getFloat32Member(
         })();
       }
       return (async () => {
-        const release = retainValues(budget, () => [receiver, ...args]);
+        let candidate: SandboxValue;
+        let result: SandboxValue;
+        const release = retainValues(budget, () => [receiver, candidate, result, ...args]);
         try {
           const start = relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
           const end = args[1] === undefined ? storage.length
             : relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
           const length = Math.max(end - start, 0);
+          const layout = float32ViewLayouts.get(receiver);
+          const offset = (layout?.byteOffset ?? storage.byteOffset) + start * 4;
+          const tracking = layout !== undefined && layout.length === undefined && args[1] === undefined;
+          if (defaultConstructor !== undefined) {
+            candidate = await bridge.getProperty!(receiver, "constructor");
+            if (candidate !== undefined) {
+              if (candidate === null || typeof candidate !== "object")
+                throw new TypeError("TypedArray constructor must be an object.");
+              candidate = await bridge.getProperty!(candidate, Symbol.species);
+              if (candidate !== undefined && candidate !== null &&
+                  (!isSandboxClosure(candidate) || candidate.construct === undefined))
+                throw new TypeError("TypedArray species must be a constructor.");
+            }
+          }
+          if (candidate !== undefined && candidate !== null && candidate !== defaultConstructor) {
+            const values: SandboxValue[] = key === "slice" ? [length]
+              : [storage.buffer, offset, tracking ? undefined : length];
+            result = await invokeBuiltinClosure(candidate as SandboxClosure, values, budget, bridge, undefined, true);
+            if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
+            const target = float32Storage(result, key === "slice");
+            if (key === "slice" && target.length < length)
+              throw new TypeError("TypedArray species returned insufficient storage.");
+          }
           if (key === "subarray") {
-            const layout = float32ViewLayouts.get(receiver);
-            const offset = (layout?.byteOffset ?? storage.byteOffset) + start * 4;
-            const tracking = layout !== undefined && layout.length === undefined && args[1] === undefined;
-            const result = new Float32Array(storage.buffer, offset, tracking ? undefined : length);
-            if (arrayBufferOptions(storage.buffer) !== undefined)
-              float32ViewLayouts.set(result, { byteOffset: offset, ...(tracking ? {} : { length }) });
+            if (result === undefined) {
+              result = new Float32Array(storage.buffer, offset, tracking ? undefined : length);
+              if (arrayBufferOptions(storage.buffer) !== undefined)
+                float32ViewLayouts.set(result, { byteOffset: offset, ...(tracking ? {} : { length }) });
+            }
             return result;
           }
-          checkFloat32Allocation(length, budget);
-          const result = new Float32Array(length);
+          if (result === undefined) {
+            checkFloat32Allocation(length, budget);
+            result = new Float32Array(length);
+          }
+          if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
           if (length > 0) {
             const current = float32Storage(receiver, true);
+            const target = float32Storage(result, true);
             const count = Math.min(length, Math.max(current.length - start, 0));
-            if (count > 0) new Uint8Array(result.buffer).set(
-              new Uint8Array(current.buffer, current.byteOffset + start * 4, count * 4)
-            );
+            if (count > 0) {
+              const sourceBytes = new Uint8Array(current.buffer, current.byteOffset + start * 4, count * 4);
+              const targetBytes = new Uint8Array(target.buffer, target.byteOffset, count * 4);
+              if (current.buffer === target.buffer && targetBytes.byteOffset > sourceBytes.byteOffset &&
+                  targetBytes.byteOffset < sourceBytes.byteOffset + sourceBytes.length) {
+                for (let index = 0; index < sourceBytes.length; index++) {
+                  budget.visitNode();
+                  targetBytes[index] = sourceBytes[index]!;
+                }
+              } else targetBytes.set(sourceBytes);
+            }
           }
           return result;
         } finally { release(); }
