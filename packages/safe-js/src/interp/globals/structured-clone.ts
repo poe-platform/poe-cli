@@ -9,10 +9,11 @@ import { assertSandboxGraphDepth } from "../../graph-depth.js";
 import { CompileScope } from "../regex/compile-guard.js";
 import { retainValues } from "../resources.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
+import { sandboxString } from "../string-coercion.js";
 import {
   allocateProducedSandboxValue, cloneSandboxValue, cloneStructuredGraph, createSandboxClosure,
   isSandboxClosure, isSandboxMap, isSandboxPromise, isSandboxSet, reconcileCompiledValues,
-  type SandboxCallContext, type SandboxClosure, type SandboxValue
+  type SandboxCallContext, type SandboxClosure, type SandboxValue, type StructuredCloneRequest
 } from "../values.js";
 
 const transferBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "transfer")?.value;
@@ -83,7 +84,7 @@ function cloneStructuredValue(value: SandboxValue, transfers: ArrayBuffer[], bud
   const buffers = new WeakMap<ArrayBuffer, ArrayBuffer>();
   let clone: SandboxValue;
   const release = retainValues(budget, () => [value, clone, transfers]);
-  function* execute(): Generator<{ descriptor: PropertyDescriptor; receiver: SandboxValue }, SandboxValue, SandboxValue> {
+  function* execute(): Generator<StructuredCloneRequest, SandboxValue, SandboxValue> {
     try {
       let transferSize = 0;
       for (const buffer of transfers) {
@@ -140,9 +141,14 @@ function cloneStructuredValue(value: SandboxValue, transfers: ArrayBuffer[], bud
     let step: ReturnType<typeof iterator.next> = first;
     try {
       while (!step.done) {
-        const { descriptor, receiver } = step.value;
-        createDataCheckpoint(budget, context)(receiver, 0, true);
-        step = iterator.next(await readPropertyDescriptor(descriptor, receiver, context));
+        const request = step.value;
+        if ("stringValue" in request) {
+          createDataCheckpoint(budget, context)(request.stringValue, 0, true);
+          step = iterator.next(await sandboxString(request.stringValue, budget, context));
+        } else {
+          createDataCheckpoint(budget, context)(request.receiver, 0, true);
+          step = iterator.next(await readPropertyDescriptor(request.descriptor, request.receiver, context));
+        }
       }
       return step.value;
     } finally { iterator.return(undefined); }

@@ -10,6 +10,7 @@ export { getCollectionProperties } from "./collection-properties.js";
 export { getRegexProperties } from "./regexp-properties.js";
 import { retainedAccessorClosures } from "./accessors.js";
 import { retainValues } from "./resources.js";
+import { errorPrototypes } from "./error-prototypes.js";
 import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./collection-brands.js";
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
@@ -41,7 +42,7 @@ import {
 import { parseRegex, type RegexPattern } from "./regex/parse.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { sandboxErrorTypes } from "../error/shape.js";
-import { getGuestFunctionProperties, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
+import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
 import type { FunctionSource } from "../parse/function-source.js";
 import {
   copySandboxArgumentProperties,
@@ -556,10 +557,13 @@ export function allocateProducedSandboxValue(value: SandboxValue, budget: Budget
   return value;
 }
 
-/** Serialization pauses only for guest accessor reads; ordinary data stays synchronous. */
+export type StructuredCloneRequest = { descriptor: PropertyDescriptor; receiver: SandboxValue } | { stringValue: SandboxValue };
+const structuredCloneErrorNames = ["Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError"] as const;
+
+/** Serialization pauses for guest reads/coercion; ordinary data stays synchronous. */
 export function* cloneStructuredGraph(
   value: SandboxValue, state: CopyState<SandboxValue>, budget: Budget, depth = 0
-): Generator<{ descriptor: PropertyDescriptor; receiver: SandboxValue }, SandboxValue, SandboxValue> {
+): Generator<StructuredCloneRequest, SandboxValue, SandboxValue> {
   assertSandboxDataDepth(depth);
   budget.visitNode();
   if (typeof value === "symbol" || isSandboxClosure(value) || isSandboxPromise(value) ||
@@ -584,12 +588,32 @@ export function* cloneStructuredGraph(
   const copy = map ? createSandboxMap() : set ? createSandboxSet() : array ? new Array(value.length) as SandboxArray : createPlainObject(Object.getPrototypeOf(value) === null);
   state.seen.set(value, copy);
   const errorType = sandboxErrorTypes.get(value);
-  if (errorType !== undefined) sandboxErrorTypes.set(copy, errorType);
   let pending: unknown;
   let current: SandboxValue;
   const release = retainValues(budget, () => [value, copy, pending, current]);
   try {
-    if (map && isSandboxMap(copy)) {
+    if (errorType !== undefined) {
+      const nameDescriptor = getSandboxPropertyDescriptor(value, "name", budget);
+      current = nameDescriptor === undefined ? undefined : "value" in nameDescriptor ? nameDescriptor.value : yield {descriptor:nameDescriptor,receiver:value};
+      const name = structuredCloneErrorNames.find(name => name === current) ?? "Error";
+      const prototype = errorPrototypes.get(budget)?.get(name);
+      if (prototype !== undefined) setSandboxPrototype(copy, prototype, budget);
+      sandboxErrorTypes.set(copy, name);
+      const message = Object.getOwnPropertyDescriptor(value, "message");
+      if (message !== undefined && "value" in message) {
+        current = message.value;
+        current = yield {stringValue:current};
+        Object.defineProperty(copy, "message", {value:current,writable:true,configurable:true});
+      }
+      const stack = Object.getOwnPropertyDescriptor(value, "stack");
+      if (stack !== undefined && "value" in stack && typeof stack.value === "string")
+        Object.defineProperty(copy, "stack", {value:budget.allocateString(stack.value),writable:true,configurable:true});
+      const cause = Object.getOwnPropertyDescriptor(value, "cause");
+      if (cause !== undefined && "value" in cause) {
+        current = cause.value;
+        Object.defineProperty(copy, "cause", {value:yield* cloneStructuredGraph(current,state,budget,depth+1),writable:true,configurable:true});
+      }
+    } else if (map && isSandboxMap(copy)) {
       budget.allocateArrayLength(value.entries.size);
       budget.provisionDataUsage(value.entries.size * 3 + 1)();
       const entries = [...value.entries];
