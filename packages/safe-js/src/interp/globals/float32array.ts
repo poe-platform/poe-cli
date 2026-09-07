@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight", "map", "filter", "toLocaleString"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "reduce", "reduceRight", "map", "filter", "toLocaleString"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,18 +352,20 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "sort", "reduce", "reduceRight", "map", "filter", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
     name: key,
-    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" ? 1 : 2,
+    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "sort" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" ? 1 : 2,
     call: (args, context) => {
+      if (key === "sort" && args[0] !== undefined && !isSandboxClosure(args[0]))
+        throw new TypeError("TypedArray sort comparator must be callable.");
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const storage = float32Storage(receiver, key === "sort" || key === "reduce" || key === "reduceRight" || key === "map" || key === "filter" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
       if (key === "reverse") {
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
@@ -390,6 +392,64 @@ export function getFloat32Member(
         invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
           invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
       };
+      if (key === "sort") {
+        const comparator = args[0] as SandboxClosure | undefined;
+        if (storage.length < 2) return receiver;
+        return (async () => {
+          let items: Float32Array | undefined;
+          let scratch: Float32Array | undefined;
+          let comparisonResult: SandboxValue;
+          const release = retainValues(budget, () => [receiver, items, scratch, comparisonResult, ...args]);
+          const checkData = createDataCheckpoint(budget, bridge);
+          try {
+            checkFloat32Allocation(storage.length, budget);
+            items = new Float32Array(storage.length);
+            checkData(items, 0, true);
+            checkFloat32Allocation(storage.length, budget);
+            scratch = new Float32Array(storage.length);
+            checkData(scratch, 0, true);
+            for (let index = 0; index < storage.length; index++) {
+              budget.visitNode();
+              items[index] = receiver[index]!;
+            }
+            for (let width = 1; width < storage.length; width *= 2) {
+              for (let start = 0; start < storage.length; start += width * 2) {
+                const middle = Math.min(start + width, storage.length);
+                const end = Math.min(start + width * 2, storage.length);
+                let left = start;
+                let right = middle;
+                for (let output = start; output < end; output++) {
+                  budget.visitNode();
+                  let takeLeft = right === end;
+                  if (left < middle && right < end) {
+                    const a = items[left]!;
+                    const b = items[right]!;
+                    let order: number;
+                    if (comparator !== undefined) {
+                      comparisonResult = await invokeBuiltinClosure(comparator, [a, b], budget, bridge, undefined);
+                      order = await sandboxNumber(comparisonResult, budget, bridge);
+                      if (Number.isNaN(order)) order = 0;
+                    } else if (Number.isNaN(a)) order = Number.isNaN(b) ? 0 : 1;
+                    else if (Number.isNaN(b)) order = -1;
+                    else if (a === 0 && b === 0) order = Object.is(a, -0) ? Object.is(b, -0) ? 0 : -1 : Object.is(b, -0) ? 1 : 0;
+                    else order = a < b ? -1 : a > b ? 1 : 0;
+                    takeLeft = order <= 0;
+                  }
+                  scratch[output] = takeLeft ? items[left++]! : items[right++]!;
+                }
+              }
+              const previous: Float32Array = items;
+              items = scratch;
+              scratch = previous;
+            }
+            for (let index = 0; index < storage.length; index++) {
+              budget.visitNode();
+              receiver[index] = items[index]!;
+            }
+            return receiver;
+          } finally { release(); }
+        })();
+      }
       if (key === "toLocaleString") {
         return (async () => {
           let text = "";
