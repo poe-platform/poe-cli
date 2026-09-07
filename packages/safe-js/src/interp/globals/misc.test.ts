@@ -131,10 +131,11 @@ describe("createMiscGlobals", () => {
     const closure = createSandboxClosure({ call: () => undefined, name: "callback" });
     const promise = createSandboxPromise(Promise.resolve("done"));
 
-    expect(() => call(globals.structuredClone, closure)).toThrow(TypeError);
-    expect(() => call(globals.structuredClone, { nested: closure })).toThrow(TypeError);
-    expect(() => call(globals.structuredClone, promise)).toThrow(TypeError);
-    expect(() => call(globals.structuredClone, [promise])).toThrow(TypeError);
+    for (const value of [closure, { nested: closure }, promise, [promise]]) {
+      expect(() => call(globals.structuredClone, value)).toThrowError(
+        expect.objectContaining({ name: "DataCloneError", code: 25 })
+      );
+    }
   });
 
   it("charges budgets for cloned strings and arrays", () => {

@@ -534,7 +534,7 @@ export function deepCopyToSandbox(value: unknown): SandboxValue {
   });
 }
 
-export function cloneSandboxValue(value: SandboxValue, options: { compilation?: CompileScope; resetRegexLastIndex?: boolean; structuredClone?: boolean } = {}): SandboxValue {
+export function cloneSandboxValue(value: SandboxValue, options: { compilation?: CompileScope; resetRegexLastIndex?: boolean; structuredClone?: boolean; float32Buffers?: WeakMap<ArrayBuffer, ArrayBuffer> } = {}): SandboxValue {
   const initializeIterators: Array<() => void> = [];
   const copy = copyToSandbox(
     value,
