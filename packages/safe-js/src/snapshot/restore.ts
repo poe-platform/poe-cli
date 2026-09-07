@@ -35,6 +35,7 @@ import { functionSources } from "../parse/function-source.js";
 import { wrapCallerInjectedBindings, type CallerInjectedBinding } from "../interp/host-bridge.js";
 import { restoreSandboxCollectionIterator } from "../interp/collection-iterator.js";
 import { restoreSandboxArrayIterator } from "../interp/array-iterator.js";
+import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
 import type { SandboxObject } from "../interp/values.js";
 import { restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { wellKnownSymbols } from "../interp/symbols.js";
@@ -805,7 +806,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "bound-function") {
       initializeIntrinsicRealm(state);
@@ -875,6 +876,11 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       }, evaluateNode, environment?.homeObject, initializeGeneratorPrototype);
     } else value = serialized.kind === "guest-array" ? [] : Object.create(null) as Record<string, RuntimeSnapshotValue>;
     state.heapValueById.set(id, value);
+    if (serialized.kind === "string-iterator") {
+      const input = deserializeValue(serialized.input, state);
+      if (input !== undefined && typeof input !== "string") throw new TypeError("Invalid String iterator input.");
+      restoreSandboxStringIterator({ input, index: serialized.index }, value as SandboxObject);
+    }
     if (serialized.kind === "array-iterator") {
       const source = deserializeValue(serialized.source, state);
       if (source !== undefined && (typeof source !== "object" || source === null)) throw new TypeError("Invalid Array iterator source.");

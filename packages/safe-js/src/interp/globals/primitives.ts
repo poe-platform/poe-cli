@@ -5,7 +5,10 @@ import {
   type BoxedKind,
   type BoxedPrimitive
 } from "../boxed.js";
-import { installBoxedPrototype, materializeFunctionProperties, setSandboxPrototype } from "../object-model.js";
+import { installBoxedPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
+import { nextStringIterator, restoreSandboxStringIterator } from "../string-iterator.js";
+import { sandboxString } from "../string-coercion.js";
 import { getNumberMember, numberMethodNames } from "../methods/number.js";
 import { getStringMember, stringMethodNames } from "../methods/string.js";
 import {
@@ -101,6 +104,29 @@ export function createPrimitiveConstructor(
   }
   for (const [name, value] of methods)
     Object.defineProperty(prototype, name, { value, writable: true, configurable: true });
+  if (kind === "string") {
+    const iteratorPrototype: SandboxObject = Object.create(null);
+    setSandboxPrototype(iteratorPrototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
+    Object.defineProperties(iteratorPrototype, {
+      next: { value: createSandboxClosure({ guest: true, sandbox: true, name: "next", length: 0,
+        call: (_args, context) => nextStringIterator(context?.thisValue, budget)
+      }), writable: true, configurable: true },
+      [Symbol.toStringTag]: { value: "String Iterator", configurable: true }
+    });
+    registerBuiltinIdentities(budget, { "%StringIteratorPrototype%": iteratorPrototype });
+    registerIntrinsicObject(budget, iteratorPrototype);
+    Object.defineProperty(prototype, Symbol.iterator, { value: createSandboxClosure({
+      guest: true, sandbox: true, name: "[Symbol.iterator]", length: 0,
+      call: async (_args, context) => {
+        const receiver = context?.thisValue;
+        if (receiver === null || receiver === undefined) throw new TypeError("String iterator requires a receiver.");
+        const input = await sandboxString(receiver, budget, context);
+        const iterator = restoreSandboxStringIterator({ input, index: 0 });
+        setSandboxPrototype(iterator, iteratorPrototype, budget);
+        return iterator;
+      }
+    }), writable: true, configurable: true });
+  }
   installBoxedPrototype(budget, prototype, constructor);
   return constructor;
 }

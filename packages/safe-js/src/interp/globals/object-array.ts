@@ -897,7 +897,9 @@ async function arrayFromSandboxValues(
   let failure: unknown;
   const retained = {};
   budget.setRetainedValues(retained, () => [
-    items,
+    // Once acquired, a rooted protocol iterator owns the remaining input. Keep
+    // the original only for array-like reads or implicit unrooted iterators.
+    iterator?.retainedValue === undefined ? items : undefined,
     iteratorMethod,
     iterator?.retainedValue,
     mapFn,

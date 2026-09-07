@@ -6,6 +6,7 @@ import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity
 import { releaseObjectPrototype } from "../interp/object-model.js";
 import { isSandboxClosure } from "../interp/values.js";
 import { assertSnapshotDataDepth } from "../graph-depth.js";
+import { validateStringIteratorState } from "../interp/string-iterator.js";
 
 let intrinsicKinds: Map<string, boolean> | undefined;
 
@@ -72,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -128,6 +129,13 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     fields(node, ["kind", "id"], ["state"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
     if (Object.hasOwn(node, "state")) state(node.state);
+  } else if (node.kind === "string-iterator") {
+    fields(node, ["kind", "input", "index", "state"]);
+    const index = integer(node.index);
+    if (typeof node.input !== "string" && !absent(node.input))
+      throw new TypeError("Invalid String iterator state.");
+    validateStringIteratorState({ input: typeof node.input === "string" ? node.input : undefined, index });
+    state(node.state);
   } else if (node.kind === "array-iterator") {
     fields(node, ["kind", "source", "index", "method", "state"]);
     integer(node.index);

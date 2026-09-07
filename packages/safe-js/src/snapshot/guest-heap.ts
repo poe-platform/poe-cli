@@ -14,6 +14,7 @@ import { isSandboxDate } from "../interp/date.js";
 import { isSandboxCollectionIterator } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
+import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments } from "../interp/values.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -32,6 +33,7 @@ export type GuestObjectState<T> = {
 
 export type GuestHeapNode<T> =
   | { kind: "module-namespace"; entries: Array<[string,T]> }
+  | { kind: "string-iterator"; input: T; index: number; state: GuestObjectState<T> }
   | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
@@ -62,6 +64,10 @@ export type GuestHeapNode<T> =
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
   if (isSandboxModuleNamespace(value))
     return {kind:"module-namespace",entries:Object.keys(value).map(key => [key,encode(value[key])])};
+  if (isSandboxStringIterator(value)) {
+    const cursor = stringIteratorState(value);
+    return { kind: "string-iterator", input: encode(cursor.input), index: cursor.index, state: captureObjectState(value, encode)! };
+  }
   if (isRawJson(value)) return { kind: "raw-json", text: value.rawJSON };
   const intrinsic = getIntrinsicIdentity(value);
   if (intrinsic !== undefined) {

@@ -21,7 +21,7 @@ import { awaitSandboxValue, awaitWithSignal } from "./cancel.js";
 import { HostCallResumabilityError } from "./host-call.js";
 import { suspendJob } from "./jobs.js";
 import { invokeBuiltinClosure } from "./builtin-call.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype } from "./object-model.js";
+import { getBoxedPrototype, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype } from "./object-model.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
 import { readPropertyDescriptor } from "./accessors.js";
 
@@ -86,7 +86,9 @@ export async function acquireSandboxIterator(
     return asyncProtocol
       ? getSandboxAsyncIterator(value, budget, context, signal)
       : getSandboxIterator(value, budget, context);
-  if (getSandboxPropertyDescriptor(value, key, budget) === undefined &&
+  const lookupTarget = value !== undefined && value !== null && typeof value !== "object"
+    ? getBoxedPrototype(value, budget) : value;
+  if (getSandboxPropertyDescriptor(lookupTarget, key, budget) === undefined &&
       !(isSandboxRegExpIterator(value) && !asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)) {
     if (isSandboxGenerator(value)) {
       if (!hasExplicitSandboxPrototype(value) && (value.async === true) === asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)

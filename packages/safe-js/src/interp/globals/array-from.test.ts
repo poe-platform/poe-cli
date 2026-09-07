@@ -123,9 +123,11 @@ describe("Array.from construction", () => {
   });
 
   it("does not double-charge a retained string input", async () => {
-    expect(await run("return Array.from('x'.repeat(400)).length", {
-      budget: new Budget({ dataSize: 1500 })
-    })).toMatchObject({ ok: true, returnValue: 400 });
+    // Keep the same payload/budget ratio while allowing the fixed cost of the
+    // exposed String Iterator prototype graph. A duplicate input still fails.
+    expect(await run("return Array.from('x'.repeat(1000)).length", {
+      budget: new Budget({ dataSize: 3750 })
+    })).toMatchObject({ ok: true, returnValue: 1000 });
   });
 
   it.each(["undefined", "null", "false", "0", "''"])("preserves a falsey mapper throw through failing cleanup: %s", async (reason) => {

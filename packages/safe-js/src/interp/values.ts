@@ -15,6 +15,7 @@ import { errorPrototypes } from "./error-prototypes.js";
 import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./collection-brands.js";
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
+import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
@@ -569,7 +570,7 @@ export function* cloneStructuredGraph(
   budget.visitNode();
   if (typeof value === "symbol" || isSandboxModuleNamespace(value) || isSandboxClosure(value) || isSandboxPromise(value) ||
       isSandboxGenerator(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value) ||
-      isSandboxArrayIterator(value) || isSandboxArguments(value))
+      isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
   if (isLiveCapability(value)) throw new DOMException("Capabilities cannot be structured cloned.", "DataCloneError");
@@ -766,6 +767,7 @@ export function measureSandboxData(
       return;
     }
     if (isSandboxArrayIterator(value)) visit(arrayIteratorState(value).source, depth + 1);
+    if (isSandboxStringIterator(value)) visit(stringIteratorState(value).input, depth + 1);
     if (isSandboxRegExpIterator(value)) {
       const state = regexpIteratorState(value);
       visit(state.matcher, depth + 1);
@@ -1016,7 +1018,7 @@ function copyToSandbox(
     return value;
   }
 
-  if (isSandboxArrayIterator(value)) {
+  if (isSandboxArrayIterator(value) || isSandboxStringIterator(value)) {
     if (!cloneSandboxCollections) return value;
     throw new TypeError("Array iterators require a portable guest snapshot, not a data copy.");
   }
@@ -1521,7 +1523,7 @@ function copyFromSandbox(
   if (isSandboxGenerator(value)) {
     throw new TypeError("Sandbox generators cannot cross into host values.");
   }
-  if (isSandboxArrayIterator(value)) throw new TypeError("Sandbox Array iterators cannot cross into host values.");
+  if (isSandboxArrayIterator(value) || isSandboxStringIterator(value)) throw new TypeError("Sandbox iterators cannot cross into host values.");
 
   if (isSandboxCollectionIterator(value)) {
     throw new TypeError("Sandbox collection iterators cannot cross into host values.");
