@@ -25,6 +25,7 @@ import {
 
 const guestClosures = new WeakSet<object>();
 const functionProperties = new WeakMap<object, SandboxObject>();
+const functionPropertyRevisions = new WeakMap<object, { revision: number }>();
 const prototypes = new WeakMap<object, object | null>();
 const intrinsicPrototypes = new WeakMap<Budget, SandboxObject>();
 const boxedPrototypes = new WeakMap<Budget, Map<BoxedKind, SandboxObject>>();
@@ -73,9 +74,24 @@ export function materializeFunctionProperties(closure: SandboxClosure): SandboxO
     descriptorObjects.add(prototype);
     Object.defineProperty(properties, "prototype", { value: prototype, writable: true });
   }
-  descriptorObjects.add(properties);
-  functionProperties.set(closure, properties);
-  return properties;
+  // Never expose the raw table: native callers must invalidate captures too.
+  const state = { revision: 0 };
+  const tracked = new Proxy(properties, {
+    defineProperty(target, key, descriptor) {
+      const changed = Reflect.defineProperty(target, key, descriptor);
+      if (changed) state.revision++;
+      return changed;
+    },
+    deleteProperty(target, key) {
+      const changed = Reflect.deleteProperty(target, key);
+      if (changed) state.revision++;
+      return changed;
+    }
+  });
+  functionPropertyRevisions.set(tracked, state);
+  descriptorObjects.add(tracked);
+  functionProperties.set(closure, tracked);
+  return tracked;
 }
 
 export function getGuestFunctionProperty(closure: SandboxClosure, key: PropertyKey): SandboxValue {
@@ -229,6 +245,9 @@ function trackIntrinsicState(
     }))
     .map((record) => ({
       ...record,
+      revision: functionPropertyRevisions.get(record.value),
+      capturedRevision: -1,
+      captured: [] as unknown[],
       extensible: Object.isExtensible(record.value),
       descriptors: new Map(Reflect.ownKeys(record.value).map(key => [key, Object.getOwnPropertyDescriptor(record.value, key)!]))
     }));
@@ -261,14 +280,21 @@ function trackIntrinsicState(
   budget.setRetainedValues(root, () => {
     // Capture every change before measurement invokes retained-value callbacks.
     const retained: unknown[] = [];
-    for (const { target, value, descriptors, prototype: parent } of records) {
+    for (const record of records) {
+      const { target, value, descriptors, prototype: parent, revision } = record;
       const currentPrototype = getSandboxPrototype(target);
       if (currentPrototype !== parent) retained.push(currentPrototype);
-      for (const key of Reflect.ownKeys(value)) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-        if (unchanged(descriptors.get(key), descriptor)) continue;
-        retained.push(key, descriptor.value, ...retainedAccessorClosures(descriptor));
+      if (revision === undefined || revision.revision !== record.capturedRevision) {
+        const captured: unknown[] = [];
+        for (const key of Reflect.ownKeys(value)) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+          if (unchanged(descriptors.get(key), descriptor)) continue;
+          captured.push(key, descriptor.value, ...retainedAccessorClosures(descriptor));
+        }
+        record.captured = captured;
+        record.capturedRevision = revision?.revision ?? -1;
       }
+      for (const item of record.captured) retained.push(item);
     }
     return retained;
   });

@@ -4,6 +4,37 @@ import { accessorAdapter } from "./accessors.js";
 import { materializeFunctionProperties, registerIntrinsicObject, releaseObjectPrototype, setSandboxPrototype } from "./object-model.js";
 import { createSandboxClosure, measureSandboxData, type SandboxObject } from "./values.js";
 
+it("reuses unchanged function descriptor captures and observes native table writes", () => {
+  const budget = new Budget();
+  const method = createSandboxClosure({ guest: true, name: "method", call: () => undefined });
+  const properties = materializeFunctionProperties(method);
+  registerIntrinsicObject(budget, { method });
+  properties.extra = { nested: "initial" };
+  const first = measureSandboxData(budget.retainedValues());
+  const descriptor = vi.spyOn(Object, "getOwnPropertyDescriptor");
+  try {
+    expect(measureSandboxData(budget.retainedValues())).toBe(first);
+    const tableReads = descriptor.mock.calls.filter(([target]) => target === properties).length;
+    expect(tableReads).toBe(0);
+    (properties.extra as SandboxObject).nested = "x".repeat(100);
+    expect(measureSandboxData(budget.retainedValues())).toBe(first + 93);
+    properties.extra = "replacement";
+    expect([...budget.retainedValues()]).toEqual(["extra", "replacement"]);
+    Object.defineProperty(properties, "extra", { value: "defined" });
+    expect([...budget.retainedValues()]).toEqual(["extra", "defined"]);
+    delete properties.extra;
+    expect([...budget.retainedValues()]).toEqual([]);
+    const key = Symbol("host");
+    properties[key] = "symbol";
+    expect([...budget.retainedValues()]).toEqual([key, "symbol"]);
+    Object.freeze(properties);
+    expect([...budget.retainedValues()]).toContain("symbol");
+  } finally {
+    descriptor.mockRestore();
+    releaseObjectPrototype(budget);
+  }
+});
+
 it("captures intrinsic changes without nested flattening allocations", () => {
   const budget = new Budget();
   const method = createSandboxClosure({ guest: true, name: "method", call: () => undefined });
@@ -21,6 +52,51 @@ it("captures intrinsic changes without nested flattening allocations", () => {
     flatten.mockRestore();
     releaseObjectPrototype(budget);
   }
+});
+
+it("invalidates native accessor and flag changes without invoking accessors", () => {
+  const budget = new Budget();
+  const method = createSandboxClosure({ guest: true, name: "method", call: () => undefined });
+  const properties = materializeFunctionProperties(method);
+  registerIntrinsicObject(budget, { method });
+  const call = vi.fn(() => undefined);
+  const getter = createSandboxClosure({ guest: true, call, retainedValues: () => ["captured"] });
+  try {
+    expect([...budget.retainedValues()]).toEqual([]);
+    Object.defineProperty(properties, "name", { enumerable: true });
+    expect([...budget.retainedValues()]).toEqual(["name", "method"]);
+    Object.defineProperty(properties, "name", { enumerable: false });
+    expect([...budget.retainedValues()]).toEqual([]);
+    Object.defineProperty(properties, "extra", { get: accessorAdapter(getter, "get"), configurable: true });
+    expect([...budget.retainedValues()]).toEqual(["extra", undefined, getter]);
+    expect(measureSandboxData(budget.retainedValues())).toBeGreaterThan(7);
+    const parent = { retained: "parent" };
+    setSandboxPrototype(method, parent, budget);
+    expect([...budget.retainedValues()]).toContain(parent);
+    Object.preventExtensions(properties);
+    expect(Reflect.defineProperty(properties, "missing", { value: "not retained" })).toBe(false);
+    expect([...budget.retainedValues()]).not.toContain("not retained");
+    expect(call).not.toHaveBeenCalled();
+  } finally { releaseObjectPrototype(budget); }
+});
+
+it("captures cached function mutations before callbacks and refreshes on the next measurement", () => {
+  const budget = new Budget();
+  const method = createSandboxClosure({ guest: true, name: "method", call: () => undefined });
+  const properties = materializeFunctionProperties(method);
+  const root: SandboxObject = { method };
+  registerIntrinsicObject(budget, root);
+  properties.later = "initial";
+  // Populate the descriptor capture before another retained value mutates it.
+  expect([...budget.retainedValues()]).toEqual(["later", "initial"]);
+  root.first = createSandboxClosure({ call: () => undefined, retainedValues: () => {
+    properties.later = "z".repeat(100);
+    return [];
+  } });
+  try {
+    expect(measureSandboxData(budget.retainedValues())).toBe(18);
+    expect(measureSandboxData(budget.retainedValues())).toBe(111);
+  } finally { releaseObjectPrototype(budget); }
 });
 
 it("captures all intrinsic changes before retained callbacks mutate later values", () => {

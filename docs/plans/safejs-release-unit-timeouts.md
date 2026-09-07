@@ -62,3 +62,29 @@ The next isolated allocation improvement is recorded in
 `safejs-float32-metadata-accounting.md`. It avoids numeric-element descriptor
 allocation during metadata inspection, but its profile share is small; keep the
 camera timeout investigation open after delivering that improvement.
+
+## Recurrence after generator property delivery
+
+CLI release 34074441829 for 3b1704e41 failed the same five-second inverse-camera
+test in fresh shared units: 34,221 passes, one failure, 42 skips. Receipt:
+`/tmp/poe-safejs-generator-properties-cli-release-failed.log`. Scoped SafeJS
+0.1.299 published successfully. The preceding 74ceb0229 CLI run did pass and
+published poe-code 14.0.79, so that single green run did not establish reliability.
+
+The next investigation selected revision-tracked guest-function property storage. Unlike raw
+intrinsic objects, these tables are created privately by materializeFunctionProperties;
+a transparent internal mutation-tracking proxy could observe every subsequent
+write, including native host writes through the exported table reference. Cache
+only descriptor-derived retained lists while their table revision is unchanged;
+continue visiting referenced mutable values and checking prototype changes on
+every measurement. Keep raw untracked objects on the existing scan path and
+preserve duplicate-root accounting rather than changing budget units. This is
+the scope of `safejs-function-retention-accounting.md`. The implemented candidate
+passes 87 focused tests plus lint/typechecking and the selected native ESM build.
+Isolated built inverse-camera timings improved from 2,223/2,037/2,122 ms to
+1,678/1,627/1,618 ms with unchanged 11,558 steps and 7,123 peak retained units.
+Full qualification passed 17,444 tests with 41 declared skips and the two
+explicit unresolved-file exclusions. The actual harness and viewed screenshot
+also passed after 70 uncached root build tasks. Keep the CI
+timeout open until publication evidence supports reliability; local timing alone
+does not establish that.
