@@ -862,19 +862,25 @@ export function measureSandboxData(
       return;
     }
 
-    // Retained callbacks may mutate later properties while their values are visited.
-    const descriptors: Array<readonly [string, PropertyDescriptor]> = [];
-    for (const key of Object.getOwnPropertyNames(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor !== undefined) descriptors.push([key, descriptor]);
-    }
+    // Capture values before any retained callback can mutate later properties.
+    // Plain transport records do not charge hidden fields. Preserve proxy trap
+    // ordering, including managed-state changes during descriptor capture.
+    const proxyKeys = nodeTypes.isProxy(value) ? Object.getOwnPropertyNames(value) : undefined;
+    const proxyDescriptors = proxyKeys?.map(key => Object.getOwnPropertyDescriptor(value,key));
     const includeNonEnumerable = isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
-    for (const [key, descriptor] of descriptors) {
+    const keys = proxyKeys ?? (includeNonEnumerable ? Object.getOwnPropertyNames(value) : Object.keys(value));
+    const retained: unknown[] = [];
+    for (let index = 0; index < keys.length; index++) {
+      const key = keys[index]!;
+      const descriptor = proxyDescriptors === undefined
+        ? Object.getOwnPropertyDescriptor(value,key) : proxyDescriptors[index];
+      if (descriptor === undefined) continue;
       if (!descriptor.enumerable && !includeNonEnumerable) continue;
       usage += 1 + key.length;
-      if ("value" in descriptor) visit(descriptor.value, depth + 1);
-      else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
+      if ("value" in descriptor) retained.push(descriptor.value);
+      else for (const closure of retainedAccessorClosures(descriptor)) retained.push(closure);
     }
+    for (const entry of retained) visit(entry, depth + 1);
   };
 
   for (const value of values) visit(value);
