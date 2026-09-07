@@ -3,6 +3,7 @@ import type { AsyncLocalStorage } from "node:async_hooks";
 import type { RunResult, RunSnapshot } from "../run.js";
 import { serializeSafeJSSnapshot } from "./dump-format.js";
 import { SandboxError } from "../interp/budget.js";
+import { SnapshotNotReadyError } from "./not-ready.js";
 
 const RUN_DUMP_CONTROLLER = Symbol("SafeJS.run-dump-controller");
 
@@ -181,6 +182,7 @@ export function createDumpController(lifecycle?: RunLifecycle): DumpController {
     try {
       settlePendingRequest(serializeRunSnapshot(snapshot));
     } catch (error) {
+      if (!finished && error instanceof SnapshotNotReadyError) return;
       pendingRequest?.reject(error);
       pendingRequest = undefined;
     }

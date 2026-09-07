@@ -46,6 +46,8 @@ import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { createPendingPromiseCapability, attachPendingPromiseReaction, createPromiseAdoptionBridge, createPromiseAggregateHandler } from "../interp/promise.js";
 import { promiseAggregateStates, promiseAggregateEntries, linkPromiseAggregateProducer, type PromiseAggregateState } from "../interp/promise-continuations.js";
 import { createPromiseCapabilityExecutor } from "../interp/promise.js";
+import { createThenableBridge } from "../interp/promise.js";
+import { thenableContinuations } from "../interp/promise-continuations.js";
 import type { PromiseCapabilityExecutorState } from "../interp/promise-continuations.js";
 import { promiseAdoptionBridges, promiseContinuations, type PromiseContinuation } from "../interp/promise-continuations.js";
 import { SandboxJobQueue } from "../interp/jobs.js";
@@ -166,6 +168,7 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
+  thenableBridges: Map<number, ReturnType<typeof createThenableBridge>>;
   constructionEnvironments: Map<number, NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]>>;
   promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue;
     aggregate?: SandboxPromise;
@@ -227,6 +230,7 @@ export function restore(
     const state: RestoreState = {
       promiseReactionRecords: new Map(),
       constructionEnvironments: new Map(),
+      thenableBridges: new Map(),
       promiseReactionOrders: new Map(),
       pendingCapabilities: new WeakMap(),
       guestScopes: new Map(),
@@ -474,6 +478,35 @@ function restoreParentScope(scopeId: SnapshotId, state: RestoreState): Scope {
   }
 
   throw new Error(`Snapshot references unknown scope ${String(scopeId)}.`);
+}
+
+function restoreThenableBridge(value: SerializedSnapshotValue, state: RestoreState): ReturnType<typeof createThenableBridge> {
+  const ref = value as SerializedReferenceValue;
+  const serialized = ref?.kind === "ref" ? state.heap[String(ref.id)] : undefined;
+  if (serialized?.kind !== "thenable-state") throw new TypeError("Invalid thenable state reference.");
+  const existing = state.thenableBridges.get(ref.id);
+  if (existing !== undefined) return existing;
+  const bridge = createThenableBridge({source: undefined, owner: undefined, completed: serialized.completed,
+    invocationPending: false, settlement: undefined}, {budget: state.budget});
+  state.thenableBridges.set(ref.id, bridge);
+  state.initializeIterators.push(() => {
+    const source = deserializeValue(serialized.source, state) as SandboxValue;
+    const owner = deserializeValue(serialized.owner, state);
+    if (owner !== undefined && !isSandboxPromise(owner)) throw new TypeError("Invalid thenable owner.");
+    Object.assign(bridge.state, {source, owner, settlement: serialized.settlement === undefined ? undefined : {
+      state: serialized.settlement.state, value: deserializeValue(serialized.settlement.value, state)
+    }});
+    if (owner !== undefined && !bridge.state.completed) {
+      const capability = state.pendingCapabilities.get(owner);
+      const continuation = promiseContinuations.get(owner);
+      if (capability === undefined || continuation?.kind !== "capability") throw new TypeError("Invalid thenable owner capability.");
+      thenableContinuations.set(owner, bridge.state);
+      continuation.state.settled = true;
+      continuation.resolution = {status: "fulfilled", value: source};
+      capability.fulfill(bridge.promise);
+    }
+  });
+  return bridge;
 }
 
 function restoreConstructionEnvironment(value: SerializedSnapshotValue, state: RestoreState): NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]> {
@@ -909,6 +942,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
 
   if (serialized.kind === "scope-frame") throw new TypeError("Internal scopes cannot be guest data.");
   if (serialized.kind === "construction-environment") throw new TypeError("Internal construction environments cannot be guest data.");
+  if (serialized.kind === "thenable-state") throw new TypeError("Internal thenable states cannot be guest data.");
   if (serialized.kind === "guest-generator") {
     const generator = restoreGuestGenerator(serialized, state);
     state.heapValueById.set(id, generator);
@@ -986,9 +1020,12 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "capability-executor") {
+    if (serialized.kind === "thenable-resolver") {
+      const bridge = restoreThenableBridge(serialized.continuation, state);
+      value = bridge.resolvers[serialized.action === "fulfilled" ? 0 : 1];
+    } else if (serialized.kind === "capability-executor") {
       const executorState: PromiseCapabilityExecutorState = {resolve: undefined, reject: undefined};
       value = createPromiseCapabilityExecutor(executorState);
       state.initializeIterators.push(() => {
@@ -1018,6 +1055,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       state.initializeIterators.push(() => {
         if (serialized.kind === "pending-promise" && serialized.adoption !== undefined)
           deserializeValue(serialized.adoption, state);
+        if (serialized.kind === "pending-promise" && serialized.thenable !== undefined)
+          restoreThenableBridge(serialized.thenable, state);
         if (serialized.kind === "promise-reaction") {
           const source = deserializeValue(serialized.source, state);
           if (!isSandboxPromise(source)) throw new TypeError("Invalid promise reaction source.");

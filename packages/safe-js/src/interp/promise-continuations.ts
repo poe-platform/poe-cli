@@ -1,5 +1,18 @@
 import type { SandboxClosure, SandboxObject, SandboxPromise, SandboxValue } from "./values.js";
 
+export type ThenableContinuation = {
+  source: SandboxValue;
+  owner: SandboxPromise | undefined;
+  settlement: {state: "fulfilled" | "rejected"; value: SandboxValue} | undefined;
+  completed: boolean;
+  invocationPending: boolean;
+};
+export const thenableContinuations = new WeakMap<SandboxPromise, ThenableContinuation>();
+export const thenableStates = new WeakMap<object, ThenableContinuation>();
+export const thenableResolvers = new WeakMap<SandboxClosure, {
+  continuation: ThenableContinuation; action: "fulfilled" | "rejected"
+}>();
+
 export type PromiseCapabilityExecutorState = {resolve: SandboxValue; reject: SandboxValue};
 export const promiseCapabilityExecutors = new WeakMap<SandboxClosure, PromiseCapabilityExecutorState>();
 

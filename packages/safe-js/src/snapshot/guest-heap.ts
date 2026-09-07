@@ -23,6 +23,8 @@ import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
 import { promiseContinuations, promiseReactionResults, promiseProducers, promiseAdoptions, promiseAdoptionBridges, promiseAdoptionResolvers } from "../interp/promise-continuations.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
+import { thenableStates, thenableResolvers, thenableContinuations } from "../interp/promise-continuations.js";
+import { SnapshotNotReadyError } from "./not-ready.js";
 import { promiseCapabilityExecutors } from "../interp/promise-continuations.js";
 import { promiseAggregateStates, promiseAggregateEntries, promiseAggregateHandlers, type PromiseAggregateState } from "../interp/promise-continuations.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
@@ -48,6 +50,8 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | {kind: "thenable-state"; source: T; owner: T; completed: boolean; settlement?: {state: "fulfilled" | "rejected"; value: T}}
+  | {kind: "thenable-resolver"; continuation: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T>}
   | { kind: "construction-environment"; constructor: T; newTarget: T; prototype: T; thisValue: T; thisScope: T; initialized: boolean }
   | { kind: "capability-executor"; resolve: T; reject: T; state: GuestObjectState<T> }
   | { kind: "promise-aggregate"; method: PromiseAggregateState["method"]; capability: {promise: T; resolve: T; reject: T}; values: T; remaining: number; size: number; iteration: "complete" | "abrupt" }
@@ -56,7 +60,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
   | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; producers?: T[]; state: GuestObjectState<T> }
   | { kind: "promise-resolver"; promise: T; action?: "fulfilled" | "rejected"; state: GuestObjectState<T> }
-  | { kind: "pending-promise"; adoption?: T; reactions: T[]; producers?: T[]; state: GuestObjectState<T> }
+  | { kind: "pending-promise"; adoption?: T; thenable?: T; reactions: T[]; producers?: T[]; state: GuestObjectState<T> }
   | { kind: "promise-adoption"; owner: T; source: T }
   | { kind: "adoption-resolver"; bridge: T; action: "fulfilled" | "rejected" }
   | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; producers?: T[];
@@ -127,6 +131,16 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   const aggregateHandler = isSandboxClosure(value) ? promiseAggregateHandlers.get(value) : undefined;
   if (aggregateHandler !== undefined)
     return {kind: "aggregate-handler", entry: encode(aggregateHandler.entry), action: aggregateHandler.action, state: captureObjectState(value, encode)!};
+  const thenable = thenableStates.get(value);
+  if (thenable !== undefined) {
+    if (thenable.invocationPending || (!thenable.completed && thenable.settlement !== undefined))
+      throw new SnapshotNotReadyError("Cannot serialize an active thenable invocation or settlement.");
+    return {kind: "thenable-state", source: encode(thenable.source), owner: encode(thenable.owner), completed: thenable.completed,
+      ...(thenable.settlement === undefined ? {} : {settlement: {state: thenable.settlement.state, value: encode(thenable.settlement.value)}})};
+  }
+  const thenableResolver = isSandboxClosure(value) ? thenableResolvers.get(value) : undefined;
+  if (thenableResolver !== undefined) return {kind: "thenable-resolver", continuation: encode(thenableResolver.continuation),
+    action: thenableResolver.action, state: captureObjectState(value, encode)!};
   const bridge = promiseAdoptionBridges.get(value);
   if (bridge !== undefined) {
     if (bridge.settled || bridge.owner === undefined) return undefined;
@@ -158,6 +172,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     if (unrepresentedPromiseContinuations.has(value))
       throw new TypeError("Cannot serialize host reference: unrepresented promise continuation.");
     if (continuation?.kind === "capability") {
+      const thenable = thenableContinuations.get(value);
+      if (continuation.state.settled && thenable !== undefined && !thenable.completed && thenable.owner === value)
+        return {kind: "pending-promise", thenable: encode(thenable), ...producerState,
+          reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
       const adoption = promiseAdoptions.get(value);
       const bridge = adoption === undefined ? undefined : promiseAdoptionBridges.get(adoption);
       if (continuation.state.settled && (bridge === undefined || bridge.settled || bridge.owner !== value ||

@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -84,7 +84,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
+    const target = reference(value, ["thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
@@ -160,7 +160,27 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "construction-environment") {
+  if (node.kind === "thenable-state") {
+    fields(node, ["kind", "source", "owner", "completed"], ["settlement"]);
+    reference(node.source);
+    if (!absent(node.owner)) {
+      const owner = reference(node.owner, ["pending-promise", "promise-reaction", "guest-promise"]);
+      if (node.completed === false && (owner.kind !== "pending-promise" || owner.thenable === undefined ||
+          reference(owner.thenable, ["thenable-state"]) !== node)) throw new TypeError("Invalid thenable owner linkage.");
+    }
+    if (typeof node.completed !== "boolean" || node.completed !== Object.hasOwn(node, "settlement"))
+      throw new TypeError("Invalid thenable settlement phase.");
+    if (node.settlement !== undefined) {
+      const settlement = record(node.settlement);
+      fields(settlement, ["state", "value"]);
+      if (settlement.state !== "fulfilled" && settlement.state !== "rejected") throw new TypeError("Invalid thenable settlement status.");
+    }
+  } else if (node.kind === "thenable-resolver") {
+    fields(node, ["kind", "continuation", "action", "state"]);
+    reference(node.continuation, ["thenable-state"]);
+    if (node.action !== "fulfilled" && node.action !== "rejected") throw new TypeError("Invalid thenable resolver action.");
+    state(node.state);
+  } else if (node.kind === "construction-environment") {
     fields(node, ["kind", "constructor", "newTarget", "prototype", "thisValue", "thisScope", "initialized"]);
     const owner = reference(node.constructor, ["guest-class"]);
     callable(node.newTarget);
@@ -239,7 +259,12 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       throw new TypeError("Invalid promise resolver action.");
     state(node.state);
   } else if (node.kind === "pending-promise" || node.kind === "promise-reaction") {
-    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "producers"] : ["capability", "aggregate", "producers"]);
+    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "thenable", "producers"] : ["capability", "aggregate", "producers"]);
+    if (node.kind === "pending-promise" && Object.hasOwn(node, "thenable")) {
+      const continuation = reference(node.thenable, ["thenable-state"]);
+      if (Object.hasOwn(node, "adoption") || continuation.completed !== false || reference(continuation.owner) !== node)
+        throw new TypeError("Invalid thenable promise owner.");
+    }
     if (node.kind === "pending-promise" && Object.hasOwn(node, "adoption")) {
       const bridge = reference(node.adoption, ["promise-adoption"]);
       if (reference(bridge.owner, ["pending-promise"]) !== node) throw new TypeError("Invalid promise adoption owner.");

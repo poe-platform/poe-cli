@@ -206,7 +206,8 @@ function validateDumpReferences(
   heap: Record<string, unknown>,
   role: "root" | "heap" | "heap-node" | "scope-map" | "expressions" | "expression" | "function-environment" | "data" = "data",
   allowScopeReference = false,
-  allowConstructionReference = false
+  allowConstructionReference = false,
+  allowThenableReference = false
 ): void {
   if (value === null || typeof value !== "object") return;
   if (depth > state.limits.maxDepth)
@@ -226,6 +227,8 @@ function validateDumpReferences(
       fail("invalidValue", path, "Internal scopes cannot be guest data");
     if ((heap[String(id)] as Record<string, unknown>).kind === "construction-environment" && !allowConstructionReference)
       fail("invalidValue", path, "Internal construction environments cannot be guest data");
+    if ((heap[String(id)] as Record<string, unknown>).kind === "thenable-state" && !allowThenableReference)
+      fail("invalidValue", path, "Internal thenable states cannot be guest data");
   }
   for (const [key, entry] of Object.entries(record)) {
     const childRole = role === "root" && key === "heap" ? "heap" : role === "heap" ? "heap-node"
@@ -242,7 +245,9 @@ function validateDumpReferences(
       (record.kind === "guest-generator" && ["scope", "closureScope", "suspendedScope"].includes(key))
     );
     validateDumpReferences(entry, `${path}${formatKey(key)}`, depth + 1, state, heapIds, heap, childRole, scopeField,
-      role === "function-environment" && key === "construction");
+      role === "function-environment" && key === "construction",
+      role === "heap-node" && ((record.kind === "thenable-resolver" && key === "continuation") ||
+        (record.kind === "pending-promise" && key === "thenable")));
   }
 }
 
