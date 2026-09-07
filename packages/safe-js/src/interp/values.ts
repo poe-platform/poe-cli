@@ -950,7 +950,7 @@ function copyToSandbox(
   }
 
   if (typeof value === "object" && value !== null && hasGuestObjectState(value) &&
-      !(state.structuredClone && (isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || isNumericTypedArray(value)))) {
+      !(state.structuredClone && (isPlainObject(value) || isPlainArray(value) || isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || isNumericTypedArray(value)))) {
     throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
   }
 
@@ -1144,7 +1144,7 @@ function copyToSandbox(
     const copy = new Array(value.length) as SandboxArray;
     state.seen.set(value, copy);
 
-    for (const entry of getEnumerableArrayEntries(value, path)) {
+    for (const entry of getEnumerableArrayEntries(value, path, !state.structuredClone)) {
       defineOwnDataProperty(
         copy,
         entry.key,
@@ -1186,7 +1186,7 @@ function copyToSandbox(
     const errorType = sandboxErrorTypes.get(value);
     if (errorType !== undefined) sandboxErrorTypes.set(copy, errorType);
 
-    for (const entry of getEnumerableObjectEntries(value, path)) {
+    for (const entry of getEnumerableObjectEntries(value, path, !state.structuredClone)) {
       defineOwnDataProperty(
         copy,
         entry.key,
@@ -1682,13 +1682,14 @@ export function defineOwnDataProperty(target: object, key: PropertyKey, value: u
 
 function getEnumerableObjectEntries<TValue>(
   value: Record<string, TValue>,
-  path: string
+  path: string,
+  includeSymbols = true
 ): Array<{ key: string | symbol; value: TValue }> {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const entries: Array<{ key: string | symbol; value: TValue }> = [];
 
   for (const key of Reflect.ownKeys(descriptors)) {
-    if (typeof key === "symbol" && internalSymbols.has(key)) continue;
+    if (typeof key === "symbol" && (!includeSymbols || internalSymbols.has(key))) continue;
     const descriptor = Object.getOwnPropertyDescriptor(descriptors, key)!.value as PropertyDescriptor;
     if (!descriptor.enumerable) {
       continue;
@@ -1709,13 +1710,14 @@ function getEnumerableObjectEntries<TValue>(
 
 function getEnumerableArrayEntries<TValue>(
   value: TValue[],
-  path: string
+  path: string,
+  includeSymbols = true
 ): Array<{ key: string | symbol; value: TValue }> {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const entries: Array<{ key: string | symbol; value: TValue }> = [];
 
   for (const key of Reflect.ownKeys(descriptors)) {
-    if (typeof key === "symbol" && internalSymbols.has(key)) continue;
+    if (typeof key === "symbol" && (!includeSymbols || internalSymbols.has(key))) continue;
     const descriptor = Object.getOwnPropertyDescriptor(descriptors, key)!.value as PropertyDescriptor;
     if (key === "length" || !descriptor.enumerable) {
       continue;
