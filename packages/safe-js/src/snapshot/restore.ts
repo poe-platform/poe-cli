@@ -24,6 +24,7 @@ import { decodeArrayBufferStorage } from "./array-buffer.js";
 import { decodeDataViewStorage } from "./data-view.js";
 import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
+import { createModuleNamespace } from "../interp/module-namespace.js";
 import { createSandboxBox } from "../interp/boxed.js";
 import { restoreBoxedProperties } from "./boxed.js";
 import { sandboxErrorNames, sandboxErrorTypes } from "../error/shape.js";
@@ -642,6 +643,12 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, value);
     restoreDateProperties(value, serialized, entry => deserializeValue(entry, state));
     return value;
+  }
+  if (serialized.kind === "module-namespace") {
+    return createModuleNamespace(namespace => {
+      state.heapValueById.set(id,namespace as RuntimeSnapshotValue);
+      return Object.fromEntries(serialized.entries.map(([key,entry]) => [key,deserializeValue(entry,state) as SandboxValue]));
+    }) as RuntimeSnapshotValue;
   }
   if (serialized.kind === "raw-json") {
     const value = createRawJson(serialized.text);
@@ -1304,10 +1311,6 @@ function restoreModuleBindings(
   return bindings;
 }
 
-function createModuleNamespace(bindings: Record<string, SandboxValue>): SandboxValue {
-  return Object.assign(Object.create(null) as Record<string, SandboxValue>, bindings);
-}
-
 function normalizeModuleRegistry(
   modules: ModuleRegistry | undefined
 ): Map<string, Map<string, CallerInjectedBinding>> {
@@ -1331,7 +1334,7 @@ function normalizeModuleExports(moduleExports: ModuleExports): Map<string, Calle
     moduleExports instanceof Map ? [...moduleExports.entries()] : Object.entries(moduleExports);
 
   return new Map(
-    entries.filter(([name]) => name.length > 0).sort(([left], [right]) => left.localeCompare(right))
+    entries.sort(([left], [right]) => left.localeCompare(right))
   );
 }
 

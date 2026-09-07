@@ -1,4 +1,5 @@
 import { getClosureOrigin, getGeneratorOrigin } from "../interp/closure-origin.js";
+import { isSandboxModuleNamespace } from "../interp/module-namespace.js";
 import { boundFunctionStates } from "../interp/bound-function-state.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { getGeneratorProperties } from "../interp/generator-properties.js";
@@ -30,6 +31,7 @@ export type GuestObjectState<T> = {
 };
 
 export type GuestHeapNode<T> =
+  | { kind: "module-namespace"; entries: Array<[string,T]> }
   | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
@@ -58,6 +60,8 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  if (isSandboxModuleNamespace(value))
+    return {kind:"module-namespace",entries:Object.keys(value).map(key => [key,encode(value[key])])};
   if (isRawJson(value)) return { kind: "raw-json", text: value.rawJSON };
   const intrinsic = getIntrinsicIdentity(value);
   if (intrinsic !== undefined) {

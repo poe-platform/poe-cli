@@ -1,4 +1,5 @@
 import type { Budget } from "../budget.js";
+import { isSandboxModuleNamespace } from "../module-namespace.js";
 import { assertSandboxDataDepth } from "../../graph-depth.js";
 import { accessorClosure, readPropertyDescriptor } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
@@ -69,6 +70,7 @@ export function createReflectGlobal(budget: Budget): SandboxObject {
       for (let current = target; current !== null; current = getSandboxPrototype(current as object,budget) as SandboxValue) {
         budget.visitNode();
         assertSandboxDataDepth(depth++);
+        if (isSandboxModuleNamespace(current)) return false;
         if (isNumericTypedArray(current) && typeof property === "string" && isTypedArrayIndex(property)) {
           if (current === receiver) {
             await setTypedArrayMember(current,property,value,budget,context);

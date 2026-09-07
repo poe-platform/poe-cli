@@ -1,4 +1,5 @@
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
+import { createModuleNamespace, isSandboxModuleNamespace } from "../interp/module-namespace.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { restorePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { getCollectionProperties } from "../interp/collection-properties.js";
@@ -59,6 +60,7 @@ type Properties = Record<
   { value: Atom; configurable: boolean; enumerable: boolean; writable: boolean }
 >;
 type DataNode =
+  | { kind: "module-namespace"; entries: Array<[string, Atom]> }
   | { kind: "raw-json"; text: string }
   | { kind: "regexp-iterator"; matcher: Atom; input: Atom; exhausted: boolean; global?: boolean; unicode?: boolean; properties: Properties; extensible: boolean; symbolEntries?: Array<SerializedSymbolProperty<Atom>> }
   | SerializedSymbol
@@ -125,7 +127,7 @@ export function encodeReplayData(
       const id = options.identifyPromise?.(entry, path);
       if (typeof id === "string" && id.length > 0) return { tag: "promise-capability", id };
     }
-    if (typeof entry === "object" && entry !== null && hasGuestObjectState(entry)) {
+    if (typeof entry === "object" && entry !== null && hasGuestObjectState(entry) && !isSandboxModuleNamespace(entry)) {
       throw new MissingReplayCapabilityError("Guest function properties and prototype links cannot be serialized.");
     }
     let capabilityId: string | undefined;
@@ -146,7 +148,9 @@ export function encodeReplayData(
     seen.set(entry, id);
     nodes.push(undefined as unknown as DataNode);
     const child = (value: SandboxValue, key: string) => encode(value, depth + 1, [...path, key]);
-    if (isSandboxClosure(entry)) {
+    if (isSandboxModuleNamespace(entry)) {
+      nodes[id] = {kind:"module-namespace",entries:Object.keys(entry).map(key => [key,child((entry as Record<string,SandboxValue>)[key],key)])};
+    } else if (isSandboxClosure(entry)) {
       nodes[id] = {
         kind: "capability",
         id: capabilityId!,
@@ -362,6 +366,20 @@ export function decodeReplayData(
         throw new TypeError("Invalid replay error metadata.");
       }
       const child = (value: unknown) => decode(value, depth + 1);
+      if (kind === "module-namespace") {
+        const entries = list(own(node,"entries"));
+        const names = new Set<string>();
+        return createModuleNamespace(namespace => {
+          restored.set(id,namespace);
+          return Object.fromEntries(entries.map(raw => {
+            const entry = list(raw);
+            if (entry.length !== 2 || typeof entry[0] !== "string" || names.has(entry[0]))
+              throw new TypeError("Invalid module namespace export.");
+            names.add(entry[0]);
+            return [entry[0],child(entry[1])];
+          }));
+        });
+      }
       if (kind === "symbol") {
         if (node.description !== undefined && typeof node.description !== "string") throw new TypeError("Invalid replay symbol description.");
         let symbol: symbol;

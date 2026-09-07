@@ -1,4 +1,5 @@
 import { promiseReplayContext } from "./promise-replay.js";
+import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { bigIntOperation, type BigIntOperator } from "./bigint-operators.js";
 import { accessorAdapter, readPropertyDescriptor, writePropertyDescriptor } from "./accessors.js";
 import { deleteHostObjectMember, getHostObjectKeys, getHostObjectMember, hasHostObjectMember, isGuestHostObject, setHostObjectMember } from "./host-capabilities.js";
@@ -3878,6 +3879,7 @@ export function setSandboxProperty(
     return;
   }
   const prototypeOwner = target;
+  if (isSandboxModuleNamespace(target)) throw new TypeError("Cannot assign to a module namespace.");
   if (checkInherited) {
     const descriptor = getSandboxPropertyDescriptor(target, property, budget);
     if (descriptor !== undefined && !("value" in descriptor))
@@ -3922,6 +3924,7 @@ export function setSandboxProperty(
       ) {
         budget.visitNode();
         assertSandboxDataDepth(depth++);
+        if (isSandboxModuleNamespace(prototype)) throw new TypeError("Cannot assign through a module namespace.");
         const properties = isSandboxGenerator(prototype) ? getGeneratorProperties(prototype) : isSandboxClosure(prototype) ? prototype.properties : prototype;
         const inherited =
           properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);
@@ -3953,6 +3956,7 @@ function setSuperProperty(
   ) {
     budget.visitNode();
     assertSandboxDataDepth(depth++);
+    if (isSandboxModuleNamespace(current)) throw new TypeError("Cannot assign through a module namespace.");
     const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxClosure(current) ? current.properties : current;
     const descriptor =
       properties === undefined ? undefined : Object.getOwnPropertyDescriptor(properties, key);

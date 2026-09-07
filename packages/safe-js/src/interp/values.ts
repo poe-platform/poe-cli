@@ -1,4 +1,5 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
+import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import { copyDataViewStorage, dataViewBuffer, dataViewDataProperties, dataViewGetters, isSandboxDataView } from "./data-view.js";
 import { internalSymbols } from "./internal-symbols.js";
@@ -566,7 +567,7 @@ export function* cloneStructuredGraph(
 ): Generator<StructuredCloneRequest, SandboxValue, SandboxValue> {
   assertSandboxDataDepth(depth);
   budget.visitNode();
-  if (typeof value === "symbol" || isSandboxClosure(value) || isSandboxPromise(value) ||
+  if (typeof value === "symbol" || isSandboxModuleNamespace(value) || isSandboxClosure(value) || isSandboxPromise(value) ||
       isSandboxGenerator(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value) ||
       isSandboxArrayIterator(value) || isSandboxArguments(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
@@ -971,6 +972,8 @@ function copyToSandbox(
 
   if (state.structuredClone && nodeTypes.isSymbolObject(value))
     throw new DOMException("Cannot clone a boxed symbol.", "DataCloneError");
+  if (state.structuredClone && isSandboxModuleNamespace(value))
+    throw new DOMException("Cannot clone a module namespace.", "DataCloneError");
 
   if (isLiveCapability(value)) throw new TypeError("Live capabilities require their owning realm bridge.");
 

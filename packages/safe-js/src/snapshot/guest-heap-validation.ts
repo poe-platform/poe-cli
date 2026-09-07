@@ -53,6 +53,19 @@ function absent(value: unknown): boolean {
 
 export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown>, maxArrayLength = 0xffffffff): boolean {
   const node = record(raw);
+  if (node.kind === "module-namespace") {
+    fields(node,["kind","entries"]);
+    const entries = array(node.entries);
+    if (entries.length > maxArrayLength) throw new TypeError("Module namespace exceeds allocation limit.");
+    const names = new Set<string>();
+    for (const rawEntry of entries) {
+      const entry = array(rawEntry);
+      if (entry.length !== 2 || typeof entry[0] !== "string" || names.has(entry[0]))
+        throw new TypeError("Invalid module namespace export.");
+      names.add(entry[0]);
+    }
+    return true;
+  }
   if (node.kind === "raw-json") {
     fields(node, ["kind", "text"]);
     if (typeof node.text !== "string") throw new TypeError("Invalid raw JSON source.");

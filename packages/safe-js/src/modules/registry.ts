@@ -1,4 +1,5 @@
 import { attachErrorSpan } from "../error/shape.js";
+import { createModuleNamespace } from "../interp/module-namespace.js";
 import type { Budget, CompileOwner } from "../interp/budget.js";
 import type { HostCallJournal } from "../interp/host-call.js";
 import { wrapCancelableBindings } from "../interp/cancel.js";
@@ -105,7 +106,7 @@ function bindImportDeclaration(
 
   const wrappedExports =
     wrappedModules.get(moduleName) ??
-    createBindingRecord(
+    createModuleNamespace(
       wrapCancelableBindings(
         wrapCallerInjectedBindings(Object.fromEntries(moduleExports), {
           realm: options.realm,
@@ -209,7 +210,6 @@ function normalizeModuleExports(moduleExports: ModuleExports): Map<string, Calle
 
   return new Map(
     entries
-      .filter(([exportName]) => exportName.length > 0)
       .sort(([left], [right]) => left.localeCompare(right))
   );
 }
