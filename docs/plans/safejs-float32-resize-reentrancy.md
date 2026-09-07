@@ -34,3 +34,19 @@ lint, type, broader focused checks and its real harness before its own push.
 Foundation release monitoring: scoped workflow 34092258055 and CLI workflow
 34092258379 were both in progress after verified push. Neither publication is
 confirmed yet. Continue this work while monitoring those runs.
+
+Join was delivered in `75da0b6c46f599472dca01d765c97e980eb9755d`, verified on
+remote main. All 196 Float32 tests passed in an isolated run; lint, TypeScript,
+70 uncached build tasks and the inspected real harness passed. Foundation scoped
+run 34092258055 published `@poe-platform/safe-js@0.1.315` at
+2026-09-07T06:49:35.0126561Z. Foundation CLI run 34092258379 was cancelled;
+join scoped run 34092538018 and CLI run 34092537952 are active, not yet published.
+
+Slice follow-up now has five native tests: four failed before implementation,
+one growth control passed. The implementation preserves the requested result
+length, revalidates storage after coercion only for nonempty slices, and copies
+only currently available source bytes. Missing trailing values stay zero; empty
+slices do not acquire an out-of-bounds byte view. Focused checks are recorded in
+`/tmp/poe-safejs-slice-resize-red.log` and
+`/tmp/poe-safejs-slice-resize-qualified.log`. This slice change is still local and
+needs complete focused qualification and its actual harness before pushing.

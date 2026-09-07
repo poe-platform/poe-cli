@@ -415,9 +415,13 @@ export function getFloat32Member(
           }
           checkFloat32Allocation(length, budget);
           const result = new Float32Array(length);
-          new Uint8Array(result.buffer).set(
-            new Uint8Array(storage.buffer, storage.byteOffset + start * 4, length * 4)
-          );
+          if (length > 0) {
+            const current = float32Storage(receiver, true);
+            const count = Math.min(length, Math.max(current.length - start, 0));
+            if (count > 0) new Uint8Array(result.buffer).set(
+              new Uint8Array(current.buffer, current.byteOffset + start * 4, count * 4)
+            );
+          }
           return result;
         } finally { release(); }
       })();
