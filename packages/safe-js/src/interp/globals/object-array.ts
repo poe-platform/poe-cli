@@ -405,6 +405,11 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
   });
   const properties = materializeFunctionProperties(constructor);
   Object.defineProperty(properties, "prototype", { value: prototype, writable: false });
+  Object.defineProperty(properties, Symbol.species, {
+    get: accessorAdapter(createSandboxClosure({ guest: true, sandbox: true,
+      name: "get [Symbol.species]", length: 0, call: (_args, context) => context?.thisValue
+    }), "get"), configurable: true
+  });
   Object.defineProperty(prototype, "constructor", { value: constructor, writable: true, configurable: true });
   for (const name of arrayMethodNames) {
     const method = createSandboxClosure({
@@ -606,7 +611,7 @@ function reflectionProperties(value: SandboxValue): SandboxObject | SandboxArray
   return objectProperties(value);
 }
 
-function objectProperties(value: SandboxValue, mutable = false): SandboxObject | SandboxArray {
+export function objectProperties(value: SandboxValue, mutable = false): SandboxObject | SandboxArray {
   if (isSandboxPromise(value)) return getPromiseProperties(value);
   if (isSandboxMap(value) || isSandboxSet(value)) return getCollectionProperties(value);
   if (isSandboxRegex(value)) return getRegexProperties(value);

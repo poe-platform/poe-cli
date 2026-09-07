@@ -2,6 +2,7 @@ import { Budget } from "../budget.js";
 import { createSandboxBox } from "../boxed.js";
 import {
   createSandboxClosure,
+  defineOwnDataProperty,
   isSandboxClosure,
   isSandboxMap,
   isSandboxPromise,
@@ -18,6 +19,38 @@ import { retainValues } from "../resources.js";
 import { getSandboxDataProperty, getSandboxPrototype } from "../object-model.js";
 import { joinSandboxArray, sandboxNumber, sandboxString } from "../string-coercion.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
+import { objectProperties } from "../globals/object-array.js";
+import { setSandboxProperty } from "../interpreter.js";
+import { readPropertyDescriptor } from "../accessors.js";
+import { getSandboxPropertyDescriptor } from "../object-model.js";
+
+async function arraySpeciesCreate(value: ArrayLikeValue, length: number, options: ArrayMethodOptions): Promise<SandboxValue & object> {
+  const receiver = arrayLikeSources.get(value) ?? value;
+  const read = (target: SandboxValue, key: PropertyKey) => options.context?.getProperty !== undefined
+    ? options.context.getProperty(target, key)
+    : readPropertyDescriptor(getSandboxPropertyDescriptor(target, key, options.budget) ?? { value: undefined }, target, options.context);
+  let constructor: SandboxValue;
+  if (Array.isArray(receiver)) {
+    constructor = await read(receiver, "constructor");
+    if (typeof constructor === "object" && constructor !== null) {
+      constructor = await read(constructor, Symbol.species);
+      if (constructor === null) constructor = undefined;
+    }
+    if (constructor !== undefined) {
+      if (!isSandboxClosure(constructor) || constructor.construct === undefined)
+        throw new TypeError("Array species must be a constructor.");
+      return await invokeBuiltinClosure(constructor, [length], options.budget, options.context, undefined, true) as SandboxValue & object;
+    }
+  }
+  options.budget.allocateArrayLength(length);
+  return new Array(length) as SandboxArray;
+}
+
+function defineArrayResult(result: SandboxValue & object, index: number, value: SandboxValue, options: ArrayMethodOptions): void {
+  if (index >= Number.MAX_SAFE_INTEGER) throw new TypeError("Array result exceeds the safe integer limit.");
+  if (Array.isArray(result)) options.budget.allocateArrayLength(index + 1);
+  defineOwnDataProperty(objectProperties(result, true), String(index), value);
+}
 
 type ArrayLikeValue =
   | SandboxArray
@@ -412,17 +445,20 @@ async function callArrayMethodUnlocked(
         ),
         options.budget
       );
-    case "flat":
+    case "flat": {
+      const length = value.length;
       return budgetProducedValue(
         await flattenArray(
           value,
           args[0] === undefined
             ? 1
             : toIntegerOrInfinity(await sandboxNumber(args[0], options.budget, options.context)),
-          options
+          options,
+          length
         ),
         options.budget
       );
+    }
     case "includes":
     case "indexOf":
     case "lastIndexOf": {
@@ -474,22 +510,23 @@ async function callArrayMethodUnlocked(
       const first = start < 0 ? Math.max(length + start, 0) : Math.min(start, length);
       const final = end < 0 ? Math.max(length + end, 0) : Math.min(end, length);
       const count = Math.max(final - first, 0);
-      options.budget.allocateArrayLength(count);
-      const result = new Array(count) as SandboxArray;
+      const result = await arraySpeciesCreate(value, count, options);
       const release = retainValues(options.budget, () => [result]);
       try {
         for (let index = 0; index < count; index += 1) {
           options.budget.visitNode();
           if (first + index in value)
-            result[index] = await readArrayElement(value, first + index, options);
+            defineArrayResult(result, index, await readArrayElement(value, first + index, options), options);
         }
+        await setSandboxProperty(result, "length", count, options.budget, true, options.context);
         return budgetProducedValue(result, options.budget);
       } finally {
         release();
       }
     }
     case "concat": {
-      const result: SandboxArray = [];
+      const result = await arraySpeciesCreate(value, 0, options);
+      let targetIndex = 0;
       const retained = {};
       options.budget.setRetainedValues(retained, () => [result]);
       try {
@@ -502,21 +539,22 @@ async function callArrayMethodUnlocked(
             spread = flag === undefined ? Array.isArray(entry) : Boolean(flag);
           }
           if (!spread) {
-            options.budget.allocateArrayLength(result.length + 1);
-            result.push(entry);
+            defineArrayResult(result, targetIndex++, entry, options);
             continue;
           }
-          const start = result.length;
+          const start = targetIndex;
           const source = await arrayLikeView(entry as SandboxValue & object, options);
           const length = source.length;
-          options.budget.allocateArrayLength(start + length);
-          result.length += length;
+          if (start + length > Number.MAX_SAFE_INTEGER) throw new TypeError("Array result exceeds the safe integer limit.");
+          if (Array.isArray(result)) options.budget.allocateArrayLength(start + length);
+          targetIndex += length;
           for (let index = 0; index < length; index++) {
             options.budget.visitNode();
             if (index in source)
-              result[start + index] = await readArrayElement(source, index, options);
+              defineArrayResult(result, start + index, await readArrayElement(source, index, options), options);
           }
         }
+        await setSandboxProperty(result, "length", targetIndex, options.budget, true, options.context);
         return budgetProducedValue(result, options.budget);
       } finally {
         options.budget.setRetainedValues(retained, undefined);
@@ -546,16 +584,16 @@ async function callArrayMethodUnlocked(
       const nextLength = length + inserted - deleted;
       if (nextLength > Number.MAX_SAFE_INTEGER)
         throw new TypeError("Array-like length exceeds the safe integer limit.");
-      options.budget.allocateArrayLength(deleted);
-      const removed = new Array(deleted) as SandboxArray;
+      const removed = await arraySpeciesCreate(value, deleted, options);
       const retained = {};
       options.budget.setRetainedValues(retained, () => [removed]);
       try {
         for (let index = 0; index < deleted; index++) {
           options.budget.visitNode();
           if (first + index in value)
-            removed[index] = await readArrayElement(value, first + index, options);
+            defineArrayResult(removed, index, await readArrayElement(value, first + index, options), options);
         }
+        await setSandboxProperty(removed, "length", deleted, options.budget, true, options.context);
         if (inserted < deleted) {
           for (let index = first; index < length - deleted; index++)
             await moveArrayElement(value, index + deleted, index + inserted, options);
@@ -951,10 +989,9 @@ async function mapArray(
   options: ArrayMethodOptions,
   stack: readonly string[],
   thisValue: SandboxValue
-): Promise<SandboxArray> {
+): Promise<SandboxValue & object> {
   const length = value.length;
-  options.budget.allocateArrayLength(length);
-  const result = new Array(length) as SandboxArray;
+  const result = await arraySpeciesCreate(value, length, options);
   options.budget.setRetainedValues(result, () => [result]);
 
   try {
@@ -964,7 +1001,7 @@ async function mapArray(
         continue;
       }
 
-      result[index] = await callArrayCallback(
+      defineArrayResult(result, index, await callArrayCallback(
         callback,
         await readArrayElement(value, index, options),
         index,
@@ -972,7 +1009,7 @@ async function mapArray(
         options,
         stack,
         thisValue
-      );
+      ), options);
     }
 
     return result;
@@ -987,9 +1024,10 @@ async function filterArray(
   options: ArrayMethodOptions,
   stack: readonly string[],
   thisValue: SandboxValue
-): Promise<SandboxArray> {
+): Promise<SandboxValue & object> {
   const length = value.length;
-  const result: SandboxArray = [];
+  const result = await arraySpeciesCreate(value, 0, options);
+  let targetIndex = 0;
   options.budget.setRetainedValues(result, () => [result]);
 
   try {
@@ -1001,7 +1039,7 @@ async function filterArray(
 
       const entry = await readArrayElement(value, index, options);
       if (await callArrayCallback(callback, entry, index, value, options, stack, thisValue)) {
-        result.push(entry);
+        defineArrayResult(result, targetIndex++, entry, options);
       }
     }
 
@@ -1326,9 +1364,10 @@ async function flatMapArray(
   options: ArrayMethodOptions,
   stack: readonly string[],
   thisValue: SandboxValue
-): Promise<SandboxArray> {
+): Promise<SandboxValue & object> {
   const length = value.length;
-  const result: SandboxArray = [];
+  const result = await arraySpeciesCreate(value, 0, options);
+  let targetIndex = 0;
   options.budget.setRetainedValues(result, () => [result]);
 
   try {
@@ -1348,21 +1387,20 @@ async function flatMapArray(
         thisValue
       );
       if (Array.isArray(mapped)) {
-        for (let mappedIndex = 0; mappedIndex < mapped.length; mappedIndex += 1) {
+        const mappedLength = mapped.length;
+        for (let mappedIndex = 0; mappedIndex < mappedLength; mappedIndex += 1) {
           options.budget.visitNode();
           if (!(mappedIndex in mapped)) {
             continue;
           }
 
-          result.push(await readArrayElement(mapped, mappedIndex, options));
-          options.budget.allocateArrayLength(result.length);
+          defineArrayResult(result, targetIndex++, await readArrayElement(mapped, mappedIndex, options), options);
         }
 
         continue;
       }
 
-      result.push(mapped);
-      options.budget.allocateArrayLength(result.length);
+      defineArrayResult(result, targetIndex++, mapped, options);
     }
 
     return result;
@@ -1374,13 +1412,14 @@ async function flatMapArray(
 async function flattenArray(
   value: ArrayLikeValue,
   depth: number,
-  options: ArrayMethodOptions
-): Promise<SandboxArray> {
-  const result: SandboxArray = [];
+  options: ArrayMethodOptions,
+  length: number
+): Promise<SandboxValue & object> {
+  const result = await arraySpeciesCreate(value, 0, options);
   const retained = {};
   options.budget.setRetainedValues(retained, () => [result]);
   try {
-    await appendFlattenedEntries(value, depth, result, options);
+    await appendFlattenedEntries(value, depth, result, options, 0, length);
     return result;
   } finally {
     options.budget.setRetainedValues(retained, undefined);
@@ -1390,10 +1429,11 @@ async function flattenArray(
 async function appendFlattenedEntries(
   value: ArrayLikeValue,
   depth: number,
-  result: SandboxArray,
-  options: ArrayMethodOptions
-): Promise<void> {
-  const length = value.length;
+  result: SandboxValue & object,
+  options: ArrayMethodOptions,
+  targetIndex: number,
+  length = value.length
+): Promise<number> {
   for (let index = 0; index < length; index += 1) {
     options.budget.visitNode();
     if (!(index in value)) {
@@ -1402,13 +1442,13 @@ async function appendFlattenedEntries(
 
     const entry = await readArrayElement(value, index, options);
     if (depth > 0 && Array.isArray(entry)) {
-      await appendFlattenedEntries(entry, depth - 1, result, options);
+      targetIndex = await appendFlattenedEntries(entry, depth - 1, result, options, targetIndex);
       continue;
     }
 
-    result.push(entry);
-    options.budget.allocateArrayLength(result.length);
+    defineArrayResult(result, targetIndex++, entry, options);
   }
+  return targetIndex;
 }
 
 async function sortArray(
