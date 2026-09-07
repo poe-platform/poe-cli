@@ -688,7 +688,7 @@ export function objectProperties(value: SandboxValue, mutable = false): SandboxO
   return value;
 }
 
-function exposePropertyDescriptor(descriptor: PropertyDescriptor): SandboxObject {
+export function exposePropertyDescriptor(descriptor: PropertyDescriptor): SandboxObject {
   return (
     "value" in descriptor
       ? descriptor
@@ -701,7 +701,7 @@ function exposePropertyDescriptor(descriptor: PropertyDescriptor): SandboxObject
   ) as SandboxObject;
 }
 
-async function propertyDescriptor(
+export async function propertyDescriptor(
   input: SandboxValue,
   budget: Budget,
   context?: SandboxCallContext
@@ -785,13 +785,15 @@ export function defineDataProperty(
   key: PropertyKey,
   descriptor: PropertyDescriptor,
   budget: Budget,
-  context?: SandboxCallContext
-): void | Promise<void> {
+  context?: SandboxCallContext,
+  throwOnFailure = true
+): undefined | boolean | Promise<undefined | boolean> {
   budget.visitNode();
   if (isNumericTypedArray(target) && typeof key !== "symbol" && isTypedArrayIndex(String(key)) && "value" in descriptor) {
     const { value, ...attributes } = descriptor;
     // Validates index and descriptor restrictions without writing an element.
-    Object.defineProperty(target, key, attributes);
+    if (throwOnFailure) Object.defineProperty(target, key, attributes);
+    else if (!Reflect.defineProperty(target, key, attributes)) return false;
     return (async () => {
       const release = retainValues(budget, () => [target, value]);
       try {
@@ -800,22 +802,48 @@ export function defineDataProperty(
         // succeeds without writing, rather than revalidating the definition.
         Reflect.set(target, key, number);
         markDescriptorObject(target);
+        return throwOnFailure ? undefined : true;
       } finally { release(); }
     })();
   }
   const properties = objectProperties(target, true);
   if (Array.isArray(properties)) {
-    if (key === "length" && "value" in descriptor)
-      budget.allocateArrayLength(Number(descriptor.value));
-    else if (typeof key !== "symbol") {
+    if (key === "length" && "value" in descriptor) {
+      const applyLength = (first: number, second: number): undefined | boolean => {
+        const length = first >>> 0;
+        if (length !== second) throw new RangeError("Invalid array length.");
+        budget.allocateArrayLength(length);
+        const normalized = {...descriptor,value:length};
+        if (throwOnFailure) Object.defineProperty(properties,key,normalized);
+        else {
+          const success = Reflect.defineProperty(properties,key,normalized);
+          markDescriptorObject(properties);
+          return success;
+        }
+        markDescriptorObject(properties);
+        return undefined;
+      };
+      if (typeof descriptor.value === "number") return applyLength(descriptor.value,descriptor.value);
+      return (async () => {
+        const release = retainValues(budget, () => [target,descriptor.value]);
+        try {
+          // ArraySetLength intentionally converts object inputs twice.
+          const first = await sandboxNumber(descriptor.value,budget,context);
+          const second = await sandboxNumber(descriptor.value,budget,context);
+          return applyLength(first,second);
+        } finally { release(); }
+      })();
+    } else if (typeof key !== "symbol") {
       const index = Number(key);
       if (Number.isInteger(index) && index >= 0 && index < 0xffffffff && String(index) === key) {
         budget.allocateArrayLength(index + 1);
       }
     }
   }
-  Object.defineProperty(properties, key, descriptor);
+  if (throwOnFailure) Object.defineProperty(properties, key, descriptor);
+  else if (!Reflect.defineProperty(properties, key, descriptor)) return false;
   markDescriptorObject(properties);
+  return throwOnFailure ? undefined : true;
 }
 
 function isAssignableSandboxTarget(

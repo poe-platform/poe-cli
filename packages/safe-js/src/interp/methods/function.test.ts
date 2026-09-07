@@ -64,6 +64,9 @@ describe("function methods", () => {
       1,
       2
     ]);
+    expect(apply?.call(["receiver", new Array(2)], { stack: [], thisValue: target })).toEqual([
+      "receiver", undefined, undefined
+    ]);
     expect(apply?.call(["receiver", undefined], { stack: [], thisValue: target })).toEqual([
       "receiver"
     ]);

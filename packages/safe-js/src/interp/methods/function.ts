@@ -153,8 +153,24 @@ export function callFunctionMethod(
     throw new TypeError("Function#apply requires an object or nullish arguments value.");
   }
 
-  if (context?.getProperty === undefined && Array.isArray(applyArgs))
-    return options.callClosure(target, applyArgs, stack, thisValue);
+  // Preserve immediate low-level calls for plain data arrays, but still copy
+  // their argument list and check its allocation before invoking the target.
+  if (context?.getProperty === undefined && Array.isArray(applyArgs)) {
+    const budget = options.budget ?? new Budget();
+    const length = applyArgs.length;
+    budget.allocateArrayLength(length);
+    const values: SandboxValue[] = [];
+    for (let index = 0; index < length; index++) {
+      const descriptor = getSandboxPropertyDescriptor(applyArgs, String(index), budget);
+      if (descriptor !== undefined && !("value" in descriptor)) break;
+      values.push(descriptor?.value);
+    }
+    if (values.length === length) {
+      for (let index = 0; index < length; index++) budget.visitNode();
+      return options.callClosure(target, values, stack, thisValue);
+    }
+  }
+
   return (async () => {
     const budget = options.budget ?? new Budget();
     const invocationContext: SandboxCallContext = {

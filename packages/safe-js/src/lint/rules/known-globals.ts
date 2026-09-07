@@ -29,6 +29,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "Promise",
   "RangeError",
   "ReferenceError",
+  "Reflect",
   "RegExp",
   "Set",
   "String",

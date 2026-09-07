@@ -469,9 +469,11 @@ export function getSandboxDataProperty(
 export function setSandboxPrototype(
   value: object,
   prototype: object | null,
-  budget?: Budget
-): void {
+  budget?: Budget,
+  throwOnFailure = true
+): boolean {
   if (budget !== undefined && intrinsicPrototypes.get(budget) === value && prototype !== null) {
+    if (!throwOnFailure) return false;
     throw new TypeError("Object.prototype has an immutable null prototype.");
   }
   if (
@@ -485,18 +487,23 @@ export function setSandboxPrototype(
   if (getSandboxPrototype(value, budget) === prototype) {
     // Null is also the budget-free fallback; retain an explicit null link for snapshots.
     if (prototype === null) prototypes.set(value, null);
-    return;
+    return true;
   }
   if (!Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
+    if (!throwOnFailure) return false;
     throw new TypeError("Cannot change the prototype of a non-extensible object.");
   }
   let depth = 0;
   for (let current = prototype; current !== null; current = getSandboxPrototype(current, budget)) {
     budget?.visitNode();
     assertSandboxDataDepth(depth++);
-    if (current === value) throw new TypeError("Cyclic prototype value.");
+    if (current === value) {
+      if (!throwOnFailure) return false;
+      throw new TypeError("Cyclic prototype value.");
+    }
   }
   prototypes.set(value, prototype);
+  return true;
 }
 
 function isPrototypeRecord(value: object): boolean {
@@ -532,6 +539,15 @@ export function hasGuestObjectState(value: object): boolean {
   if (isLiveCapability(value)) return true;
   if (functionProperties.has(value) || (prototypes.has(value) && !hasNullObjectPrototype(value))) return true;
   if (isSandboxBox(value) || isSandboxDate(value)) return false;
+  if (Array.isArray(value) && descriptorObjects.has(value)) {
+    return Object.getOwnPropertyNames(value).some(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(value,key)!;
+      // Every array has a non-enumerable, non-configurable length. Only its
+      // writable flag can make that intrinsic descriptor non-default.
+      return key === "length" ? descriptor.writable !== true
+        : !descriptor.enumerable || !descriptor.configurable || !descriptor.writable;
+    });
+  }
   return (
     descriptorObjects.has(value) &&
     (isNumericTypedArray(value)

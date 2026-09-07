@@ -35,8 +35,11 @@ it("accepts a low-level array-like call without an explicit budget", async () =>
   },[])).toEqual(["receiver",3]);
 });
 
-it("runs guest length and indexed getters through the low-level invocation route", async () => {
-  const input=(await run("return {get length(){return {valueOf(){return 1}}},get 0(){return 7}}" )).returnValue;
+it.each([
+  "return {get length(){return {valueOf(){return 1}}},get 0(){return 7}}",
+  "return Object.defineProperty([],0,{get(){return 7},configurable:true})"
+])("runs guest length and indexed getters through the low-level invocation route: %s", async source => {
+  const input=(await run(source)).returnValue;
   const target=createSandboxClosure({call:args=>[...args]});
   expect(await callFunctionMethod(target,"apply",[null,input],{
     callClosure:(callee,args,stack,thisValue)=>callee.call(args,{stack,thisValue})
