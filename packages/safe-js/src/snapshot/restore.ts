@@ -36,6 +36,7 @@ import { wrapCallerInjectedBindings, type CallerInjectedBinding } from "../inter
 import { restoreSandboxCollectionIterator } from "../interp/collection-iterator.js";
 import { restoreSandboxArrayIterator } from "../interp/array-iterator.js";
 import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
+import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import type { SandboxObject } from "../interp/values.js";
 import { restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { wellKnownSymbols } from "../interp/symbols.js";
@@ -822,7 +823,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "bound-function") {
       initializeIntrinsicRealm(state);
@@ -892,6 +893,11 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       }, evaluateNode, environment?.homeObject, initializeGeneratorPrototype);
     } else value = serialized.kind === "guest-array" ? [] : Object.create(null) as Record<string, RuntimeSnapshotValue>;
     state.heapValueById.set(id, value);
+    if (serialized.kind === "iterator-wrapper") {
+      const iterator=deserializeValue(serialized.iterator,state);
+      if (iterator === null || typeof iterator !== "object") throw new TypeError("Invalid wrapped iterator.");
+      iteratorWrapperStates.set(value as object,{iterator:iterator as SandboxValue,next:deserializeValue(serialized.next,state) as SandboxValue});
+    }
     if (serialized.kind === "string-iterator") {
       const input = deserializeValue(serialized.input, state);
       if (input !== undefined && typeof input !== "string") throw new TypeError("Invalid String iterator input.");

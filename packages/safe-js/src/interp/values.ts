@@ -16,6 +16,7 @@ import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
+import { iteratorWrapperStates } from "./iterator-wrapper.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
@@ -704,6 +705,11 @@ export function measureSandboxData(
         else for (const closure of retainedAccessorClosures(descriptor)) visit(closure, depth + 1);
       }
       return;
+    }
+    const wrapperState = iteratorWrapperStates.get(value);
+    if (wrapperState !== undefined) {
+      visit(wrapperState.iterator, depth + 1);
+      visit(wrapperState.next, depth + 1);
     }
     if (isSandboxDate(value)) usage += 8;
     if (isGuestHostObject(value)) {

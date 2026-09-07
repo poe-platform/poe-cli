@@ -15,6 +15,7 @@ import { isSandboxCollectionIterator, snapshotCollectionIterator, type Collectio
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
+import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments } from "../interp/values.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -32,6 +33,7 @@ export type GuestObjectState<T> = {
 };
 
 export type GuestHeapNode<T> =
+  | { kind: "iterator-wrapper"; iterator: T; next: T; state: GuestObjectState<T> }
   | { kind: "module-namespace"; entries: Array<[string,T]> }
   | { kind: "string-iterator"; input: T; index: number; state: GuestObjectState<T> }
   | { kind: "guest-collection-iterator"; collectionKind: "map" | "set"; method: CollectionIterationMethod;
@@ -65,6 +67,9 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const wrapper = iteratorWrapperStates.get(value);
+  if (wrapper !== undefined)
+    return {kind:"iterator-wrapper",iterator:encode(wrapper.iterator),next:encode(wrapper.next),state:captureObjectState(value,encode)!};
   if (isSandboxModuleNamespace(value))
     return {kind:"module-namespace",entries:Object.keys(value).map(key => [key,encode(value[key])])};
   if (isSandboxStringIterator(value)) {

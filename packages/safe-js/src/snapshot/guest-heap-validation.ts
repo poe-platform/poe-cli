@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "iterator-wrapper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -125,7 +125,12 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "intrinsic") {
+  if (node.kind === "iterator-wrapper") {
+    fields(node,["kind","iterator","next","state"]);
+    const iterator=reference(node.iterator);
+    if (iterator.kind === "symbol" || iterator.kind === "scope-frame") throw new TypeError("Invalid wrapped iterator.");
+    state(node.state);
+  } else if (node.kind === "intrinsic") {
     fields(node, ["kind", "id"], ["state"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
     if (Object.hasOwn(node, "state")) state(node.state);
