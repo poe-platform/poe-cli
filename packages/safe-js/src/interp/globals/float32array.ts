@@ -6,14 +6,14 @@ import {
   isFloat32Array,
   isFloat32Index
 } from "../float32.js";
-import { createSandboxClosure, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
+import { createSandboxClosure, isSandboxClosure, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { accessorAdapter } from "../accessors.js";
 import { float32Prototypes } from "../float32-prototypes.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { retainValues } from "../resources.js";
-import { sandboxString } from "../string-coercion.js";
+import { sandboxNumber, sandboxString } from "../string-coercion.js";
 
 const constructors = new WeakSet<SandboxClosure>();
 
@@ -78,6 +78,28 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
   const typedArray = createSandboxClosure({ guest: true, sandbox: true, name: "TypedArray", length: 0,
     call: abstractCall, construct: abstractCall });
   Object.defineProperty(materializeFunctionProperties(typedArray), "prototype", { value: shared, writable: false });
+  Object.defineProperty(materializeFunctionProperties(typedArray), "of", {
+    writable: true, configurable: true,
+    value: createSandboxClosure({ guest: true, sandbox: true, name: "of", length: 0,
+      call: async (args, context) => {
+        const target = context?.thisValue;
+        if (!isSandboxClosure(target) || target.construct === undefined)
+          throw new TypeError("TypedArray.of requires a constructor receiver.");
+        let result: SandboxValue;
+        const release = retainValues(budget, () => [target, result, ...args]);
+        try {
+          result = await invokeBuiltinClosure(target, [args.length], budget, context, undefined, true);
+          if (!isFloat32Array(result) || float32Storage(result).length < args.length)
+            throw new TypeError("TypedArray.of constructor must return sufficient typed storage.");
+          for (let index = 0; index < args.length; index++) {
+            budget.visitNode();
+            result[index] = await sandboxNumber(args[index], budget, context);
+          }
+          return result;
+        } finally { release(); }
+      }
+    })
+  });
   Object.defineProperties(materializeFunctionProperties(constructor), {
     prototype: { value: prototype, writable: false },
     BYTES_PER_ELEMENT: { value: 4, writable: false, enumerable: false, configurable: false }

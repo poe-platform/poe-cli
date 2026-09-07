@@ -212,7 +212,7 @@ describe("Float32Array", () => {
       arrayLike: true,
       buffer: "undefined",
       from: "undefined",
-      factory: "undefined",
+      factory: "function",
       arrayBuffer: "undefined",
       other: "undefined",
       constructorLength: 3,
