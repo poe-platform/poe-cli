@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "toLocaleString"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "map", "toLocaleString"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,18 +352,18 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "toLocaleString"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "map", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
     name: key,
-    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" ? 1 : 2,
+    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "map" || key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" ? 1 : 2,
     call: (args, context) => {
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
+      const storage = float32Storage(receiver, key === "map" || key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "findLastIndex" || key === "toLocaleString");
       if (key === "reverse") {
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
@@ -548,13 +548,16 @@ export function getFloat32Member(
           } finally { release(); }
         })();
       }
+      const callback = key === "map" ? args[0] : undefined;
+      if (key === "map" && !isSandboxClosure(callback)) throw new TypeError("Float32Array#map callback must be callable.");
       return (async () => {
         let candidate: SandboxValue;
         let result: SandboxValue;
-        const release = retainValues(budget, () => [receiver, candidate, result, ...args]);
+        let mapped: SandboxValue;
+        const release = retainValues(budget, () => [receiver, candidate, result, mapped, ...args]);
         try {
-          const start = relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
-          const end = args[1] === undefined ? storage.length
+          const start = key === "map" ? 0 : relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
+          const end = key === "map" || args[1] === undefined ? storage.length
             : relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
           const length = Math.max(end - start, 0);
           const layout = float32ViewLayouts.get(receiver);
@@ -572,12 +575,12 @@ export function getFloat32Member(
             }
           }
           if (candidate !== undefined && candidate !== null && candidate !== defaultConstructor) {
-            const values: SandboxValue[] = key === "slice" ? [length]
+            const values: SandboxValue[] = key !== "subarray" ? [length]
               : [storage.buffer, offset, tracking ? undefined : length];
             result = await invokeBuiltinClosure(candidate as SandboxClosure, values, budget, bridge, undefined, true);
             if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
-            const target = float32Storage(result, key === "slice");
-            if (key === "slice" && target.length < length)
+            const target = float32Storage(result, key !== "subarray");
+            if (key !== "subarray" && target.length < length)
               throw new TypeError("TypedArray species returned insufficient storage.");
           }
           if (key === "subarray") {
@@ -593,6 +596,14 @@ export function getFloat32Member(
             result = new Float32Array(length);
           }
           if (!isFloat32Array(result)) throw new TypeError("TypedArray species must return typed storage.");
+          if (key === "map") {
+            for (let index = 0; index < length; index++) {
+              budget.visitNode();
+              mapped = await invokeBuiltinClosure(callback as SandboxClosure, [receiver[index], index, receiver], budget, bridge, args[1]);
+              result[index] = await sandboxNumber(mapped, budget, bridge);
+            }
+            return result;
+          }
           if (length > 0) {
             const current = float32Storage(receiver, true);
             const target = float32Storage(result, true);
