@@ -773,7 +773,7 @@ function validateArrayHeap(
 function validateErrorType(record: Record<string, unknown>, path: string): void {
   if (!Object.hasOwn(record, "errorType")) return;
   if (
-    record.kind !== "object" ||
+    (record.kind !== "object" && record.kind !== "guest-object") ||
     !sandboxErrorNames.includes(record.errorType as SandboxErrorName)
   ) {
     fail("invalidValue", `${path}.errorType`, "invalid error metadata");

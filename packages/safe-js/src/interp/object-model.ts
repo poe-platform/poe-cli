@@ -8,6 +8,8 @@ import { isSandboxDate } from "./date.js";
 import { retainedAccessorClosures } from "./accessors.js";
 import { getHostObjectMember, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
 import type { Budget } from "./budget.js";
+import { errorPrototypes } from "./error-prototypes.js";
+import { sandboxErrorTypes } from "../error/shape.js";
 import { boxedValue, isSandboxBox, type BoxedKind, type BoxedPrimitive } from "./boxed.js";
 import {
   isSandboxClosure,
@@ -314,12 +316,20 @@ export function releaseObjectPrototype(budget: Budget): void {
   arrayPrototypes.delete(budget);
   functionPrototypes.delete(budget);
   generatorPrototypes.delete(budget);
+  errorPrototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
 }
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
   if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  // Host transport records are data-only. Resolve their default prototype in
+  // the receiving realm without persisting executable intrinsic graphs.
+  const errorType = sandboxErrorTypes.get(value);
+  if (budget !== undefined && errorType !== undefined) {
+    const prototype = errorPrototypes.get(budget)?.get(errorType);
+    if (prototype !== undefined) return prototype;
+  }
   if (budget !== undefined && isGuestClosure(value) && runResources.getStore()?.functionSourceText !== false)
     return functionPrototypes.get(budget) ?? null;
   if (budget !== undefined && Array.isArray(value)) return arrayPrototypes.get(budget) ?? null;

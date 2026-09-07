@@ -36,7 +36,8 @@ import type { InterpreterError } from "./interpreter.js";
 import { deepCopyToSandbox, ownEnumerableSandboxKeys, type SandboxObject, type SandboxValue } from "./values.js";
 import { hasOwnSandboxProperty } from "./globals/object.js";
 import { retainValues } from "./resources.js";
-import { getSandboxDataProperty } from "./object-model.js";
+import { getSandboxDataProperty, setSandboxPrototype } from "./object-model.js";
+import { errorPrototypes } from "./error-prototypes.js";
 import { toPropertyKey } from "./property-key.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { containsResumeTarget } from "./resume-target.js";
@@ -304,8 +305,7 @@ export function surfaceThrownValue(
   }
 
   if (isSubsetErrorValue(reason)) {
-    normalizeSurfacedSubsetError(reason, budget, stackFrames, span);
-    return reason;
+    return normalizeSurfacedSubsetError(reason, budget, stackFrames, span);
   }
 
   if (reason instanceof Error) {
@@ -320,8 +320,7 @@ export function surfaceThrownValue(
         span
       }
     );
-    normalizeSurfacedSubsetError(error, budget, stackFrames, span);
-    return error;
+    return normalizeSurfacedSubsetError(error, budget, stackFrames, span);
   }
 
   if (isErrorLikeValue(reason)) {
@@ -336,14 +335,14 @@ export function surfaceThrownValue(
         span
       }
     );
-    normalizeSurfacedSubsetError(error, budget, stackFrames, span);
-    return error;
+    return normalizeSurfacedSubsetError(error, budget, stackFrames, span);
   }
 
-  return createSubsetErrorValue("Error", describeThrownValue(reason), stackFrames, budget, {
+  const error = createSubsetErrorValue("Error", describeThrownValue(reason), stackFrames, budget, {
     chargeBudget: false,
     span
   });
+  return normalizeSurfacedSubsetError(error, budget, stackFrames, span);
 }
 
 export function createSubsetErrorValue(
@@ -351,7 +350,7 @@ export function createSubsetErrorValue(
   message: SandboxValue,
   stackFrames: readonly string[],
   budget: Budget,
-  options: { cause?: unknown; chargeBudget?: boolean; span?: ErrorSourceSpan } = {}
+  options: { cause?: unknown; chargeBudget?: boolean; span?: ErrorSourceSpan; transport?: boolean } = {}
 ): SandboxObject {
   const resumeChecks = options.chargeBudget === false ? budget.suspendChecks() : undefined;
 
@@ -360,11 +359,15 @@ export function createSubsetErrorValue(
     const errorMessage = budget.allocateString(coerceErrorMessage(message));
     const header = errorMessage === "" ? errorName : `${errorName}: ${errorMessage}`;
     const stack = budget.allocateString([header, ...[...stackFrames].reverse()].join("\n"));
-    const error = {
-      name: errorName,
-      message: errorMessage,
-      stack
-    };
+    const prototype = options.transport ? undefined : errorPrototypes.get(budget)?.get(toSandboxErrorName(errorName));
+    const error: SandboxObject = prototype === undefined ? { name: errorName, message: errorMessage, stack } : {};
+    if (prototype !== undefined) {
+      if (message !== undefined) Object.defineProperty(error, "message", { value: errorMessage, writable: true, configurable: true });
+      if (!errorPrototypes.get(budget)!.has(errorName as SandboxErrorName))
+        Object.defineProperty(error, "name", { value: errorName, writable: true, configurable: true });
+      Object.defineProperty(error, "stack", { value: stack, writable: true, configurable: true });
+      setSandboxPrototype(error, prototype, budget);
+    }
 
     sandboxErrorTypes.set(error, toSandboxErrorName(errorName));
     attachErrorSpan(error, options.span);
@@ -395,6 +398,8 @@ function isSubsetErrorValue(value: unknown): value is SandboxObject {
     return false;
   }
 
+  if (sandboxErrorTypes.has(value)) return true;
+
   const prototype = Object.getPrototypeOf(value);
   return (
     (prototype === Object.prototype || prototype === null) &&
@@ -409,30 +414,47 @@ function normalizeSurfacedSubsetError(
   budget: Budget,
   stackFrames: readonly string[],
   span: ErrorSourceSpan | undefined
-): void {
+): SandboxObject {
   const resumeChecks = budget.suspendChecks();
 
   try {
     const name = budget.allocateString(toSandboxErrorName(readErrorName(error)));
     const message = budget.allocateString(readSurfacedErrorMessage(error, name));
     const frames = readSandboxStackFrames(error.stack);
+    if (!Object.isExtensible(error) || ["name", "message", "stack"].some(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(error, key);
+      return descriptor !== undefined && (!("value" in descriptor) || !descriptor.writable);
+    })) {
+      // Public diagnostics must not mutate frozen guest state or invoke setters.
+      const original = error;
+      const descriptors = Object.getOwnPropertyDescriptors(original);
+      delete descriptors.name;
+      delete descriptors.message;
+      delete descriptors.stack;
+      error = Object.defineProperties({}, descriptors) as SandboxObject;
+      const errorType = sandboxErrorTypes.get(original);
+      if (errorType !== undefined) sandboxErrorTypes.set(error, errorType);
+    }
     error.name = name;
     error.message = message;
     error.stack = budget.allocateString(
       formatErrorStack(name, message, frames.length > 0 ? frames : [...stackFrames].reverse())
     );
     attachErrorSpan(error, readErrorSpan(error) ?? span);
+    return error;
   } finally {
     resumeChecks();
   }
 }
 
 function readErrorName(error: SandboxObject): string {
-  return typeof error.name === "string" && error.name.length > 0 ? error.name : "Error";
+  const name = getSandboxDataProperty(error, "name");
+  return typeof name === "string" && name.length > 0 ? name : sandboxErrorTypes.get(error) ?? "Error";
 }
 
 function readSurfacedErrorMessage(error: SandboxObject, name: string): string {
-  const message = typeof error.message === "string" ? error.message : "";
+  const value = getSandboxDataProperty(error, "message");
+  const message = typeof value === "string" ? value : "";
 
   if (message === "") {
     return `${name} thrown`;

@@ -626,10 +626,12 @@ function createHostErrorValue(
     reason instanceof Error
       ? createSubsetErrorValue(reason.name, reason.message, stackFrames, budget, {
           cause: reason,
-          chargeBudget
+          chargeBudget,
+          transport: true
         })
       : createSubsetErrorValue("Error", describeThrownReason(reason), stackFrames, budget, {
-          chargeBudget: false
+          chargeBudget: false,
+          transport: true
         });
 
   if (reason instanceof Error) {

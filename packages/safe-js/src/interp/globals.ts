@@ -1,7 +1,7 @@
 import { createConsoleJsonGlobals } from "./globals/console-json.js";
 import { createCollectionGlobals } from "./globals/collections.js";
 import { createFloat32ArrayGlobal } from "./globals/float32array.js";
-import { createErrorGlobals } from "./globals/error.js";
+import { createErrorGlobals, createErrorPrototypes } from "./globals/error.js";
 import { createMathGlobals } from "./globals/math.js";
 import { createRegexGlobals } from "./globals/regex.js";
 import { createMiscGlobals } from "./globals/misc.js";
@@ -17,7 +17,7 @@ import type { RunClock } from "../run.js";
 import { registerBuiltinIdentities } from "./intrinsics.js";
 
 export function createBuiltinBindings(
-  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean }
+  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean }
 ) {
   const bindings = {
     ...createConsoleJsonGlobals(options),
@@ -26,7 +26,7 @@ export function createBuiltinBindings(
     Date: createDateGlobal(options),
     Symbol: createSymbolGlobal(options.budget),
     BigInt: createBigIntGlobal(options.budget),
-    ...createErrorGlobals(options),
+    ...createErrorGlobals({ ...options, errorPrototypes: options.errorPrototypes !== false }),
     ...createMathGlobals({ random: options.random, budget: options.budget }),
     ...createObjectArrayGlobals(options),
     ...createMiscGlobals(options),
@@ -35,6 +35,7 @@ export function createBuiltinBindings(
     ...createRegexGlobals(options)
   };
   createFunctionPrototype(options.budget, options.functionHasInstance);
+  if (options.errorPrototypes !== false) createErrorPrototypes(options.budget, bindings);
   createGeneratorPrototypes(options.budget);
   registerBuiltinIdentities(options.budget, bindings);
   return bindings;

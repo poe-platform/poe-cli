@@ -5,7 +5,7 @@ import { invokeBuiltinClosure } from "./builtin-call.js";
 import { isFloat32Array } from "./float32.js";
 import { isFloat32ArrayConstructor } from "./globals/float32array.js";
 import { isSandboxErrorConstructorInstance } from "./globals/error.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, isGuestClosure } from "./object-model.js";
+import { getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, isGuestClosure } from "./object-model.js";
 import { isSandboxClosure, type SandboxCallContext, type SandboxValue } from "./values.js";
 
 export async function evaluateInstanceof(
@@ -39,7 +39,8 @@ export async function ordinaryHasInstance(
   }
   // These existing built-ins do not yet have ordinary prototype graphs.
   if (isFloat32ArrayConstructor(constructor)) return isFloat32Array(value);
-  if (isSandboxErrorConstructorInstance(value, constructor)) return true;
+  if ((!isGuestClosure(constructor) || (value !== null && typeof value === "object" && !hasExplicitSandboxPrototype(value))) &&
+      isSandboxErrorConstructorInstance(value, constructor)) return true;
   if (!isGuestClosure(constructor) || typeof value !== "object" || value === null) return false;
   const prototype = await readInstanceProperty(constructor, "prototype", budget, context);
   if (typeof prototype !== "object" || prototype === null)

@@ -1,5 +1,6 @@
 import { getClosureOrigin, getGeneratorOrigin } from "../interp/closure-origin.js";
 import { boundFunctionStates } from "../interp/bound-function-state.js";
+import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { getIntrinsicIdentity } from "../interp/intrinsics.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, isGuestClosure, materializeFunctionProperties } from "../interp/object-model.js";
@@ -42,7 +43,7 @@ export type GuestHeapNode<T> =
       expressionStates?: Record<string, GeneratorExpressionState<T, T, IteratorSnapshot<T>>>;
       sent: Array<{ type: "normal" | "return" | "throw"; value: T }>;
       environment?: { homeObject?: T; newTarget?: T }; objectState?: GuestObjectState<T> }
-  | { kind: "guest-object"; state: GuestObjectState<T> }
+  | { kind: "guest-object"; state: GuestObjectState<T>; errorType?: SandboxErrorName }
   | { kind: "guest-array"; state: GuestObjectState<T>; templateNodeId?: number; templateOwner?: T }
   | { kind: "intrinsic"; id: string; state?: GuestObjectState<T> }
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
@@ -181,8 +182,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
         isSandboxGenerator(value) || isSandboxArguments(value) || isSandboxCollectionIterator(value) ||
         isSandboxRegExpIterator(value)) return undefined;
     const prototype = Object.getPrototypeOf(value);
-    if ((prototype === null || prototype === Object.prototype) && hasGuestObjectState(value))
-      return { kind: "guest-object", state: captureObjectState(value, encode)! };
+    if ((prototype === null || prototype === Object.prototype) && hasGuestObjectState(value)) {
+      const errorType = sandboxErrorTypes.get(value);
+      return { kind: "guest-object", state: captureObjectState(value, encode)!,
+        ...(errorType === undefined ? {} : { errorType }) };
+    }
     return undefined;
   }
   if (origin.node.nodeId === undefined) throw new TypeError("Guest closures require an AST node identity.");

@@ -24,7 +24,7 @@ import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxBox } from "../interp/boxed.js";
 import { restoreBoxedProperties } from "./boxed.js";
-import { sandboxErrorTypes } from "../error/shape.js";
+import { sandboxErrorNames, sandboxErrorTypes } from "../error/shape.js";
 import { SnapshotMismatchError } from "../restore.js";
 import { evaluateNode, Scope, setSandboxProperty } from "../interp/interpreter.js";
 import { getGuestFunctionProperties, getGuestFunctionProperty, getSandboxDataProperty, isGuestClosure, materializeFunctionProperties, registerGuestClosure, setSandboxPrototype } from "../interp/object-model.js";
@@ -590,7 +590,19 @@ function initializeIntrinsicRealm(state: RestoreState): void {
       const method = state.heap[String(value.id)];
       return method?.kind === "intrinsic" && method.id === '["%FunctionPrototype%",{"symbol":"hasInstance"}]';
     });
-  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance });
+  const errorConstructors = Object.values(state.heap).filter(node =>
+    node.kind === "intrinsic" && sandboxErrorNames.some(name => node.id === JSON.stringify([name])));
+  const errorPrototypes = errorConstructors.every(node => node.kind === "intrinsic" &&
+    node.state?.properties.properties.some(([key, descriptor]) => {
+      if (key !== "prototype" || descriptor.kind !== "data" || descriptor.writable ||
+          descriptor.enumerable || descriptor.configurable) return false;
+      const value = descriptor.value;
+      if (value === null || typeof value !== "object" || !("kind" in value) || value.kind !== "ref") return false;
+      const prototype = state.heap[String(value.id)];
+      return prototype?.kind === "intrinsic" &&
+        prototype.id === JSON.stringify([...JSON.parse(node.id) as string[], "prototype"]);
+    }));
+  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance, errorPrototypes });
   state.intrinsicsInitialized = true;
 }
 
@@ -841,6 +853,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       if (target === undefined) throw new TypeError(`Missing restored function properties for ${serialized.kind === "intrinsic" ? serialized.id : serialized.kind}.`);
       if (objectState.prototype !== undefined)
         setSandboxPrototype(value as object, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      if (serialized.kind === "guest-object" && serialized.errorType !== undefined)
+        sandboxErrorTypes.set(value as object, serialized.errorType);
       restorePropertyDescriptors(target, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
       if (serialized.kind === "guest-array" && serialized.templateNodeId !== undefined) {
         const node = state.nodeById.get(serialized.templateNodeId);

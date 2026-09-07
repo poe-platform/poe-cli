@@ -1,5 +1,6 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
 import { internalSymbols } from "./internal-symbols.js";
+import { getIntrinsicIdentity } from "./intrinsics.js";
 import { getGeneratorProperties } from "./generator-properties.js";
 import { getRegexProperties, regexGuestProperties } from "./regexp-properties.js";
 import { getCollectionProperties, collectionGuestProperties, copyCollectionProperties } from "./collection-properties.js";
@@ -35,7 +36,7 @@ import {
 import { parseRegex, type RegexPattern } from "./regex/parse.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { sandboxErrorTypes } from "../error/shape.js";
-import { getGuestFunctionProperties, getSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
+import { getGuestFunctionProperties, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
 import type { FunctionSource } from "../parse/function-source.js";
 import {
   copySandboxArgumentProperties,
@@ -760,7 +761,7 @@ export function measureSandboxData(
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor !== undefined) descriptors.push([key, descriptor]);
     }
-    const includeNonEnumerable = isSandboxDate(value) || hasManagedDescriptors(value);
+    const includeNonEnumerable = isSandboxDate(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
     for (const [key, descriptor] of descriptors) {
       if (!descriptor.enumerable && !includeNonEnumerable) continue;
       usage += 1 + key.length;
@@ -1162,6 +1163,48 @@ function copyFromSandbox(
   }
 
   if (nodeTypes.isProxy(value)) throw new TypeError("Unsupported proxy sandbox value.");
+  if (sandboxErrorTypes.has(value) && hasExplicitSandboxPrototype(value)) {
+    const prototype = getSandboxPrototype(value);
+    let nativePrototype: object | null = null;
+    if (prototype !== null) {
+      const identity = getIntrinsicIdentity(prototype);
+      const nativePrototypes: Record<string, object> = {
+        Error: Error.prototype, TypeError: TypeError.prototype, RangeError: RangeError.prototype,
+        ReferenceError: ReferenceError.prototype, SyntaxError: SyntaxError.prototype,
+        URIError: URIError.prototype, EvalError: EvalError.prototype, AggregateError: AggregateError.prototype
+      };
+      const path = identity === undefined ? [] : JSON.parse(identity) as unknown[];
+      if (path.length !== 2 || typeof path[0] !== "string" || path[1] !== "prototype" || !Object.hasOwn(nativePrototypes, path[0]))
+        throw new TypeError("Custom Error prototype links cannot be copied as data.");
+      nativePrototype = nativePrototypes[path[0]];
+      let current: object | null = prototype;
+      let prototypeDepth = 0;
+      while (current !== null) {
+        assertSandboxDataDepth(++prototypeDepth);
+        const objectPrototype = getIntrinsicIdentity(current) === '["Object","prototype"]';
+        const owner = objectPrototype ? Object.getOwnPropertyDescriptor(current, "constructor")?.value : current;
+        if (owner === null || typeof owner !== "object" ||
+            (objectPrototype && getIntrinsicIdentity(owner) !== '["Object"]') || hasGuestObjectState(owner))
+          throw new TypeError("Modified Error prototype links cannot be copied as data.");
+        current = getSandboxPrototype(current);
+      }
+    }
+    const existing = state.seen.get(value);
+    if (existing !== undefined) return existing;
+    const descriptors = Reflect.ownKeys(value).filter(key => typeof key !== "symbol" || !internalSymbols.has(key))
+      .map(key => [key, Object.getOwnPropertyDescriptor(value, key)!] as const);
+    if (descriptors.some(([,descriptor]) => !("value" in descriptor)))
+      throw new TypeError("Error accessor properties cannot be copied as data.");
+    const copy = new Error();
+    delete copy.stack;
+    Object.setPrototypeOf(copy, nativePrototype);
+    state.seen.set(value, copy);
+    for (const [key, descriptor] of descriptors)
+      Object.defineProperty(copy, key, { ...descriptor,
+        value: copyFromSandbox(descriptor.value, state, joinPath(path, key), options, depth + 1) });
+    if (!Object.isExtensible(value)) Object.preventExtensions(copy);
+    return copy;
+  }
   if (!isSandboxClosure(value) && hasGuestObjectState(value)) {
     throw new TypeError("Guest prototype links and custom descriptors cannot be copied as data.");
   }

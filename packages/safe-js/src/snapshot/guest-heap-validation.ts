@@ -1,4 +1,5 @@
 import { Budget } from "../interp/budget.js";
+import { sandboxErrorNames, type SandboxErrorName } from "../error/shape.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
@@ -124,7 +125,9 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     state(node.state);
   } else if (node.kind === "guest-object" || node.kind === "guest-array") {
-    fields(node, ["kind", "state"], node.kind === "guest-array" ? ["templateNodeId", "templateOwner"] : []);
+    fields(node, ["kind", "state"], node.kind === "guest-array" ? ["templateNodeId", "templateOwner"] : ["errorType"]);
+    if (Object.hasOwn(node, "errorType") && !sandboxErrorNames.includes(node.errorType as SandboxErrorName))
+      throw new TypeError("Invalid guest error type.");
     if (Object.hasOwn(node, "templateOwner")) reference(node.templateOwner, ["guest-array"]);
     if (Object.hasOwn(node, "templateNodeId") && integer(node.templateNodeId) < 1)
       throw new TypeError("Invalid template source identity.");
