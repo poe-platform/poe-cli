@@ -21,3 +21,16 @@ Include fixed versus tracking views, zero/nonzero slice counts, resize during en
 coercion, iterator recovery, snapshots and budget retention. Keep this follow-up
 atomic and qualify it independently; do not change currently running full-suite
 sources during qualification.
+
+Join follow-up is now in progress after foundation commit
+`64625bc4b6ea825fe81690d03fb4674c8181faf0` was verified on remote main.
+Five native tests produced three failures (full/partial shrink) and two passing
+controls (growth and shrink/regrow). The join loop now emits empty text for
+missing indexed values while retaining its original captured length and budget
+checks. Logs: `/tmp/poe-safejs-join-resize-red.log` and
+`/tmp/poe-safejs-join-resize-qualified.log`. This follow-up is still local and needs
+lint, type, broader focused checks and its real harness before its own push.
+
+Foundation release monitoring: scoped workflow 34092258055 and CLI workflow
+34092258379 were both in progress after verified push. Neither publication is
+confirmed yet. Continue this work while monitoring those runs.

@@ -291,7 +291,8 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
           if (args[0] !== undefined) separator = await sandboxString(args[0], budget, context);
           for (let index = 0; index < length; index++) {
             budget.visitNode();
-            text = budget.allocateString(text + (index === 0 ? "" : separator) + String(receiver[index]));
+            const value = receiver[index];
+            text = budget.allocateString(text + (index === 0 ? "" : separator) + (value === undefined ? "" : String(value)));
           }
           return text;
         } finally { release(); }
