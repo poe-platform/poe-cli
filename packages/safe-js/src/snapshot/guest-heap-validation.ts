@@ -4,6 +4,7 @@ import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { releaseObjectPrototype } from "../interp/object-model.js";
 import { isSandboxClosure } from "../interp/values.js";
+import { assertSnapshotDataDepth } from "../graph-depth.js";
 
 let intrinsicKinds: Map<string, boolean> | undefined;
 
@@ -57,7 +58,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -68,7 +69,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["intrinsic", "guest-function", "guest-class"]);
+    const target = reference(value, ["intrinsic", "bound-function", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
@@ -164,6 +165,23 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (descriptor.kind !== "data" || descriptor.writable !== false || descriptor.enumerable !== false || descriptor.configurable !== false)
       throw new TypeError("Invalid class prototype descriptor.");
     reference(descriptor.value, ["object", "guest-object"]);
+  } else if (node.kind === "bound-function") {
+    fields(node, ["kind", "target", "thisValue", "args", "length", "state"], ["name"]);
+    if (Object.hasOwn(node, "name") && typeof node.name !== "string") throw new TypeError("Invalid bound function name.");
+    if (array(node.args).length > maxArrayLength) throw new TypeError("Bound arguments exceed allocation limit.");
+    if (!absent(node.length) && !(typeof node.length === "number" && node.length >= 0) &&
+        !(record(node.length).kind === "number" && record(node.length).value === "Infinity"))
+      throw new TypeError("Invalid bound function length.");
+    const visited = new Set<unknown>([raw]);
+    let current = node;
+    while (current.kind === "bound-function") {
+      assertSnapshotDataDepth(visited.size, "<bound-target>");
+      callable(current.target);
+      current = reference(current.target);
+      if (visited.has(current)) throw new TypeError("Cyclic bound function target.");
+      visited.add(current);
+    }
+    state(node.state);
   } else if (node.kind === "guest-function") {
     fields(node, ["kind", "astNodeId", "scope", "state"], ["name", "environment"]);
     if (integer(node.astNodeId) < 1) throw new TypeError("Invalid guest AST identity.");

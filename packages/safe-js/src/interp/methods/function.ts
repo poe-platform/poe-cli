@@ -16,6 +16,7 @@ import { assertSandboxDataDepth } from "../../graph-depth.js";
 import type { Budget } from "../budget.js";
 import { functionString } from "../function-string.js";
 import { retainValues, runResources } from "../resources.js";
+import { createBoundFunction } from "../bound-function.js";
 
 export type FunctionMethodOptions = {
   budget?: Budget;
@@ -103,29 +104,7 @@ export function callFunctionMethod(
     const explicitPrototype = hasExplicitSandboxPrototype(target);
     const prototype = getSandboxPrototype(target, options.budget);
     const bind = (length: number | undefined, name: string) => {
-      const bound = createSandboxClosure({
-        guest: true,
-        sandbox: true,
-        name: `bound ${name}`,
-        length,
-        boundTarget: target,
-        retainedValues: () => [target, thisValue, ...boundArgs, bound.name],
-        call: (callArgs, context) =>
-          options.callClosure(target, [...boundArgs, ...callArgs], context?.stack ?? [], thisValue),
-        ...(target.construct === undefined
-          ? {}
-          : {
-              construct: (callArgs, context) =>
-                options.callClosure(
-                  target,
-                  [...boundArgs, ...callArgs],
-                  context?.stack ?? [],
-                  undefined,
-                  true,
-                  context?.newTarget === bound ? target : context?.newTarget
-                )
-            })
-      });
+      const bound = createBoundFunction({ target, thisValue, args: boundArgs }, `bound ${name}`, length, options.callClosure);
       if (explicitPrototype) setSandboxPrototype(bound, prototype, options.budget);
       return bound;
     };

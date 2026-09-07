@@ -1,4 +1,5 @@
 import { getClosureOrigin, getGeneratorOrigin } from "../interp/closure-origin.js";
+import { boundFunctionStates } from "../interp/bound-function-state.js";
 import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { getIntrinsicIdentity } from "../interp/intrinsics.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, isGuestClosure, materializeFunctionProperties } from "../interp/object-model.js";
@@ -28,6 +29,7 @@ export type GuestObjectState<T> = {
 };
 
 export type GuestHeapNode<T> =
+  | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
   | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
   | { kind: "map"; entries: Array<[T,T]>; propertyState?: PropertyDescriptorData<T>; prototype?: T }
@@ -60,6 +62,12 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   if (intrinsic !== undefined) {
     const state = captureObjectState(value, encode);
     return { kind: "intrinsic", id: intrinsic, ...(state === undefined ? {} : { state }) };
+  }
+  const bound = boundFunctionStates.get(value);
+  if (bound !== undefined && isSandboxClosure(value)) {
+    return { kind: "bound-function", target: encode(bound.target), thisValue: encode(bound.thisValue),
+      args: bound.args.map(encode), length: encode(value.length),
+      ...(value.name === undefined ? {} : { name: value.name }), state: captureObjectState(value, encode)! };
   }
   if (isSandboxMap(value)) return { kind: "map", entries: [...value.entries].map(([key,entry]) => [encode(key),encode(entry)]), ...serializeCollectionProperties(value,encode) };
   if (isSandboxSet(value)) return { kind: "set", values: [...value.values].map(encode), ...serializeCollectionProperties(value,encode) };

@@ -1,4 +1,6 @@
 import { Budget, SandboxError, type CompileOwner } from "../interp/budget.js";
+import { createBoundFunction } from "../interp/bound-function.js";
+import { invokeBuiltinClosure } from "../interp/builtin-call.js";
 import { getGeneratorProperties } from "../interp/generator-properties.js";
 import { restoreRegexProperties } from "./regexp-properties.js";
 import { classOrigins, createClassConstructor, type Field } from "../interp/classes.js";
@@ -739,9 +741,25 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "intrinsic") {
+    if (serialized.kind === "bound-function") {
+      initializeIntrinsicRealm(state);
+      const target = deserializeValue(serialized.target, state);
+      if (!isSandboxClosure(target)) throw new TypeError("Invalid bound function target.");
+      const boundState = { target, thisValue: undefined as SandboxValue, args: [] as SandboxValue[] };
+      const length = deserializeValue(serialized.length, state);
+      if (length !== undefined && typeof length !== "number") throw new TypeError("Invalid bound function length.");
+      value = createBoundFunction(boundState, serialized.name, length,
+        (callee, args, stack, thisValue, construct, newTarget) =>
+          invokeBuiltinClosure(callee, args, state.budget, { stack, thisValue, newTarget }, thisValue, construct));
+      // Allocate every bound identity before decoding arguments and receivers:
+      // either may point back to this function, including through another bind.
+      state.initializeIterators.push(() => {
+        boundState.thisValue = deserializeValue(serialized.thisValue, state) as SandboxValue;
+        boundState.args = serialized.args.map(entry => deserializeValue(entry, state) as SandboxValue);
+      });
+    } else if (serialized.kind === "intrinsic") {
       initializeIntrinsicRealm(state);
       value = resolveIntrinsicIdentity(state.budget, serialized.id) as RuntimeSnapshotValue;
     } else if (serialized.kind === "guest-class") {
