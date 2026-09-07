@@ -84,7 +84,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
+    const target = reference(value, ["aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
