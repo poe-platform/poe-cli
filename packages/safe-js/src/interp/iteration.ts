@@ -94,7 +94,11 @@ export async function acquireSandboxIterator(
       if (!hasExplicitSandboxPrototype(value) && (value.async === true) === asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)
         return guestIterator(value, await context.getProperty(value, "next"), asyncProtocol, budget, context, signal);
     }
-    if (!asyncProtocol && Array.isArray(value) && getSandboxPrototype(value, budget) !== null) return undefined;
+    // An installed guest prototype makes the absence of the method observable.
+    // Only legacy callers without that prototype may use implicit built-ins.
+    if (!asyncProtocol && (typeof value === "string" ? lookupTarget !== undefined
+      : (Array.isArray(value) || isSandboxBox(value) || isSandboxMap(value) || isSandboxSet(value)) &&
+        (hasExplicitSandboxPrototype(value) || getSandboxPrototype(value, budget) !== null))) return undefined;
     if (!asyncProtocol) return getSandboxIterator(value, budget, context);
     if (isSandboxGenerator(value) && value.async && !hasExplicitSandboxPrototype(value))
       return getSandboxAsyncIterator(value, budget, context, signal);
