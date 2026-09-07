@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,7 +352,7 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin"].includes(key)) return undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
@@ -362,7 +362,7 @@ export function getFloat32Member(
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "slice" || key === "fill");
+      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin");
       const bridge: SandboxCallContext = {
         ...context, stack: context?.stack ?? [], thisValue: receiver,
         getProperty: context?.getProperty ?? ((value, property) => {
@@ -373,6 +373,35 @@ export function getFloat32Member(
         invokeClosure: context?.invokeClosure ?? ((callee, values, thisValue, construct) =>
           invokeBuiltinClosure(callee, values, budget, context, thisValue, construct))
       };
+      if (key === "copyWithin") {
+        return (async () => {
+          const release = retainValues(budget, () => [receiver, ...args]);
+          try {
+            const target = relativeIndex(await sandboxNumber(args[0], budget, bridge), storage.length);
+            const start = relativeIndex(await sandboxNumber(args[1], budget, bridge), storage.length);
+            const end = args[2] === undefined ? storage.length
+              : relativeIndex(await sandboxNumber(args[2], budget, bridge), storage.length);
+            let count = Math.min(end - start, storage.length - target);
+            if (count > 0) {
+              const current = float32Storage(receiver, true);
+              count = Math.min(count, current.length - start, current.length - target);
+              if (count > 0) {
+                const bytes = new Uint8Array(current.buffer, current.byteOffset, current.length * 4);
+                const direction = start < target && target < start + count ? -1 : 1;
+                let from = start * 4 + (direction < 0 ? count * 4 - 1 : 0);
+                let to = target * 4 + (direction < 0 ? count * 4 - 1 : 0);
+                for (let remaining = count * 4; remaining > 0; remaining--) {
+                  budget.visitNode();
+                  bytes[to] = bytes[from];
+                  from += direction;
+                  to += direction;
+                }
+              }
+            }
+            return receiver;
+          } finally { release(); }
+        })();
+      }
       if (key === "fill") {
         return (async () => {
           const release = retainValues(budget, () => [receiver, ...args]);
