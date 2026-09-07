@@ -33,3 +33,29 @@ not by that CLI smoke test. The checkpoint fix is ready for its separate commit.
 Remote CLI run 34161862592 failed the same two co checkpoint cases plus two
 5000ms Float32 camera timeouts (36,350 passing tests). This change addresses only
 the checkpoint regression; it does not claim the camera timeouts are resolved.
+
+Delivery: 7b55163a8 is verified on remote main and published as
+@poe-platform/safe-js@0.1.399 by run 34163119749, receipt
+2026-09-07T21:30:26.5613429Z.
+
+The next full package rerun exposed three completed resolver replay failures:
+two promise-resolver-metadata cases and the completed withResolvers replay case.
+It finished with 19,558 passes, three failures and 41 skips in 415.46 seconds.
+The fallback was applied to promises carrying an observer flag even after they
+settled, changing their node kind to object while their resolver still required
+a guest-promise target. A direct test reproduced object versus guest-promise.
+
+The follow-up now limits fallback to promises whose live state remains pending.
+A second direct test reproduced a pending resolver node pointing into that raw
+metadata path; indexing now treats that resolver and its target consistently.
+Settled promises retain guest nodes, and arbitrary/copy inputs remain untrusted.
+All 87 resolver, withResolvers, co checkpoint, policy and admission checks pass
+in 6.64 seconds. This follow-up remains uncommitted pending lint/build checks;
+it must remain separate from the subclass change.
+
+Follow-up verification passed: changed-file lint, the maintained 70-workspace
+build and root suffix stages, and fresh ESM imports. Node 18 completed resolver
+replay preserved [7,42] and kept its host read count at one. The real CLI subclass
+harness saved and resumed /tmp/safejs-resolver-replay.2cUkb0/checkpoint.json;
+both runs passed and both screenshots were opened. Zero spawns were expected;
+this checks the actual runtime/CLI replay route, not model behavior.

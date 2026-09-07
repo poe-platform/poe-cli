@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { assert, expect, it } from "vitest";
 import { Budget } from "../interp/budget.js";
 import { createPendingPromiseCapability } from "../interp/promise.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
@@ -13,4 +13,28 @@ it("keeps unresolved replay metadata exclusive to trusted in-memory snapshots", 
   expect(() => serializeSafeJSSnapshot(snapshot)).not.toThrow();
   expect(() => serializeSafeJSSnapshot({...snapshot, trustedRunReplay: true}))
     .toThrow("unrepresented promise continuation");
+});
+
+it("retains the guest promise target of a settled resolver in trusted replay", async () => {
+  const {promise, resolve} = createPendingPromiseCapability(new Budget());
+  unrepresentedPromiseContinuations.add(promise);
+  resolve.call([7]);
+  expect(await promise.promise).toBe(7);
+  const snapshot = {sourceHash: "source", promise, resolve};
+  inMemoryRunSnapshots.add(snapshot);
+  const dumped = JSON.parse(serializeSafeJSSnapshot(snapshot)) as {
+    heap: Record<string, {kind: string; promise?: {id: number}}>
+  };
+  const resolver = Object.values(dumped.heap).find(node => node.kind === "promise-resolver");
+  assert(resolver?.promise !== undefined);
+  expect(dumped.heap[String(resolver.promise.id)].kind).toBe("guest-promise");
+});
+
+it("keeps pending resolvers on the same trusted metadata path as their target", () => {
+  const {promise, resolve} = createPendingPromiseCapability(new Budget());
+  unrepresentedPromiseContinuations.add(promise);
+  const snapshot = {sourceHash: "source", promise, resolve};
+  inMemoryRunSnapshots.add(snapshot);
+  const dumped = JSON.parse(serializeSafeJSSnapshot(snapshot)) as {heap?: Record<string, {kind: string}>};
+  expect(Object.values(dumped.heap ?? {}).some(node => node.kind === "promise-resolver")).toBe(false);
 });

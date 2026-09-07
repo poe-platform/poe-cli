@@ -3,6 +3,8 @@ export const inMemoryRunSnapshots = new WeakSet<object>();
 import { getRegexProperties, isSandboxPromise, isSandboxRegex } from "../interp/values.js";
 import { isPromiseResolvingFunction } from "../interp/promise.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
+import { promiseStates } from "../interp/promise-state.js";
+import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { hasCustomRegexProperties, serializeRegexProperties, type RegexPropertyData } from "./regexp-properties.js";
 export const EXECUTION_SEMANTICS = "jobs-v8";
@@ -426,6 +428,10 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
+  const replayPromise = isSandboxPromise(value) ? value
+    : isPromiseResolvingFunction(value) ? promiseResolvingFunctions.get(value)?.promise : undefined;
+  const replayMetadata = trustedRunReplay && replayPromise !== undefined &&
+    promiseStates.get(replayPromise)?.status === "pending" && unrepresentedPromiseContinuations.has(replayPromise);
   if (isSandboxDataView(value)) guestEntries.push(dataViewBuffer(value));
   if (isNumericTypedArray(value)) guestEntries.push(typedArrayStorage(value).buffer);
   const guest = isSandboxDataView(value)
@@ -434,7 +440,7 @@ function collectContainerStats(
     ? { kind: "typedarray", state: captureTypedArrayState(value, entry => { guestEntries.push(entry); return null; }) }
     : isSandboxArrayBuffer(value)
     ? { kind: "arraybuffer", state: captureArrayBufferState(value, entry => { guestEntries.push(entry); return null; }) }
-    : trustedRunReplay && isSandboxPromise(value) && unrepresentedPromiseContinuations.has(value)
+    : replayMetadata
     ? undefined
     : captureGuestHeapNode(value, entry => { guestEntries.push(entry); return null; });
   if (guest !== undefined) {
