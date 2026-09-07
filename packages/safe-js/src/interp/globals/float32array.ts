@@ -770,18 +770,24 @@ export function setFloat32Member(
   value: Float32Array,
   property: PropertyKey,
   entry: SandboxValue,
-  budget?: Budget
-): void {
+  budget: Budget,
+  context?: SandboxCallContext
+): void | Promise<void> {
   const key = typeof property === "symbol" ? property : String(property);
   if (typeof key !== "symbol" && isFloat32Index(key)) {
-    Reflect.set(value, key, float32Number(entry));
-    return;
+    return (async () => {
+      const release = retainValues(budget, () => [value, entry]);
+      try {
+        const number = await sandboxNumber(entry, budget, context);
+        Reflect.set(value, key, number);
+      } finally { release(); }
+    })();
   }
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
-  const inherited = descriptor ?? (budget === undefined ? undefined : getSandboxPropertyDescriptor(value, key, budget));
+  const inherited = descriptor ?? getSandboxPropertyDescriptor(value, key, budget);
   if (
     descriptor === undefined && typeof key === "string" &&
-    (budget === undefined || !float32Prototypes.has(budget)) &&
+    !float32Prototypes.has(budget) &&
     ["length", "byteLength", "byteOffset", "buffer", "BYTES_PER_ELEMENT"].includes(key)
   )
     throw new TypeError(`Cannot assign to read only property '${String(key)}'.`);

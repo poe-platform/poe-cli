@@ -351,7 +351,7 @@ describe("Float32Array", () => {
     });
   });
 
-  it("does not invoke accessors or conversion callbacks on unsupported inputs", async () => {
+  it("rejects imported accessors without reading them while allowing guest numeric conversion", async () => {
     let reads = 0;
     const values = new Float32Array([1]);
     Object.defineProperty(values, "metadata", {
@@ -366,12 +366,12 @@ describe("Float32Array", () => {
     const result = await run(`
       let called = 0;
       const values = new Float32Array(1);
-      try { values[0] = { valueOf() { called++; return 1; } }; } catch (error) {}
+      values[0] = { valueOf() { called++; return 1; } };
       return { called, value: values[0] };
     `);
     expect(result.ok).toBe(true);
     if (!result.ok) throw result.error;
-    expect(result.returnValue).toEqual({ called: 0, value: 0 });
+    expect(result.returnValue).toEqual({ called: 1, value: 1 });
     expect(reads).toBe(0);
   });
 

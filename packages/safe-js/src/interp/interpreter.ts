@@ -3888,8 +3888,7 @@ export function setSandboxProperty(
   if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
   if (isFloat32Array(target)) {
-    setFloat32Member(target, property, value, budget);
-    return;
+    return setFloat32Member(target, property, value, budget, context);
   }
   if (isSandboxRegex(target)) {
     setRegexMember(target, property, value, budget);
