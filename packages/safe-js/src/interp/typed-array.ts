@@ -134,3 +134,9 @@ export function copyTypedArrayStorage<TValue>(
   }
   return new storage.Native(buffer, storage.byteOffset, storage.length);
 }
+
+export function requireUint8Array(value: unknown): Uint8Array<ArrayBuffer> {
+  if (!isNumericTypedArray(value) || typedArrayStorage(value).Native !== Uint8Array)
+    throw new TypeError("Conversion requires a Uint8Array receiver.");
+  return value as Uint8Array<ArrayBuffer>;
+}

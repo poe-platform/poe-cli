@@ -1,5 +1,5 @@
 import type { Budget } from "../budget.js";
-import { checkTypedArrayAllocation, isNumericTypedArray, typedArrayStorage } from "../typed-array.js";
+import { checkTypedArrayAllocation, requireUint8Array, typedArrayStorage } from "../typed-array.js";
 import { createSandboxClosure, type SandboxClosure, type SandboxObject } from "../values.js";
 import { materializeFunctionProperties, registerIntrinsicFunction, setSandboxPrototype } from "../object-model.js";
 
@@ -28,7 +28,7 @@ export function installUint8Hex(budget: Budget, constructor: SandboxClosure, pro
       value: createSandboxClosure({
         guest: true, sandbox: true, name: "toHex", length: 0,
         call: (_args, context) => {
-          const value = uint8Receiver(context?.thisValue);
+          const value = requireUint8Array(context?.thisValue);
           const { length } = typedArrayStorage(value, true);
           budget.provisionDataUsage(length * 2)();
           let result = "";
@@ -46,7 +46,7 @@ export function installUint8Hex(budget: Budget, constructor: SandboxClosure, pro
       value: createSandboxClosure({
         guest: true, sandbox: true, name: "setFromHex", length: 1,
         call: ([text], context) => {
-          const value = uint8Receiver(context?.thisValue);
+          const value = requireUint8Array(context?.thisValue);
           if (typeof text !== "string") throw new TypeError("Hex input must be a string.");
           typedArrayStorage(value, true);
           const written = decodeHexInto(text, value, budget);
@@ -55,12 +55,6 @@ export function installUint8Hex(budget: Budget, constructor: SandboxClosure, pro
       })
     }
   });
-}
-
-function uint8Receiver(value: unknown): Uint8Array<ArrayBuffer> {
-  if (!isNumericTypedArray(value) || typedArrayStorage(value).Native !== Uint8Array)
-    throw new TypeError("Hex conversion requires a Uint8Array receiver.");
-  return value as Uint8Array<ArrayBuffer>;
 }
 
 function decodeHexInto(text: string, value: Uint8Array<ArrayBuffer>, budget: Budget): number {
