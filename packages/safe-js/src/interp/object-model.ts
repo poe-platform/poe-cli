@@ -345,7 +345,8 @@ export function releaseObjectPrototype(budget: Budget): void {
 }
 
 export function getSandboxPrototype(value: object, budget?: Budget): object | null {
-  if (prototypes.has(value)) return prototypes.get(value) ?? null;
+  const explicit = prototypes.get(value);
+  if (explicit !== undefined) return explicit;
   if (budget === undefined) return null;
   if (isSandboxArrayBuffer(value)) return budget === undefined ? null : arrayBufferPrototypes.get(budget) ?? null;
   if (isSandboxDataView(value)) return dataViewPrototypes.get(budget) ?? null;

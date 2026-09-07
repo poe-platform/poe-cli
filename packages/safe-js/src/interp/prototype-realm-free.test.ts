@@ -4,6 +4,18 @@ import { arrayBufferPrototypes } from "./array-buffer.js";
 import { getSandboxPrototype, setSandboxPrototype } from "./object-model.js";
 import { typedArrayPrototypes } from "./typed-array-prototypes.js";
 
+it.each([null, { captured: "retained" }])("resolves explicit prototype %s without a redundant membership lookup", parent => {
+  const value = {};
+  setSandboxPrototype(value, parent);
+  const membership = vi.spyOn(WeakMap.prototype, "has");
+  try {
+    const actual = getSandboxPrototype(value);
+    const duplicateReads = membership.mock.calls.filter(([key]) => key === value).length;
+    expect(actual).toBe(parent);
+    expect(duplicateReads).toBe(0);
+  } finally { membership.mockRestore(); }
+});
+
 it("does not classify intrinsic kinds when no realm fallback can be resolved", () => {
   const values = [{}, [], new ArrayBuffer(8), new Float32Array(2), new Uint8Array(2)];
   const classify = vi.spyOn(ArrayBuffer, "isView");
