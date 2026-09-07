@@ -15,7 +15,7 @@ import { isGuestHostObject } from "../host-capabilities.js";
 import { isNumericTypedArray, isTypedArrayIndex, typedArrayStorage } from "../typed-array.js";
 import { typedArrayElement } from "./numeric-typed-array.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
-import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult, type SandboxIterator } from "../iteration.js";
+import { acquireSandboxIterator, closeIterator, getSandboxIterator, getSandboxIteratorFromMethod, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { toPropertyKey } from "../property-key.js";
 import { createNumericParsers } from "./numeric-parsers.js";
@@ -24,6 +24,7 @@ import { arrayMethodLengths, arrayMethodNames, callArrayMethod } from "../method
 import {
   getSandboxDataProperty,
   getSandboxPropertyDescriptor,
+  getBoxedPrototype,
   getSandboxPrototype,
   installArrayPrototype,
   isGuestClosure,
@@ -879,7 +880,17 @@ async function arrayFromSandboxValues(
     context?.getProperty !== undefined
       ? context.getProperty(items, property)
       : getSandboxDataProperty(items, property, budget);
-  const iterator = context === undefined ? getSandboxIterator(items, budget) : await acquireSandboxIterator(items, budget, context);
+  // Observable iterator methods must be captured before construction but called
+  // afterwards. Legacy low-level contexts can still use implicit built-in iteration.
+  const observableMethod = context?.getProperty !== undefined && !isGuestHostObject(items) &&
+    getSandboxPropertyDescriptor(typeof items === "object" ? items : getBoxedPrototype(items, budget), Symbol.iterator, budget) !== undefined;
+  const iteratorMethod = observableMethod ? await context!.getProperty!(items, Symbol.iterator) : undefined;
+  if (iteratorMethod !== null && iteratorMethod !== undefined &&
+      !isSandboxClosure(iteratorMethod) && typeof iteratorMethod !== "function")
+    throw new TypeError("Iterator method must be callable.");
+  let iterator = observableMethod ? undefined : context === undefined
+    ? getSandboxIterator(items, budget) : await acquireSandboxIterator(items, budget, context);
+  const iterable = observableMethod ? iteratorMethod !== null && iteratorMethod !== undefined : iterator !== undefined;
   const constructor = context?.thisValue;
   let result: SandboxValue;
   let currentValue: SandboxValue;
@@ -887,6 +898,7 @@ async function arrayFromSandboxValues(
   const retained = {};
   budget.setRetainedValues(retained, () => [
     items,
+    iteratorMethod,
     iterator?.retainedValue,
     mapFn,
     constructor,
@@ -906,7 +918,7 @@ async function arrayFromSandboxValues(
   };
   try {
     let length = 0;
-    if (iterator === undefined) {
+    if (!iterable) {
       const number = await sandboxNumber(await read("length"), budget, context);
       length =
         Number.isNaN(number) || number <= 0
@@ -917,7 +929,7 @@ async function arrayFromSandboxValues(
       isSandboxClosure(constructor) && constructor.construct !== undefined
         ? await invokeBuiltinClosure(
             constructor,
-            iterator === undefined ? [length] : [],
+            iterable ? [] : [length],
             budget,
             context,
             undefined,
@@ -925,6 +937,8 @@ async function arrayFromSandboxValues(
           )
         : createArrayFromConstructorArgs([length], budget);
     checkData(result, 0, true);
+    if (observableMethod && iterable)
+      iterator = await getSandboxIteratorFromMethod(items, iteratorMethod, budget, context!);
 
     let index = 0;
     while (iterator !== undefined || index < length) {

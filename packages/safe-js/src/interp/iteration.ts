@@ -108,16 +108,27 @@ export async function acquireSandboxIterator(
         getIntrinsicIdentity(installed) === JSON.stringify(["Array", "prototype", "values"]))
       return arrayIterator(value, context, budget);
   }
-  if (!asyncProtocol && (isSandboxMap(value) || isSandboxSet(value)) &&
-      typeof factory === "object" && factory !== null &&
-      getIntrinsicIdentity(factory) === JSON.stringify(isSandboxMap(value)
-        ? ["Map", "prototype", "entries"] : ["Set", "prototype", "values"])) {
-    return getSandboxIterator(value, budget, context);
-  }
   if (factory === null || factory === undefined) {
     if (!asyncProtocol) return undefined;
     const iterator = await acquireSandboxIterator(value, budget, context);
     return iterator === undefined ? undefined : asyncFromSyncIterator(iterator, budget, signal, context);
+  }
+  return getSandboxIteratorFromMethod(value, factory, budget, context, asyncProtocol, signal);
+}
+
+export async function getSandboxIteratorFromMethod(
+  value: SandboxValue,
+  factory: SandboxValue,
+  budget: Budget,
+  context: SandboxCallContext,
+  asyncProtocol = false,
+  signal?: AbortSignal
+): Promise<SandboxIterator> {
+  if (!asyncProtocol && (isSandboxMap(value) || isSandboxSet(value)) &&
+      typeof factory === "object" && factory !== null &&
+      getIntrinsicIdentity(factory) === JSON.stringify(isSandboxMap(value)
+        ? ["Map", "prototype", "entries"] : ["Set", "prototype", "values"])) {
+    return getSandboxIterator(value, budget, context)!;
   }
   if (!isSandboxClosure(factory)) {
     if (typeof factory !== "function") throw new TypeError("Iterator method must be callable.");
@@ -132,8 +143,8 @@ export async function acquireSandboxIterator(
     throw new TypeError("Iterator must be an object.");
   if (!asyncProtocol && isSandboxGenerator(iterator) && !iterator.async &&
       !hasExplicitSandboxPrototype(iterator) && getSandboxPropertyDescriptor(iterator, "next", budget) === undefined)
-    return getSandboxIterator(iterator, budget, context);
-  const next = await context.getProperty(iterator, "next");
+    return getSandboxIterator(iterator, budget, context)!;
+  const next = await context.getProperty!(iterator, "next");
   return guestIterator(iterator, next, asyncProtocol, budget, context, signal);
 }
 
