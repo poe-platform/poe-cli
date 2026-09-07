@@ -6,7 +6,7 @@ import {
   isFloat32Array,
   isFloat32Index
 } from "../float32.js";
-import { createSandboxClosure, isSandboxClosure, measureSandboxData, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
+import { createSandboxClosure, isSandboxClosure, measureSandboxData, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { float32Prototypes } from "../float32-prototypes.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
@@ -39,7 +39,9 @@ export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false
         const prototype = candidate !== null && typeof candidate === "object" ? candidate : float32Prototypes.get(budget)!;
         const release = retainValues(budget, () => [prototype, ...args]);
         try {
-          const result = allocateFloat32Array(args[0], budget);
+          const result = args[0] !== null && typeof args[0] === "object" && !isFloat32Array(args[0])
+            ? await allocateFloat32Input(args[0], budget, context)
+            : allocateFloat32Array(args[0], budget);
           setSandboxPrototype(result, prototype, budget);
           return result;
         } finally { release(); }
@@ -48,6 +50,56 @@ export function createFloat32ArrayGlobal(budget: Budget, nativePrototype = false
   });
   constructors.add(constructor);
   return constructor;
+}
+
+async function allocateFloat32Input(source: SandboxValue, budget: Budget, context?: SandboxCallContext): Promise<Float32Array> {
+  const callerContext = context;
+  const bridge: SandboxCallContext = {
+    ...callerContext, stack: callerContext?.stack ?? [], thisValue: undefined,
+    getProperty: callerContext?.getProperty ?? ((value, key) => {
+      const descriptor = getSandboxPropertyDescriptor(value, key, budget);
+      return descriptor === undefined ? getSandboxDataProperty(value, key, budget)
+        : readPropertyDescriptor(descriptor, value, bridge);
+    }),
+    invokeClosure: callerContext?.invokeClosure ?? ((callee, values, receiver, construct) =>
+      invokeBuiltinClosure(callee, values, budget, callerContext, receiver, construct))
+  };
+  const values: SandboxValue[] = [];
+  let iterator: SandboxIterator | undefined;
+  let current: SandboxValue;
+  let result: Float32Array | undefined;
+  const release = retainValues(budget, () => [source, values, iterator?.retainedValue, current, result]);
+  const checkData = createDataCheckpoint(budget, bridge);
+  try {
+    iterator = await acquireSandboxIterator(source, budget, bridge);
+    let length: number;
+    if (iterator !== undefined) {
+      while (true) {
+        budget.visitNode();
+        const next = await iterator.next();
+        if (typeof next !== "object" || next === null) throw new TypeError("Iterator result must be an object.");
+        if ((await readIteratorResult(iterator, next, "done")).value) break;
+        current = (await readIteratorResult(iterator, next, "value")).value;
+        budget.allocateArrayLength(values.length + 1);
+        values.push(current);
+        checkData(values, 1 + (budget.limits.dataSize === undefined ? 0 : measureSandboxData([current])));
+      }
+      length = values.length;
+    } else {
+      current = await bridge.getProperty!(source, "length");
+      const number = await sandboxNumber(current, budget, bridge);
+      length = Number.isNaN(number) || number <= 0 ? 0 : Math.min(Math.trunc(number), Number.MAX_SAFE_INTEGER);
+    }
+    checkFloat32Allocation(length, budget);
+    result = new Float32Array(length);
+    checkData(result, 0, true);
+    for (let index = 0; index < length; index++) {
+      budget.visitNode();
+      current = iterator === undefined ? await bridge.getProperty!(source, String(index)) : values[index];
+      result[index] = await sandboxNumber(current, budget, bridge);
+    }
+    return result;
+  } finally { release(); }
 }
 
 function allocateFloat32Array(source: SandboxValue, budget: Budget): Float32Array {

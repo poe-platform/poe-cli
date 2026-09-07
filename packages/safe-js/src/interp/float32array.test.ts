@@ -209,7 +209,7 @@ describe("Float32Array", () => {
     if (!result.ok) throw result.error;
     expect(result.returnValue).toEqual({
       bounds: true,
-      arrayLike: true,
+      arrayLike: false,
       buffer: "undefined",
       from: "function",
       factory: "function",
