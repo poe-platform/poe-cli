@@ -627,6 +627,8 @@ function variableDeclarationContainsAwait(node: VariableDeclaration): boolean {
 
 function expressionContainsAwait(node: Expression): boolean {
   switch (node.type) {
+    case "PrivateIdentifier":
+      return false;
     case "ClassExpression":
       return classDefinitionContains(node, expressionContainsAwait);
     case "NewTargetExpression":

@@ -26,7 +26,7 @@ import {
 } from "./values.js";
 
 type Pattern = VariableDeclarator["id"] | AssignmentPattern | MemberExpression | RestElement;
-export type AssignmentReference = { object: SandboxValue; key: PropertyKey };
+export type AssignmentReference = { object: SandboxValue; key: PropertyKey; privateName?: string };
 
 export type PatternTarget = { kind: VariableDeclarationKind; initialize?: true } | { assign: true };
 
@@ -42,6 +42,7 @@ export type PatternContext = {
   toPropertyKey(value: SandboxValue): string | symbol | Promise<string | symbol>;
   getProperty(value: SandboxValue, key: PropertyKey): SandboxValue | Promise<SandboxValue>;
   setProperty(target: SandboxValue, key: PropertyKey, value: SandboxValue): void | Promise<void>;
+  setPrivateProperty?(target: SandboxValue, name: string, value: SandboxValue): void | Promise<void>;
 };
 
 export type BindPatternResult =
@@ -222,7 +223,7 @@ async function bindArrayPattern(
       const elementContext = pattern.nodeId === undefined ? context : context.withPatternState?.(pattern.nodeId, state) ?? context;
       const binding = resuming && saved.phase === "binding"
         ? await bindPattern(element, saved.current, target, scope, elementContext,
-          Object.hasOwn(saved, "referenceObject") ? { object: saved.referenceObject, key: saved.referenceKey as PropertyKey } : undefined)
+          Object.hasOwn(saved, "referenceObject") ? { object: saved.referenceObject, key: saved.referenceKey as PropertyKey, privateName: saved.privateName } : undefined)
         : await bindPatternValue(
         element,
         async () => {
@@ -242,6 +243,7 @@ async function bindArrayPattern(
           state.phase = "binding"; state.current = current; state.done = done;
           if (reference !== undefined) {
             state.referenceObject = reference.object; state.referenceKey = reference.key;
+            if (reference.privateName !== undefined) state.privateName = reference.privateName;
           }
         }
       );
@@ -305,7 +307,7 @@ async function bindObjectPattern(
       const element = property.type === "RestElement" ? property : property.value;
       const binding = state.phase === "binding"
         ? await bindPattern(element, state.current, target, scope, propertyContext,
-          Object.hasOwn(state, "referenceObject") ? { object: state.referenceObject, key: state.referenceKey as PropertyKey } : undefined)
+          Object.hasOwn(state, "referenceObject") ? { object: state.referenceObject, key: state.referenceKey as PropertyKey, privateName: state.privateName } : undefined)
         : await bindPatternValue(element,
           async () => ({ value: property.type === "RestElement"
             ? await copyObjectRestValue(value, excludedKeys, propertyContext)
@@ -317,6 +319,7 @@ async function bindObjectPattern(
             if (reference !== undefined) {
               currentState.referenceObject = reference.object;
               currentState.referenceKey = reference.key;
+              if (reference.privateName !== undefined) currentState.privateName = reference.privateName;
             }
           });
       if (!binding.ok) return binding;
@@ -344,7 +347,10 @@ async function bindMemberExpression(
   if (!isIndexableValue(reference.object)) {
     throw new TypeError("Assignment expressions require a sandbox object property.");
   }
-  await context.setProperty(reference.object, reference.key, value);
+  if (reference.privateName !== undefined) {
+    if (context.setPrivateProperty === undefined) throw new TypeError("Private assignment context is unavailable.");
+    await context.setPrivateProperty(reference.object, reference.privateName, value);
+  } else await context.setProperty(reference.object, reference.key, value);
   return { ok: true };
 }
 

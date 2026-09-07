@@ -2,6 +2,7 @@ import type { Budget } from "../interp/budget.js";
 import { assertSnapshotDataDepth } from "../graph-depth.js";
 import { Scope } from "../interp/scope.js";
 import type { SandboxValue } from "../interp/values.js";
+import type { PrivateName } from "../interp/private-state.js";
 import type { GuestHeapNode } from "./guest-heap.js";
 
 type Frame = Extract<GuestHeapNode<unknown>, { kind: "scope-frame" }>;
@@ -66,6 +67,7 @@ export function hydrateGuestScopes(
       functionBoundary: frame.functionBoundary,
       chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, decode(identity) as PrivateName] as [string, PrivateName]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: decode(cell.value) } : cell),
       ...(frame.restoredBindings === undefined ? {} : {
         restoredBindings: frame.restoredBindings.map(([name, value]) => [name, decode(value)] as [string, SandboxValue])

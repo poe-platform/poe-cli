@@ -1,4 +1,5 @@
 import type { VariableDeclarationKind } from "../parse.js";
+import type { PrivateName } from "./private-state.js";
 import type { InterpreterSnapshot, InterpreterValue } from "./interpreter.js";
 
 type ScopeBinding = {
@@ -24,6 +25,7 @@ type ScopeOptions = {
 };
 
 export type ScopeFrame = {
+  privateNames?: Array<[string, PrivateName]>;
   parent?: Scope;
   importMeta?: InterpreterValue;
   functionBoundary: boolean;
@@ -36,6 +38,7 @@ export type ScopeFrame = {
 };
 
 export class Scope {
+  privateNames?: Map<string, PrivateName>;
   readonly #bindings = new Map<string, ScopeBinding>();
   readonly #restoredBindings: Map<string, InterpreterValue>;
   #frameHydrated = false;
@@ -66,6 +69,27 @@ export class Scope {
       chargeData: true,
       ...options
     });
+  }
+
+  declarePrivateName(description: string): PrivateName {
+    const names = this.privateNames ??= new Map();
+    const existing = names.get(description);
+    if (existing !== undefined) return existing;
+    const name = { description };
+    names.set(description, name);
+    return name;
+  }
+
+  resolvePrivateName(description: string): PrivateName {
+    const ownName = this.privateNames?.get(description);
+    if (ownName !== undefined) return ownName;
+    let scope: Scope | undefined = this.parent;
+    while (scope !== undefined) {
+      const name = scope.privateNames?.get(description);
+      if (name !== undefined) return name;
+      scope = scope.parent;
+    }
+    throw new SyntaxError(`Undeclared private name #${description}.`);
   }
 
   consumeRestoredBinding(
@@ -122,6 +146,7 @@ export class Scope {
     const values = this.parent?.retainedValues() ?? [];
     if (this.options.chargeData !== false) {
       if (this.importMeta !== undefined) values.push(this.importMeta);
+      if (this.privateNames !== undefined) values.push(...this.privateNames.values());
       for (const binding of this.#bindings.values()) {
         if (binding.value !== uninitialized) values.push(binding.value);
       }
@@ -275,6 +300,7 @@ export class Scope {
       chargeData: this.options.chargeData !== false,
       bindings,
       cells,
+      ...(this.privateNames === undefined ? {} : { privateNames: [...this.privateNames] }),
       ...(this.parent === undefined ? { restoredBindings: [...this.#restoredBindings] } : {})
     };
   }
@@ -304,6 +330,7 @@ export class Scope {
     const restored = new Map(frame.restoredBindings ?? []);
     if (restored.size !== (frame.restoredBindings?.length ?? 0)) throw new TypeError("Duplicate restored binding.");
     this.importMeta = frame.importMeta;
+    if (frame.privateNames !== undefined) this.privateNames = new Map(frame.privateNames);
     for (const [name, binding] of bindings) this.#bindings.set(name, binding);
     if (this.parent === undefined)
       for (const [name, value] of restored) this.#restoredBindings.set(name, value);

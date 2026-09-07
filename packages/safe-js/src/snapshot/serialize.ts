@@ -8,7 +8,7 @@ import { isSandboxRegExpIterator, regexpIteratorState, type SandboxRegExpIterato
 import { hasGuestObjectState, hasNullObjectPrototype } from "../interp/object-model.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { assertSnapshotDataDepth, assertSnapshotGraphDepth } from "../graph-depth.js";
-import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState } from "./guest-heap.js";
+import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState, type PrivateElementData } from "./guest-heap.js";
 import { getGeneratorOrigin } from "../interp/closure-origin.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
 import { requiresArrayEntries, serializeArray, type SerializedArray } from "./arrays.js";
@@ -105,12 +105,14 @@ export type SerializedHeapValue =
     }
   | {
       kind: "map";
+      privateElements?: PrivateElementData<SerializedSnapshotValue>[];
       prototype?: SerializedSnapshotValue;
       propertyState?: PropertyDescriptorData<SerializedSnapshotValue>;
       entries: Array<[SerializedSnapshotValue, SerializedSnapshotValue]>;
     }
   | {
       kind: "set";
+      privateElements?: PrivateElementData<SerializedSnapshotValue>[];
       prototype?: SerializedSnapshotValue;
       propertyState?: PropertyDescriptorData<SerializedSnapshotValue>;
       values: SerializedSnapshotValue[];

@@ -7,8 +7,8 @@ export type GeneratorExpressionState<T = SandboxValue, S = Scope, I = SandboxIte
   | { kind: "yield-delegate"; async: boolean; value: T; current: T; iterator: I }
   | { kind: "declaration"; index: number }
   | { kind: "pattern-source"; value: T }
-  | { kind: "object-pattern"; phase: "key" | "reference" | "binding"; index: number; excludedKeys: T[]; key: T; current: T; referenceObject?: T; referenceKey?: T }
-  | { kind: "array-pattern"; phase: "reference" | "binding"; index: number; done: boolean; current: T; iterator: I; referenceObject?: T; referenceKey?: T }
+  | { kind: "object-pattern"; phase: "key" | "reference" | "binding"; index: number; excludedKeys: T[]; key: T; current: T; referenceObject?: T; referenceKey?: T; privateName?: string }
+  | { kind: "array-pattern"; phase: "reference" | "binding"; index: number; done: boolean; current: T; iterator: I; referenceObject?: T; referenceKey?: T; privateName?: string }
   | { kind: "for-of-array"; phase: "left" | "body"; values: T; current: T; index: number; scope: S }
   | { kind: "for-of-iterator"; phase: "left" | "body"; async: boolean; value: T; current: T; index: number; scope: S; iterator: I }
   | { kind: "for-in"; phase?: "left" | "body"; object: T; keys: string[]; index: number; scope: S }
@@ -16,7 +16,7 @@ export type GeneratorExpressionState<T = SandboxValue, S = Scope, I = SandboxIte
   | { kind: "binary"; left: T }
   | { kind: "identifier-assignment"; current: T }
   | { kind: "member"; object: T; superReceiver?: T }
-  | { kind: "member-assignment"; object: T; property: T; current: T; key?: T; superReceiver?: T }
+  | { kind: "member-assignment"; object: T; property: T; current: T; key?: T; superReceiver?: T; privateName?: string }
   | { kind: "template"; prefix: string; index: number }
   | { kind: "object"; value: T; index: number; key?: T }
   | { kind: "call" | "new" | "tagged"; callee: T; thisValue: T; args: T; index: number }

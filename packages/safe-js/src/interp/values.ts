@@ -18,6 +18,7 @@ import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js"
 import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
 import { iteratorWrapperStates } from "./iterator-wrapper.js";
 import { iteratorHelperStates } from "./iterator-helper.js";
+import { privateElements } from "./private-state.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
@@ -684,6 +685,16 @@ export function measureSandboxData(
     seen.add(value);
 
     usage += 1;
+    const privateSlots = privateElements.get(value);
+    if (privateSlots !== undefined) {
+      for (const [name, element] of privateSlots) {
+        visit(name, depth + 1);
+        if (element.kind === "accessor") {
+          visit(element.get, depth + 1);
+          visit(element.set, depth + 1);
+        } else visit(element.value, depth + 1);
+      }
+    }
     if (!isGuestHostObject(value)) {
       const symbols = Object.getOwnPropertySymbols(value);
       const descriptors = symbols.length === 0 ? [] : symbols

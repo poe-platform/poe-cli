@@ -2,13 +2,15 @@ import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxAr
 import { typedArrayStorage, isNumericTypedArray } from "../interp/typed-array.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { serializePropertyDescriptors } from "./property-descriptors.js";
-import type { GuestObjectState } from "./guest-heap.js";
+import { capturePrivateElements, type GuestObjectState } from "./guest-heap.js";
+import { privateElements } from "../interp/private-state.js";
 import type { Budget } from "../interp/budget.js";
 
 export type ArrayBufferData<TReference> = { kind: "arraybuffer" } & ({ bytes: number[]; maxByteLength?: number; detached?: true } | { buffer: TReference });
 
 export function captureArrayBufferState<T>(value: ArrayBuffer, encode: (value: unknown) => T): GuestObjectState<T> {
   return { properties: serializePropertyDescriptors(value, encode),
+    ...(privateElements.has(value) ? { privateElements: capturePrivateElements(privateElements.get(value)!, encode) } : {}),
     ...(hasExplicitSandboxPrototype(value) ? { prototype: encode(getSandboxPrototype(value)) } : {}) };
 }
 

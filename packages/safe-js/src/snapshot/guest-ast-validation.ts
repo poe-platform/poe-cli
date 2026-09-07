@@ -1,3 +1,13 @@
+function privateAssignmentName(value: unknown): string | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  let node = value as Record<string, unknown>;
+  while (node.type === "AssignmentPattern" || node.type === "RestElement")
+    node = (node.type === "AssignmentPattern" ? node.left : node.argument) as Record<string, unknown>;
+  if (node.type !== "MemberExpression") return undefined;
+  const property = node.property as Record<string, unknown>;
+  return property.type === "PrivateIdentifier" ? String(property.name) : undefined;
+}
+
 // Schema validation precedes this source-ownership check in both restore paths.
 export function validateGuestFunctionAst(record: Record<string, unknown>, origin: unknown): void {
   if (record.kind === "guest-class") {
@@ -5,13 +15,14 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
       throw new TypeError("Unknown class AST identity");
     const node = origin as import("../parse.js").ClassNode;
     const expected = node.body.body.flatMap((element,index) => element.type === "PropertyDefinition" && !element.static ? [{element,index}] : []);
-    const fields = record.fields as Array<{index:number;key:unknown}>;
+    const fields = record.fields as Array<{index:number;key:unknown;privateName?:unknown}>;
     if (fields.length !== expected.length) throw new TypeError("Invalid class field count.");
     expected.forEach(({element,index}, position) => {
       const field = fields[position];
       if (field.index !== index) throw new TypeError("Invalid class field AST identity.");
+      if ((element.key.type === "PrivateIdentifier") !== (field.privateName !== undefined)) throw new TypeError("Invalid private field identity.");
       if (!element.computed) {
-        const key = element.key.type === "Identifier" ? element.key.name : String((element.key as {value:string|number}).value);
+        const key = element.key.type === "PrivateIdentifier" ? `#${element.key.name}` : element.key.type === "Identifier" ? element.key.name : String((element.key as {value:string|number}).value);
         if (field.key !== key) throw new TypeError("Invalid class field key.");
       }
     });
@@ -32,11 +43,11 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
     | { kind: "for"; phase: string }
     | { kind: "for-in"; phase: string }
     | { kind: "for-of"; phase: string; async: boolean }
-    | { kind: "array-pattern"; index: number }
+    | { kind: "array-pattern"; index: number; privateName?: string }
     | { kind: "declaration"; index: number }
     | { kind: "yield-delegate"; async: boolean }
-    | { kind: "object-pattern"; index: number; key: boolean }
-    | { kind: "member-assignment"; superReceiver: boolean; key: boolean }
+    | { kind: "object-pattern"; index: number; key: boolean; privateName?: string }
+    | { kind: "member-assignment"; superReceiver: boolean; key: boolean; privateName?: string }
     | { kind: "array" | "call" | "new" | "template" | "tagged"; index: number; member?: boolean }
     | { kind: "object"; index: number; key: boolean };
   let yieldExpressions: ReadonlyMap<number, ExpressionPosition> | undefined;
@@ -86,7 +97,8 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
         value.forEach((property: Record<string, unknown>, index) => {
           for (const part of property.type === "RestElement" ? ["argument"] : ["key", "value"]) {
             pending.push({ value: property[part], blocks, finalizers: frame.finalizers,
-              expressions: new Map([...frame.expressions, [id, { kind: "object-pattern", index, key: part === "key" }]]) });
+              expressions: new Map([...frame.expressions, [id, { kind: "object-pattern", index, key: part === "key",
+                privateName: part === "key" ? undefined : privateAssignmentName(property[part]) }]]) });
           }
         });
         continue;
@@ -112,6 +124,7 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
           : node.type === "CallExpression" ? "call" : "new";
         value.forEach((element, index) => pending.push({ value: element, blocks, finalizers: frame.finalizers,
           expressions: new Map([...frame.expressions, [node.nodeId as number, { kind, index,
+            ...(kind === "array-pattern" ? { privateName: privateAssignmentName(element) } : {}),
             member: kind === "call" && (node.callee as Record<string, unknown>)?.type === "MemberExpression" }]]) }));
         continue;
       }
@@ -133,7 +146,9 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
             ? new Map([...frame.expressions, [node.nodeId, { kind: "identifier-assignment" }]])
           : node.type === "AssignmentExpression" && key === "right" && typeof node.nodeId === "number" &&
               (node.left as Record<string, unknown>).type === "MemberExpression"
-            ? new Map([...frame.expressions, [node.nodeId, { kind: "member-assignment", key: node.operator !== "=",
+            ? new Map([...frame.expressions, [node.nodeId, { kind: "member-assignment", key: node.operator !== "=" && ((node.left as Record<string, unknown>).property as Record<string, unknown>).type !== "PrivateIdentifier",
+              privateName: ((node.left as Record<string, unknown>).property as Record<string, unknown>).type === "PrivateIdentifier"
+                ? String(((node.left as Record<string, unknown>).property as Record<string, unknown>).name) : undefined,
               superReceiver: ((node.left as Record<string, unknown>).object as Record<string, unknown>).type === "Super" }]])
           : node.type === "MemberExpression" && node.computed === true && key === "property" && typeof node.nodeId === "number"
             ? new Map([...frame.expressions, [node.nodeId, { kind: "member", superReceiver: (node.object as Record<string, unknown>).type === "Super" }]])
@@ -172,8 +187,11 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
         ((expected.kind === "for" || expected.kind === "for-of") && expected.phase !== expression.phase) ||
         (expected.kind === "for-in" && expected.phase !== (expression.phase ?? "body")) ||
         (expected.kind === "object-pattern" && expected.key !== (expression.phase === "key")) ||
+        ((expected.kind === "object-pattern" || expected.kind === "array-pattern") &&
+          (expression.phase === "binding" ? expected.privateName : undefined) !== expression.privateName) ||
         (expected.kind === "for-of" && expression.kind === "for-of-iterator" && expected.async !== expression.async) ||
         (expected.kind === "member-assignment" && (expected.key !== Object.hasOwn(expression, "key") ||
+          expected.privateName !== expression.privateName ||
           expected.superReceiver !== Object.hasOwn(expression, "superReceiver"))) ||
         (expected.kind === "member" && expected.superReceiver !== Object.hasOwn(expression, "superReceiver")) ||
         (expected.kind === "object" && expected.key !== Object.hasOwn(expression, "key")))

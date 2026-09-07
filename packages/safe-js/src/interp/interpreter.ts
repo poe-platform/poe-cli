@@ -1,4 +1,6 @@
 import { promiseReplayContext } from "./promise-replay.js";
+import { findPrivateElement, type PrivateName } from "./private-state.js";
+import { invokeBuiltinClosure } from "./builtin-call.js";
 import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { bigIntOperation, type BigIntOperator } from "./bigint-operators.js";
 import { accessorAdapter, readPropertyDescriptor, writePropertyDescriptor } from "./accessors.js";
@@ -252,7 +254,7 @@ type EvaluationContext = AsyncEvaluationContext;
 
 type EvaluationResult = AsyncEvaluationResult;
 type MemberReference = { kind: "nullish" } | {
-  kind: "resolved"; object: InterpreterValue; property: SandboxValue; superReceiver?: { value: SandboxValue };
+  kind: "resolved"; object: InterpreterValue; property: SandboxValue; privateName?: PrivateName; superReceiver?: { value: SandboxValue };
 };
 
 type HelperResult<TValue> =
@@ -850,6 +852,7 @@ async function evaluateTaggedTemplateExpression(
   }
   if (node.tag.type === "MemberExpression") return evaluateMemberAccess(node.tag, context, async member => {
     if (member.kind === "nullish") throw new TypeError("Tagged template tag must be a function.");
+    if (member.privateName !== undefined) return invokeTag(await readPrivateValue(member.object, member.privateName, context), member.object);
     const key = await toPropertyKey(member.property, context.budget, createCoercionContext(context));
     const receiver = member.superReceiver === undefined ? member.object : member.superReceiver.value;
     return invokeTag(await getPropertyValue(member.object, key, context, receiver), receiver);
@@ -903,6 +906,12 @@ async function evaluateBinaryExpression(
   node: BinaryExpression,
   context: EvaluationContext
 ): Promise<EvaluationResult> {
+  if (node.left.type === "PrivateIdentifier" && node.operator === "in") {
+    const name = context.scope.resolvePrivateName(node.left.name);
+    const right = await evaluateNode(node.right, context);
+    if (right.kind !== "normal") return right;
+    return { kind: "normal", hasValue: true, value: findPrivateElement(right.value, name) !== undefined };
+  }
   const restored = context.generatorResume === undefined || node.nodeId === undefined
     ? undefined : context.restoredGeneratorExpressionStates?.get(node.nodeId);
   if (restored !== undefined && restored.kind !== "binary") throw new TypeError("Invalid binary expression continuation.");
@@ -1081,14 +1090,14 @@ async function evaluateMemberAssignmentExpression(
       if (member.object === null || member.object === undefined) {
         throw new TypeError("Cannot assign properties of null or undefined.");
       }
-      property = await toPropertyKey(
+      property = member.privateName === undefined ? await toPropertyKey(
         member.property,
         context.budget,
         createCoercionContext(context)
-      );
-      current = await getPropertyValue(
+      ) : undefined;
+      current = member.privateName !== undefined ? await readPrivateValue(member.object, member.privateName, context) : await getPropertyValue(
         member.object,
-        property,
+        property!,
         context,
         member.superReceiver === undefined ? member.object : member.superReceiver.value
       );
@@ -1120,6 +1129,7 @@ async function evaluateMemberAssignmentExpression(
 
     if (context.generatorYield !== undefined && node.nodeId !== undefined) {
       const state = { kind: "member-assignment" as const, object: member.object, property: member.property, current,
+        ...(member.privateName === undefined ? {} : { privateName: member.privateName.description }),
         ...(property === undefined ? {} : { key: property }),
         ...(member.superReceiver === undefined ? {} : { superReceiver: member.superReceiver.value }) };
       context = { ...context, generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []), [node.nodeId, state]]) };
@@ -1145,22 +1155,23 @@ async function evaluateMemberAssignmentExpression(
         throw new TypeError("Cannot assign properties of null or undefined.");
       }
       operands = [value, member.object, member.property, member.superReceiver?.value];
-      property ??= await toPropertyKey(
+      if (member.privateName === undefined) property ??= await toPropertyKey(
         member.property,
         context.budget,
         createCoercionContext(context)
       );
-      if (member.superReceiver === undefined)
+      if (member.privateName !== undefined) await writePrivateValue(member.object, member.privateName, value, context);
+      else if (member.superReceiver === undefined)
         await setSandboxProperty(
           member.object,
-          property,
+          property!,
           value,
           context.budget,
           true,
           createCoercionContext(context)
         );
       else
-        await setSuperProperty(member.object, member.superReceiver.value, property, value, context);
+        await setSuperProperty(member.object, member.superReceiver.value, property!, value, context);
 
       return {
         kind: "normal",
@@ -1172,6 +1183,7 @@ async function evaluateMemberAssignmentExpression(
     }
   };
   if (restored !== undefined) return assign({ kind: "resolved", object: restored.object, property: restored.property,
+    ...(restored.privateName === undefined ? {} : { privateName: context.scope.resolvePrivateName(restored.privateName) }),
     ...(Object.hasOwn(restored, "superReceiver") ? { superReceiver: { value: restored.superReceiver } } : {}) });
   return evaluateMemberAccess(node.left, context, assign);
 }
@@ -2727,14 +2739,15 @@ async function evaluateMemberUpdateExpression(
     if (member.kind === "nullish" || member.object === null || member.object === undefined) {
       throw new TypeError("Cannot update properties of null or undefined.");
     }
-    const property = await toPropertyKey(member.property, context.budget, createCoercionContext(context));
-    const primitive = await toNumericPrimitive(await getPropertyValue(member.object, property, context, member.superReceiver === undefined ? member.object : member.superReceiver.value), context);
+    const property = member.privateName === undefined ? await toPropertyKey(member.property, context.budget, createCoercionContext(context)) : undefined;
+    const primitive = await toNumericPrimitive(member.privateName !== undefined ? await readPrivateValue(member.object, member.privateName, context) : await getPropertyValue(member.object, property!, context, member.superReceiver === undefined ? member.object : member.superReceiver.value), context);
     const current = typeof primitive === "bigint" ? primitive : toNumber(primitive);
     const next = typeof current === "bigint"
       ? bigIntOperation(node.operator === "++" ? "+" : "-", current, 1n, context.budget)
       : node.operator === "++" ? current + 1 : current - 1;
-    if (member.superReceiver === undefined) await setSandboxProperty(member.object, property, next, context.budget, true, createCoercionContext(context));
-    else await setSuperProperty(member.object, member.superReceiver.value, property, next, context);
+    if (member.privateName !== undefined) await writePrivateValue(member.object, member.privateName, next, context);
+    else if (member.superReceiver === undefined) await setSandboxProperty(member.object, property!, next, context.budget, true, createCoercionContext(context));
+    else await setSuperProperty(member.object, member.superReceiver.value, property!, next, context);
 
     return {
       kind: "normal",
@@ -2756,7 +2769,7 @@ async function evaluateMemberExpression(
     return {
       kind: "normal",
       hasValue: true,
-      value: await getPropertyValue(
+      value: member.privateName !== undefined ? await readPrivateValue(member.object, member.privateName, context) : await getPropertyValue(
         member.object,
         await toPropertyKey(member.property, context.budget, createCoercionContext(context)),
         context,
@@ -2764,6 +2777,22 @@ async function evaluateMemberExpression(
       )
     };
   });
+}
+
+async function readPrivateValue(receiver: SandboxValue, name: PrivateName, context: EvaluationContext): Promise<SandboxValue> {
+  const element = findPrivateElement(receiver, name);
+  if (element === undefined) throw new TypeError(`Receiver does not declare #${name.description}.`);
+  if (element.kind !== "accessor") return element.value;
+  if (element.get === undefined) throw new TypeError(`Private accessor #${name.description} has no getter.`);
+  return invokeBuiltinClosure(element.get, [], context.budget, createCoercionContext(context), receiver);
+}
+
+async function writePrivateValue(receiver: SandboxValue, name: PrivateName, value: SandboxValue, context: EvaluationContext): Promise<void> {
+  const element = findPrivateElement(receiver, name);
+  if (element === undefined) throw new TypeError(`Receiver does not declare #${name.description}.`);
+  if (element.kind === "field") { element.value = value; return; }
+  if (element.kind === "method" || element.set === undefined) throw new TypeError(`Private element #${name.description} is not writable.`);
+  await invokeBuiltinClosure(element.set, [value], context.budget, createCoercionContext(context), receiver);
 }
 
 function getPropertyValue(
@@ -2832,13 +2861,16 @@ export function createPatternContext(
       let reference: import("./patterns.js").AssignmentReference | undefined;
       const result = await evaluateMemberAccess(pattern, evaluationContext, async member => {
         if (member.kind === "nullish") throw new TypeError("Cannot assign properties of null or undefined.");
-        reference = { object: member.object, key: await toPropertyKey(member.property, context.budget, createCoercionContext(evaluationContext)) };
+        reference = member.privateName === undefined
+          ? { object: member.object, key: await toPropertyKey(member.property, context.budget, createCoercionContext(evaluationContext)) }
+          : { object: member.object, key: member.privateName.description, privateName: member.privateName.description };
         return normalEmptyResult();
       });
       return result.kind === "normal" ? { ok: true, reference: reference! } : { ok: false, result };
     },
     budget: context.budget,
     callContext: createCoercionContext(evaluationContext),
+    setPrivateProperty: (receiver, name, value) => writePrivateValue(receiver, scope.resolvePrivateName(name), value, evaluationContext),
     evaluate: (node, inferredName) => evaluate(node, { ...evaluationContext, inferredName }),
     toPropertyKey: (value) =>
       toPropertyKey(value, context.budget, createCoercionContext(evaluationContext)),
@@ -2997,6 +3029,10 @@ async function evaluateMemberAccess(
     return consume({ kind: "nullish" });
   }
 
+  if (node.property.type === "PrivateIdentifier")
+    return consume({ kind: "resolved", object: object.value, property: undefined,
+      privateName: context.scope.resolvePrivateName(node.property.name) });
+
   let property: SandboxValue;
   if (node.computed && context.generatorYield !== undefined && node.nodeId !== undefined) {
     const state = { kind: "member" as const, object: object.value,
@@ -3083,6 +3119,8 @@ async function evaluateMemberCallExpression(
       throw new TypeError("Cannot read properties of null or undefined.");
     }
 
+    if (reference.privateName !== undefined)
+      return evaluateResolvedCallExpression(node, await readPrivateValue(reference.object, reference.privateName, context), context, reference.object);
     const member = {
       ...reference,
       property: await toPropertyKey(reference.property, context.budget, createCoercionContext(context))

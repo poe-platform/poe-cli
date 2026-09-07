@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { assert, expect, it } from "vitest";
 import { runInNewContext } from "node:vm";
 import { run } from "../../run.js";
 import { dump } from "../../dump.js";
@@ -13,6 +13,7 @@ import { Budget } from "../budget.js";
 it("preserves Date subclass prototype identity and internal date state", async () => {
   const result = await run(`class Child extends Date {};const value=new Child(0);
     return value instanceof Child && Object.getPrototypeOf(value)===Child.prototype && value.getTime()===0;`);
+  assert(result.ok);
   expect(result.returnValue).toBe(true);
 });
 
@@ -33,7 +34,9 @@ it.each([
   "return [Object.getOwnPropertyDescriptor(Date,'prototype').writable,Object.getOwnPropertyDescriptor(Date.prototype,'getTime').enumerable,Object.getOwnPropertyDescriptor(Date.prototype,Symbol.toPrimitive).writable];"
 ])("matches the native Date prototype graph: %s", async source => {
   const expected = runInNewContext("(function(){'use strict';" + source + "})()");
-  expect((await run(source)).returnValue).toEqual(expected);
+  const result = await run(source);
+  assert(result.ok);
+  expect(result.returnValue).toEqual(expected);
 });
 
 it.each(["pending", "completed"])("preserves Date subclasses across %s replay", async mode => {
@@ -49,7 +52,9 @@ it.each(["pending", "completed"])("preserves Date subclasses across %s replay", 
 });
 
 it("preserves null Date prototypes across data boundaries", async () => {
-  const { returnValue: value } = await run("const value=new Date(7);Object.setPrototypeOf(value,null);Object.freeze(value);return value;");
+  const result = await run("const value=new Date(7);Object.setPrototypeOf(value,null);Object.freeze(value);return value;");
+  assert(result.ok);
+  const value = result.returnValue;
   const copied = deepCopyFromSandbox(value);
   expect(Object.getPrototypeOf(copied)).toBeNull();
   for (const result of [cloneSandboxValue(value), decodeReplayData(JSON.parse(JSON.stringify(encodeReplayData(value))))]) {
@@ -61,14 +66,20 @@ it("preserves null Date prototypes across data boundaries", async () => {
 });
 
 it("rejects non-null custom Date prototypes at data-only copy boundaries", async () => {
-  const { returnValue: value } = await run("class Child extends Date {};return new Child(7);");
+  const result = await run("class Child extends Date {};return new Child(7);");
+  assert(result.ok);
+  const value = result.returnValue;
   expect(() => deepCopyFromSandbox(value)).toThrow("prototype links");
   expect(() => cloneSandboxValue(value)).toThrow("prototype links");
 });
 
-it("rejects managed Date state in copied snapshot roots", async () => {
-  const result = await run("class Child extends Date {};const value=new Child(7);return 1;");
-  expect(() => serializeSafeJSSnapshot({ ...result.snapshot })).toThrow("prototype links");
+it("preserves managed Date state in copied snapshot roots", async () => {
+  const source = "class Child extends Date {label=42};const value=new Child(7);await 0;return [value instanceof Child,value.getTime(),value.label];";
+  const result = await run(source);
+  expect(result).toMatchObject({ok: true, returnValue: [true, 7, 42]});
+  const portable = JSON.parse(serializeSafeJSSnapshot({ ...result.snapshot }));
+  const snapshot = restore(portable, {source});
+  expect(await run(source, {snapshot})).toMatchObject({ok: true, returnValue: [true, 7, 42]});
 });
 
 it("accounts for data retained through Date prototype links", () => {

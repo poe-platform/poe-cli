@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["intrinsic", "bound-function", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -88,9 +88,32 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
+  const privateIdentity = (value: unknown, expected?: string) => {
+    const identity = reference(value, ["object"]);
+    fields(identity, ["kind", "entries"]);
+    const entries = record(identity.entries);
+    fields(entries, ["description"]);
+    if (typeof entries.description !== "string" || entries.description.length === 0 ||
+        (expected !== undefined && entries.description !== expected)) throw new TypeError("Invalid private-name identity.");
+  };
+  const privateState = (value: unknown, methodsOnly = false) => {
+    const names = new Set<number>();
+    for (const raw of array(value)) {
+      const element = record(raw);
+      fields(element, element.kind === "accessor" ? ["name", "kind", "get", "set"] : ["name", "kind", "value"]);
+      privateIdentity(element.name);
+      const id = integer(record(element.name).id);
+      if (names.has(id)) throw new TypeError("Duplicate private element.");
+      names.add(id);
+      if (element.kind === "accessor") { callable(element.get); callable(element.set); }
+      else if (element.kind === "method") { if (absent(element.value)) throw new TypeError("Missing private method."); callable(element.value); }
+      else if (element.kind !== "field" || methodsOnly) throw new TypeError("Invalid private element kind.");
+    }
+  };
   const state = (value: unknown) => {
     const object = record(value);
-    fields(object, ["properties"], ["prototype"]);
+    fields(object, ["properties"], ["prototype", "privateElements"]);
+    if (object.privateElements !== undefined) privateState(object.privateElements);
     if (Object.hasOwn(object, "prototype") && object.prototype !== null) reference(object.prototype);
     const properties = record(object.properties);
     fields(properties, ["properties", "extensible"]);
@@ -120,12 +143,27 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
   };
   if (node.kind === "map" || node.kind === "set") {
-    fields(node, ["kind", node.kind === "map" ? "entries" : "values"], ["propertyState", "prototype"]);
+    fields(node, ["kind", node.kind === "map" ? "entries" : "values"], ["propertyState", "prototype", "privateElements"]);
+    if (node.privateElements !== undefined) privateState(node.privateElements);
     state({ properties: Object.hasOwn(node, "propertyState") ? node.propertyState : { properties: [], extensible: true },
       ...(Object.hasOwn(node, "prototype") ? { prototype: node.prototype } : {}) });
     return false;
   }
-  if (node.kind === "iterator-helper") {
+  if (node.kind === "guest-regex") {
+    fields(node, ["kind", "source", "flags", "state"]);
+    if (typeof node.source !== "string" || typeof node.flags !== "string") throw new TypeError("Invalid guest RegExp payload.");
+    state(node.state);
+  } else if (node.kind === "guest-boxed" || node.kind === "guest-date") {
+    fields(node, ["kind", "value", "state"]);
+    if (node.kind === "guest-date") {
+      if (typeof node.value !== "number" && record(node.value).kind !== "number") throw new TypeError("Invalid guest date time.");
+    } else if (!["number", "string", "boolean"].includes(typeof node.value)) {
+      const payload = record(node.value);
+      if (payload.kind === "ref") reference(node.value, ["symbol"]);
+      else if (payload.kind !== "number" && payload.kind !== "bigint") throw new TypeError("Invalid guest boxed payload.");
+    }
+    state(node.state);
+  } else if (node.kind === "iterator-helper") {
     fields(node, ["kind", "method", "status", "callback", "remaining", "index", "state"], ["outer", "inner"]);
     if (!["map", "filter", "take", "drop", "flatMap"].includes(String(node.method)) ||
         !["start", "yield", "done"].includes(String(node.status))) throw new TypeError("Invalid iterator helper mode.");
@@ -222,14 +260,19 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       }
     }
   } else if (node.kind === "guest-class") {
-    fields(node, ["kind", "astNodeId", "scope", "state", "fields"], ["name"]);
+    fields(node, ["kind", "astNodeId", "scope", "state", "fields"], ["name", "privateMethods"]);
+    if (node.privateMethods !== undefined) privateState(node.privateMethods, true);
     if (integer(node.astNodeId) < 1) throw new TypeError("Invalid class AST identity.");
     reference(node.scope, ["scope-frame"]);
     if (Object.hasOwn(node, "name") && typeof node.name !== "string") throw new TypeError("Invalid class name.");
     let previous = -1;
     for (const item of array(node.fields)) {
       const field = record(item);
-      fields(field, ["index", "key"]);
+      fields(field, ["index", "key"], ["privateName"]);
+      if (field.privateName !== undefined) {
+        if (typeof field.key !== "string" || !field.key.startsWith("#")) throw new TypeError("Invalid private field key.");
+        privateIdentity(field.privateName, field.key.slice(1));
+      }
       const index = integer(field.index);
       if (index <= previous) throw new TypeError("Invalid class field order.");
       previous = index;
@@ -297,7 +340,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
         } else if (expression.kind === "pattern-source") {
           fields(expression, ["kind", "value"]);
         } else if (expression.kind === "object-pattern") {
-          fields(expression, ["kind", "phase", "index", "excludedKeys", "key", "current"], ["referenceObject", "referenceKey"]);
+          fields(expression, ["kind", "phase", "index", "excludedKeys", "key", "current"], ["referenceObject", "referenceKey", "privateName"]);
+          if (expression.privateName !== undefined && (typeof expression.privateName !== "string" || !Object.hasOwn(expression, "referenceObject"))) throw new TypeError("Invalid private pattern reference.");
           integer(expression.index);
           if (!["key", "reference", "binding"].includes(String(expression.phase)) ||
               Object.hasOwn(expression, "referenceObject") !== Object.hasOwn(expression, "referenceKey")) throw new TypeError("Invalid object pattern state.");
@@ -310,7 +354,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
             fields(expression, ["kind", "async", "value", "current", "iterator"]);
             if (typeof expression.async !== "boolean") throw new TypeError("Invalid delegated yield protocol.");
           } else if (expression.kind === "array-pattern") {
-            fields(expression, ["kind", "phase", "index", "done", "current", "iterator"], ["referenceObject", "referenceKey"]);
+            fields(expression, ["kind", "phase", "index", "done", "current", "iterator"], ["referenceObject", "referenceKey", "privateName"]);
+            if (expression.privateName !== undefined && (typeof expression.privateName !== "string" || !Object.hasOwn(expression, "referenceObject"))) throw new TypeError("Invalid private pattern reference.");
             if (!["reference", "binding"].includes(String(expression.phase)) || typeof expression.done !== "boolean" ||
                 Object.hasOwn(expression, "referenceObject") !== Object.hasOwn(expression, "referenceKey")) throw new TypeError("Invalid array pattern state.");
             if (Object.hasOwn(expression, "referenceKey") && typeof expression.referenceKey !== "string") reference(expression.referenceKey, ["symbol"]);
@@ -380,7 +425,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
         } else if (expression.kind === "identifier-assignment") {
           fields(expression, ["kind", "current"]);
         } else if (expression.kind === "member-assignment") {
-          fields(expression, ["kind", "object", "property", "current"], ["key", "superReceiver"]);
+          fields(expression, ["kind", "object", "property", "current"], ["key", "superReceiver", "privateName"]);
+          if (expression.privateName !== undefined && (typeof expression.privateName !== "string" || Object.hasOwn(expression, "key") || Object.hasOwn(expression, "superReceiver"))) throw new TypeError("Invalid private assignment reference.");
           if (Object.hasOwn(expression, "key") && typeof expression.key !== "string") reference(expression.key, ["symbol"]);
         } else if (expression.kind === "member") {
           fields(expression, ["kind", "object"], ["superReceiver"]);
@@ -435,7 +481,16 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       if (Object.hasOwn(environment, "newTarget")) callable(environment.newTarget);
     }
   } else {
-    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings"]);
+    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames"]);
+    if (node.privateNames !== undefined) {
+      const names = new Set<string>();
+      for (const raw of array(node.privateNames)) {
+        const entry = array(raw);
+        if (entry.length !== 2 || typeof entry[0] !== "string" || names.has(entry[0])) throw new TypeError("Invalid private-name scope.");
+        names.add(entry[0]);
+        privateIdentity(entry[1], entry[0]);
+      }
+    }
     if (!absent(node.parent)) reference(node.parent, ["scope-frame"]);
     if (typeof node.functionBoundary !== "boolean" || typeof node.chargeData !== "boolean") throw new TypeError("Invalid guest frame flags.");
     const cells = array(node.cells);

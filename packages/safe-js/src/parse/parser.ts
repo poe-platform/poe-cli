@@ -1,4 +1,5 @@
 import { boundIdentifiers } from "./bindings.js";
+import { validatePrivateNames } from "./private-names.js";
 import { tokenize, type Position, type Token } from "./tokenizer.js";
 import { assignIds } from "./assign-ids.js";
 import { functionSources } from "./function-source.js";
@@ -42,6 +43,8 @@ export type Identifier = BaseNode & {
   type: "Identifier";
   name: string;
 };
+
+export type PrivateIdentifier = BaseNode & { type: "PrivateIdentifier"; name: string };
 
 export type ThisExpression = BaseNode & {
   type: "ThisExpression";
@@ -560,6 +563,7 @@ export type Expression =
   | ClassExpression
   | FunctionExpression
   | Identifier
+  | PrivateIdentifier
   | LogicalExpression
   | MemberExpression
   | MetaProperty
@@ -635,6 +639,7 @@ export function parse(source: string, filename = "<input>", owner?: CompileOwner
       );
     }
     throwIfImportMetaAssignment(result);
+    if (source.includes("#")) validatePrivateNames(result);
     return result;
   } catch (error) {
     if (error instanceof DisallowedSyntaxError || error instanceof SandboxError) {
@@ -652,13 +657,15 @@ export function parse(source: string, filename = "<input>", owner?: CompileOwner
 export function parseModule(source: string, filename = "<input>", owner?: CompileOwner): Module {
   const compilation = new CompileScope(owner);
   try {
-    return assignIds(
+    const result = assignIds(
       new Parser(
         tokenize(source, { allowRegexLiterals: true, compilation }),
         source,
         compilation
       ).parseModule()
     );
+    if (source.includes("#")) validatePrivateNames(result);
+    return result;
   } catch (error) {
     if (error instanceof DisallowedSyntaxError || error instanceof SandboxError) {
       throw error;
@@ -687,6 +694,7 @@ export function parseExecutableModule(
       ).parseModule()
     );
     throwIfImportMetaAssignment(result);
+    if (source.includes("#")) validatePrivateNames(result);
     return result;
   } catch (error) {
     if (error instanceof DisallowedSyntaxError || error instanceof SandboxError) {
@@ -1832,7 +1840,7 @@ class Parser {
   private parseClassElement(derived: boolean): ClassElement {
     const start = this.currentToken();
     let isStatic = false;
-    if (start.value === "static" && !["(", "=", ";", "}"].includes(this.peekToken(1).value)) {
+    if (start.type !== "private-identifier" && start.value === "static" && !["(", "=", ";", "}"].includes(this.peekToken(1).value)) {
       this.index++;
       isStatic = true;
       if (this.currentToken().value === "{") {
@@ -1845,7 +1853,7 @@ class Parser {
     }
     const methodStart = this.currentToken();
     let async = false;
-    if (methodStart.value === "async" && !hasLineBreakBetween(methodStart, this.peekToken(1)) &&
+    if (methodStart.type !== "private-identifier" && methodStart.value === "async" && !hasLineBreakBetween(methodStart, this.peekToken(1)) &&
         (this.peekToken(1).value === "*" || this.isObjectMethodStart())) {
       this.index++;
       async = true;
@@ -1853,7 +1861,7 @@ class Parser {
     const generator = this.consumePunctuator("*") !== undefined;
     let accessor: "get" | "set" | undefined;
     const modifier = this.currentToken();
-    if ((modifier.value === "get" || modifier.value === "set") && this.isObjectMethodStart()) {
+    if (modifier.type !== "private-identifier" && (modifier.value === "get" || modifier.value === "set") && this.isObjectMethodStart()) {
       if (async || generator || modifier.end.offset - modifier.start.offset !== modifier.value.length)
         throw unexpectedTokenError(modifier);
       accessor = modifier.value;
@@ -1866,7 +1874,7 @@ class Parser {
         ? createStringLiteral(this.tokens[this.index++]!)
         : this.currentToken().type === "numeric"
           ? createNumericLiteral(this.tokens[this.index++]!)
-          : this.parseIdentifierName();
+          : this.currentToken().type === "private-identifier" ? this.parsePrivateIdentifier() : this.parseIdentifierName();
     if (computed) this.expectPunctuator("]");
     const name = computed ? undefined : key.type === "Identifier" ? key.name
       : key.type === "StringLiteral" || key.type === "NumericLiteral" ? String(key.value) : undefined;
@@ -2556,6 +2564,14 @@ class Parser {
   }
 
   private parseRelationalExpression(): ParsedExpression {
+    if (this.currentToken().type === "private-identifier") {
+      const left = this.parsePrivateIdentifier();
+      this.expectKeyword("in");
+      const right = this.parseShiftExpression();
+      return this.parseBinaryExpression(() => this.parseShiftExpression(), RELATIONAL_OPERATORS,
+        { node: { type: "BinaryExpression", operator: "in", left, right: right.node,
+          span: createSpan(left.span.start, right.node.span.end) }, parenthesized: false });
+    }
     return this.parseBinaryExpression(() => this.parseShiftExpression(), RELATIONAL_OPERATORS);
   }
 
@@ -2753,7 +2769,7 @@ class Parser {
           continue;
         }
 
-        const property = this.parseIdentifierName();
+        const property = this.currentToken().type === "private-identifier" ? this.parsePrivateIdentifier() : this.parseIdentifierName();
         expression = {
           node: {
             type: "MemberExpression",
@@ -2769,7 +2785,7 @@ class Parser {
       }
 
       if (this.consumePunctuator(".") !== undefined) {
-        const property = this.parseIdentifierName();
+        const property = this.currentToken().type === "private-identifier" ? this.parsePrivateIdentifier() : this.parseIdentifierName();
         expression = {
           node: {
             type: "MemberExpression",
@@ -3008,7 +3024,7 @@ class Parser {
     let callee = this.parsePrimaryExpression();
     while (true) {
       if (this.consumePunctuator(".") !== undefined) {
-        const property = this.parseIdentifierName();
+        const property = this.currentToken().type === "private-identifier" ? this.parsePrivateIdentifier() : this.parseIdentifierName();
         callee = {
           node: {
             type: "MemberExpression",
@@ -3358,6 +3374,7 @@ class Parser {
     }
     return (
       (propertyToken.type === "identifier" ||
+        propertyToken.type === "private-identifier" ||
         propertyToken.type === "keyword" ||
         propertyToken.type === "numeric" ||
         propertyToken.type === "string") &&
@@ -3397,6 +3414,13 @@ class Parser {
     }
     this.index += 1;
     return createIdentifierName(token);
+  }
+
+  private parsePrivateIdentifier(): PrivateIdentifier {
+    const token = this.currentToken();
+    if (token.type !== "private-identifier") throw unexpectedTokenError(token);
+    this.index++;
+    return { type: "PrivateIdentifier", name: token.value, span: createSpan(token.start, token.end) };
   }
 
   private parseArguments(): Array<Expression | SpreadElement> {
@@ -3475,9 +3499,10 @@ class Parser {
 
   private parseBinaryExpression(
     parseOperand: () => ParsedExpression,
-    operators: ReadonlySet<BinaryOperator>
+    operators: ReadonlySet<BinaryOperator>,
+    initial?: ParsedExpression
   ): ParsedExpression {
-    let left = parseOperand();
+    let left = initial ?? parseOperand();
 
     while (true) {
       const token = this.currentToken();

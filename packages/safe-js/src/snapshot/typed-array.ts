@@ -1,7 +1,8 @@
 import { typedArrayProperties, typedArrayStorage, typedArrayViewLayouts, restoreTypedArrayView, isNumericTypedArray, isTypedArrayIndex, numericTypedArrayConstructors, type NumericTypedArray, type NumericTypedArrayConstructor } from "../interp/typed-array.js";
 import { getSandboxPrototype, hasExplicitSandboxPrototype } from "../interp/object-model.js";
 import { restorePropertyDescriptors, serializePropertyDescriptors } from "./property-descriptors.js";
-import type { GuestObjectState } from "./guest-heap.js";
+import { capturePrivateElements, type GuestObjectState } from "./guest-heap.js";
+import { privateElements } from "../interp/private-state.js";
 import { arrayBufferDetached, arrayBufferOptions, isSandboxArrayBuffer } from "../interp/array-buffer.js";
 import type { Budget } from "../interp/budget.js";
 
@@ -9,6 +10,7 @@ export function captureTypedArrayState<T>(value: NumericTypedArray, encode: (val
   const metadata = Object.defineProperties(Object.create(null), Object.fromEntries(typedArrayProperties(value)));
   if (!Object.isExtensible(value)) Object.preventExtensions(metadata);
   return { properties: serializePropertyDescriptors(metadata, encode),
+    ...(privateElements.has(value) ? { privateElements: capturePrivateElements(privateElements.get(value)!, encode) } : {}),
     ...(hasExplicitSandboxPrototype(value) ? { prototype: encode(getSandboxPrototype(value)) } : {}) };
 }
 

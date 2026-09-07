@@ -8,11 +8,12 @@ import { getSandboxPrototype, materializeFunctionProperties, setSandboxPrototype
 import { defineDataProperty } from "./globals/object-array.js";
 import { createCoercionContext, createPatternContext } from "./interpreter.js";
 import type { Scope } from "./scope.js";
+import { addPrivateElement, type PrivateName, type PrivateElement } from "./private-state.js";
 import { hoistVarDeclarations } from "./var-hoist.js";
 import { propertyFunctionName } from "./property-key.js";
 import { createSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue, isSandboxClosure } from "./values.js";
 
-export type Field = { element: Extract<ClassElement, { type: "PropertyDefinition" }>; key: string | symbol };
+export type Field = { element: Extract<ClassElement, { type: "PropertyDefinition" }>; key: string | symbol; privateName?: PrivateName };
 type StaticElement = Field | { element: Extract<ClassElement, { type: "StaticBlock" }> };
 
 export async function evaluateClass(
@@ -42,7 +43,11 @@ export async function evaluateClass(
         throw new TypeError("Class extends value has an invalid prototype.");
     }
     const derived = node.superClass !== undefined;
+    for (const element of node.body.body)
+      if (element.type !== "StaticBlock" && element.key.type === "PrivateIdentifier") scope.declarePrivateName(element.key.name);
     constructor = createClassConstructor(node, { ...classContext, inferredName: context.inferredName }, evaluateNode, fields);
+    const instancePrivate = classOrigins.get(constructor)!.privateMethods;
+    const staticPrivate = new Map<PrivateName, PrivateElement>();
     const properties = materializeFunctionProperties(constructor);
     const prototype = properties.prototype as SandboxObject;
     Object.defineProperty(properties, "prototype", { writable: false });
@@ -58,16 +63,17 @@ export async function evaluateClass(
       }
       if (element.type === "MethodDefinition" && element.kind === "constructor") continue;
       let key: string | symbol;
+      const privateName = element.key.type === "PrivateIdentifier" ? scope.resolvePrivateName(element.key.name) : undefined;
       if (element.computed) {
         const result = await evaluateNode(element.key, classContext);
         if (result.kind !== "normal") return result;
         key = await pattern.toPropertyKey(result.value);
       } else {
-        key = element.key.type === "Identifier" ? element.key.name : String((element.key as { value: string | number }).value);
+        key = privateName !== undefined ? `#${privateName.description}` : element.key.type === "Identifier" ? element.key.name : String((element.key as { value: string | number }).value);
       }
       if (typeof key === "string") context.budget.allocateString(key);
       if (element.type === "PropertyDefinition") {
-        (element.static ? statics : fields).push({ element, key });
+        (element.static ? statics : fields).push({ element, key, ...(privateName === undefined ? {} : { privateName }) });
       } else {
         const home = element.static ? constructor : prototype;
         const method = createInterpretedClosure(element.value, classContext, evaluateNode, home);
@@ -75,6 +81,17 @@ export async function evaluateClass(
         Object.defineProperty(materializeFunctionProperties(method), "name", {
           value: accessor === undefined ? propertyFunctionName(key) : `${accessor} ${propertyFunctionName(key)}`
         });
+        if (privateName !== undefined) {
+          const entries = element.static ? staticPrivate : instancePrivate;
+          if (accessor === undefined) entries.set(privateName, { kind: "method", value: method });
+          else {
+            let entry = entries.get(privateName);
+            if (entry === undefined) { entry = { kind: "accessor" }; entries.set(privateName, entry); }
+            if (entry.kind !== "accessor") throw new TypeError("Invalid private accessor declaration.");
+            entry[accessor] = method;
+          }
+          continue;
+        }
         Object.defineProperty(
           element.static ? properties : prototype,
           key,
@@ -85,6 +102,7 @@ export async function evaluateClass(
       }
     }
     if (node.id !== undefined) scope.declare(node.id.name, "const", constructor);
+    for (const [name, element] of staticPrivate) addPrivateElement(constructor, name, element);
     for (const element of statics) await initializeElement(element, constructor, constructor, classContext, evaluateNode);
     classOrigins.get(constructor)!.initialized = true;
     if (node.type === "ClassDeclaration") {
@@ -97,7 +115,7 @@ export async function evaluateClass(
   }
 }
 
-export type ClassOrigin = { node: ClassNode; scope: Scope; fields: Field[]; initialized: boolean };
+export type ClassOrigin = { node: ClassNode; scope: Scope; fields: Field[]; initialized: boolean; privateMethods: Map<PrivateName, PrivateElement> };
 export const classOrigins = new WeakMap<object, ClassOrigin>();
 
 export function createClassConstructor(
@@ -116,7 +134,15 @@ export function createClassConstructor(
     name: node.id?.name ?? context.inferredName ?? "",
     length: constructorElement === undefined ? 0 : getFunctionLength(constructorElement.value.params),
     sourceRange: functionSources.get(node),
-    retainedValues: () => [...scope.retainedValues(), ...fields.map(field => field.key)],
+    retainedValues: () => {
+      const values: SandboxValue[] = [...scope.retainedValues(), ...fields.flatMap(field => field.privateName === undefined ? [field.key] : [field.key, field.privateName])];
+      for (const [name, element] of classOrigins.get(constructor)?.privateMethods ?? []) {
+        values.push(name);
+        if (element.kind === "accessor") values.push(element.get, element.set);
+        else values.push(element.value);
+      }
+      return values;
+    },
     call: () => { throw new TypeError("Class constructor cannot be invoked without 'new'."); },
     construct: async (args, invocation) => {
       const prototype = materializeFunctionProperties(constructor).prototype as SandboxObject;
@@ -125,6 +151,7 @@ export function createClassConstructor(
       let thisScope: Scope | undefined;
       let initialized = !derived;
       const initializeFields = async (receiver: SandboxValue) => {
+        for (const [name, element] of classOrigins.get(constructor)!.privateMethods) addPrivateElement(receiver, name, element);
         for (const field of fields) {
           await initializeElement(field, receiver, prototype, classContext, evaluateNode);
         }
@@ -177,7 +204,7 @@ export function createClassConstructor(
     }
   });
 
-  classOrigins.set(constructor, { node, scope, fields, initialized: false });
+  classOrigins.set(constructor, { node, scope, fields, initialized: false, privateMethods: new Map() });
   return constructor;
 }
 
@@ -201,6 +228,7 @@ async function initializeElement(
     value = result.hasValue ? result.value : undefined;
   }
   if ("key" in definition) {
-    await defineDataProperty(receiver, definition.key, { value, configurable: true, writable: true, enumerable: true }, context.budget, createCoercionContext(context));
+    if (definition.privateName !== undefined) addPrivateElement(receiver, definition.privateName, { kind: "field", value });
+    else await defineDataProperty(receiver, definition.key, { value, configurable: true, writable: true, enumerable: true }, context.budget, createCoercionContext(context));
   }
 }

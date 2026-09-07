@@ -8,6 +8,7 @@ export type Position = {
 
 export type TokenType =
   | "identifier"
+  | "private-identifier"
   | "keyword"
   | "numeric"
   | "regex"
@@ -189,6 +190,12 @@ class Lexer {
         this.syntaxError("Unexpected block comment terminator", start);
       }
 
+      if (char === "#") {
+        this.advance();
+        this.readIdentifierOrKeyword(start, true);
+        continue;
+      }
+
       if (isIdentifierStart(codePointChar) || this.startsUnicodeEscape()) {
         this.readIdentifierOrKeyword(start);
         continue;
@@ -257,7 +264,7 @@ class Lexer {
     }
   }
 
-  private readIdentifierOrKeyword(start: Position): void {
+  private readIdentifierOrKeyword(start: Position, privateName = false): void {
     let value = "";
     let isStart = true;
 
@@ -290,7 +297,8 @@ class Lexer {
       isStart = false;
     }
 
-    this.pushToken(KEYWORDS.has(value) ? "keyword" : "identifier", start, value);
+    if (privateName && isStart) this.syntaxError("Expected private identifier", start);
+    this.pushToken(privateName ? "private-identifier" : KEYWORDS.has(value) ? "keyword" : "identifier", start, value);
   }
 
   private readString(start: Position, quote: string): void {
@@ -1161,6 +1169,7 @@ function shouldRejectRegexLiteral(
 
   if (
     previousToken.type === "identifier" ||
+    previousToken.type === "private-identifier" ||
     previousToken.type === "numeric" ||
     previousToken.type === "string" ||
     previousToken.type === "template"

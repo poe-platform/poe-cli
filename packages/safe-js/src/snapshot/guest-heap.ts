@@ -8,9 +8,9 @@ import { getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, 
 import { isLiveCapability } from "../interp/host-capabilities.js";
 import { retainedAccessorClosures } from "../interp/accessors.js";
 import { templateOrigins, templateCookedArrays } from "../interp/template-objects.js";
-import { isSandboxBox } from "../interp/boxed.js";
+import { isSandboxBox, boxedValue } from "../interp/boxed.js";
 import { isRawJson } from "../interp/raw-json.js";
-import { isSandboxDate } from "../interp/date.js";
+import { isSandboxDate, dateTime } from "../interp/date.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
@@ -18,10 +18,11 @@ import { isSandboxStringIterator, stringIteratorState } from "../interp/string-i
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
-import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments } from "../interp/values.js";
+import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties } from "../interp/values.js";
 import { serializePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { classOrigins } from "../interp/classes.js";
+import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import type { CompletionResult } from "../interp/exceptions.js";
 import type { GeneratorExpressionState } from "../interp/generator-expression-state.js";
 import { mapIteratorSnapshot, type IteratorSnapshot } from "../interp/iteration.js";
@@ -31,9 +32,17 @@ export type GeneratorFinallyCompletion<T> = Omit<CompletionResult, "value" | "no
 export type GuestObjectState<T> = {
   properties: PropertyDescriptorData<T>;
   prototype?: T;
+  privateElements?: PrivateElementData<T>[];
 };
 
+export type PrivateElementData<T> = { name: T } & (
+  { kind: "field" | "method"; value: T } | { kind: "accessor"; get: T; set: T }
+);
+
 export type GuestHeapNode<T> =
+  | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
+  | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
+  | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
       outer?: { iterator: T; next: T }; inner?: { iterator: T; next: T }; callback: T;
       remaining: number | "Infinity"; index: number; state: GuestObjectState<T> }
@@ -45,9 +54,9 @@ export type GuestHeapNode<T> =
   | { kind: "guest-regexp-iterator"; matcher: T; input: T; exhausted: boolean; global?: boolean; unicode?: boolean; state: GuestObjectState<T> }
   | { kind: "bound-function"; target: T; thisValue: T; args: T[]; name?: string; length: T; state: GuestObjectState<T> }
   | { kind: "array-iterator"; source: T; index: number; method: "keys" | "values" | "entries"; state: GuestObjectState<T> }
-  | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T }>; state: GuestObjectState<T> }
-  | { kind: "map"; entries: Array<[T,T]>; propertyState?: PropertyDescriptorData<T>; prototype?: T }
-  | { kind: "set"; values: T[]; propertyState?: PropertyDescriptorData<T>; prototype?: T }
+  | { kind: "guest-class"; astNodeId: number; scope: T; name?: string; fields: Array<{ index: number; key: T; privateName?: T }>; privateMethods?: PrivateElementData<T>[]; state: GuestObjectState<T> }
+  | { kind: "map"; entries: Array<[T,T]>; propertyState?: PropertyDescriptorData<T>; prototype?: T; privateElements?: PrivateElementData<T>[] }
+  | { kind: "set"; values: T[]; propertyState?: PropertyDescriptorData<T>; prototype?: T; privateElements?: PrivateElementData<T>[] }
   | { kind: "raw-json"; text: string }
   | { kind: "guest-generator"; state: "start" | "running" | "suspended" | "done"; astNodeId: number;
       async: boolean; scope: T; closureScope: T; suspendedScope?: T; yieldNodeId?: number;
@@ -62,6 +71,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
       environment?: { homeObject?: T; newTarget?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
+      privateNames?: Array<[string, T]>;
       bindings: Array<[string, number]>;
       cells: Array<{ kind: ScopeFrame["cells"][number]["kind"] } & (
         { initialized: false } | { initialized: true; value: T }
@@ -71,6 +81,11 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  if (hasGuestObjectState(value) || privateElements.has(value)) {
+    if (isSandboxRegex(value)) return { kind: "guest-regex", source: value.source, flags: value.flags, state: captureObjectState(value, encode)! };
+    if (isSandboxBox(value)) return { kind: "guest-boxed", value: encode(boxedValue(value)), state: captureObjectState(value, encode)! };
+    if (isSandboxDate(value)) return { kind: "guest-date", value: encode(dateTime(value)), state: captureObjectState(value, encode)! };
+  }
   const helper = iteratorHelperStates.get(value);
   if (helper !== undefined) {
     if (helper.status === "executing") throw new TypeError("Cannot snapshot an executing iterator helper.");
@@ -111,8 +126,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       args: bound.args.map(encode), length: encode(value.length),
       ...(value.name === undefined ? {} : { name: value.name }), state: captureObjectState(value, encode)! };
   }
-  if (isSandboxMap(value)) return { kind: "map", entries: [...value.entries].map(([key,entry]) => [encode(key),encode(entry)]), ...serializeCollectionProperties(value,encode) };
-  if (isSandboxSet(value)) return { kind: "set", values: [...value.values].map(encode), ...serializeCollectionProperties(value,encode) };
+  if (isSandboxMap(value)) return { kind: "map", entries: [...value.entries].map(([key,entry]) => [encode(key),encode(entry)]), ...serializeCollectionProperties(value,encode),
+    ...(privateElements.has(value) ? { privateElements: capturePrivateElements(privateElements.get(value)!, encode) } : {}) };
+  if (isSandboxSet(value)) return { kind: "set", values: [...value.values].map(encode), ...serializeCollectionProperties(value,encode),
+    ...(privateElements.has(value) ? { privateElements: capturePrivateElements(privateElements.get(value)!, encode) } : {}) };
   if (isSandboxArrayIterator(value)) {
     const cursor = arrayIteratorState(value);
     return { kind: "array-iterator", source: encode(cursor.source), index: cursor.index, method: cursor.method,
@@ -124,7 +141,9 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       throw new TypeError("Class definitions must finish before they can be snapshotted.");
     return { kind: "guest-class", astNodeId: classOrigin.node.nodeId, scope: encode(classOrigin.scope),
       ...(isSandboxClosure(value) && value.name !== undefined ? { name: value.name } : {}),
-      fields: classOrigin.fields.map(field => ({ index: classOrigin.node.body.body.indexOf(field.element), key: encode(field.key) })),
+      fields: classOrigin.fields.map(field => ({ index: classOrigin.node.body.body.indexOf(field.element), key: encode(field.key),
+        ...(field.privateName === undefined ? {} : { privateName: encode(field.privateName) }) })),
+      ...(classOrigin.privateMethods.size === 0 ? {} : { privateMethods: capturePrivateElements(classOrigin.privateMethods, encode) }),
       state: captureObjectState(value, encode)! };
   }
   if (value instanceof Scope) {
@@ -133,6 +152,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       kind: "scope-frame", parent: encode(frame.parent), importMeta: encode(frame.importMeta),
       functionBoundary: frame.functionBoundary, chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, encode(identity)] as [string, T]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: encode(cell.value) } : cell),
       ...(frame.restoredBindings === undefined ? {} : {
         restoredBindings: frame.restoredBindings.map(([name, entry]) => [name, encode(entry)] as [string, T])
@@ -169,9 +189,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
               iterator: mapIteratorSnapshot("kind" in expression.iterator ? expression.iterator : expression.iterator.snapshot?.() ?? { kind: "unsupported" }, encode) }
             : expression.kind === "pattern-source" ? { kind: "pattern-source", value: encode(expression.value) }
             : expression.kind === "object-pattern" ? { kind: "object-pattern", phase: expression.phase, index: expression.index,
+              ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
               excludedKeys: expression.excludedKeys.map(encode), key: encode(expression.key), current: encode(expression.current),
               ...(Object.hasOwn(expression, "referenceObject") ? { referenceObject: encode(expression.referenceObject), referenceKey: encode(expression.referenceKey) } : {}) }
             : expression.kind === "array-pattern" ? { kind: "array-pattern", phase: expression.phase, index: expression.index, done: expression.done, current: encode(expression.current),
+              ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
               iterator: mapIteratorSnapshot("kind" in expression.iterator ? expression.iterator : expression.iterator.snapshot?.() ?? { kind: "unsupported" }, encode),
               ...(Object.hasOwn(expression, "referenceObject") ? { referenceObject: encode(expression.referenceObject), referenceKey: encode(expression.referenceKey) } : {}) }
             : expression.kind === "for-of-array" ? { ...expression, values: encode(expression.values), current: encode(expression.current), scope: encode(expression.scope) }
@@ -181,6 +203,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
             : expression.kind === "for" ? { kind: "for", phase: expression.phase, loopScope: encode(expression.loopScope), activeScope: encode(expression.activeScope) }
             : expression.kind === "identifier-assignment" ? { kind: "identifier-assignment", current: encode(expression.current) }
             : expression.kind === "member-assignment" ? { kind: "member-assignment", object: encode(expression.object), property: encode(expression.property), current: encode(expression.current),
+              ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
               ...(Object.hasOwn(expression, "key") ? { key: encode(expression.key) } : {}),
               ...(Object.hasOwn(expression, "superReceiver") ? { superReceiver: encode(expression.superReceiver) } : {}) }
             : expression.kind === "member" ? { kind: "member", object: encode(expression.object),
@@ -247,6 +270,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
 
 function captureObjectState<T>(value: object, encode: (value: unknown) => T): GuestObjectState<T> | undefined {
   let properties: object | undefined = value;
+  if (isSandboxRegex(value)) properties = getRegexProperties(value);
   if (isSandboxGenerator(value)) properties = getGeneratorProperties(value);
   if (isSandboxClosure(value)) {
     properties = value.properties;
@@ -255,6 +279,13 @@ function captureObjectState<T>(value: object, encode: (value: unknown) => T): Gu
   if (properties === undefined) return undefined;
   return {
     properties: serializePropertyDescriptors(properties, encode),
+    ...(privateElements.has(value) ? { privateElements: capturePrivateElements(privateElements.get(value)!, encode) } : {}),
     ...(hasExplicitSandboxPrototype(value) ? { prototype: encode(getSandboxPrototype(value)) } : {})
   };
+}
+
+export function capturePrivateElements<T>(elements: Map<PrivateName, PrivateElement>, encode: (value: unknown) => T): PrivateElementData<T>[] {
+  return [...elements].map(([name, element]) => element.kind === "accessor"
+    ? { name: encode(name), kind: "accessor", get: encode(element.get), set: encode(element.set) }
+    : { name: encode(name), kind: element.kind, value: encode(element.value) });
 }

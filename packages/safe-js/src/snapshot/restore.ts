@@ -26,6 +26,7 @@ import { restoreDateTime } from "../interp/date.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createModuleNamespace } from "../interp/module-namespace.js";
 import { createSandboxBox } from "../interp/boxed.js";
+import { createSandboxDate } from "../interp/date.js";
 import { restoreBoxedProperties } from "./boxed.js";
 import { sandboxErrorNames, sandboxErrorTypes } from "../error/shape.js";
 import { SnapshotMismatchError } from "../restore.js";
@@ -38,12 +39,33 @@ import { restoreSandboxArrayIterator } from "../interp/array-iterator.js";
 import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { iteratorHelperStates } from "../interp/iterator-helper.js";
+import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
+import type { PrivateElementData } from "./guest-heap.js";
+
+function restorePrivateElements<T>(entries: PrivateElementData<T>[], decode: (entry: T) => SandboxValue): Map<PrivateName, PrivateElement> {
+  const result = new Map<PrivateName, PrivateElement>();
+  for (const entry of entries) {
+    const name = decode(entry.name) as PrivateName;
+    if (entry.kind === "accessor") {
+      const get = decode(entry.get), set = decode(entry.set);
+      if (get !== undefined && !isSandboxClosure(get) || set !== undefined && !isSandboxClosure(set)) throw new TypeError("Invalid private accessor.");
+      result.set(name, { kind: "accessor", get, set });
+    } else {
+      const value = decode(entry.value);
+      if (entry.kind === "method") {
+        if (!isSandboxClosure(value)) throw new TypeError("Invalid private method.");
+        result.set(name, { kind: "method", value });
+      } else result.set(name, { kind: "field", value });
+    }
+  }
+  return result;
+}
 import type { SandboxObject } from "../interp/values.js";
 import { restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
 import { wellKnownSymbols } from "../interp/symbols.js";
 import { restoreSymbolProperties } from "./symbols.js";
 import { restoreDateProperties } from "./date-properties.js";
-import { isSandboxClosure, isSandboxMap, isSandboxSet, isSandboxRegex } from "../interp/values.js";
+import { isSandboxClosure, isSandboxMap, isSandboxSet, isSandboxRegex, getRegexProperties } from "../interp/values.js";
 import {
   createSandboxArguments,
   createSandboxClosure,
@@ -675,6 +697,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       if (serialized.state.prototype !== undefined)
         setSandboxPrototype(value, deserializeValue(serialized.state.prototype, state) as object | null, state.budget);
       restorePropertyDescriptors(value, serialized.state.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (serialized.state.privateElements !== undefined) privateElements.set(value,
+        restorePrivateElements(serialized.state.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
     });
     return value;
   }
@@ -689,6 +713,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         if (objectState.prototype !== undefined)
           setSandboxPrototype(value, deserializeValue(objectState.prototype, state) as object | null, state.budget);
         restoreTypedArrayProperties(value, objectState, entry => deserializeValue(entry, state));
+        if (objectState.privateElements !== undefined) privateElements.set(value,
+          restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
       });
       return value;
     }
@@ -789,6 +815,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   if (serialized.kind === "map") {
     const map = createSandboxMap();
     state.heapValueById.set(id, map);
+    if (serialized.privateElements !== undefined) state.initializeIterators.push(() => privateElements.set(map,
+      restorePrivateElements(serialized.privateElements!, entry => deserializeValue(entry, state) as SandboxValue)));
     if (Object.hasOwn(serialized, "prototype")) setSandboxPrototype(map, deserializeValue(serialized.prototype!, state) as object | null, state.budget);
     if (serialized.propertyState !== undefined) restorePropertyDescriptors(getCollectionProperties(map), serialized.propertyState, entry => deserializeValue(entry as SerializedSnapshotValue, state));
     for (const [key, entry] of serialized.entries) {
@@ -803,6 +831,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   if (serialized.kind === "set") {
     const set = createSandboxSet();
     state.heapValueById.set(id, set);
+    if (serialized.privateElements !== undefined) state.initializeIterators.push(() => privateElements.set(set,
+      restorePrivateElements(serialized.privateElements!, entry => deserializeValue(entry, state) as SandboxValue)));
     if (Object.hasOwn(serialized, "prototype")) setSandboxPrototype(set, deserializeValue(serialized.prototype!, state) as object | null, state.budget);
     if (serialized.propertyState !== undefined) restorePropertyDescriptors(getCollectionProperties(set), serialized.propertyState, entry => deserializeValue(entry as SerializedSnapshotValue, state));
     for (const entry of serialized.values) {
@@ -821,12 +851,22 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         setSandboxPrototype(generator, deserializeValue(objectState.prototype, state) as object | null, state.budget);
       restorePropertyDescriptors(getGeneratorProperties(generator), objectState.properties,
         entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined) privateElements.set(generator,
+        restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
     });
     return generator;
   }
-  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
-    if (serialized.kind === "bound-function") {
+    if (serialized.kind === "guest-regex") {
+      value = createSandboxRegex(serialized.source, serialized.flags, 0, state.compilation);
+    } else if (serialized.kind === "guest-boxed") {
+      value = createSandboxBox(deserializeValue(serialized.value, state));
+    } else if (serialized.kind === "guest-date") {
+      const time = deserializeValue(serialized.value, state);
+      if (typeof time !== "number") throw new TypeError("Invalid guest date time.");
+      value = createSandboxDate(time);
+    } else if (serialized.kind === "bound-function") {
       initializeIntrinsicRealm(state);
       const target = deserializeValue(serialized.target, state);
       if (!isSandboxClosure(target)) throw new TypeError("Invalid bound function target.");
@@ -864,8 +904,10 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
           const key = deserializeValue(field.key, state);
           if (element?.type !== "PropertyDefinition" || element.static || (typeof key !== "string" && typeof key !== "symbol"))
             throw new TypeError("Invalid restored class field.");
-          fields.push({ element, key });
+          fields.push({ element, key, ...(field.privateName === undefined ? {} : { privateName: deserializeValue(field.privateName, state) as PrivateName }) });
         }
+        if (serialized.privateMethods !== undefined)
+          classOrigins.get(constructor)!.privateMethods = restorePrivateElements(serialized.privateMethods, entry => deserializeValue(entry, state) as SandboxValue);
         classOrigins.get(constructor)!.initialized = true;
       });
     } else if (serialized.kind === "guest-function") {
@@ -930,13 +972,15 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       const intrinsicProperties = isSandboxClosure(value) ? value.properties : undefined;
       const target = isSandboxClosure(value)
         ? isGuestClosure(value) ? materializeFunctionProperties(value) : intrinsicProperties
-        : value as object;
+        : isSandboxRegex(value) ? getRegexProperties(value) : value as object;
       if (target === undefined) throw new TypeError(`Missing restored function properties for ${serialized.kind === "intrinsic" ? serialized.id : serialized.kind}.`);
       if (objectState.prototype !== undefined)
         setSandboxPrototype(value as object, deserializeValue(objectState.prototype, state) as object | null, state.budget);
       if (serialized.kind === "guest-object" && serialized.errorType !== undefined)
         sandboxErrorTypes.set(value as object, serialized.errorType);
       restorePropertyDescriptors(target, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined)
+        privateElements.set(value as object, restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
       if (serialized.kind === "guest-array" && serialized.templateNodeId !== undefined) {
         const node = state.nodeById.get(serialized.templateNodeId);
         if (node?.type !== "TemplateLiteral") throw new TypeError("Invalid template source identity.");
@@ -1048,11 +1092,13 @@ function restoreGuestGenerator(
           iterator: mapIteratorSnapshot(expression.iterator, value => deserializeValue(value, state) as SandboxValue) }
         : expression.kind === "pattern-source" ? { kind: "pattern-source", value: deserializeValue(expression.value, state) as SandboxValue }
         : expression.kind === "object-pattern" ? { kind: "object-pattern", phase: expression.phase, index: expression.index,
+          ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
           excludedKeys: expression.excludedKeys.map(value => deserializeValue(value, state) as SandboxValue),
           key: deserializeValue(expression.key, state) as SandboxValue, current: deserializeValue(expression.current, state) as SandboxValue,
           ...(Object.hasOwn(expression, "referenceObject") ? { referenceObject: deserializeValue(expression.referenceObject!, state) as SandboxValue,
             referenceKey: deserializeValue(expression.referenceKey!, state) as SandboxValue } : {}) }
         : expression.kind === "array-pattern" ? { kind: "array-pattern", phase: expression.phase, index: expression.index, done: expression.done, current: deserializeValue(expression.current, state) as SandboxValue,
+          ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
           iterator: mapIteratorSnapshot(expression.iterator, value => deserializeValue(value, state) as SandboxValue),
           ...(Object.hasOwn(expression, "referenceObject") ? { referenceObject: deserializeValue(expression.referenceObject!, state) as SandboxValue,
             referenceKey: deserializeValue(expression.referenceKey!, state) as SandboxValue } : {}) }
@@ -1068,6 +1114,7 @@ function restoreGuestGenerator(
           activeScope: state.guestScopes.get((expression.activeScope as SerializedReferenceValue).id)! }
         : expression.kind === "identifier-assignment" ? { kind: "identifier-assignment", current: deserializeValue(expression.current, state) as SandboxValue }
         : expression.kind === "member-assignment" ? { kind: "member-assignment", object: deserializeValue(expression.object, state) as SandboxValue,
+          ...(expression.privateName === undefined ? {} : { privateName: expression.privateName }),
           property: deserializeValue(expression.property, state) as SandboxValue, current: deserializeValue(expression.current, state) as SandboxValue,
           ...(Object.hasOwn(expression, "key") ? { key: deserializeValue(expression.key!, state) as SandboxValue } : {}),
           ...(Object.hasOwn(expression, "superReceiver") ? { superReceiver: deserializeValue(expression.superReceiver!, state) as SandboxValue } : {}) }
