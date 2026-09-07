@@ -791,7 +791,7 @@ export function reconcileCompiledValues(
   const included = new Set<CompileTicket>();
   const usage = measureSandboxData([...values, ...budget.retainedValues()], { compileTickets: included });
   const kept = new Set<CompileTicket>();
-  if (parent !== undefined) measureSandboxData(escaping, { compileTickets: kept });
+  if (parent !== undefined && included.size > 0) measureSandboxData(escaping, { compileTickets: kept });
   const transferred = new Set<CompileTicket>();
   for (const ticket of included) {
     if (!kept.has(ticket)) {
