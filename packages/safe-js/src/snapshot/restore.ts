@@ -572,6 +572,12 @@ function isSerializedRegexValue(
   );
 }
 
+function initializeIntrinsicRealm(state: RestoreState): void {
+  if (state.intrinsicsInitialized) return;
+  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner });
+  state.intrinsicsInitialized = true;
+}
+
 function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue {
   const existing = state.heapValueById.get(id);
   if (existing !== undefined) {
@@ -736,10 +742,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
   if (serialized.kind === "intrinsic" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "array-iterator") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "intrinsic") {
-      if (!state.intrinsicsInitialized) {
-        createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner });
-        state.intrinsicsInitialized = true;
-      }
+      initializeIntrinsicRealm(state);
       value = resolveIntrinsicIdentity(state.budget, serialized.id) as RuntimeSnapshotValue;
     } else if (serialized.kind === "guest-class") {
       const node = state.nodeById.get(serialized.astNodeId);
@@ -775,12 +778,19 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         homeObject: serialized.environment.homeObject === undefined ? undefined : deserializeValue(serialized.environment.homeObject, state) as NonNullable<AsyncEvaluationContext["functionEnvironment"]>["homeObject"],
         newTarget: serialized.environment.newTarget === undefined ? undefined : deserializeValue(serialized.environment.newTarget, state) as SandboxClosure
       };
+      // Current generator functions need their realm before creation, not only
+      // when a later prototype reference is decoded. Earlier heaps can lack the
+      // native nonconfigurable prototype property and retain that legacy shape.
+      const initializeGeneratorPrototype = node.type !== "ArrowFunctionExpression" && node.generator &&
+        serialized.state.properties.properties.some(([key, descriptor]) =>
+          key === "prototype" && descriptor.kind === "data" && !descriptor.configurable);
+      if (initializeGeneratorPrototype) initializeIntrinsicRealm(state);
       value = createInterpretedClosure(node, {
         scope, budget: state.budget, compilation: state.compilation, rootNode: state.rootNode,
         signal: state.signal, inferredName: serialized.name, functionEnvironment: environment,
         callStack: [], activeLoopIterations: new Map(), restoredLoopIterations: new Map(),
         stats: { currentDataSize: 0, nodeVisits: 0, peakDataSize: 0 }
-      }, evaluateNode, environment?.homeObject);
+      }, evaluateNode, environment?.homeObject, initializeGeneratorPrototype);
     } else value = serialized.kind === "guest-array" ? [] : Object.create(null) as Record<string, RuntimeSnapshotValue>;
     state.heapValueById.set(id, value);
     if (serialized.kind === "array-iterator") {

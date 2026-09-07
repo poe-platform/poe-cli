@@ -1,5 +1,6 @@
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { getGeneratorProperties } from "./generator-properties.js";
+import { generatorPrototypes } from "./generator-prototypes.js";
 import { runResources } from "./resources.js";
 import { getIntrinsicIdentity, registerBuiltinIdentities, releaseIntrinsicIdentities } from "./intrinsics.js";
 import { releaseTemplateObjects } from "./template-objects.js";
@@ -312,6 +313,7 @@ export function releaseObjectPrototype(budget: Budget): void {
   datePrototypes.delete(budget);
   arrayPrototypes.delete(budget);
   functionPrototypes.delete(budget);
+  generatorPrototypes.delete(budget);
   initialRegexDescriptors.delete(budget);
   intrinsicPrototypes.delete(budget);
 }

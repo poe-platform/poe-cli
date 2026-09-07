@@ -29,6 +29,7 @@ import {
   markDescriptorObject,
   materializeFunctionProperties,
   registerIntrinsicObject,
+  registerIntrinsicFunction,
   setSandboxPrototype
 } from "../object-model.js";
 import {
@@ -422,6 +423,21 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
     guest: true, sandbox: true, name: "[Symbol.iterator]", length: 0,
     call: (_args, context) => context?.thisValue
   }), writable: true, configurable: true });
+  const iteratorTagGetter = createSandboxClosure({ guest: true, sandbox: true,
+    name: "get [Symbol.toStringTag]", length: 0, call: () => "Iterator" });
+  const iteratorTagSetter = createSandboxClosure({ guest: true, sandbox: true,
+    name: "set [Symbol.toStringTag]", length: 1, call: ([value], context) => {
+      const receiver = context?.thisValue;
+      if (receiver === iterablePrototype || receiver === null || typeof receiver !== "object")
+        throw new TypeError("Iterator tag setter requires a distinct object receiver.");
+      defineOwnDataProperty(objectProperties(receiver, true), Symbol.toStringTag, value);
+      createDataCheckpoint(budget, context)(receiver, 0, true);
+      return undefined;
+    }
+  });
+  Object.defineProperty(iterablePrototype, Symbol.toStringTag, {
+    get: accessorAdapter(iteratorTagGetter, "get"), set: accessorAdapter(iteratorTagSetter, "set"), configurable: true
+  });
   setSandboxPrototype(iterablePrototype, getSandboxPrototype(Object.create(null), budget));
   setSandboxPrototype(iteratorPrototype, iterablePrototype);
   Object.defineProperties(iteratorPrototype, {
@@ -431,6 +447,9 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
     [Symbol.toStringTag]: { value: "Array Iterator", configurable: true }
   });
   registerBuiltinIdentities(budget, { "%ArrayIteratorPrototype%": iteratorPrototype, "%IteratorPrototype%": iterablePrototype });
+  registerIntrinsicFunction(budget, iterablePrototype[Symbol.iterator] as SandboxClosure);
+  registerIntrinsicFunction(budget, iteratorTagGetter);
+  registerIntrinsicFunction(budget, iteratorTagSetter);
   registerIntrinsicObject(budget, iterablePrototype);
   registerIntrinsicObject(budget, iteratorPrototype);
   for (const method of ["keys", "values", "entries"] as const) {

@@ -22,6 +22,7 @@ import { suspendJob } from "./jobs.js";
 import { invokeBuiltinClosure } from "./builtin-call.js";
 import { getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype } from "./object-model.js";
 import { getIntrinsicIdentity } from "./intrinsics.js";
+import { readPropertyDescriptor } from "./accessors.js";
 
 export type SandboxIterator = {
   snapshot?(): IteratorSnapshot;
@@ -87,13 +88,12 @@ export async function acquireSandboxIterator(
   if (getSandboxPropertyDescriptor(value, key, budget) === undefined &&
       !(isSandboxRegExpIterator(value) && !asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)) {
     if (isSandboxGenerator(value)) {
-      if (hasExplicitSandboxPrototype(value)) return undefined;
-      if ((value.async === true) === asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)
+      if (!hasExplicitSandboxPrototype(value) && (value.async === true) === asyncProtocol && getSandboxPropertyDescriptor(value, "next", budget) !== undefined)
         return guestIterator(value, await context.getProperty(value, "next"), asyncProtocol, budget, context, signal);
     }
     if (!asyncProtocol && Array.isArray(value) && getSandboxPrototype(value, budget) !== null) return undefined;
     if (!asyncProtocol) return getSandboxIterator(value, budget, context);
-    if (isSandboxGenerator(value) && value.async)
+    if (isSandboxGenerator(value) && value.async && !hasExplicitSandboxPrototype(value))
       return getSandboxAsyncIterator(value, budget, context, signal);
     const iterator = await acquireSandboxIterator(value, budget, context);
     return iterator === undefined ? undefined : asyncFromSyncIterator(iterator, budget, signal, context);
@@ -181,7 +181,8 @@ export function getSandboxAsyncIterator(
   signal?: AbortSignal
 ): SandboxIterator | undefined {
   if (isSandboxGenerator(value) && value.async) {
-    return hasExplicitSandboxPrototype(value) ? undefined
+    return hasExplicitSandboxPrototype(value) ? context?.getProperty === undefined
+      ? generatorProtocolAdapter(value, budget, context, true, signal) : undefined
       : { ...generatorObjectIterator(value, budget, context), asyncProtocol: true };
   }
   if (
@@ -366,7 +367,10 @@ export function getSandboxIterator(
     return syncIterator(Float32Array.prototype.values.call(value));
   }
   if (isSandboxGenerator(value)) {
-    return value.async || hasExplicitSandboxPrototype(value) ? undefined : generatorObjectIterator(value, budget, context);
+    if (value.async) return undefined;
+    if (hasExplicitSandboxPrototype(value)) return context?.getProperty === undefined
+      ? generatorProtocolAdapter(value, budget ?? new Budget(), context, false) : undefined;
+    return generatorObjectIterator(value, budget, context);
   }
 
   if (typeof value === "string") {
@@ -456,6 +460,45 @@ function collectionIterator(
 }
 
 const asyncGeneratorRequests = new WeakMap<SandboxGenerator, Promise<unknown>>();
+
+function generatorProtocolAdapter(
+  value: SandboxGenerator,
+  budget: Budget,
+  context: SandboxCallContext | undefined,
+  asyncProtocol: boolean,
+  signal?: AbortSignal
+): SandboxIterator {
+  // Direct host adapters still need guest property reads, receiver binding and
+  // cached next methods, but retain their asynchronous generator result channel.
+  const bridge: SandboxCallContext = {
+    ...context,
+    stack: context?.stack ?? [],
+    thisValue: value,
+    invokeClosure: (closure, args, receiver, construct) => invokeBuiltinClosure(closure, args, budget, context, receiver, construct),
+    getProperty: (target, key) => {
+      const descriptor = getSandboxPropertyDescriptor(target, key, budget);
+      return descriptor === undefined ? undefined : readPropertyDescriptor(descriptor, target, bridge, true);
+    }
+  };
+  let resolved: SandboxIterator | undefined;
+  let pending: Promise<SandboxIterator> | undefined;
+  const initialize = () => pending ??= acquireSandboxIterator(value, budget, bridge, asyncProtocol, signal).then(iterator => {
+    if (iterator === undefined) throw new TypeError("Generator does not provide an iterator protocol.");
+    return resolved = iterator;
+  });
+  return {
+    asynchronous: true,
+    ...(asyncProtocol ? { asyncProtocol: true as const } : {}),
+    get retainedValue() { return [value, resolved?.retainedValue]; },
+    snapshot: () => resolved?.snapshot?.() ?? { kind: "unsupported" },
+    next: async (...args) => (await initialize()).next(...args),
+    getOperation: async method => {
+      const iterator = await initialize();
+      return iterator.getOperation === undefined ? iterator[method] : iterator.getOperation(method);
+    },
+    readResultProperty: async (result, property) => readIteratorResult(await initialize(), result, property)
+  };
+}
 
 function generatorObjectIterator(generator: SandboxGenerator, budget?: Budget, context?: SandboxCallContext): SandboxIterator {
   const iterator = generatorIterator(generator, budget, context);
