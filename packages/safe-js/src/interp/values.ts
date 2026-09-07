@@ -1047,6 +1047,14 @@ function copyToSandbox(
   if (isNumericTypedArray(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) return existing;
+    if (state.structuredClone) {
+      try {
+        typedArrayStorage(value, true);
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        throw new DOMException("Cannot clone an out-of-bounds typed array.", "DataCloneError");
+      }
+    }
     const copy = copyTypedArrayStorage(value, state);
     state.seen.set(value, copy);
     if (state.structuredClone) return copy;

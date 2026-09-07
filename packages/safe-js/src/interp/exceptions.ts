@@ -43,6 +43,7 @@ import { internalSymbols } from "./internal-symbols.js";
 import { containsResumeTarget } from "./resume-target.js";
 
 const capturedExceptionBrand = Symbol("CapturedException");
+const readDOMExceptionCode = Object.getOwnPropertyDescriptor(DOMException.prototype, "code")!.get!;
 internalSymbols.add(capturedExceptionBrand);
 export type { SandboxErrorName } from "../error/shape.js";
 
@@ -272,11 +273,14 @@ export function coerceThrownValue(
   }
 
   if (reason instanceof Error) {
-    return createSubsetErrorValue(reason.name || "Error", reason.message, stackFrames, budget, {
+    const error = createSubsetErrorValue(reason.name || "Error", reason.message, stackFrames, budget, {
       chargeBudget: false,
       cause: readErrorCause(reason),
       span
     });
+    if (reason instanceof DOMException)
+      Object.defineProperty(error, "code", { value: Reflect.apply(readDOMExceptionCode, reason, []), enumerable: true });
+    return error;
   }
 
   if (sandbox) {
