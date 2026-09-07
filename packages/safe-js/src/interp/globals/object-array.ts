@@ -3,6 +3,9 @@ import { getGeneratorProperties } from "../generator-properties.js";
 import { accessorAdapter, accessorClosure, readPropertyDescriptor, retainedAccessorClosures } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
+import { awaitSandboxValue } from "../cancel.js";
+import { executeAsyncFunction } from "../async.js";
+import { suspendJob } from "../jobs.js";
 import { restoreSandboxArrayIterator } from "../array-iterator.js";
 import { nextArrayIterator } from "../methods/array-iterator.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
@@ -15,7 +18,7 @@ import { isGuestHostObject } from "../host-capabilities.js";
 import { isNumericTypedArray, isTypedArrayIndex, typedArrayStorage } from "../typed-array.js";
 import { typedArrayElement } from "./numeric-typed-array.js";
 import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
-import { acquireSandboxIterator, closeIterator, getSandboxIterator, getSandboxIteratorFromMethod, readIteratorResult, type SandboxIterator } from "../iteration.js";
+import { acquireSandboxIterator, closeIterator, getSandboxAsyncIterator, getSandboxIterator, getSandboxIteratorFromMethod, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { toPropertyKey } from "../property-key.js";
 import { createNumericParsers } from "./numeric-parsers.js";
@@ -498,6 +501,10 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
   const statics = {
     isArray: createSandboxClosure({ sandbox: true, name: "isArray", call: ([value]) => Array.isArray(value) }),
     from: createSandboxClosure({ sandbox: true, name: "from", call: (args, context) => arrayFromSandboxValues(args, budget, context) }),
+    fromAsync: createSandboxClosure({ guest: true, sandbox: true, name: "fromAsync", length: 1,
+      call: (args, context) => executeAsyncFunction(
+        onSuspend => arrayFromSandboxValues(args, budget, context, onSuspend), budget, undefined, context)
+    }),
     of: createSandboxClosure({ guest: true, sandbox: true, name: "of", length: 0,
       call: async (args, context) => {
         const target = context?.thisValue;
@@ -867,8 +874,19 @@ function isAssignableSandboxTarget(
 async function arrayFromSandboxValues(
   args: readonly SandboxValue[],
   budget: Budget,
-  context?: SandboxCallContext
+  context?: SandboxCallContext,
+  onSuspend?: () => void
 ): Promise<SandboxValue> {
+  const asyncProtocol = onSuspend !== undefined;
+  const awaitAsync = async <T>(pending: Promise<T>): Promise<T> => {
+    onSuspend!();
+    const leaveAwait = budget.enterAwait();
+    try {
+      return await suspendJob(pending);
+    } finally {
+      leaveAwait();
+    }
+  };
   const [items, mapFn, thisValue] = args;
   if (mapFn !== undefined && !isSandboxClosure(mapFn)) {
     throw new TypeError("Array.from mapping callback must be a function.");
@@ -882,14 +900,15 @@ async function arrayFromSandboxValues(
       : getSandboxDataProperty(items, property, budget);
   // Observable iterator methods must be captured before construction but called
   // afterwards. Legacy low-level contexts can still use implicit built-in iteration.
-  const observableMethod = context?.getProperty !== undefined && !isGuestHostObject(items) &&
+  const observableMethod = !asyncProtocol && context?.getProperty !== undefined && !isGuestHostObject(items) &&
     getSandboxPropertyDescriptor(typeof items === "object" ? items : getBoxedPrototype(items, budget), Symbol.iterator, budget) !== undefined;
   const iteratorMethod = observableMethod ? await context!.getProperty!(items, Symbol.iterator) : undefined;
   if (iteratorMethod !== null && iteratorMethod !== undefined &&
       !isSandboxClosure(iteratorMethod) && typeof iteratorMethod !== "function")
     throw new TypeError("Iterator method must be callable.");
   let iterator = observableMethod ? undefined : context === undefined
-    ? getSandboxIterator(items, budget) : await acquireSandboxIterator(items, budget, context);
+    ? asyncProtocol ? getSandboxAsyncIterator(items, budget) : getSandboxIterator(items, budget)
+    : await acquireSandboxIterator(items, budget, context, asyncProtocol);
   const iterable = observableMethod ? iteratorMethod !== null && iteratorMethod !== undefined : iterator !== undefined;
   const constructor = context?.thisValue;
   let result: SandboxValue;
@@ -903,6 +922,7 @@ async function arrayFromSandboxValues(
     iteratorMethod,
     iterator?.retainedValue,
     mapFn,
+    thisValue,
     constructor,
     result,
     currentValue,
@@ -952,17 +972,19 @@ async function arrayFromSandboxValues(
         await closeOnThrow(error);
       }
       if (iterator !== undefined) {
-        const next = await iterator.next();
+        const pending = Promise.resolve(iterator.next());
+        const next = await (asyncProtocol ? awaitAsync(pending) : pending);
         if (typeof next !== "object" || next === null)
           throw new TypeError("Iterator result must be an object.");
         if ((await readIteratorResult(iterator, next, "done")).value) break;
         currentValue = (await readIteratorResult(iterator, next, "value")).value;
       } else {
         currentValue = await read(index);
+        if (asyncProtocol) currentValue = await awaitAsync(awaitSandboxValue(currentValue, undefined, budget, context));
       }
       try {
         if (Array.isArray(result)) budget.allocateArrayLength(index + 1);
-        if (mapFn !== undefined)
+        if (mapFn !== undefined) {
           currentValue = await invokeBuiltinClosure(
             mapFn,
             [currentValue, index],
@@ -970,6 +992,8 @@ async function arrayFromSandboxValues(
             context,
             thisValue
           );
+          if (asyncProtocol) currentValue = await awaitAsync(awaitSandboxValue(currentValue, undefined, budget, context));
+        }
         const key = String(index);
         const growth =
           key.length +
