@@ -7,6 +7,11 @@ import { declareHostOperation } from "./host-bridge.js";
 import { serialize } from "../snapshot/serialize.js";
 import { restore } from "../snapshot/restore.js";
 
+it.each(["-0", "-0.5", "-Number.MIN_VALUE"])("returns positive zero for a match starting at %s", index => {
+  const source = `return Object.is(new Float32Array([1]).indexOf(1,${index}),-0)`;
+  return expect(run(source)).resolves.toMatchObject({ok:true,returnValue:runInNewContext(`(function(){${source}})()`)});
+});
+
 it.each([
   "const value=new Float32Array([1,2,2]);return [value.indexOf(2),value.indexOf(4),Float32Array.prototype.indexOf.length]",
   "const value=new Float32Array([NaN,-0,Infinity]);return [value.indexOf(NaN),value.indexOf(0),value.indexOf(-0),value.indexOf(Infinity)]",

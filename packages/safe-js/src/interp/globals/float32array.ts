@@ -401,7 +401,7 @@ export function getFloat32Member(
               if (key === "indexOf" && !(index in receiver)) continue;
               const element = receiver[index];
               if (element === args[0] || (key === "includes" && Number.isNaN(element) && Number.isNaN(args[0])))
-                return key === "includes" ? true : index;
+                return key === "includes" ? true : index + 0;
             }
             return notFound;
           } finally { release(); }
