@@ -576,7 +576,21 @@ function isSerializedRegexValue(
 
 function initializeIntrinsicRealm(state: RestoreState): void {
   if (state.intrinsicsInitialized) return;
-  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner });
+  const prototype = Object.values(state.heap).find(node => node.kind === "intrinsic" && node.id === '["%FunctionPrototype%"]');
+  // Older heaps could omit this property or contain a guest-defined hook.
+  // Do not preinstall a nonconfigurable property over their captured state.
+  const functionHasInstance = prototype?.kind !== "intrinsic" || prototype.state === undefined ||
+    prototype.state.properties.properties.some(([key, descriptor]) => {
+      if (key === null || typeof key !== "object" || !("kind" in key) || key.kind !== "ref") return false;
+      const symbol = state.heap[String(key.id)];
+      if (symbol?.kind !== "symbol" || symbol.wellKnown !== "hasInstance" || descriptor.kind !== "data" ||
+          descriptor.writable || descriptor.enumerable || descriptor.configurable) return false;
+      const value = descriptor.value;
+      if (value === null || typeof value !== "object" || !("kind" in value) || value.kind !== "ref") return false;
+      const method = state.heap[String(value.id)];
+      return method?.kind === "intrinsic" && method.id === '["%FunctionPrototype%",{"symbol":"hasInstance"}]';
+    });
+  createBuiltinBindings({ budget: state.budget, compileOwner: state.compilation.owner, functionHasInstance });
   state.intrinsicsInitialized = true;
 }
 

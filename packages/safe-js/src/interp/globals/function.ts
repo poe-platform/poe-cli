@@ -1,10 +1,11 @@
 import type { Budget } from "../budget.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { callFunctionMethod } from "../methods/function.js";
-import { getSandboxPrototype, installFunctionPrototype, materializeFunctionProperties, setSandboxPrototype } from "../object-model.js";
+import { getSandboxPrototype, installFunctionPrototype, materializeFunctionProperties, registerIntrinsicFunction, setSandboxPrototype } from "../object-model.js";
 import { createSandboxClosure } from "../values.js";
+import { ordinaryHasInstance } from "../instanceof.js";
 
-export function createFunctionPrototype(budget: Budget): void {
+export function createFunctionPrototype(budget: Budget, installHasInstance = true): void {
   const prototype = createSandboxClosure({ guest: true, sandbox: true, name: "", length: 0, call: () => undefined });
   const properties = materializeFunctionProperties(prototype);
   // Invocation support does not grant the host's dynamic source constructor.
@@ -22,6 +23,11 @@ export function createFunctionPrototype(budget: Budget): void {
       })
     });
   }
+  const hasInstance = installHasInstance ? createSandboxClosure({ guest: true, sandbox: true, name: "[Symbol.hasInstance]", length: 1,
+    call: ([value], context) => ordinaryHasInstance(value, context?.thisValue, budget, context)
+  }) : undefined;
+  if (hasInstance !== undefined) Object.defineProperty(properties, Symbol.hasInstance, { value: hasInstance });
   setSandboxPrototype(prototype, getSandboxPrototype(Object.create(null), budget));
   installFunctionPrototype(budget, prototype);
+  if (hasInstance !== undefined) registerIntrinsicFunction(budget, hasInstance);
 }

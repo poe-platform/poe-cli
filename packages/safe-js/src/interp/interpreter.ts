@@ -138,7 +138,7 @@ import {
   type SetMethodName,
   type SetMethodOptions
 } from "./methods/set.js";
-import { isSandboxErrorConstructorInstance } from "./globals/error.js";
+import { evaluateInstanceof } from "./instanceof.js";
 import { hasOwnSandboxProperty } from "./globals/object.js";
 import { collectionIteratorState, isSandboxCollectionIterator } from "./collection-iterator.js";
 import { getCollectionIteratorMember } from "./methods/collection-iterator.js";
@@ -146,7 +146,6 @@ import { isSandboxRegExpIterator, regexpIteratorState } from "./regexp-iterator.
 import { getRegExpIteratorMember } from "./methods/regexp-iterator.js";
 import {
   getFloat32Member,
-  isFloat32ArrayConstructor,
   setFloat32Member
 } from "./globals/float32array.js";
 import { isFloat32Array } from "./float32.js";
@@ -3522,51 +3521,10 @@ function applyBinaryOperator(
     case ">>>":
       return toNumber(left) >>> toNumber(right);
     case "instanceof":
-      return evaluateInstanceof(left, right, context);
+      return evaluateInstanceof(left, right, context.budget, createCoercionContext(context));
     case "in":
       return hasSandboxProperty(right, left as string | symbol, context);
   }
-}
-
-async function evaluateInstanceof(
-  left: SandboxValue,
-  right: SandboxValue,
-  context: EvaluationContext
-): Promise<boolean> {
-  while (true) {
-    if (right === null || (typeof right !== "object" && typeof right !== "function"))
-      throw new TypeError("Right-hand side of 'instanceof' must be an object.");
-    const method = await getPropertyValue(right, Symbol.hasInstance, context);
-    if (method !== undefined && method !== null) {
-      if (!isSandboxClosure(method)) throw new TypeError("Symbol.hasInstance must be callable.");
-      return Boolean(await invokeSandboxClosure(method, [left], context, context.callStack, undefined, right));
-    }
-    if (!isSandboxClosure(right))
-      throw new TypeError("Right-hand side of 'instanceof' is not a function.");
-    if (right.boundTarget === undefined) break;
-    context.budget.visitNode();
-    right = right.boundTarget;
-  }
-
-  if (isFloat32ArrayConstructor(right)) return isFloat32Array(left);
-  if (isSandboxErrorConstructorInstance(left, right)) return true;
-  if (isGuestClosure(right)) {
-    if (typeof left !== "object" || left === null) return false;
-    const prototype = await getPropertyValue(right, "prototype", context);
-    if (typeof prototype !== "object" || prototype === null)
-      throw new TypeError("Function has a non-object prototype in instanceof check.");
-    let depth = 0;
-    for (
-      let current = getSandboxPrototype(left, context.budget);
-      current !== null;
-      current = getSandboxPrototype(current, context.budget)
-    ) {
-      context.budget.visitNode();
-      assertSandboxDataDepth(depth++);
-      if (current === prototype) return true;
-    }
-  }
-  return false;
 }
 
 export function createCoercionContext(context: EvaluationContext): SandboxCallContext {

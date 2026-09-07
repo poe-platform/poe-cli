@@ -1,0 +1,64 @@
+import type { Budget } from "./budget.js";
+import { assertSandboxDataDepth } from "../graph-depth.js";
+import { readPropertyDescriptor } from "./accessors.js";
+import { invokeBuiltinClosure } from "./builtin-call.js";
+import { isFloat32Array } from "./float32.js";
+import { isFloat32ArrayConstructor } from "./globals/float32array.js";
+import { isSandboxErrorConstructorInstance } from "./globals/error.js";
+import { getSandboxPropertyDescriptor, getSandboxPrototype, isGuestClosure } from "./object-model.js";
+import { isSandboxClosure, type SandboxCallContext, type SandboxValue } from "./values.js";
+
+export async function evaluateInstanceof(
+  value: SandboxValue,
+  constructor: SandboxValue,
+  budget: Budget,
+  context?: SandboxCallContext
+): Promise<boolean> {
+  if (constructor === null || typeof constructor !== "object")
+    throw new TypeError("Right-hand side of 'instanceof' must be an object.");
+  const method = await readInstanceProperty(constructor, Symbol.hasInstance, budget, context);
+  if (method !== undefined && method !== null) {
+    if (!isSandboxClosure(method)) throw new TypeError("Symbol.hasInstance must be callable.");
+    return Boolean(await invokeBuiltinClosure(method, [value], budget, context, constructor));
+  }
+  if (!isSandboxClosure(constructor))
+    throw new TypeError("Right-hand side of 'instanceof' is not a function.");
+  return ordinaryHasInstance(value, constructor, budget, context);
+}
+
+export async function ordinaryHasInstance(
+  value: SandboxValue,
+  constructor: SandboxValue,
+  budget: Budget,
+  context?: SandboxCallContext
+): Promise<boolean> {
+  if (!isSandboxClosure(constructor)) return false;
+  if (constructor.boundTarget !== undefined) {
+    budget.visitNode();
+    return evaluateInstanceof(value, constructor.boundTarget, budget, context);
+  }
+  // These existing built-ins do not yet have ordinary prototype graphs.
+  if (isFloat32ArrayConstructor(constructor)) return isFloat32Array(value);
+  if (isSandboxErrorConstructorInstance(value, constructor)) return true;
+  if (!isGuestClosure(constructor) || typeof value !== "object" || value === null) return false;
+  const prototype = await readInstanceProperty(constructor, "prototype", budget, context);
+  if (typeof prototype !== "object" || prototype === null)
+    throw new TypeError("Function has a non-object prototype in instanceof check.");
+  let depth = 0;
+  for (let current = getSandboxPrototype(value, budget); current !== null; current = getSandboxPrototype(current, budget)) {
+    budget.visitNode();
+    assertSandboxDataDepth(depth++);
+    if (current === prototype) return true;
+  }
+  return false;
+}
+
+async function readInstanceProperty(value: SandboxValue, key: PropertyKey, budget: Budget, context?: SandboxCallContext): Promise<SandboxValue> {
+  if (context?.getProperty !== undefined) return context.getProperty(value, key);
+  const descriptor = getSandboxPropertyDescriptor(value, key, budget);
+  if (descriptor === undefined) return undefined;
+  return readPropertyDescriptor(descriptor, value, {
+    ...context, stack: context?.stack ?? [], thisValue: value,
+    invokeClosure: context?.invokeClosure ?? ((closure, args, receiver) => invokeBuiltinClosure(closure, args, budget, context, receiver))
+  });
+}

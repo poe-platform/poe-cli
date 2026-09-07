@@ -17,7 +17,7 @@ import type { RunClock } from "../run.js";
 import { registerBuiltinIdentities } from "./intrinsics.js";
 
 export function createBuiltinBindings(
-  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock }
+  options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean }
 ) {
   const bindings = {
     ...createConsoleJsonGlobals(options),
@@ -34,7 +34,7 @@ export function createBuiltinBindings(
     ...createPromiseGlobals(options),
     ...createRegexGlobals(options)
   };
-  createFunctionPrototype(options.budget);
+  createFunctionPrototype(options.budget, options.functionHasInstance);
   createGeneratorPrototypes(options.budget);
   registerBuiltinIdentities(options.budget, bindings);
   return bindings;
