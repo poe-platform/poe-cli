@@ -280,7 +280,7 @@ export function createFloat32ArrayPrototypes(budget: Budget, constructor: Sandbo
     getters.push(getter);
     Object.defineProperty(shared, key, { get: accessorAdapter(getter, "get"), configurable: true });
   }
-  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "toLocaleString"])
+  for (const key of ["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "toLocaleString"])
     Object.defineProperty(shared, key, { value: getFloat32Member(new Float32Array(0), key, budget, constructor), writable: true, configurable: true });
   const arrayPrototype = resolveIntrinsicIdentity(budget, '["Array","prototype"]') as SandboxObject;
   Object.defineProperty(shared, "toString", { value: getSandboxDataProperty(arrayPrototype, "toString", budget), writable: true, configurable: true });
@@ -352,18 +352,18 @@ export function getFloat32Member(
   if (key === "byteLength") return storage.length * 4;
   if (key === "byteOffset") return storage.byteOffset;
   if (key === "BYTES_PER_ELEMENT") return 4;
-  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "toLocaleString"].includes(key)) return undefined;
+  if (!["set", "slice", "subarray", "fill", "copyWithin", "reverse", "at", "includes", "indexOf", "lastIndexOf", "forEach", "every", "some", "find", "findIndex", "findLast", "toLocaleString"].includes(key)) return undefined;
   const numberPrototype = key === "toLocaleString" ? getBoxedPrototype(0, budget) : undefined;
   return createSandboxClosure({
     guest: true,
     sandbox: true,
     name: key,
-    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" ? 1 : 2,
+    length: key === "reverse" || key === "toLocaleString" ? 0 : key === "set" || key === "fill" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" ? 1 : 2,
     call: (args, context) => {
       const receiver = context?.thisValue;
       if (!isFloat32Array(receiver))
         throw new TypeError(`Float32Array#${key} requires a Float32Array receiver.`);
-      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "toLocaleString");
+      const storage = float32Storage(receiver, key === "slice" || key === "fill" || key === "copyWithin" || key === "reverse" || key === "at" || key === "includes" || key === "indexOf" || key === "lastIndexOf" || key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast" || key === "toLocaleString");
       if (key === "reverse") {
         const release = retainValues(budget, () => [receiver, ...args]);
         try {
@@ -415,22 +415,23 @@ export function getFloat32Member(
           } finally { release(); }
         })();
       }
-      if (key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex") {
+      if (key === "forEach" || key === "every" || key === "some" || key === "find" || key === "findIndex" || key === "findLast") {
         const callback = args[0];
         if (!isSandboxClosure(callback)) throw new TypeError(`Float32Array#${key} callback must be callable.`);
         return (async () => {
           const release = retainValues(budget, () => [receiver, ...args]);
           try {
-            for (let index = 0; index < storage.length; index++) {
+            const backwards = key === "findLast";
+            for (let index = backwards ? storage.length - 1 : 0; backwards ? index >= 0 : index < storage.length; index += backwards ? -1 : 1) {
               budget.visitNode();
               const element = receiver[index];
               const result = await invokeBuiltinClosure(callback, [element, index, receiver], budget, bridge, args[1]);
               if (key === "every" && !result) return false;
               if (key === "some" && result) return true;
-              if (key === "find" && result) return element;
+              if ((key === "find" || key === "findLast") && result) return element;
               if (key === "findIndex" && result) return index;
             }
-            return key === "findIndex" ? -1 : key === "forEach" || key === "find" ? undefined : key === "every";
+            return key === "findIndex" ? -1 : key === "forEach" || key === "find" || key === "findLast" ? undefined : key === "every";
           } finally { release(); }
         })();
       }
