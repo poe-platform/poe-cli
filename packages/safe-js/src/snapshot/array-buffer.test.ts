@@ -1,8 +1,40 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { serialize } from "./serialize.js";
 import { restore } from "./restore.js";
 import { encodeReplayData, decodeReplayData } from "./replay-data.js";
 import { serializeSafeJSSnapshot } from "./dump-format.js";
+
+it.each(["snapshot", "replay"])("preserves supported capacities during %s restoration", route => {
+  const source = "return 0";
+  for (const capacity of [undefined, 0, 4, 16]) {
+    const length = capacity === 0 ? 0 : 4;
+    const buffer = new ArrayBuffer(length, capacity === undefined ? undefined : { maxByteLength: capacity });
+    new Uint8Array(buffer).fill(7);
+    const saved = serialize({ source, currentAstNodeId: 1, scopeChain: [{ id: "external", bindings: { buffer } }], callStack: [], pendingPromises: [], moduleBindings: {} });
+    const binding = route === "snapshot" ? restore(saved, { source }).currentScope.lookup("buffer") : undefined;
+    const restored = (route === "replay" ? decodeReplayData(encodeReplayData(buffer)) : binding?.found ? binding.value : undefined) as ArrayBuffer;
+    expect(restored).not.toBe(buffer);
+    expect(restored.resizable).toBe(capacity !== undefined);
+    expect(restored.maxByteLength).toBe(capacity ?? length);
+    expect(Array.from(new Uint8Array(restored))).toEqual(Array.from(new Uint8Array(buffer)));
+  }
+});
+
+it.each(["snapshot", "replay"])("rejects silent resizable-buffer downgrades during %s restoration", route => {
+  const source = "return 0";
+  const construct = Reflect.construct;
+  for (const [length, capacity] of [[0, 0], [0, 16], [4, 4], [4, 16]]) {
+    const buffer = new ArrayBuffer(length, { maxByteLength: capacity });
+    const saved = serialize({ source, currentAstNodeId: 1, scopeChain: [{ id: "external", bindings: { buffer } }], callStack: [], pendingPromises: [], moduleBindings: {} });
+    const replay = encodeReplayData(buffer);
+    const legacy = vi.spyOn(Reflect, "construct").mockImplementation((target, args, newTarget) =>
+      construct(target, target === ArrayBuffer ? [args[0]] : args, newTarget ?? target));
+    try {
+      expect(() => route === "snapshot" ? restore(saved, { source }) : decodeReplayData(replay))
+        .toThrow("Resizable ArrayBuffer restoration is not supported by this host.");
+    } finally { legacy.mockRestore(); }
+  }
+});
 
 it.each([false, true])("preserves buffer/view aliases in snapshot order (bufferFirst=%s)", bufferFirst => {
   const buffer = new ArrayBuffer(12);

@@ -36,6 +36,8 @@ export function decodeArrayBufferStorage(value: Record<string, unknown>, resolve
     budget?.allocateArrayLength(Number(value.maxByteLength ?? value.bytes.length));
     const buffer = Reflect.construct(ArrayBuffer, [value.bytes.length,
       Object.hasOwn(value, "maxByteLength") ? { maxByteLength: value.maxByteLength } : undefined]) as ArrayBuffer;
+    if (Object.hasOwn(value, "maxByteLength") && arrayBufferOptions(buffer)?.maxByteLength !== value.maxByteLength)
+      throw new TypeError("Resizable ArrayBuffer restoration is not supported by this host.");
     new Uint8Array(buffer).set(value.bytes);
     return buffer;
   }
