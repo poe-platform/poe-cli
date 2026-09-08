@@ -153,6 +153,11 @@ describe("compile checkpoint hash compatibility", () => {
         BigUint64Array: { kind: "fn", name: "BigUint64Array" },
         Float16Array: { kind: "fn", name: "Float16Array" },
         Iterator: { kind: "fn", name: "Iterator" },
+        Intl: {
+          getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
+          supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },
+          [Symbol.toStringTag]: "Intl"
+        },
         Reflect: {
           apply: { kind: "fn", name: "apply" },
           construct: { kind: "fn", name: "construct" },
