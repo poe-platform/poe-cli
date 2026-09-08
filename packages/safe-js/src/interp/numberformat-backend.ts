@@ -1,10 +1,11 @@
 import type { PortableFormatter, Options } from "./numberformat-portable.js";
+import * as portableBackend from "./numberformat-portable.js";
 import type { SandboxValue } from "./values.js";
 
 const NativeNumberFormat = Intl.NumberFormat;
 const modernNative = new NativeNumberFormat("en", { maximumFractionDigits: 0, ...{ roundingMode: "floor" } }).format(1.9) === "1" &&
   typeof Object.getOwnPropertyDescriptor(NativeNumberFormat.prototype, "formatRange")?.value === "function";
-const portable = modernNative ? undefined : await import("./numberformat-portable.js");
+const portable = modernNative ? undefined : portableBackend;
 type Formatter = Intl.NumberFormat | PortableFormatter;
 
 export function createNumberFormatter(locales: string | string[], options: Options): Formatter {
