@@ -258,8 +258,9 @@ export class Shell implements PluginHost {
           status: 0, substitutionStatus: 0, depth: 0, loopDepth: 0, functionDepth: 0, locals: [], pipefail: false, profile: "bash",
         };
         const admission = Runtime.rootCancellationAdmission(budget);
+        const filesystem = options.fs ?? this.#options.fs;
         const runtime = new Runtime(
-          createDeviceFileSystem(options.fs ?? this.#options.fs),
+          createDeviceFileSystem(filesystem),
           this.commands,
           [...this.#middleware],
           budget,
@@ -272,6 +273,8 @@ export class Shell implements PluginHost {
           owner,
           0,
           admission.maxDepth,
+          undefined,
+          filesystem,
         );
         exitCode = 0;
         while (true) {

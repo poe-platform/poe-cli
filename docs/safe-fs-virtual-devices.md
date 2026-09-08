@@ -1,6 +1,7 @@
 # Virtual filesystem devices
 
-Status: unreleased implementation; publication and final acceptance are pending.
+This document describes virtual-device support in the current source. Earlier
+releases may not include these exports; issue #700 tracks publication verification.
 
 SafeBash installs a device view around the filesystem selected for each root
 execution. This includes `Shell.exec` filesystem overrides. Redirections and
@@ -58,9 +59,9 @@ migration.
 
 ## Validation boundary
 
-The implementation is being qualified with actual Shell workflows, backing-store
+Validation covers actual Shell workflows, backing-store
 mutation spies, installed Node/Bun/browser consumers, and real workerd execution
 against persisted R2 storage across runtime recreation. The development plan and
 acceptance status are tracked in `docs/plans/issue-700-virtual-null-device.md`.
-Do not treat this unreleased document as evidence that an npm version contains
-the implementation.
+Source documentation alone does not establish that an older installed npm version
+contains the implementation.

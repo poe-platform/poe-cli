@@ -706,8 +706,7 @@ class CdLookup {
         : cwdBytes + 1 + (component ? componentBytes + 1 : 0) + targetBytes;
       if (rawBytes > 65_536) throw new PublicDiagnostic("cd: path exceeds 65536 UTF-8 bytes");
       await this.charge(2 * rawBytes);
-      const raw = absolute ? target : component.startsWith("/") ? `${component}/${target}`
-        : component ? `${cwd}/${component}/${target}` : `${cwd}/${target}`;
+      const raw = absolute ? target : pathOf({ cwd }, component ? `${component}/${target}` : target);
       const path = resolvePath(cwd, raw);
       const operand = pathOf({ cwd }, raw);
       await this.scan(path);
@@ -1105,6 +1104,7 @@ export class Runtime {
     readonly cancellationDepth: number,
     readonly cancellationMaxDepth: number,
     readonly outcomeFrame: RuntimeOutcomeFrame | undefined = undefined,
+    private readonly inputProfile: Pick<FileSystem, "readStream" | "capabilities"> = fs,
   ) {
     this.fs = scopeFileSystem(fs, () => budget.fileSystemOperation(), signal);
     const checkpoint = () => budget.cpuCheckpoint();
@@ -1308,6 +1308,7 @@ export class Runtime {
         prepared.owned ? childDepth : this.cancellationDepth,
         this.cancellationMaxDepth,
         frame,
+        this.inputProfile,
       );
       let captured: CapturedCancellationOutcome<CommandResult>;
       const executeChild = (): Promise<CommandResult> => execute(runtime, scope);
@@ -1784,7 +1785,7 @@ export class Runtime {
           const runtime = new Runtime(
             this.fs, this.commands, this.middleware, this.budget, signal, this.fileWrites, this.outputFiles,
             boundary.deliverySignal, boundary, this.cancellationState, owner,
-            childDepth, this.cancellationMaxDepth, frame,
+            childDepth, this.cancellationMaxDepth, frame, this.inputProfile,
           );
           const input = new ShellInput(incoming?.readable ?? io.stdin, this.budget, signal);
           const pipeOutput: ByteSink | undefined = outgoing && { [outputFailure]: outgoing.abort, ownedOutput: outgoing.writable.ownedOutput!, write: async (chunk) => {
@@ -2247,7 +2248,7 @@ export class Runtime {
           const stat = await interruptible(this.fs.stat(path, options), this.signal);
           if (stat.type === "directory" && !fileShortcut) throw new PublicDiagnostic(`${target}: Is a directory`);
           const source = stat.type === "directory" ? toByteSource("")
-            : await fileInput(this.fs, path, this.budget.limits.maxInputBytes, this.signal);
+            : await fileInput(this.fs, path, this.budget.limits.maxInputBytes, this.signal, this.inputProfile);
           const input = new ShellInput(source, this.budget, this.signal);
           inputs.add(input);
           descriptors.set(redirect.descriptor, { input, stdinIsDefault: false });
@@ -2517,7 +2518,7 @@ export class Runtime {
       this.fs, this.commands, this.middleware, this.budget,
       AbortSignal.any([this.signal, scope.signal]), this.fileWrites, this.outputFiles, this.commandSignal,
       this.cancellation, this.cancellationState, this.cancellationOwner,
-      this.cancellationDepth, this.cancellationMaxDepth, this.outcomeFrame,
+      this.cancellationDepth, this.cancellationMaxDepth, this.outcomeFrame, this.inputProfile,
     );
     try { return await runtime.dispatchScoped(name, values, state, { ...io, [invocationScope]: scope }, assignments, bypassFunctions); }
     finally { await scope.close(); }
@@ -3055,7 +3056,7 @@ export class Runtime {
       this.fs, this.commands, this.middleware, this.budget,
       AbortSignal.any([this.signal, scope.signal]), this.fileWrites, this.outputFiles, this.commandSignal,
       this.cancellation, this.cancellationState, this.cancellationOwner,
-      this.cancellationDepth, this.cancellationMaxDepth, this.outcomeFrame,
+      this.cancellationDepth, this.cancellationMaxDepth, this.outcomeFrame, this.inputProfile,
     );
     let input: ShellInput | undefined;
     try {

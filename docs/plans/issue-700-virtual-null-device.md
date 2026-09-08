@@ -127,9 +127,19 @@ and monitor both releases until successful publication. No fix is claimed yet.
   This is local Miniflare persistence, not a remote Cloudflare deployment or a
   publication claim. Later runtime changes require fresh candidate validation.
 - The next full test run catches eager buffered-input acquisition that can
-  block cancellation before the caller receives its source. The focused fix
-  defers the bounded read until consumption; all 49 input tests then pass.
+  block cancellation before the caller receives its source. An initial lazy
+  correction passes 49 input tests but conflicts with required eager snapshots
+  for originally buffered backends. The final correction retains the original
+  filesystem's private input-selection profile through nested Runtime instances;
+  all actual reads still use the scoped device view. This preserves both eager
+  buffered acquisition and lazy mounted fallback, including execution overrides
+  and host-method changes.
   Other current comparisons need explicit ordinary-fixture namespaces or
   metadata-only probe expectations because the Shell root now contains `/dev`.
   Preserve frozen native captures, original output bounds, and mutation checks.
-  Remaining full-suite findings are still being validated; no push is claimed.
+  The final affected input/path cohort passes 679 tests and both complete GNU
+  differential drivers pass 187 tests. Tree/current-shell/substring checks pass
+  302 tests, DU/rmdir checks pass 63 tests, and the full cd-budget file passes
+  59 tests. Frozen references and original bounds remain unchanged. A fresh
+  build, packed candidate, full gate, and workerd revalidation are still required;
+  no push is claimed.

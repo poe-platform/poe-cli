@@ -6,14 +6,14 @@ import { maxBatchCases } from "./model.js";
 import type { BatchRequest, ChildRequest, Observation, ScriptOutcome, Snapshot } from "./model.js";
 import { runProbe, runtime } from "./probes.js";
 
-async function snapshot(fs: MemoryFileSystem, directory = "/"): Promise<Snapshot> {
+async function snapshot(fs: MemoryFileSystem, directory = "/", root = directory): Promise<Snapshot> {
   const files: Snapshot = {};
   for (const entry of await fs.readdir(directory)) {
     const path = resolvePath(directory, entry.name);
-    const key = path.slice(1);
+    const key = path.slice(root === "/" ? 1 : root.length + 1);
     if (entry.type === "directory") {
       files[key] = { type: "directory" };
-      Object.assign(files, await snapshot(fs, path));
+      Object.assign(files, await snapshot(fs, path, root));
     } else {
       if (entry.type !== "file") throw new Error(`Unexpected non-regular virtual artifact: ${key}`);
       files[key] = { type: "file", base64: Buffer.from(await fs.readFile(path)).toString("base64") };
@@ -35,17 +35,19 @@ async function runRequest(request: ChildRequest): Promise<Observation | { passed
       if (!fixture) throw new Error("Missing fixture");
       const { shell, fs } = runtime();
       try {
+        await fs.mkdir("/work");
         for (const [name, content] of Object.entries(fixture.initialFiles ?? {})) {
-          const path = resolvePath("/", name);
+          const path = resolvePath("/work", name);
           await fs.mkdir(dirname(path), { recursive: true });
           await fs.writeFile(path, new TextEncoder().encode(content));
         }
         const result = await shell.exec(fixture.script, {
+          cwd: "/work",
           stdin: fixture.stdin ?? "", env: fixture.env ?? {}, limits: fixture.limits ?? {},
           signal: AbortSignal.timeout(3500),
         });
         const observation: Observation = {
-          stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, files: await snapshot(fs),
+          stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, files: await snapshot(fs, "/work"),
           stdoutBase64: Buffer.from(result.stdoutBytes).toString("base64"), stderrBase64: Buffer.from(result.stderrBytes).toString("base64"),
         };
         return observation;

@@ -4,7 +4,7 @@ import type { ByteSource, FileSystem } from "../contracts/index.js";
 import { yieldTurn } from "../contracts/yield.js";
 import { Budget, interruptible } from "./runtime.js";
 
-export async function fileInput(fs: FileSystem, path: string, maxBytes: number, signal: AbortSignal): Promise<ByteSource> {
+export async function fileInput(fs: FileSystem, path: string, maxBytes: number, signal: AbortSignal, inputProfile: Pick<FileSystem, "readStream" | "capabilities"> = fs): Promise<ByteSource> {
   signal.throwIfAborted();
   async function bufferedInput(): Promise<ByteSource> {
     signal.throwIfAborted();
@@ -15,7 +15,10 @@ export async function fileInput(fs: FileSystem, path: string, maxBytes: number, 
   }
   const readStream = fs.readStream;
   const capabilities = await interruptible(Promise.resolve(fs.capabilitiesFor?.(path, { signal }) ?? fs.capabilities), signal);
-  if (!readStream || capabilities.streamingRead === false) return bufferedInput();
+  if (!readStream || capabilities.streamingRead === false) {
+    if (!inputProfile.readStream || inputProfile.capabilities.streamingRead === false) return bufferedInput();
+    return { async *[Symbol.asyncIterator]() { yield* await bufferedInput(); } };
+  }
   let iterator: AsyncIterator<Uint8Array>;
   try { iterator = readStream.call(fs, path, { signal })[Symbol.asyncIterator](); }
   catch (error) {

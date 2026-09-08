@@ -297,7 +297,8 @@ test("frozen host descriptors, method receivers, capabilities and optional absen
 
 test("Shell adds device methods while retaining ordinary per-path capability identity", async context => {
   const capabilities = Object.freeze({ read: true, descriptorWriteStream: true });
-  const specific = Object.freeze({ readOnly: true, descriptorWriteStream: false });
+  const specific = Object.freeze({ readOnly: true, descriptorWriteStream: false,
+    streamingRead: false, streamingWrite: false, streamingAppend: false, retainedRead: false });
   const memory = new MemoryFileSystem();
   const filesystem = Object.freeze({
     capabilities,
@@ -319,6 +320,25 @@ test("Shell adds device methods while retaining ordinary per-path capability ide
     return { exitCode: 0 };
   } });
   const result = await shell.exec("device-view");
+  assert.equal(result.stderr, "");
+  assert.equal(result.exitCode, 0);
+});
+
+test("Shell normalizes absent optional methods without changing the backing capability object", async context => {
+  const capabilities = Object.freeze({ read: true, streamingRead: true, streamingWrite: true,
+    streamingAppend: true, retainedRead: true, descriptorWriteStream: true });
+  const filesystem = Object.freeze({ capabilities, async capabilitiesFor() { assert.equal(this, filesystem); return capabilities; } }) as unknown as FileSystem;
+  const { shell, commands } = fixture(context, 1, filesystem);
+  commands.register({ name: "normalized-view", async execute({ fs }) {
+    const actual = await fs.capabilitiesFor!("/selected");
+    assert.notEqual(actual, capabilities);
+    assert.deepEqual(actual, { read: true, streamingRead: false, streamingWrite: false,
+      streamingAppend: false, retainedRead: false, descriptorWriteStream: false });
+    assert.deepEqual(capabilities, { read: true, streamingRead: true, streamingWrite: true,
+      streamingAppend: true, retainedRead: true, descriptorWriteStream: true });
+    return { exitCode: 0 };
+  } });
+  const result = await shell.exec("normalized-view");
   assert.equal(result.stderr, "");
   assert.equal(result.exitCode, 0);
 });
