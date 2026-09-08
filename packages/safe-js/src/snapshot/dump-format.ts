@@ -108,7 +108,8 @@ function requiresPromiseReplay(promise: SandboxPromise): boolean {
     seen.add(current);
     const continuation = promiseContinuations.get(current);
     if (promiseStates.get(current)?.status === "pending" &&
-        (unrepresentedPromiseContinuations.has(current) || continuation === undefined)) return true;
+        (unrepresentedPromiseContinuations.has(current) || continuation === undefined ||
+          (continuation.kind === "reaction" && continuation.phase === "running"))) return true;
     pending.push(...(promiseProducers.get(current) ?? []), ...(promiseReactionResults.get(current) ?? []));
     if (continuation?.kind === "reaction") {
       pending.push(continuation.source);
