@@ -1219,6 +1219,8 @@ class Parser {
     }
 
     if (token.type === "keyword" && token.value === "import" && !this.isImportMetaStart() && this.peekToken(1).value !== "(") {
+      if (this.lexicalContext.grammar !== undefined)
+        throw new SyntaxError("Static import declarations are not allowed in dynamic functions.");
       return this.parseImportDeclaration();
     }
 
