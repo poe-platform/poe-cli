@@ -167,7 +167,7 @@ export class AwkRuntime {
       let search = 0;
       while (search <= value.length) {
         await this.budget.checkpoint();
-        const match = matcher.find(value, this.budget, search);
+        const match = await matcher.find(value, this.budget, search);
         if (!match) break;
         if (match.start === match.end) { search = match.end + 1; continue; }
         await segment(consumed, match.start); consumed = match.end; search = match.end;
@@ -254,7 +254,7 @@ export class AwkRuntime {
     switch (expression.kind) {
       case "number": return numeric(expression.value);
       case "string": return string(expression.value);
-      case "regex": return numeric(expression.pattern.find(this.record, this.budget) ? 1 : 0);
+      case "regex": return numeric((await expression.pattern.find(this.record, this.budget)) ? 1 : 0);
       case "variable": return this.get(expression.name);
       case "field": case "array": return (await this.reference(expression)).get();
       case "getline": return this.getline(expression);
@@ -288,7 +288,7 @@ export class AwkRuntime {
         if (operator === "&&" && !truth(left)) return numeric(0);
         if (operator === "||" && truth(left)) return numeric(1);
         if (operator === "~" || operator === "!~") {
-          const matched = (await this.regex(expression.right)).find(this.asText(left), this.budget) !== undefined;
+          const matched = (await (await this.regex(expression.right)).find(this.asText(left), this.budget)) !== undefined;
           return numeric((operator === "~" ? matched : !matched) ? 1 : 0);
         }
         const right = await this.scalarExpression(expression.right);
@@ -415,7 +415,7 @@ export class AwkRuntime {
     }
     if (name === "match") {
       const value = this.asText(await this.scalarExpression(args[0]!));
-      const matched = (await this.regex(args[1]!)).find(value, this.budget);
+      const matched = await (await this.regex(args[1]!)).find(value, this.budget);
       this.set("RSTART", numeric(matched ? matched.start + 1 : 0));
       this.set("RLENGTH", numeric(matched ? matched.end - matched.start : -1));
       return this.get("RSTART");

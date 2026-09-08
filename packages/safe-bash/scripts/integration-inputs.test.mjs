@@ -458,6 +458,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/text-programs/awk-format-work-budget.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/format-admission.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/substitution-admission.test.ts"));
+  assert.ok(files.includes("tests/commands/text-programs/nfa-work.test.ts"));
   assert.ok(files.includes("tests/commands/network/private-addresses.test.ts"));
   assert.ok(files.includes("tests/commands/network/private-address-integration.test.ts"));
   assert.ok(files.includes("tests/commands/network/address-policy.test.ts"));

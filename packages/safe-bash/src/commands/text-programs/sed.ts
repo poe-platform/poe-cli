@@ -293,7 +293,7 @@ async function execute(program: readonly Instruction[], context: CommandContext,
         if (terminated) outputState.unterminatedFiles.delete(path);
         else outputState.unterminatedFiles.add(path);
       };
-      const matches = async (address: Address): Promise<boolean> => address.kind === "number" ? number === address.number : address.kind === "last" ? (await peekNext()).done === true : getPattern(address.pattern).find(pattern, budget) !== undefined;
+      const matches = async (address: Address): Promise<boolean> => address.kind === "number" ? number === address.number : address.kind === "last" ? (await peekNext()).done === true : (await getPattern(address.pattern).find(pattern, budget)) !== undefined;
       for (let pc = 0; pc < program.length;) {
         budget.step(); await budget.checkpoint();
         const instruction = program[pc]!;

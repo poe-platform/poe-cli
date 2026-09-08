@@ -51,8 +51,8 @@ for (const queued of [false, true]) {
     const pattern = new Pattern("a");
     const find = pattern.find.bind(pattern);
     let reads = 0;
-    context.mock.method(pattern, "find", (...args: Parameters<Pattern["find"]>) => {
-      const match = find(...args);
+    context.mock.method(pattern, "find", async (...args: Parameters<Pattern["find"]>) => {
+      const match = await find(...args);
       if (!match) return match;
       return { ...match, groups: new Proxy(match.groups, {
         get(target, key, receiver) {
@@ -185,8 +185,8 @@ test("global deletion observes queued cancellation between matches", async conte
   const pattern = new Pattern("a");
   const original = pattern.find.bind(pattern);
   let matches = 0;
-  context.mock.method(pattern, "find", (...args: Parameters<Pattern["find"]>) => {
-    const match = original(...args);
+  context.mock.method(pattern, "find", async (...args: Parameters<Pattern["find"]>) => {
+    const match = await original(...args);
     if (match) { matches++; queueMicrotask(() => controller.abort(reason)); }
     return match;
   });
