@@ -641,10 +641,7 @@ function createHostErrorValue(
   if (nativeError) {
     state.seen.set(reason, error);
     copyHostErrorMetadata(error, reason, budget, chargeBudget);
-    const errors =
-      reason instanceof AggregateError
-        ? Object.getOwnPropertyDescriptor(reason, "errors")
-        : undefined;
+    const errors = Object.getOwnPropertyDescriptor(reason, "errors");
     const registered = hostErrorData.get(reason);
     const data =
       errors !== undefined && "value" in errors
