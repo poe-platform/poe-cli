@@ -706,7 +706,15 @@ export function measureSandboxData(
           if (descriptor !== undefined && "value" in descriptor) arrayElements!.push(descriptor.value);
         }
       } else {
-        for (const key of Object.getOwnPropertyNames(value)) {
+        let keys = managedArray ? Object.getOwnPropertyNames(value) : Object.keys(value);
+        // Native index keys are unique and ascending. An index equal to
+        // length - 1 at that ordinal proves every index is enumerable and own.
+        const denseIndices = !managedArray &&
+          (arrayLength === 0 || keys[arrayLength - 1] === String(arrayLength - 1));
+        if (!managedArray && !denseIndices) keys = Object.getOwnPropertyNames(value);
+        const keyCount = denseIndices ? arrayLength : keys.length;
+        for (let index = 0; index < keyCount; index += 1) {
+          const key = keys[index]!;
           // Native array indices precede length, its first non-index own key.
           // Proxy arrays use index lookup above; managed arrays retain all keys.
           if (key === "length") {
