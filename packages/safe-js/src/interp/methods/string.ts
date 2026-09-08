@@ -119,6 +119,7 @@ export function getStringMember(
   return createSandboxClosure({
     sandbox: true,
     name: `String#${property}`,
+    ...(property === "trimStart" || property === "trimEnd" ? { guest: true, name: property, length: 0 } : {}),
     ...(property === "toLocaleLowerCase" || property === "toLocaleUpperCase"
       ? { guest: true, name: property, length: 0 } : {}),
     ...(property === "localeCompare" ? { length: 1 } : {}),

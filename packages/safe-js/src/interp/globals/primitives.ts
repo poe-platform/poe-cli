@@ -99,8 +99,11 @@ export function createPrimitiveConstructor(
           budget.allocateString(String(primitiveReceiver(context?.thisValue, kind)))
       })
     );
-    if (kind === "string")
+    if (kind === "string") {
       for (const name of stringMethodNames) methods.set(name, getStringMember("", name, budget));
+      methods.set("trimLeft", methods.get("trimStart")!);
+      methods.set("trimRight", methods.get("trimEnd")!);
+    }
   }
   for (const [name, value] of methods)
     Object.defineProperty(prototype, name, { value, writable: true, configurable: true });
