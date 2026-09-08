@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Budget, JqLimitError, resolveJqLimits, type Json } from "../../../src/commands/structured/limits.js";
-import { binary } from "../../../src/commands/structured/values.js";
+import { Budget, JqLimitError, resolveJqLimits, type Json, type JqLimits } from "../../../src/commands/structured/limits.js";
+import { binary, describe, entries } from "../../../src/commands/structured/values.js";
+import { measureValue, stringify } from "../../../src/commands/structured/input.js";
 import { Interpreter } from "../../../src/commands/structured/interpreter.js";
 import { parse } from "../../../src/commands/structured/parser.js";
 import { splitString } from "../../../src/commands/structured/split.js";
@@ -204,4 +205,103 @@ test("string work limit escapes optional command output suppression", async () =
   assert.equal(result.exitCode, 5);
   assert.equal(result.stdout, "");
   assert.equal(result.stderr, "jq: maxSteps limit exceeded\n");
+});
+
+function wholeValueEvaluation(source: string, input: Json, limits: Partial<JqLimits> = {}) {
+  const signal = new AbortController().signal;
+  const variables = new Map<string, Json>();
+  const ast = parse(source, variables, new Budget(resolveJqLimits(), signal));
+  return new Interpreter(new Budget(resolveJqLimits(limits), signal), variables).run(ast, input);
+}
+
+for (const source of ["to_entries", "reverse", "keys"]) {
+  test(`whole-value admission: ${source} pre-admits work before reading array payloads`, { timeout: 1000 }, async () => {
+    let reads = 0;
+    const input: Json[] = [];
+    for (let index = 0; index < 64; index++) Object.defineProperty(input, index, { enumerable: true, configurable: true, get() { reads++; return null; } });
+    const iterator = wholeValueEvaluation(source, input, { maxSteps: 2 });
+    try {
+      await assert.rejects(iterator.next(), error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded");
+      assert.equal(reads, 0);
+    } finally { await iterator.return(undefined); }
+  });
+}
+
+test("whole-value admission: Unicode length admits scan work before yielding", { timeout: 1000 }, async () => {
+  const iterator = wholeValueEvaluation("length", "😀".repeat(33), { maxSteps: 2 });
+  try { await assert.rejects(iterator.next(), error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded"); }
+  finally { await iterator.return(undefined); }
+});
+
+test("whole-value admission: serialization work is admitted before native encoding", { timeout: 1000 }, async context => {
+  const encode = context.mock.method(JSON, "stringify");
+  const budget = new Budget(resolveJqLimits({ maxSteps: 1 }), new AbortController().signal);
+  await assert.rejects(async () => stringify("a".repeat(65), budget), error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded");
+  assert.equal(encode.mock.callCount(), 0);
+});
+
+for (const source of ["to_entries | empty", "try (to_entries | empty) catch 99", "(to_entries)? | empty"]) {
+  test(`whole-value admission: expanded intermediate cannot hide behind ${source}`, { timeout: 1000 }, async () => {
+    const input = { a: 0, b: 0 };
+    assert.equal(Buffer.byteLength(JSON.stringify(input)), 13);
+    const expanded = [{ key: "a", value: 0 }, { key: "b", value: 0 }];
+    assert.equal(Buffer.byteLength(JSON.stringify(expanded)), 45);
+    const iterator = wholeValueEvaluation(source, input, { maxValueBytes: 44 });
+    await assert.rejects(async () => { for await (const value of iterator) void value; },
+      error => error instanceof JqLimitError && error.message === "maxValueBytes limit exceeded");
+  });
+}
+
+for (const source of ["tojson | empty", "tostring | empty"]) {
+  test(`whole-value admission: ${source} admits the serialized string's JSON bytes`, { timeout: 1000 }, async () => {
+    const iterator = wholeValueEvaluation(source, ["\n"], { maxValueBytes: 7 });
+    await assert.rejects(async () => { for await (const value of iterator) void value; },
+      error => error instanceof JqLimitError && error.message === "maxValueBytes limit exceeded");
+  });
+}
+
+test("whole-value admission: diagnostic serialization never reads beyond its byte preview", { timeout: 1000 }, async () => {
+  let suffixReads = 0;
+  const input: Record<string, Json> = { first: "x".repeat(48) };
+  Object.defineProperty(input, "tail", { enumerable: true, get() { suffixReads++; return "unneeded"; } });
+  const expected = 'object ({"first":"x...)';
+  const result = await describe(input, new Budget(resolveJqLimits(), new AbortController().signal));
+  assert.equal(result, expected);
+  assert.equal(suffixReads, 0);
+});
+
+test("whole-value control: preview byte boundaries retain replacement-character behavior", { timeout: 1000 }, async () => {
+  for (const input of ["", "abcdefghijklm", "😀😀😀😀", "éééééééé", "\n\"\\"]) {
+    const bytes = Buffer.from(JSON.stringify(input));
+    const expected = bytes.length < 15 ? bytes.toString() : `${bytes.subarray(0, 11).toString()}...`;
+    assert.equal(await describe(input, new Budget(resolveJqLimits(), new AbortController().signal)), `string (${expected})`);
+  }
+});
+test("whole-value serialization preserves admitted JSON bytes", async () => {
+  for (const input of [null, true, 0, "", "\ud800", "😀".repeat(33), "a".repeat(31) + "😀", ["\n"], { a: 0, b: 0 }] satisfies Json[]) {
+    const expected = JSON.stringify(input);
+    const budget = new Budget(resolveJqLimits({ maxValueBytes: Buffer.byteLength(expected) }), new AbortController().signal);
+    assert.equal(await measureValue(input, budget), Buffer.byteLength(expected));
+    assert.equal(await stringify(input, budget), expected);
+  }
+});
+
+test("whole-value entries stays lazy when its consumer stops", async () => {
+  let reads = 0;
+  const input: Json[] = [1];
+  Object.defineProperty(input, 1, { enumerable: true, get() { reads++; return 2; } });
+  const iterator = entries(input, new Budget(resolveJqLimits(), new AbortController().signal));
+  try { assert.deepEqual((await iterator.next()).value, [0, 1]); }
+  finally { await iterator.return(undefined); }
+  assert.equal(reads, 0);
+});
+
+test("whole-value serialization preserves cooperative abort identity", async () => {
+  const controller = new AbortController();
+  const reason = new Error("whole-value cancellation");
+  let yields = 0;
+  registerYieldCheckpoint(controller.signal, () => { yields++; controller.abort(reason); });
+  const budget = new Budget(resolveJqLimits(), controller.signal);
+  await assert.rejects(stringify("x".repeat(1024), budget), error => error === reason);
+  assert.equal(yields, 1);
 });

@@ -173,7 +173,7 @@ async function execute(context: CommandContext, limits: JqLimits): Promise<{ exi
           if (++budget.results > limits.maxResults) throw new JqLimitError("maxResults");
           const remaining = limits.maxOutputBytes - budget.outputBytes;
           const suffix = options.joinOutput ? "" : "\n";
-          const text = options.raw && typeof result === "string" ? result : stringify(result, budget, !options.compact, Math.max(0, remaining - suffix.length), "maxOutputBytes");
+          const text = options.raw && typeof result === "string" ? result : await stringify(result, budget, !options.compact, Math.max(0, remaining - suffix.length), "maxOutputBytes");
           const bytes = Buffer.from(`${text}${suffix}`);
           if (bytes.byteLength > remaining) throw new JqLimitError("maxOutputBytes");
           budget.outputBytes += bytes.byteLength;

@@ -1,13 +1,24 @@
 import { Budget, copyObject, isObject, JqError, JqLimitError, objectKeyIterator, objectKeys, put, type Json } from "./limits.js";
 import { compareNumbers, isNumber, numberValue, type Numeric } from "./numbers.js";
-import { stringify } from "./input.js";
+import { jsonFragments, renderJsonFragment } from "./input.js";
 
 export function type(value: Json): string {
   return value === null ? "null" : isNumber(value) ? "number" : Array.isArray(value) ? "array" : typeof value;
 }
 export function describe(value: Json, budget: Budget): string {
-  const bytes = Buffer.from(stringify(value, budget));
-  const text = bytes.length < 15 ? bytes.toString() : `${bytes.subarray(0, 11).toString()}...`;
+  const parts: Uint8Array[] = [];
+  let length = 0;
+  for (const fragment of jsonFragments(value, budget)) {
+    const text = renderJsonFragment(fragment, budget);
+    budget.step(text.length);
+    const bytes = Buffer.from(text);
+    const retained = Math.min(15 - length, bytes.length);
+    parts.push(bytes.subarray(0, retained));
+    length += retained;
+    if (length === 15) break;
+  }
+  const bytes = Buffer.concat(parts, length);
+  const text = length < 15 ? bytes.toString() : `${bytes.subarray(0, 11).toString()}...`;
   return `${type(value)} (${text})`;
 }
 export async function stringCompare(left: string, right: string, budget: Budget): Promise<number> {
@@ -99,9 +110,25 @@ export function equal(left: Json, right: Json, budget: Budget): boolean {
   }
   return false;
 }
-export function entries(value: Json, budget: Budget): [string | number, Json][] {
-  if (Array.isArray(value)) { budget.collection(value.length); return value.map((item, index) => [index, item]); }
-  if (isObject(value)) { const keys = objectKeys(value); budget.collection(keys.length); return keys.map(key => [key, value[key]!]); }
+export async function* entries(value: Json, budget: Budget): AsyncGenerator<[string | number, Json]> {
+  budget.signal.throwIfAborted();
+  if (Array.isArray(value)) {
+    budget.collection(value.length);
+    for (let index = 0; index < value.length; index++) {
+      await budget.tick(2);
+      yield [index, value[index]!];
+    }
+    return;
+  }
+  if (isObject(value)) {
+    let count = 0;
+    for (const key of objectKeyIterator(value)) {
+      await budget.tick(2);
+      budget.collection(++count);
+      yield [key, value[key]!];
+    }
+    return;
+  }
   throw new JqError(`Cannot iterate over ${describe(value, budget)}`);
 }
 export function indexValue(value: Json, index: Json): Json {

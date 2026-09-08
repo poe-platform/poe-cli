@@ -1,6 +1,6 @@
-import { Budget, copyObject, isObject, JqError, JqLimitError, object, objectKeys, put, remove as removeKey, truth, type Json } from "./limits.js";
+import { Budget, copyObject, isObject, JqError, JqLimitError, object, objectKeyIterator, objectKeys, put, remove as removeKey, truth, type Json } from "./limits.js";
 import { isNumber, numberValue, type Numeric } from "./numbers.js";
-import { JqParseError, parseJson, stringify } from "./input.js";
+import { JqParseError, measureValue, parseJson, stringify } from "./input.js";
 import type { Ast } from "./parser.js";
 import { splitString } from "./split.js";
 import { binary, compare, contains, describe, entries, equal, indexValue, sliceValue, sortedKeys, stableSort, type } from "./values.js";
@@ -86,7 +86,7 @@ export class Interpreter {
             for await (const base of this.run(ast.base, input)) { await this.budget.tick(); yield await sliceValue(base, start, end, this.budget); }
         return;
       case "iterate":
-        for await (const base of this.run(ast.base, input)) for (const [, value] of entries(base, this.budget)) { await this.budget.tick(); yield value; }
+        for await (const base of this.run(ast.base, input)) for await (const [, value] of entries(base, this.budget)) { await this.budget.tick(); yield value; }
         return;
       case "array": yield ast.body ? await this.collect(ast.body, input) : []; return;
       case "object": {
@@ -178,7 +178,7 @@ export class Interpreter {
     for await (const path of this.paths(ast.base, input)) {
       let base = input;
       for (const component of path) base = indexValue(base, component);
-      for (const [key] of entries(base, this.budget)) { await this.budget.tick(); yield [...path, key]; }
+      for await (const [key] of entries(base, this.budget)) { await this.budget.tick(); yield [...path, key]; }
     }
   }
   set(input: Json, path: Path, value: Json | typeof deleted, depth = 0): Json {
@@ -266,25 +266,63 @@ export class Interpreter {
       if (input === null) yield 0;
       else if (isNumber(input)) yield Math.abs(numberValue(input));
       else if (typeof input === "string") {
+        await budget.tick(input.length);
         let length = 0;
-        for (const ignoredEntry of input) length++;
+        for (let offset = 0; offset < input.length; length++) {
+          if (length % 32 === 0) await budget.tick(0);
+          offset += input.codePointAt(offset)! > 0xffff ? 2 : 1;
+        }
         yield length;
       }
       else if (Array.isArray(input)) yield input.length;
-      else if (isObject(input)) yield objectKeys(input).length;
+      else if (isObject(input)) {
+        let length = 0;
+        for (const key of objectKeyIterator(input)) { await budget.tick(); void key; length++; }
+        yield length;
+      }
       else throw new JqError("boolean has no length");
       return;
     }
     if (name === "keys" || name === "keys_unsorted") {
-      if (Array.isArray(input)) yield input.map((_, index) => index);
-      else if (isObject(input)) yield name === "keys" ? await sortedKeys(input, budget) : objectKeys(input);
-      else throw new JqError("keys requires an object or array");
-      return;
+      let result: Json[];
+      if (Array.isArray(input)) {
+        budget.collection(input.length);
+        await budget.tick(input.length);
+        result = [];
+        let bytes = 2;
+        if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
+        for (let index = 0; index < input.length; index++) {
+          await budget.tick();
+          bytes += String(index).length + (index ? 1 : 0);
+          if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
+          result.push(index);
+        }
+      } else if (isObject(input)) {
+        let bytes = 2;
+        let count = 0;
+        if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
+        for (const key of objectKeyIterator(input)) {
+          await budget.tick();
+          budget.collection(++count);
+          const separator = count > 1 ? 1 : 0;
+          bytes += separator + await measureValue(key, budget, 1, budget.limits.maxValueBytes - bytes - separator);
+        }
+        if (name === "keys") result = await sortedKeys(input, budget);
+        else {
+          result = [];
+          for (const key of objectKeyIterator(input)) {
+            await budget.tick();
+            budget.collection(result.length + 1);
+            result.push(key);
+          }
+        }
+      } else throw new JqError("keys requires an object or array");
+      yield result; return;
     }
     if (name === "map" || name === "map_values") {
       const result: Json = name === "map_values" && isObject(input) ? object() : [];
       let bytes = 2;
-      for (const [key, value] of entries(input, budget)) for await (const mapped of this.run(args[0]!, value)) {
+      for await (const [key, value] of entries(input, budget)) for await (const mapped of this.run(args[0]!, value)) {
         bytes += budget.value(mapped) + 1 + (Array.isArray(result) ? 0 : Buffer.byteLength(JSON.stringify(String(key))) + 1);
         if (bytes - 1 > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
         if (Array.isArray(result)) { budget.collection(result.length + 1); result.push(mapped); }
@@ -322,7 +360,7 @@ export class Interpreter {
           if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
           result += text;
         };
-        for (const [, item] of entries(input, budget)) {
+        for await (const [, item] of entries(input, budget)) {
           await budget.tick();
           if (!first && separator !== null) {
             if (typeof separator !== "string") await binary("+", result, separator, budget);
@@ -331,7 +369,7 @@ export class Interpreter {
           }
           first = false;
           if (isObject(item) || Array.isArray(item)) await binary("+", result, item, budget);
-          const text = item === null ? "" : typeof item === "string" ? item : stringify(item, budget);
+          const text = item === null ? "" : typeof item === "string" ? item : await stringify(item, budget);
           append(text, budget.value(text));
         }
         budget.value(result); yield result;
@@ -374,7 +412,11 @@ export class Interpreter {
           }
       return;
     }
-    if (name === "tostring" || name === "tojson") { const result = typeof input === "string" && name === "tostring" ? input : stringify(input, budget); budget.text(result); yield result; return; }
+    if (name === "tostring" || name === "tojson") {
+      if (typeof input === "string" && name === "tostring") { await measureValue(input, budget); yield input; }
+      else yield await stringify(input, budget, false, budget.limits.maxValueBytes, "maxValueBytes", true);
+      return;
+    }
     if (name === "tonumber" || name === "fromjson") {
       if (name === "tonumber" && isNumber(input)) { yield input; return; }
       if (typeof input !== "string") throw new JqError(name === "fromjson" ? `${describe(input, budget)} only strings can be parsed` : `${describe(input, budget)} cannot be parsed as a number`);
@@ -387,20 +429,38 @@ export class Interpreter {
       if (name === "tonumber" && !isNumber(result)) throw new JqError(`${describe(input, budget)} cannot be parsed as a number`);
       yield result; return;
     }
-    if (name === "to_entries") { yield entries(input, budget).map(([key, value]) => copyObject({ key, value })); return; }
+    if (name === "to_entries") {
+      if (Array.isArray(input)) await budget.tick(input.length);
+      const result: Json[] = [];
+      let bytes = 2;
+      if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
+      for await (const [key, value] of entries(input, budget)) {
+        budget.collection(result.length + 1);
+        budget.collection(2);
+        const overhead = 17 + (result.length ? 1 : 0);
+        const keyBytes = await measureValue(key, budget, 2, budget.limits.maxValueBytes - bytes - overhead);
+        const valueBytes = await measureValue(value, budget, 2, budget.limits.maxValueBytes - bytes - overhead - keyBytes);
+        await budget.tick(4);
+        bytes += overhead + keyBytes + valueBytes;
+        const entry = object();
+        put(entry, "key", key); put(entry, "value", value);
+        result.push(entry);
+      }
+      yield result; return;
+    }
     if (name === "from_entries" || name === "with_entries") {
       let values = input;
       if (name === "with_entries") {
         values = [];
         let bytes = 2;
-        for (const [key, value] of entries(input, budget)) for await (const mapped of this.run(args[0]!, copyObject({ key, value }))) {
+        for await (const [key, value] of entries(input, budget)) for await (const mapped of this.run(args[0]!, copyObject({ key, value }))) {
           budget.collection(values.length + 1); bytes += budget.value(mapped) + (values.length ? 1 : 0);
           if (bytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
           values.push(mapped);
         }
       }
       const result = object();
-      for (const [, entry] of entries(values, budget)) {
+      for await (const [, entry] of entries(values, budget)) {
         await budget.tick();
         if (!isObject(entry)) throw new JqError(`Cannot index ${type(entry)} with string "key"`);
         const key = ["key", "Key", "name", "Name"].find(candidate => Object.hasOwn(entry, candidate) && truth(entry[candidate]!));
@@ -422,11 +482,17 @@ export class Interpreter {
       yield name === "all"; return;
     }
     if (!Array.isArray(input)) {
-      if (name === "unique") entries(input, budget);
+      if (name === "unique" && !isObject(input)) throw new JqError(`Cannot iterate over ${describe(input, budget)}`);
       if (name === "sort") throw new JqError(`${describe(input, budget)} cannot be sorted, as it is not an array`);
       throw new JqError(`${name} requires an array`);
     }
-    if (name === "reverse") { yield [...input].reverse(); return; }
+    if (name === "reverse") {
+      await budget.tick(input.length);
+      await measureValue(input, budget);
+      const result: Json[] = [];
+      for (let index = input.length - 1; index >= 0; index--) { await budget.tick(0); result.push(input[index]!); }
+      yield result; return;
+    }
     if (name === "add") {
       let result: Json = null;
       for (const item of input) { await budget.tick(); result = await binary("+", result, item, budget); budget.value(result); }

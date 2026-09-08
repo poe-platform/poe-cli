@@ -702,3 +702,31 @@ frozen, prepare separate `apply_patch`-compatible `/tmp` patches for A and B,
 clearly naming B's A dependency and leaving both unapplied. An unexecuted patch
 is not GREEN evidence. The #654 GREEN receipt above records actual focused
 execution only; no canonical inventory update, commit, push or release is claimed.
+
+## September 8: #655 canonical handoff
+
+The seven-file active-jq implementation is frozen after 380/380 passing
+assertions across ten focused files, with no failures, cancellations or skips.
+Before implementation, eleven temporary contract witnesses failed alongside
+one passing control; five canonical command-admission cases also failed.
+
+The serializer now measures and renders bounded fragments with proportional
+work and cooperative checkpoints. Prospective keys, entries and reverse
+results are checked before construction; Unicode length is charged and
+cooperative, and diagnostic descriptions stop after a bounded prefix.
+Iteration is lazy instead of constructing a full entries array. All active
+serializer callers await results and entries callers iterate asynchronously.
+
+Changed sources are structured `input.ts`, `values.ts`, `interpreter.ts`, and
+`jq.ts`. Existing `string-work.test.ts` and `resources.test.ts` contain the
+regressions. The active independent-increment `numeric-safety.test.ts` changes
+only one callback to async and awaits its serializer; operands, quotas and
+assertions remain unchanged. Its prior SHA-256 is
+`5ad8d138f3733aa57f2c3a3147d20cb72affc6323111852cf646069da335e363`.
+No historical manifest, sealed copy or held query-core/yq source was changed;
+this handoff makes no historical replay or inactive-yq qualification claim.
+
+Temporary patch artifacts are `/tmp/kamilio-655-20260908T063023Z-production.patch`
+and `/tmp/kamilio-655-20260908T063023Z-tests.patch`; their temporary candidate
+passed 21/21 before canonical application. No new test path was introduced.
+Root build, package-wide validation, lint, push and publication follow separately.
