@@ -6,7 +6,7 @@ import { restore } from "../../restore.js";
 import { Budget } from "../budget.js";
 import { createUriGlobals } from "./uri.js";
 
-const conversions = { encodeURI, encodeURIComponent, decodeURI, decodeURIComponent };
+const conversions = { encodeURI, encodeURIComponent, decodeURI, decodeURIComponent, escape, unescape };
 
 it.each(Object.entries(conversions).flatMap(([name, convert]) =>
   ["a b/🍋", "%20%2F%F0%9F%8D%8B"].map(input => ({ name, input, expected: convert(input) }))))(
@@ -62,10 +62,21 @@ it.each(Object.keys(conversions) as Array<keyof typeof conversions>)("charges %s
     .toThrow(expect.objectContaining({ name: "SandboxError" }));
 });
 
-it.each(["encodeURI", "encodeURIComponent"] as const)("bounds %s output expansion", name => {
+it.each(["encodeURI", "encodeURIComponent", "escape"] as const)("bounds %s output expansion", name => {
   const globals = createUriGlobals(new Budget({ stringLength: 4 }));
   expect(() => globals[name].call(["ą"]))
     .toThrow(expect.objectContaining({ name: "SandboxError" }));
+});
+
+it.each([
+  ["escape", "AZaz09@*_+-./", "AZaz09@*_+-./"],
+  ["escape", " \u0000éĀ🍋\ud800", "%20%00%E9%u0100%uD83C%uDF4B%uD800"],
+  ["unescape", "%20%00%E9%u0100%uD83C%uDF4B%uD800", " \u0000éĀ🍋\ud800"],
+  ["unescape", "%u00e9%ff", "éÿ"],
+  ["unescape", "%U0041%uGGGG%GG%2%", "%U0041%uGGGG%GG%2%"],
+  ["unescape", "%2520+%E9", "%20+é"]
+])("preserves legacy code-unit semantics for %s", async (name, input, expected) => {
+  expect(await run(`return ${name}(${JSON.stringify(input)})`)).toMatchObject({ ok: true, returnValue: expected });
 });
 
 it.each(Object.keys(conversions))("preserves mutable %s properties through checkpoints", async name => {

@@ -264,6 +264,8 @@ describe("Math.f16round independent review", () => {
         encodeURIComponent: { kind: "fn", name: "encodeURIComponent" },
         decodeURI: { kind: "fn", name: "decodeURI" },
         decodeURIComponent: { kind: "fn", name: "decodeURIComponent" },
+        escape: { kind: "fn", name: "escape" },
+        unescape: { kind: "fn", name: "unescape" },
         Object: { kind: "fn", name: "Object" },
         JSON: {
           ...capture.completed.bindings.JSON,

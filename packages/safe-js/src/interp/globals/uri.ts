@@ -3,7 +3,7 @@ import { sandboxString } from "../string-coercion.js";
 import { registerIntrinsicFunction } from "../object-model.js";
 import { createSandboxClosure, type SandboxClosure } from "../values.js";
 
-const conversions = { encodeURI, encodeURIComponent, decodeURI, decodeURIComponent };
+const conversions = { encodeURI, encodeURIComponent, decodeURI, decodeURIComponent, escape, unescape };
 
 export function createUriGlobals(budget: Budget): Record<keyof typeof conversions, SandboxClosure> {
   return Object.fromEntries(Object.entries(conversions).map(([name, conversion]) => {
