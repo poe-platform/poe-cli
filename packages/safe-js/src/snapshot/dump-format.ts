@@ -6,6 +6,8 @@ import { isPromiseResolvingFunction } from "../interp/promise.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions } from "../interp/promise-resolvers.js";
+import { asyncGeneratorDrivers } from "../interp/async-generator-driver.js";
+import { SnapshotNotReadyError } from "./not-ready.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { hasCustomRegexProperties, serializeRegexProperties, type RegexPropertyData } from "./regexp-properties.js";
 export const EXECUTION_SEMANTICS = "jobs-v8";
@@ -457,6 +459,9 @@ function collectContainerStats(
   ancestors.add(value);
 
   const guestEntries: unknown[] = [];
+  const driver = trustedRunReplay ? asyncGeneratorDrivers.get(value) : undefined;
+  if (driver !== undefined && driver.requests.some(request => requiresPromiseReplay(request.capability.promise)))
+    throw new SnapshotNotReadyError("Cannot snapshot an async generator with a replay-only request.");
   const replayPromise = isSandboxPromise(value) ? value
     : isPromiseResolvingFunction(value) ? promiseResolvingFunctions.get(value)?.promise : undefined;
   const replayMetadata = trustedRunReplay && replayPromise !== undefined && requiresPromiseReplay(replayPromise);
