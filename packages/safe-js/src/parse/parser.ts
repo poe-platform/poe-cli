@@ -2878,6 +2878,8 @@ class Parser {
     ) {
       this.index += 1;
       const argument = this.parseUnaryExpression();
+      if (token.value === "delete" && argument.node.type === "Identifier" && this.lexicalContext.grammar?.strict === true)
+        throw new SyntaxError("Cannot delete an unqualified identifier in strict mode.");
       return {
         node: {
           type: "UnaryExpression",
