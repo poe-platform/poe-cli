@@ -80,6 +80,7 @@ export function createPrimitiveConstructor(
       "valueOf",
       createSandboxClosure({
         sandbox: true,
+        guest: true,
         name: "valueOf",
         length: 0,
         call: (_args, context) => primitiveReceiver(context?.thisValue, kind)
@@ -93,6 +94,7 @@ export function createPrimitiveConstructor(
       "toString",
       createSandboxClosure({
         sandbox: true,
+        guest: true,
         name: "toString",
         length: 0,
         call: (_args, context) =>
