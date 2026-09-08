@@ -212,8 +212,12 @@ Final implementation SHA-256 bindings:
 | cleanup.ts | 9cffde2dd6e227fc183d64f52bc22c4ba4d7261f97565f5d5251155ef2651681 |
 | runtime.ts | 54ce446a1dd78abdffe6ac0e115a890639d77f882730bc8c6e880738bee0c278 |
 | arrays/state.ts | 70f139ee65e0138f1e985788c39c502508e7cce06c7efa477d2aca6502d9348a |
-| cleanup-retention.test.ts | 695fd3a717002bc09088317b3b67ea38752a838aad1d5f6bd8e944b065b4a5c2 |
+| cleanup-retention.test.ts | 581b51d85e8e028879d3cfb00e5ea46f77bd303d29e6b68c43656c1a62307f3d |
 
 No remaining leaf implementation blocker. Root retains exact test-inventory
 registration, build/lint and Git/delivery gates. No more writes until root grants
 another writer window; #667 is not started.
+
+Root integration changed the deferred retirement-handle binding to `const` for
+the maintained prefer-const rule, without changing assertions or product code.
+All 18 dedicated tests passed again; the table records the resulting test hash.

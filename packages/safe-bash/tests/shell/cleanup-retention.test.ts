@@ -129,14 +129,13 @@ test("retirement cannot cancel snapshotted cleanup or bypass finalizers and trac
   let secondCalls = 0;
   let finalized = false;
   let settled = false;
-  let retireSecond: unknown;
   const retireFirst = scope.register(async () => {
     assert.equal(typeof retireSecond, "function");
     (retireSecond as () => void)();
     started.resolve();
     await releaseCleanup.promise;
   });
-  retireSecond = scope.register(() => { secondCalls++; });
+  const retireSecond: unknown = scope.register(() => { secondCalls++; });
   child.registerFinalizer(() => { finalized = true; });
   void child.run(() => releaseWork.promise);
   const closing = scope.close();
