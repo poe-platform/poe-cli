@@ -228,6 +228,7 @@ describe("Math.f16round independent review", () => {
           RelativeTimeFormat: { kind: "fn", name: "RelativeTimeFormat" },
           DisplayNames: { kind: "fn", name: "DisplayNames" },
           DateTimeFormat: { kind: "fn", name: "DateTimeFormat" },
+          PluralRules: { kind: "fn", name: "PluralRules" },
           Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },

@@ -4,7 +4,7 @@ import { defineOwnDataProperty, isSandboxClosure, measureSandboxData, type Sandb
 import { createIntlGlobal } from "./intl.js";
 import { createDateGlobal } from "./date.js";
 
-it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat"])(
+it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat", "PluralRules"])(
   "accounts for retained mutations on Intl.%s.prototype and its methods",
   name => {
     const budget = new Budget();

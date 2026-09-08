@@ -33,6 +33,7 @@ import { isSandboxDateTimeFormat, dateTimeFormatState } from "./intl-datetimefor
 import { isSandboxListFormat, listFormatState } from "./intl-listformat.js";
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState } from "./intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState } from "./intl-displaynames.js";
+import { isSandboxPluralRules, pluralRulesState } from "./intl-pluralrules.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
 import { boxedDataProperties, boxedValue, createSandboxBox, isSandboxBox, nativeBoxedValue } from "./boxed.js";
 import { getHostObjectKeys, getHostObjectMember, hasHostObjectMember, measureHostObjectData, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
@@ -812,6 +813,7 @@ export function measureSandboxData(
     if (isSandboxListFormat(value)) visit(listFormatState(value).options, depth + 1);
     if (isSandboxRelativeTimeFormat(value)) visit(relativeTimeFormatState(value).options, depth + 1);
     if (isSandboxDisplayNames(value)) visit(displayNamesState(value).options, depth + 1);
+    if (isSandboxPluralRules(value)) visit(pluralRulesState(value).options, depth + 1);
     if (isSandboxNumberFormat(value)) {
       const state = numberFormatState(value);
       visit(state.options, depth + 1);

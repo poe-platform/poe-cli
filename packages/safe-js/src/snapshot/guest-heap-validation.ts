@@ -6,6 +6,7 @@ import { createSandboxCollator, collatorState } from "../interp/intl-collator.js
 import { createSandboxListFormat, listFormatState } from "../interp/intl-listformat.js";
 import { createSandboxRelativeTimeFormat, relativeTimeFormatState } from "../interp/intl-relativetimeformat.js";
 import { createSandboxDisplayNames, displayNamesState } from "../interp/intl-displaynames.js";
+import { createSandboxPluralRules, pluralRulesState, type ResolvedPluralRulesOptions } from "../interp/intl-pluralrules.js";
 import { createSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { createSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
 import { createBuiltinBindings } from "../interp/globals.js";
@@ -80,7 +81,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-pluralrules", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -392,6 +393,22 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (names.some(key => typeof options[key] !== "string")) throw new TypeError("Invalid ListFormat option type.");
     const restored = listFormatState(createSandboxListFormat(options.locale as string, options as Intl.ListFormatOptions)).options;
     if (names.some(key => options[key] !== restored[key])) throw new TypeError("Invalid resolved ListFormat options.");
+    state(node.state);
+  } else if (node.kind === "guest-pluralrules") {
+    fields(node, ["kind", "options", "state"]);
+    const options = record(node.options);
+    fields(options, ["locale", "type", "minimumIntegerDigits", "pluralCategories", "roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"],
+      ["minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits", "maximumSignificantDigits"]);
+    if (typeof options.locale !== "string" || !Array.isArray(options.pluralCategories) ||
+        options.pluralCategories.some(value => typeof value !== "string") ||
+        Object.entries(options).some(([key, value]) => key !== "pluralCategories" && typeof value !== "string" && typeof value !== "number"))
+      throw new TypeError("Invalid PluralRules option type.");
+    const restored = pluralRulesState(createSandboxPluralRules(options.locale, options as ResolvedPluralRulesOptions)).options;
+    if (Object.keys(options).length !== Object.keys(restored).length || Object.keys(restored).some(key => {
+      const value = restored[key];
+      return Array.isArray(value) ? (options[key] as string[]).length !== value.length || value.some((item, index) => (options[key] as string[])[index] !== item)
+        : options[key] !== value;
+    })) throw new TypeError("Invalid resolved PluralRules options.");
     state(node.state);
   } else if (node.kind === "guest-displaynames") {
     fields(node, ["kind", "options", "state"]);
