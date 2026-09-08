@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { browserCommands } from "../../../src/browser.js";
+import { agentCommands } from "../../../src/index.js";
 import { FsError, type ByteSource, type FileSystem } from "../../../src/contracts/index.js";
 import { createMemoryFileSystem } from "../../../src/fs/memory/index.js";
 import { createMountFileSystem } from "../../../src/fs/mount/index.js";
@@ -19,7 +19,7 @@ function buffered(backing: FileSystem): FileSystem {
 }
 
 function shellFor(fs: FileSystem, body: ByteSource, options: Partial<NetworkCommandsOptions> = {}): Shell {
-  return new Shell({ fs }).use(browserCommands()).use(networkCommands({
+  return new Shell({ fs }).use(agentCommands()).use(networkCommands({
     authorize: () => true,
     transport: async () => ({ status: 200, statusText: "OK", headers: [], body, async dispose() {} }),
     ...options

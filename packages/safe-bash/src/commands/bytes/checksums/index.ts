@@ -1,6 +1,8 @@
 import { yieldTurn } from "../../../contracts/yield.js";
 import { PublicDiagnostic } from "../../../diagnostics.js";
-import { createHash } from "node:crypto";
+import { md5, sha1 } from "@noble/hashes/legacy.js";
+import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { FsError, readBytes, toByteSource, type ByteSource, type CommandContext, type CommandDefinition } from "../../../contracts/index.js";
 import { codeOf, define, diagnostic, encoder, options, output, pathOf, UsageError, value } from "../../internal.js";
 import { ByteInputBudget, resolveInputLimit, type ByteInputOptions } from "../input-budget.js";
@@ -11,6 +13,7 @@ const filenameBytes = 16 * 1024;
 const maxLength = (1n << 64n) - 1n;
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 type Algorithm = "sha512" | "sha384" | "sha256" | "sha224" | "sha1" | "md5" | "crc";
+const hashes = { sha512, sha384, sha256, sha224, sha1, md5 };
 type ReportMode = "normal" | "quiet" | "status" | "warn";
 
 interface Settings {
@@ -126,21 +129,23 @@ const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
 });
 
 async function digest(input: ByteSource, algorithm: Algorithm, signal: AbortSignal, progress?: ReadProgress): Promise<Digest> {
-  const hash = algorithm === "crc" ? undefined : createHash(algorithm);
+  const hash = algorithm === "crc" ? undefined : hashes[algorithm].create();
   let crc = 0;
   let length = 0n;
-  for await (const block of blocks(input, signal)) {
-    if (progress) progress.hasData = true;
-    length += BigInt(block.length);
-    if (length > maxLength) throw new FsError("EFBIG", { message: "checksum input exceeds 2^64-1 bytes" });
-    if (hash) hash.update(block);
-    else for (const byte of block) crc = (crc << 8) ^ crcTable[((crc >>> 24) ^ byte) & 255]!;
-  }
-  if (hash) return { hex: hash.digest("hex"), length };
-  for (let remaining = length; remaining > 0n; remaining >>= 8n) {
-    crc = (crc << 8) ^ crcTable[((crc >>> 24) ^ Number(remaining & 255n)) & 255]!;
-  }
-  return { hex: String((~crc) >>> 0), length };
+  try {
+    for await (const block of blocks(input, signal)) {
+      if (progress) progress.hasData = true;
+      length += BigInt(block.length);
+      if (length > maxLength) throw new FsError("EFBIG", { message: "checksum input exceeds 2^64-1 bytes" });
+      if (hash) hash.update(block);
+      else for (const byte of block) crc = (crc << 8) ^ crcTable[((crc >>> 24) ^ byte) & 255]!;
+    }
+    if (hash) return { hex: bytesToHex(hash.digest()), length };
+    for (let remaining = length; remaining > 0n; remaining >>= 8n) {
+      crc = (crc << 8) ^ crcTable[((crc >>> 24) ^ Number(remaining & 255n)) & 255]!;
+    }
+    return { hex: String((~crc) >>> 0), length };
+  } finally { hash?.destroy(); }
 }
 
 function escaped(filename: string): { prefix: string; name: string } {

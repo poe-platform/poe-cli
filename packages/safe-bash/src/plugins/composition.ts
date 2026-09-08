@@ -29,6 +29,7 @@ import { createWhichCommands, type WhichCommandsOptions } from "../commands/whic
 import { createTimeoutCommands, type TimeoutCommandsOptions } from "../commands/timeout/index.js";
 import { createApplyPatchCommands, type ApplyPatchCommandsOptions } from "../commands/apply-patch/index.js";
 import type { RegexExecutionOptions } from "../commands/regex-execution/protocol.js";
+import type { BoundedRegexProvider } from "../commands/regex-execution/provider.js";
 
 export interface AgentCommandsOptions {
   readonly execution?: ExecutionCommandsOptions;
@@ -36,18 +37,19 @@ export interface AgentCommandsOptions {
   readonly applyPatch?: Omit<ApplyPatchCommandsOptions, "replace">;
   readonly timeout?: Omit<TimeoutCommandsOptions, "replace">;
   readonly which?: Omit<WhichCommandsOptions, "replace">;
-  readonly expr?: Omit<ExprCommandsOptions, "replace" | "regex">;
+  readonly expr?: Omit<ExprCommandsOptions, "replace" | "regex" | "regexExecutor">;
   readonly du?: Omit<DuCommandsOptions, "replace">;
   readonly htmlToMarkdown?: Omit<HtmlToMarkdownCommandsOptions, "replace">;
   readonly replace?: boolean;
   readonly execute?: CommandHandler;
   readonly regex?: RegexExecutionOptions;
+  readonly regexExecutor?: BoundedRegexProvider;
   readonly maxDirectoryEntries?: number;
   readonly maxTeeTargets?: number;
   readonly maxTailFollowHandles?: number;
   readonly text?: Omit<TextProgramOptions, "replace">;
   readonly structured?: Omit<StructuredCommandsOptions, "replace">;
-  readonly search?: Omit<SearchOptions, "replace">;
+  readonly search?: Omit<SearchOptions, "replace" | "regexExecutor">;
   readonly diffPatch?: Omit<DiffPatchOptions, "replace">;
   readonly metadata?: Omit<MetadataCommandsOptions, "replace">;
   readonly archive?: Omit<ArchiveCommandsOptions, "replace">;

@@ -1,12 +1,21 @@
-import * as browser from "@poe-platform/safe-bash/browser";
-import * as portable from "@poe-platform/safe-bash/portable";
+import * as defaultEntry from "@poe-platform/safe-bash";
 
-export async function runNestedCommands(entry) {
+export const expectedAgentCommandNames = Object.freeze([
+  "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
+  "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
+  "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
+  "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha256sum", "sha1sum",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
+  "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
+].sort());
+
+export async function runNestedCommands(entry = defaultEntry, options = {}) {
   const failures = [];
   const shell = new entry.Shell({
-    fs: new browser.MemoryFileSystem(),
+    fs: new defaultEntry.MemoryFileSystem(),
     onInternalError(error) { failures.push(error.message); },
-  }).use(portable.portableAgentCommands({ provider: portable.createBoundedRegexProvider() }));
+  }).use(defaultEntry.agentCommands(options));
   try {
     const results = [];
     for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc", "env env jq -nc '1+1'", "printf '\"1+1\"' | xargs env jq -nc"]) {
@@ -17,4 +26,4 @@ export async function runNestedCommands(entry) {
   } finally { await shell.dispose(); }
 }
 
-export { browser, portable };
+export { defaultEntry };

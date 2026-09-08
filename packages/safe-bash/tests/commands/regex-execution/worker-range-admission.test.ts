@@ -1,3 +1,4 @@
+import { createNodeRegexProvider } from "../../../src/node.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createStandardCommands, MemoryFileSystem, toByteSource, type CommandContext } from "../../../src/index.js";
@@ -61,7 +62,7 @@ test("actual regex worker preserves empty, non-all and unrelated expr requests",
 
 for (const length of [100_000, 100_001]) {
   test(`public standard grep -oc applies the worker range cap at ${length}`, async () => {
-    const command = createStandardCommands().find(definition => definition.name === "grep")!;
+    const command = createStandardCommands({ regexExecutor: createNodeRegexProvider() }).find(definition => definition.name === "grep")!;
     let stdout = "", stderr = "";
     const context: CommandContext = {
       command: "grep", args: ["-oc", "a"], fs: new MemoryFileSystem(), cwd: "/", env: {},

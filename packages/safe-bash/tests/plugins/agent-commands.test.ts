@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createNodeRegexProvider } from "../../src/node.js";
 import {
   agentCommands, createAgentCommands, CommandRegistry, createMemoryFileSystem, Shell,
   toByteSource,
@@ -73,8 +74,9 @@ test("invalid eager family limits install no commands", () => {
 
 for (const kind of ["definitions", "plugin"] as const) {
   test(`${kind} fallback resolves nested argv across families without a shell`, async () => {
-    const commands = kind === "definitions" ? new CommandRegistry(createAgentCommands()) : new CommandRegistry();
-    if (kind === "plugin") await agentCommands().setup(host(commands));
+    const options = { regexExecutor: createNodeRegexProvider() };
+    const commands = kind === "definitions" ? new CommandRegistry(createAgentCommands(options)) : new CommandRegistry();
+    if (kind === "plugin") await agentCommands(options).setup(host(commands));
     assert.deepEqual(await direct(commands, "env", ["sed", "s/a/A/"], "a\n"), { exitCode: 0, stdout: "A\n", stderr: "" });
     assert.deepEqual(await direct(commands, "xargs", ["jq", "-nc"], "'1+1'"), { exitCode: 0, stdout: "2\n", stderr: "" });
     assert.deepEqual(await direct(commands, "env", ["env", "rg", "a", "-"], "a\n"), { exitCode: 0, stdout: "a\n", stderr: "" });
@@ -117,7 +119,7 @@ const limited: readonly [AgentCommandsOptions, string, string, RegExp][] = [
 ];
 for (const [options, source, stdin, diagnostic] of limited) {
   test(`aggregate forwards ${Object.keys(options)[0]} limits without rewriting them`, async () => {
-    const shell = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands(options));
+    const shell = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands({ regexExecutor: createNodeRegexProvider(), ...options }));
     try {
       const result = await shell.exec(source, { stdin });
       assert.notEqual(result.exitCode, 0);
@@ -129,7 +131,7 @@ for (const [options, source, stdin, diagnostic] of limited) {
 test("search defaultInput remains an explicit family override", async () => {
   const fs = createMemoryFileSystem();
   await fs.writeFile("/file", Buffer.from("match\n"));
-  const shell = new Shell({ fs }).use(agentCommands({ search: { defaultInput: "stdin" } }));
+  const shell = new Shell({ fs }).use(agentCommands({ regexExecutor: createNodeRegexProvider(), search: { defaultInput: "stdin" } }));
   try {
     const result = await shell.exec("rg match");
     assert.equal(result.exitCode, 1);

@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createContext, runInContext } from "node:vm";
-import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { Volume } from "memfs";
 import { build, type OutputFile } from "esbuild";
@@ -10,6 +9,18 @@ import { resolveBrowserShellBuild } from "./bundle-safe-bash.mjs";
 import { rewriteModuleSpecifiers } from "./package-safe.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+it("exposes the complete default shell under browser conditions without Node builtins", async () => {
+  const manifest = JSON.parse(await readFile(path.join(root, "packages/safe-bash/package.json"), "utf8"));
+  expect(manifest.exports["./browser"]).toBeUndefined();
+  expect(manifest.exports["./portable"]).toBeUndefined();
+  expect(manifest.exports["."].browser).toBe("./dist/core.browser.js");
+  expect(manifest.exports["."].types.browser).toBe("./dist/core.d.ts");
+  const result = await build(resolveBrowserShellBuild(root));
+  const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
+  expect([...new Set(imports.filter(item => item.external).map(item => item.path))]).toEqual(["poe-code/safe-fs/core"]);
+  expect(result.outputFiles!.some(output => output.path.endsWith("/core.browser.js"))).toBe(true);
+});
 
 async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: string) {
   const artifacts = new Volume();
@@ -22,13 +33,13 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   const manifest = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"));
   const consumer = await build({
     stdin: { contents, resolveDir: root },
-    bundle: true, write: false, platform: "node", format: "cjs", target: "es2022",
+    bundle: true, write: false, platform: "browser", conditions: ["workerd", "worker", "browser"], format: "cjs", target: "es2022",
     external: ["@poe-platform/safe-fs/core"],
     plugins: [{
       name: "public-built-shell-entries",
       setup(builder) {
-        builder.onResolve({ filter: /^@poe-platform\/safe-bash\// }, args => ({
-          path: path.resolve(directory, manifest.exports["./" + args.path.split("/").at(-1)].import),
+        builder.onResolve({ filter: /^@poe-platform\/safe-bash$/ }, () => ({
+          path: path.resolve(directory, manifest.exports["."].browser),
           namespace: "built-shell",
         }));
         builder.onResolve({ filter: /^\./, namespace: "built-shell" }, args => ({
@@ -43,43 +54,42 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   return consumer.outputFiles![0]!.text;
 }
 
-it("runs nested env/xargs across public built browser and portable entries", async () => {
+it("runs nested env/xargs through the public default browser entry", async () => {
   const result = await build(resolveBrowserShellBuild(root));
   const consumer = await bundlePublicConsumer(result.outputFiles!, await readFile(path.join(root, "scripts/fixtures/safe-packages-mixed-entry-runtime.mjs"), "utf8"));
-  const require = createRequire(import.meta.url);
   const sandbox = createContext({
     TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
-    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance,
     require(name: string) {
-      return name === "@poe-platform/safe-fs/core" ? filesystem : require(name);
+      if (name !== "@poe-platform/safe-fs/core") throw new Error(name);
+      return filesystem;
     },
   });
   const publicConsumer = runInContext(`(function(){ const module = { exports: {} }; ${consumer}; return module.exports; })()`, sandbox);
-  for (const entry of ["portable", "browser"]) {
-    const { results, failures } = await publicConsumer.runNestedCommands(publicConsumer[entry]);
+  for (const options of [{}, { regexExecutor: publicConsumer.defaultEntry.createBoundedRegexProvider() }]) {
+    const { results, failures } = await publicConsumer.runNestedCommands(publicConsumer.defaultEntry, options);
     for (const result of results) {
-      expect(result, `${entry}: ${result.script}; internal errors: ${failures.join(", ")}`).toMatchObject({
+      expect(result, `${result.script}; internal errors: ${failures.join(", ")}`).toMatchObject({
         exitCode: 0, stdout: "2\n", stderr: "",
       });
     }
     expect(failures).toEqual([]);
   }
-  expect(publicConsumer.browser.Shell).toBe(publicConsumer.portable.Shell);
-  expect(publicConsumer.browser.ShellLimitError).toBe(publicConsumer.portable.ShellLimitError);
-  expect(publicConsumer.browser.createCommandArguments).toBe(publicConsumer.portable.createCommandArguments);
-  const argumentsFromBrowser = publicConsumer.browser.createCommandArguments(["nested"]);
-  expect(publicConsumer.portable.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: argumentsFromBrowser })).toBe(argumentsFromBrowser);
-  expect(() => publicConsumer.portable.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: { ...argumentsFromBrowser } })).toThrow("Expected owned command arguments");
-  expect(() => publicConsumer.portable.getCommandArguments({ args: [...argumentsFromBrowser.args], argumentValues: argumentsFromBrowser })).toThrow(publicConsumer.browser.CommandArgumentIdentityError);
+  const entry = publicConsumer.defaultEntry;
+  expect(entry.MemoryFileSystem).toBe(filesystem.MemoryFileSystem);
+  const argumentsFromBrowser = entry.createCommandArguments(["nested"]);
+  expect(entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: argumentsFromBrowser })).toBe(argumentsFromBrowser);
+  expect(() => entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: { ...argumentsFromBrowser } })).toThrow("Expected owned command arguments");
+  expect(() => entry.getCommandArguments({ args: [...argumentsFromBrowser.args], argumentValues: argumentsFromBrowser })).toThrow(entry.CommandArgumentIdentityError);
   const bytesFromBrowser = argumentsFromBrowser.withValues([new Uint8Array([255, 0])]);
-  expect(Array.from(publicConsumer.portable.createCommandArguments(bytesFromBrowser.values).bytes(0))).toEqual([255, 0]);
+  expect(Array.from(entry.createCommandArguments(bytesFromBrowser.values).bytes(0))).toEqual([255, 0]);
 });
 
 it("builds the portable shell without Node workers, adapters, or duplicate filesystem identity", async () => {
   const options = resolveBrowserShellBuild(root);
   const result = await build(options);
   const outputs = result.metafile!.outputs;
-  const pending = Object.keys(outputs).filter(filename => filename.endsWith("/browser.js"));
+  const pending = Object.keys(outputs).filter(filename => filename.endsWith("/core.browser.js"));
   const reachable = new Set<string>();
   while (pending.length) {
     const filename = pending.pop()!;
@@ -96,37 +106,32 @@ it("builds the portable shell without Node workers, adapters, or duplicate files
   expect(inputs.some(input => input.includes("safe-fs/src"))).toBe(false);
   const imports = [...reachable].flatMap(filename => outputs[filename]!.imports);
   expect([...new Set(imports.filter(item => item.external).map(item => item.path))]).toEqual(["poe-code/safe-fs/core"]);
-  expect(result.outputFiles!.some(output => output.path.endsWith("browser.js"))).toBe(true);
+  expect(result.outputFiles!.some(output => output.path.endsWith("core.browser.js"))).toBe(true);
 });
 
 it("bundles the complete portable preset with one owned-argument identity", async () => {
   const options = resolveBrowserShellBuild(root);
-  expect(options.entryPoints).toEqual(["browser", "portable"].map(entry => path.join(root, `packages/safe-bash/src/${entry}.ts`)));
+  expect(options.entryPoints).toEqual([path.join(root, "packages/safe-bash/src/core.browser.ts")]);
   const result = await build(options);
-  const allowed = ["node:crypto", "node:stream", "node:stream/promises", "node:zlib", "node:perf_hooks", "node:timers", "node:path"];
   const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
   for (const imported of imports.filter(item => item.external)) {
-    expect(["poe-code/safe-fs/core", ...allowed]).toContain(imported.path);
+    expect(imported.path).toBe("poe-code/safe-fs/core");
   }
-  const compiled = await bundlePublicConsumer(result.outputFiles!, 'export * from "@poe-platform/safe-bash/portable";');
-  const require = createRequire(import.meta.url);
+  const compiled = await bundlePublicConsumer(result.outputFiles!, 'export * from "@poe-platform/safe-bash";');
   const sandbox = createContext({
     TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
-    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance,
     require(name: string) {
-      if (name === "@poe-platform/safe-fs/core") return filesystem;
-      expect(allowed).toContain(name);
-      return require(name);
+      if (name !== "@poe-platform/safe-fs/core") throw new Error(name);
+      return filesystem;
     },
   });
-  const portable = runInContext(`(function(){ const module = { exports: {} }; ${compiled}; return module.exports; })()`, sandbox) as typeof import("../packages/safe-bash/src/portable.js");
-  expect(portable.posixPath.sep).toBe("/");
-  expect(portable.posixPath.delimiter).toBe(":");
-  expect(portable.posixPath.normalize("/a/../b")).toBe("/b");
-  expect(portable.posixPath.format(portable.posixPath.parse("/a/file.txt"))).toBe("/a/file.txt");
-  expect(portable.posixPath).toBe(path.posix);
-  expect(portable.portableAgentCommandNames).toHaveLength(79);
-  expect([...portable.portableAgentCommandNames].sort()).toEqual([
+  const portable = runInContext(`(function(){ const module = { exports: {} }; ${compiled}; return module.exports; })()`, sandbox) as BrowserShell;
+  expect(portable.posixPath).toBe(filesystem.posixPath);
+  expect(portable.posixPath.join("/a", "..", "b")).toBe("/b");
+  const names = portable.createAgentCommands().map(command => command.name).sort();
+  expect(names).toHaveLength(79);
+  expect(names).toEqual([
     "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
     "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
     "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
@@ -136,13 +141,14 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
   ].sort());
   const commands = new portable.CommandRegistry();
-  const plugin = portable.portableAgentCommands({ provider: portable.createBoundedRegexProvider() });
+  const plugin = portable.agentCommands({ regexExecutor: portable.createBoundedRegexProvider() });
   try {
     await plugin.setup({ commands, use() {}, registerFileSystem() {} });
-    expect(commands.list().map(command => command.name).sort()).toEqual([...portable.portableAgentCommandNames].sort());
+    expect(commands.list().map(command => command.name).sort()).toEqual(names);
   } finally { await plugin.dispose?.(); }
-  const shell = new portable.Shell({ fs: new filesystem.MemoryFileSystem() }).use(
-    portable.portableAgentCommands({ provider: portable.createBoundedRegexProvider() }),
+  const fs = new filesystem.MemoryFileSystem();
+  const shell = new portable.Shell({ fs }).use(
+    portable.agentCommands(),
   );
   try {
     for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc"]) {
@@ -151,10 +157,24 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
       expect(result.stdout).toBe("2\n");
       expect(result.stderr).toBe("");
     }
+    for (const [script, expected] of [
+      ["printf abc | sha256sum", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\u0020\u0020-\n"],
+      ["printf abc | gzip | zcat", "abc"],
+      ["printf abc > /note; tar -czf /notes.tgz note; rm /note; tar -xzf /notes.tgz; cat /note", "abc"],
+      ["timeout 1 true", ""],
+      ["expr abc : 'a.*'", "3\n"],
+    ]) {
+      const result = await shell.exec(script!);
+      expect(result, script).toMatchObject({ exitCode: 0, stdout: expected, stderr: "" });
+    }
+    const temporary = await shell.exec("mktemp /temporary.XXXXXX");
+    expect(temporary).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(temporary.stdout).toMatch(/^\/temporary\.[A-Za-z0-9]{6}\n$/u);
+    expect((await fs.stat(temporary.stdout.trim())).mode & 0o777).toBe(0o600);
   } finally { await shell.dispose(); }
 });
 
-type BrowserShell = typeof import("../packages/safe-bash/src/browser.js");
+type BrowserShell = typeof import("../packages/safe-bash/src/core.js");
 type CoreFs = typeof import("../packages/safe-fs/src/core.js");
 let browser: BrowserShell;
 let filesystem: CoreFs;
@@ -167,10 +187,10 @@ beforeAll(async () => {
     format: "cjs", target: "es2022",
   });
   const consumer = await build(resolveBrowserShellBuild(root));
-  const compiled = await bundlePublicConsumer(consumer.outputFiles!, 'export * from "@poe-platform/safe-bash/browser";');
+  const compiled = await bundlePublicConsumer(consumer.outputFiles!, 'export * from "@poe-platform/safe-bash";');
   const sandbox = createContext({
     TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
-    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance,
   });
   filesystem = runInContext(`(function(){ const module = { exports: {} }; ${producer.outputFiles![0]!.text}; return module.exports; })()`, sandbox) as CoreFs;
   sandbox.canonical = filesystem;
@@ -187,12 +207,12 @@ it("runs filesystem pipelines with canonical identity and injected mounts", asyn
   const fs = filesystem.createMountFileSystem({ root: new filesystem.MemoryFileSystem(), mounts: {
     "/input": filesystem.createReadOnlyFileSystem(source), "/memory": memory,
   } });
-  const shell = new browser.Shell({ fs }).use(browser.browserCommands());
+  const shell = new browser.Shell({ fs }).use(browser.agentCommands());
   try {
-    expect(browser.createBrowserCommands().map(command => command.name).sort()).toEqual([
+    expect(browser.createAgentCommands().map(command => command.name).sort()).toEqual(expect.arrayContaining([
       "[", "basename", "cat", "cp", "cut", "dirname", "echo", "false", "head", "ln", "ls", "mkdir", "mv", "printf",
       "pwd", "readlink", "realpath", "rm", "rmdir", "sort", "tail", "tee", "test", "touch", "tr", "true", "uniq", "wc",
-    ]);
+    ]));
     expect((await shell.exec("cat /input/note | tr a-z A-Z")).stdout).toBe("HELLO\n");
     expect((await shell.exec("printf saved > /memory/state; cat /memory/state")).stdout).toBe("saved");
     expect(Array.from((await shell.exec("printf '\\377\\000'")).stdoutBytes)).toEqual([255, 0]);
@@ -210,7 +230,7 @@ it("runs filesystem pipelines with canonical identity and injected mounts", asyn
 it("rejects duplicate portable registration unless replacement is explicit", async () => {
   for (const replace of [false, true]) {
     const shell = new browser.Shell({ fs: new filesystem.MemoryFileSystem() })
-      .use(browser.browserCommands()).use(browser.browserCommands({ replace }));
+      .use(browser.agentCommands()).use(browser.agentCommands({ replace }));
     try {
       if (replace) expect((await shell.exec("echo replaced")).stdout).toBe("replaced\n");
       else await expect(shell.exec("echo replaced")).rejects.toThrow("Command already registered");
@@ -220,7 +240,7 @@ it("rejects duplicate portable registration unless replacement is explicit", asy
 
 it("enforces command and output budgets in the portable runtime", async () => {
   for (const limits of [{ maxCommands: 1 }, { maxOutputBytes: 2 }]) {
-    const shell = new browser.Shell({ fs: new filesystem.MemoryFileSystem(), limits }).use(browser.browserCommands());
+    const shell = new browser.Shell({ fs: new filesystem.MemoryFileSystem(), limits }).use(browser.agentCommands());
     try { await expect(shell.exec("echo first; echo second")).rejects.toBeInstanceOf(browser.ShellLimitError); }
     finally { await shell.dispose(); }
   }

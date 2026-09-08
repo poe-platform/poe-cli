@@ -5,7 +5,7 @@ import { createMemoryFileSystem } from "../../src/fs/memory/index.js";
 import { Shell } from "../../src/shell/index.js";
 import { createStandardCommands, standardCommands } from "../../src/commands/index.js";
 import { createAgentCommands, agentCommands } from "../../src/plugins/index.js";
-import { createBrowserCommands, browserCommands } from "../../src/browser.js";
+import { createAgentCommands as createDefaultCommands, agentCommands as defaultCommands } from "../../src/index.js";
 import { registerYieldCheckpoint } from "../../src/contracts/yield.js";
 import { createDirectoryReader } from "../../src/commands/directory-admission.js";
 import { run } from "./helpers.js";
@@ -17,8 +17,8 @@ const routes: readonly [string, (fs: FileSystem, options: { maxDirectoryEntries?
   ["standard plugin", (fs, options) => new Shell({ fs }).use(standardCommands(options))],
   ["agent factory", (fs, options) => new Shell({ fs, commands: new CommandRegistry(createAgentCommands(options)) })],
   ["agent plugin", (fs, options) => new Shell({ fs }).use(agentCommands(options))],
-  ["browser factory", (fs, options) => new Shell({ fs, commands: new CommandRegistry(createBrowserCommands(options)) })],
-  ["browser plugin", (fs, options) => new Shell({ fs }).use(browserCommands(options))],
+  ["default factory", (fs, options) => new Shell({ fs, commands: new CommandRegistry(createDefaultCommands(options)) })],
+  ["default plugin", (fs, options) => new Shell({ fs }).use(defaultCommands(options))],
 ];
 
 for (const [name, create] of routes) {

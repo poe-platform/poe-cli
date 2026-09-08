@@ -1,0 +1,60 @@
+# Issues 669 and 672: default portable entry integration
+
+## Validated failures
+
+The installed public candidate's complete portable preset failed an unshimmed
+browser/workerd-conditions bundle on emitted crypto, stream, zlib and timer
+imports. The existing published browser subset did not have the leak alleged in
+issue 671; that issue was closed without a speculative fix.
+
+The default-entry regression test first failed because the manifest still
+required separate browser and portable aliases. Its RED output is retained in
+`/tmp/kamilio-672-default-entry-red.log`. Component owners separately reproduced
+their actual Node import failures before changing code.
+
+## Integration
+
+- The normal package specifier selects the full default command inventory under
+  browser conditions, with a matching `core.d.ts` type surface. Browser and
+  portable public subpath aliases and their command factories are removed as
+  explicitly requested in issue 669's revised scope.
+- An internal core barrel excludes host-only filesystem, HTTP and Node adapters.
+  The existing Node root surface remains available, with native path semantics
+  and the existing host exports. The explicit `/node` entry exposes the Node
+  regex provider; `regexExecutor` injection is shared by default command factories.
+- The maintained browser bundle has one canonical filesystem external and no
+  external Node builtins. Existing bounded browser shell adaptation is retained;
+  this does not turn unsupported regex modes into native fallbacks.
+- Browser `posixPath` is the canonical filesystem's limited portable path helper;
+  its declaration exposes only those supported methods. The Node root still
+  exposes the complete native POSIX path API. No new compatibility shim pretends
+  that the browser helper has the native process-dependent path API.
+- Incremental hashes and bounded low-level compression use exact pinned portable
+  dependencies. Private committed archive verification must authenticate their
+  lock entries and actual offline package artifacts rather than silently using
+  the checkout's installed dependency trees.
+- Both runtime dependencies are also declared on the root package because its
+  public `poe-code/safe-bash` Node entry includes the same unbundled modules.
+  Relying on dev-only workspace dependencies would break an installed consumer.
+
+## Guarded declaration admission
+
+The real isolated private archive build reproduced TS2307 for both new libraries.
+Six in-memory compiler controls reproduced missing declaration admission and
+specified rejection of unapproved dependency names, changed pinned identities,
+symlinked declarations and unrelated package imports. Before the change five
+controls failed and the unrelated-import negative control passed. The complete
+guarded-builder suite passes 130/130 after admitting only the two exact pinned
+package roots, with existing declaration-only reads and physical identity guards
+unchanged. Package metadata is bounded to 64 KiB. No broad node_modules admission
+or compiler timeout increase is introduced.
+
+## Validation before delivery
+
+Retain independent full command inventory, argument and filesystem identity,
+pipeline, byte, cancellation and budget checks while migrating consumers to the
+default entry. Run maintained build, lint and full unit routes for the integrated
+cross-workspace change. Verify installed public packages under Node and Bun,
+browser type conditions, and real workerd with no compatibility flags. Capture
+and inspect a visual smoke result. Keep local commit, verified remote-main push
+and successful release evidence separate.

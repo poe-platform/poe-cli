@@ -117,7 +117,6 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
         }
         exports[key] = enqueueExport(workspaceTarget(target));
       }
-      if (name === "safe-bash" && root.exports["./safe-bash/browser"]) exports["./browser"] = enqueueExport(root.exports["./safe-bash/browser"]);
       const walk = async directory => {
         for (const entry of await files.readdir(directory, { withFileTypes: true })) {
           const filename = path.join(directory, entry.name);

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   dirname, FsError, joinPath,
   type CommandContext, type FileStat,
@@ -115,7 +114,7 @@ export async function unchangedSource(context: CommandContext, plan: Operand): P
 
 async function temporaryDirectory(context: CommandContext, destination: string): Promise<string> {
   for (let attempt = 0; attempt < 16; attempt++) {
-    const path = joinPath(dirname(destination), `.virtual-bash-gzip-${randomUUID()}`);
+    const path = joinPath(dirname(destination), `.virtual-bash-gzip-${globalThis.crypto.randomUUID()}`);
     try {
       await context.fs.mkdir(path, { mode: 0o700, signal: context.signal });
       return path;

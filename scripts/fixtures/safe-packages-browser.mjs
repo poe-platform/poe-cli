@@ -1,10 +1,15 @@
-import { Shell, browserCommands, createBrowserCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider, portableSearchCommands } from "@poe-platform/safe-bash/browser";
+import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
+import { expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
 import { FsError as CoreFsError } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
 if (FsError !== CoreFsError) throw new Error("Browser filesystem identity diverged");
 if (FsError !== CompatibilityFsError) throw new Error("Compatibility filesystem identity diverged");
-const definitions = createBrowserCommands();
+const definitions = createAgentCommands();
+const commandNames = definitions.map(command => command.name).sort();
+if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
+  throw new Error(`Default browser command inventory differs: ${JSON.stringify(commandNames)}`);
+}
 for (const definition of definitions) {
   if (!Object.hasOwn(definition, "filesystemRequirements")) throw new Error(`Missing browser filesystem requirements: ${definition.name}`);
 }
@@ -14,7 +19,7 @@ for (const [name, expected] of [["printf", "supported"], ["mkdir", "unsupported"
     throw new Error(`Browser filesystem capability evaluation failed: ${name}`);
   }
 }
-const shell = new Shell({ fs: createMemoryFileSystem() }).use(browserCommands());
+const shell = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands());
 try {
   const result = await shell.exec("printf 'b\\na\\n' | sort");
   if (result.exitCode !== 0 || result.stdout !== "a\nb\n") throw new Error("Browser shell smoke failed");
@@ -30,12 +35,19 @@ try {
   }
 } finally { await shell.dispose(); }
 
-const search = new Shell({ fs: createMemoryFileSystem() })
-  .use(browserCommands())
-  .use(portableSearchCommands({ provider: createBoundedRegexProvider() }));
-try {
-  const result = await search.exec("printf 'first\\nsecond\\n' | grep -E '^(first|second)$' | rg -F second | sed 's/second/done/'");
-  if (result.exitCode !== 0 || result.stderr !== "" || result.stdout !== "done\n") {
-    throw new Error(`Production portable search smoke failed: ${JSON.stringify(result)}`);
+for (const regexExecutor of [undefined, createBoundedRegexProvider()]) {
+  const search = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands({ regexExecutor }));
+  try {
+    const result = await search.exec("printf 'first\\nsecond\\n' | grep -E '^(first|second)$' | rg -F second | sed 's/second/done/'");
+    if (result.exitCode !== 0 || result.stderr !== "" || result.stdout !== "done\n") {
+      throw new Error(`Production default search smoke failed: ${JSON.stringify(result)}`);
+    }
+  } finally { await search.dispose(); }
+}
+const nested = await runNestedCommands();
+if (nested.failures.length) throw new Error(`Nested browser dispatch errors: ${nested.failures.join(", ")}`);
+for (const result of nested.results) {
+  if (result.exitCode !== 0 || result.stderr !== "" || result.stdout !== "2\n") {
+    throw new Error(`Nested browser dispatch failed: ${JSON.stringify(result)}`);
   }
-} finally { await search.dispose(); }
+}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { browser as mixedBrowser, portable as mixedPortable, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import { defaultEntry, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import * as nodeEntry from "@poe-platform/safe-bash/node";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import "./safe-packages-realms.mjs";
 import "./safe-packages-retained.mjs";
@@ -16,21 +17,21 @@ import { FsError, createMemoryFileSystem, createReadOnlyFileSystem } from "@poe-
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs";
 import { FsError as CoreFsError } from "@poe-platform/safe-js/fs/core";
 import { FsError as NodeFsError } from "@poe-platform/safe-js/fs/node";
-import { Shell, standardCommands, FsError as ShellFsError, createMountFileSystem, posixPath } from "@poe-platform/safe-bash";
-import { Shell as PortableShell, portableAgentCommands, createBoundedRegexProvider, posixPath as portablePosixPath } from "@poe-platform/safe-bash/portable";
+import { Shell, agentCommands, createAgentCommands, FsError as ShellFsError, createMountFileSystem, posixPath, createBoundedRegexProvider } from "@poe-platform/safe-bash";
 
 assert.equal(FsError, ShellFsError);
 assert.equal(FsError, CompatibilityFsError);
 assert.equal(FsError, CoreFsError);
 assert.equal(FsError, NodeFsError);
-for (const paths of [posixPath, portablePosixPath]) {
+for (const paths of [posixPath, nodeEntry.posixPath]) {
   assert.equal(paths.sep, "/");
   assert.equal(paths.delimiter, ":");
   assert.equal(paths.normalize("/a/../b"), "/b");
   assert.equal(paths.format(paths.parse("/a/file.txt")), "/a/file.txt");
 }
-for (const entry of [mixedBrowser, mixedPortable]) {
-  const nested = await runNestedCommands(entry);
+for (const [entry, options] of [[defaultEntry, {}], [nodeEntry, { regexExecutor: createNodeRegexProvider() }]]) {
+  assert.deepEqual(entry.createAgentCommands().map(command => command.name).sort(), expectedAgentCommandNames);
+  const nested = await runNestedCommands(entry, options);
   assert.deepEqual(nested.failures, []);
   for (const result of nested.results) {
     assert.equal(result.exitCode, 0, result.stderr);
@@ -38,12 +39,22 @@ for (const entry of [mixedBrowser, mixedPortable]) {
     assert.equal(result.stderr, "");
   }
 }
-assert.equal(mixedBrowser.Shell, mixedPortable.Shell);
+assert.equal(defaultEntry.Shell, nodeEntry.Shell);
+assert.equal(defaultEntry.ShellLimitError, nodeEntry.ShellLimitError);
+assert.equal(defaultEntry.FsError, nodeEntry.FsError);
+assert.equal(defaultEntry.MemoryFileSystem, nodeEntry.MemoryFileSystem);
+assert.equal(defaultEntry.createCommandArguments, nodeEntry.createCommandArguments);
+const carrier = defaultEntry.createCommandArguments(["nested"]);
+assert.equal(nodeEntry.getCommandArguments({ args: carrier.args, argumentValues: carrier }), carrier);
+assert.throws(() => nodeEntry.getCommandArguments({ args: carrier.args, argumentValues: { ...carrier } }), /Expected owned command arguments/);
+assert.throws(() => nodeEntry.getCommandArguments({ args: [...carrier.args], argumentValues: carrier }), defaultEntry.CommandArgumentIdentityError);
+const bytes = carrier.withValues([new Uint8Array([255, 0])]);
+assert.deepEqual(Array.from(nodeEntry.createCommandArguments(bytes.values).bytes(0)), [255, 0]);
 for (const provider of [undefined, createNodeRegexProvider()]) {
-  const fs = new mixedBrowser.MemoryFileSystem();
+  const fs = new defaultEntry.MemoryFileSystem();
   await fs.mkdir("/notes");
   await fs.writeFile("/notes/report.txt", new TextEncoder().encode("report\n"));
-  const shell = new mixedBrowser.Shell({ fs }).use(mixedPortable.portableAgentCommands(provider === undefined ? undefined : { provider }));
+  const shell = new defaultEntry.Shell({ fs }).use(nodeEntry.agentCommands({ regexExecutor: provider }));
   try {
     const report = await shell.exec("printf /notes/report.txt | xargs cat");
     assert.equal(report.exitCode, 0, report.stderr);
@@ -67,19 +78,20 @@ for (const provider of [undefined, createNodeRegexProvider()]) {
     }
   } finally { await shell.dispose(); }
 }
-const portableShell = new PortableShell({ fs: createMemoryFileSystem() }).use(
-  portableAgentCommands({ provider: createBoundedRegexProvider() }),
+assert.deepEqual(createAgentCommands().map(command => command.name).sort(), expectedAgentCommandNames);
+const boundedShell = new Shell({ fs: createMemoryFileSystem() }).use(
+  agentCommands({ regexExecutor: createBoundedRegexProvider() }),
 );
 try {
   for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc"]) {
-    const result = await portableShell.exec(script);
+    const result = await boundedShell.exec(script);
     assert.equal(result.exitCode, 0, result.stderr);
     assert.equal(result.stdout, "2\n");
     assert.equal(result.stderr, "");
   }
-} finally { await portableShell.dispose(); }
-for (const entry of ["@poe-platform/safe-bash", "@poe-platform/safe-bash/browser"]) {
-  const { Shell: EntryShell, standardCommands: standard, browserCommands: browser } = await import(entry);
+} finally { await boundedShell.dispose(); }
+for (const entry of ["@poe-platform/safe-bash", "@poe-platform/safe-bash/node"]) {
+  const { Shell: EntryShell, agentCommands: commands } = await import(entry);
   for (const boxed of [false, true]) {
     for (const mode of ["disabled", "missing", "unsupported"]) {
       const backend = createMemoryFileSystem();
@@ -92,7 +104,7 @@ for (const entry of ["@poe-platform/safe-bash", "@poe-platform/safe-bash/browser
         "/data": boxed ? createReadOnlyFileSystem(backend) : backend,
         "/scratch": createMemoryFileSystem(),
       } });
-      const shell = new EntryShell({ fs }).use((standard ?? browser)());
+      const shell = new EntryShell({ fs }).use(commands());
       try {
         for (const [script, expected] of [
           ["cat /data/note", "hello\n"], ["cat < /data/note", "hello\n"],
@@ -145,7 +157,7 @@ for (const streaming of [true, false]) {
   const fs = createMemoryFileSystem();
   if (!streaming) Object.defineProperty(fs, "readStream", { value: undefined });
   await fs.writeFile("/large", new Uint8Array(65_537));
-  const shell = new Shell({ fs, limits: { maxInputBytes: 65_537, maxOutputBytes: 65_536 } }).use(standardCommands());
+  const shell = new Shell({ fs, limits: { maxInputBytes: 65_537, maxOutputBytes: 65_536 } }).use(agentCommands());
   try {
     const output = await shell.exec("wc -c < /large");
     assert.equal(output.exitCode, 0, output.stderr);

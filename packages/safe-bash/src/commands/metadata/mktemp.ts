@@ -1,4 +1,4 @@
-import { randomInt } from "node:crypto";
+import { randomInteger } from "../portable-random.js";
 import { FsError, validatePath } from "../../contracts/index.js";
 import { codeOf, diagnostic, pathOf, UsageError } from "../internal.js";
 import { MetadataBudget, metadataCommand, settings, type MetadataCommandsOptions } from "./internal.js";
@@ -71,7 +71,7 @@ export function createMktempCommand(configuration: MetadataCommandsOptions = {})
       for (let attempt = 0; attempt < configured.limits.maxAttempts; attempt++) {
         await budget.step();
         let random = "";
-        for (let index = 0; index < parsed.count; index++) random += alphabet[randomInt(alphabet.length)];
+        for (let index = 0; index < parsed.count; index++) random += alphabet[randomInteger(alphabet.length)];
         const generated = `${parsed.prefix}${random}${parsed.tail}`;
         const display = parsed.useTmpdir ? `${parent.replace(/\/+$/u, "")}/${generated}` : generated;
         const path = pathOf(context, display);

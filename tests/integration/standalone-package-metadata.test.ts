@@ -185,7 +185,6 @@ describe("standalone package publish metadata", () => {
       "./credentials",
       "./memory",
       "./safe-bash",
-      "./safe-bash/browser",
       "./safe-bash/commands/apply-patch",
       "./safe-bash/commands/archive",
       "./safe-bash/commands/column",
@@ -214,7 +213,6 @@ describe("standalone package publish metadata", () => {
       "./safe-bash/fs/s3/http",
       "./safe-bash/fs/webdav",
       "./safe-bash/node",
-      "./safe-bash/portable",
       "./safe-fs",
       "./safe-fs/core",
       "./safe-fs/node",
@@ -226,6 +224,15 @@ describe("standalone package publish metadata", () => {
       "./safejs/core",
       "./skills"
     ]);
+  });
+
+  it("declares portable byte dependencies for the root safe-bash entry", () => {
+    const rootPackage = readPackageJson("package.json");
+    const shellPackage = readPackageJson("packages/safe-bash/package.json");
+    for (const [name, version] of Object.entries(shellPackage.dependencies ?? {})) {
+      expect(rootPackage.dependencies?.[name]).toBe(version);
+    }
+    expect(shellPackage.dependencies).toEqual({ "@noble/hashes": "2.4.0", pako: "3.0.1" });
   });
 
   it("publishes the superintendent MCP server bin with the root package", () => {

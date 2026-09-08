@@ -409,6 +409,10 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/structured/whole-value-admission.test.ts"));
   assert.ok(files.includes("tests/plugins/portable-agent.test.ts"));
   assert.ok(files.includes("tests/plugins/portable-default-agent.test.ts"));
+  assert.ok(files.includes("tests/plugins/default-executor-refactor.test.ts"));
+  assert.ok(files.includes("tests/commands/bytes/checksums/portable.test.ts"));
+  assert.ok(files.includes("tests/commands/portable-random.test.ts"));
+  assert.ok(files.includes("tests/commands/timeout-portable.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/awk-concat-work-budget.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/sed-program-budget.test.ts"));
   assert.ok(files.includes("tests/shell/memory-storage-limits.test.ts"));
@@ -1881,9 +1885,10 @@ test("published root mirrors only declared subpaths and keeps the feature isolat
   const source = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const root = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
   const build = JSON.parse(readFileSync(new URL("../tsconfig.build.json", import.meta.url), "utf8"));
+  const mirror = target => typeof target === "string" ? `./packages/safe-bash${target.slice(1)}` : target === null ? null : Object.fromEntries(Object.entries(target).map(([condition, value]) => [condition, mirror(value)]));
   const expected = Object.fromEntries(Object.entries(source.exports).map(([key, conditions]) => [
     key === "." ? "./safe-bash" : `./safe-bash${key.slice(1)}`,
-    Object.fromEntries(Object.entries(conditions).map(([condition, target]) => [condition, target === null ? null : `./packages/safe-bash${target.slice(1)}`])),
+    mirror(conditions),
   ]));
   assert.deepEqual(Object.fromEntries(Object.entries(root.exports).filter(([key]) => key === "./safe-bash" || key.startsWith("./safe-bash/"))), expected);
   assert.equal(root.exports["./safe-bash/*"], undefined);
@@ -1892,7 +1897,7 @@ test("published root mirrors only declared subpaths and keeps the feature isolat
   assert.equal(source.engines.node, ">=22");
   assert.equal(source.name, "virtual-bash");
   assert.equal(source.private, true);
-  assert.equal(Object.keys(source.dependencies ?? {}).length, 0);
+  assert.deepEqual(source.dependencies, { "@noble/hashes": "2.4.0", pako: "3.0.1" });
   assert.equal(root.dependencies["virtual-bash"], undefined);
   assert.equal(root.devDependencies["virtual-bash"], "*");
   assert.ok(root.files.includes("packages/safe-bash/dist"));

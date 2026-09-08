@@ -9,6 +9,7 @@ import { directExecutor, executionCommands, type ExecutionCommandsOptions } from
 import { findCommands } from "./find.js";
 import { diagnostic } from "./internal.js";
 import type { RegexExecutionOptions } from "./regex-execution/protocol.js";
+import type { BoundedRegexProvider } from "./regex-execution/provider.js";
 
 export type { ExecutionCommandsOptions } from "./execution.js";
 
@@ -17,6 +18,7 @@ export interface StandardCommandsOptions {
   readonly execute?: CommandHandler;
   readonly replace?: boolean;
   readonly regex?: RegexExecutionOptions;
+  readonly regexExecutor?: BoundedRegexProvider;
   readonly maxDirectoryEntries?: number;
   readonly maxTeeTargets?: number;
   readonly maxTailFollowHandles?: number;

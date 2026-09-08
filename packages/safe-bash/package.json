@@ -12,7 +12,11 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": {
+        "browser": "./dist/core.d.ts",
+        "default": "./dist/index.d.ts"
+      },
+      "browser": "./dist/core.browser.js",
       "import": "./dist/index.js"
     },
     "./contracts": {
@@ -123,14 +127,6 @@
       "types": "./dist/fs/overlay/index.d.ts",
       "import": "./dist/fs/overlay/index.js"
     },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
-    },
-    "./portable": {
-      "types": "./dist/portable.d.ts",
-      "import": "./dist/portable.js"
-    },
     "./node": {
       "types": "./dist/node.d.ts",
       "browser": null,
@@ -152,6 +148,10 @@
     "verify:release:whole": "node scripts/verify-whole-gate.mjs",
     "test:runner": "node scripts/test-reporting.mjs scripts/integration-inputs.test.mjs scripts/build.test.mjs scripts/test-reporting.test.mjs scripts/historical-type-models.test.mjs",
     "test:unit": "npm run test:runner && node scripts/test.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "pako": "3.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
