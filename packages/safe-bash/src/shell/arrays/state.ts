@@ -65,6 +65,7 @@ export class StateMonitor {
   #internalEnrollment: Admission | undefined;
   #restorations: Restoration | undefined;
   #overlays: OverlayMap | undefined;
+  #retireCleanup: (() => void) | undefined;
 
   constructor(readonly raw: State, readonly session: Session, source?: StateMonitor) {
     this.values = source ? source.values.clone() : new ValueStore(session.values);
@@ -74,10 +75,15 @@ export class StateMonitor {
     monitors.set(raw, this);
     monitors.set(this.proxy, this);
     if (session.monitors) session.monitors.add(this);
-    else session.scope.register(async () => { await session.scope.drainWork(); this.closeValues(); });
+    else this.#retireCleanup = session.scope.register(async () => { await session.scope.drainWork(); this.closeValues(); });
   }
 
-  closeValues(): void { this.values.close(); this.positionals.close(); }
+  closeValues(): void {
+    this.values.close();
+    this.positionals.close();
+    this.#retireCleanup?.();
+    this.#retireCleanup = undefined;
+  }
 
   private changedValue(target: object, field: string, key: PropertyKey): void {
     if (field === "state") {

@@ -958,6 +958,7 @@ class InvocationCancellationOwner implements CancellationAdmissionOwner {
   readonly #failures: unknown[];
   readonly #outcomes: RuntimeCancellationState;
   readonly #publicPromise: Promise<CommandResult> | undefined;
+  readonly #retireCleanup: () => void;
   #resolveFinalized!: () => void;
   #admissionOpen = true;
   #boundary: CancellationBoundary | undefined;
@@ -978,7 +979,7 @@ class InvocationCancellationOwner implements CancellationAdmissionOwner {
     this.#outcomes = outcomes;
     this.#publicPromise = publicPromise;
     this.finalized = new Promise<void>(resolve => { this.#resolveFinalized = resolve; });
-    parent.register(async () => {
+    this.#retireCleanup = parent.register(async () => {
       this.requestClose();
       await this.finalized;
     });
@@ -1052,6 +1053,7 @@ class InvocationCancellationOwner implements CancellationAdmissionOwner {
       this.#outcomes.discard(this.#record);
       this.#closeBoundary();
       this.#resolveFinalized();
+      this.#retireCleanup();
     }
   }
 
@@ -1063,7 +1065,10 @@ class InvocationCancellationOwner implements CancellationAdmissionOwner {
       const selection = selectRuntimeCancellationOutcome(this.#boundary!, captured, this.#observedOrigin);
       if (this.#record) this.#outcomes.finalize(this.#record, selection);
       return selection;
-    } finally { this.#resolveFinalized(); }
+    } finally {
+      this.#resolveFinalized();
+      this.#retireCleanup();
+    }
   }
 
   #closeBoundary(): void {
@@ -2295,9 +2300,15 @@ export class Runtime {
             if (--file.references === 0 && this.outputFiles.get(path) === file) this.outputFiles.delete(path);
           };
           let target;
+          let outputScope: InvocationScope | undefined;
           try {
-            target = await openFileOutput({ fs: this.fs, signal: this.signal, registerCleanup: cleanup => io[invocationScope].register(cleanup) }, path, append ? "a" : "w", random ? incremental : undefined);
-          } catch (error) { release(); throw error; }
+            outputScope = io[invocationScope].child();
+            target = await openFileOutput({ fs: this.fs, signal: this.signal, registerCleanup: cleanup => { outputScope!.register(cleanup); } }, path, append ? "a" : "w", random ? incremental : undefined);
+          } catch (error) {
+            try { await outputScope?.close(); }
+            finally { release(); }
+            throw error;
+          }
           outputs.add(async completion => {
             try {
               if (this.signal.aborted) await target.abort(this.signal.reason);
@@ -2309,7 +2320,10 @@ export class Runtime {
                   if (completion.status === 0) throw error;
                 }
               }
-            } finally { release(); }
+            } finally {
+              try { await outputScope?.close(); }
+              finally { release(); }
+            }
           });
           const output = this.budget.sink(target.sink, this.signal);
           descriptors.set(redirect.descriptor, { output });
@@ -2515,7 +2529,7 @@ export class Runtime {
     const context: ShellCommandContext = {
       ...publicIO, command: name, args: argumentValues.args, argumentValues, env, cwd: state.cwd, fs: this.fs, signal: this.commandSignal,
       executionScope: this.budget.executionScope,
-      registerCleanup: (cleanup) => scope.register(cleanup),
+      registerCleanup: (cleanup) => { scope.register(cleanup); },
       invoke: (name, args, options) => {
         const invocation = this.invoke(name, args, options, context, state, scope);
         void invocation.catch(() => undefined);
@@ -3047,7 +3061,7 @@ export class Runtime {
         env: Object.assign(Object.create(null) as Record<string, string>, incoming.env),
         stdin: input ?? incoming.stdin,
         stdout: this.budget.sink(incoming.stdout, runtime.signal), stderr: this.budget.sink(incoming.stderr, runtime.signal),
-        signal: this.commandSignal, registerCleanup: cleanup => scope.register(cleanup),
+        signal: this.commandSignal, registerCleanup: cleanup => { scope.register(cleanup); },
         invoke: (name, args, options) => {
           const invocation = invocationOverride.current ? invocationOverride.current(name, args, options) : runtime.invoke(name, args, options, context, child, scope);
           void invocation.catch(() => undefined);

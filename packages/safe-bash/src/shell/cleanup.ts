@@ -4,7 +4,7 @@ export const invocationScope = Symbol("invocation cleanup scope");
 
 export class InvocationScope {
   readonly #children = new Set<InvocationScope>();
-  readonly #callbacks: InvocationCleanup[] = [];
+  readonly #callbacks = new Map<symbol, InvocationCleanup>();
   readonly #finalizers: (() => void)[] = [];
   readonly #work = new Set<Promise<void>>();
   readonly #controller = new AbortController();
@@ -37,10 +37,12 @@ export class InvocationScope {
     return child;
   }
 
-  register(cleanup: InvocationCleanup): void {
+  register(cleanup: InvocationCleanup): () => void {
     this.assertOpen();
     if (typeof cleanup !== "function") throw new TypeError("Cleanup must be callable");
-    this.#callbacks.push(cleanup);
+    const registration = Symbol();
+    this.#callbacks.set(registration, cleanup);
+    return () => { this.#callbacks.delete(registration); };
   }
 
   run<Value>(operation: () => Promise<Value>): Promise<Value> {
@@ -71,9 +73,11 @@ export class InvocationScope {
   close(): Promise<void> {
     if (!this.#drain) {
       this.#drain = Promise.resolve().then(async () => {
+        const callbacks = [...this.#callbacks.values()];
+        this.#callbacks.clear();
         try {
           await Promise.all([
-            ...this.#callbacks.splice(0).map((cleanup) => this.cleanup(cleanup)),
+            ...callbacks.map((cleanup) => this.cleanup(cleanup)),
             ...[...this.#children].map((child) => child.close()),
             ...this.#work,
           ]);
