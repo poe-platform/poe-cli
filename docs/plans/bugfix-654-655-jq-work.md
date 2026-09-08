@@ -7,8 +7,83 @@ readiness: ready
 
 # Jq work admission: kamilio #654 and #655
 
-TDD implementation handoff, September 8, 2026. Active-jq #654 is implemented,
-focused GREEN and now FROZEN for root review. #655 remains a plan only.
+TDD implementation handoff, September 8, 2026. Active-jq #655 is implemented;
+the latest integration corrections are recorded below.
+Earlier frozen handoffs remain historical records.
+
+## #655 exact numeric async migration — GREEN and frozen
+
+September 8, 2026: root authorized current migration support in
+`packages/safe-bash/tests/commands/structured-stress/jq-42-review-fixes/evidence.test.ts`,
+not changes to historical seals or manifests. This resolves the predecessor
+80/81 failure recorded below. The local binding admits only
+`tests/commands/structured-stress/independent-increment/numeric-safety.test.ts`:
+6,800 current bytes with SHA-256
+`0c77ece2993547da2bc7aee9192c728e2ab199bb6ccd0e87f4ea0b23ba2c04eb`.
+It removes exactly `async ` at current byte offset 2020 and `await ` at 2212,
+then requires 6,788 reconstructed bytes and the original sealed SHA-256
+`5ad8d138f3733aa57f2c3a3147d20cb72affc6323111852cf646069da335e363`.
+Any supplied historical snapshot must equal the reconstruction. This member
+has an immutable manifest hash but no snapshot in the historical patch manifest;
+the positive control independently reconstructs bytes, not a new historical artifact.
+
+Thirteen controls cover acceptance and rejection of wrong/aliased paths, wrong
+old hash, current-byte mutation, changed operands/depth/collection/assertions,
+extra edits, missing await/async, and changed snapshot bytes. No new framework
+or receipt. Preserve all 140 live comparisons and 23 historical snapshots;
+account explicitly for one numeric async migration and **133 byte-unchanged**
+members, rather than misclassifying the migrated member as unchanged.
+
+Final focused GREEN: **109/109**, no failures/cancellations/skips/TODOs, using
+Node 22/tsx, strict rejection handling and the maintained reporter. Exact cohort:
+`tests/commands/structured-stress/jq-42-review-fixes/evidence.test.ts`,
+`tests/commands/structured/whole-value-admission.test.ts`,
+`tests/commands/structured-stress/independent-increment/numeric-safety.test.ts`,
+and `tests/commands/structured/resources.test.ts`.
+Only evidence.test.ts and this plan changed in this final migration step.
+The prior resource restoration and new five-test file remain as recorded below;
+root owns new-file inventory registration. No product/API shim, historical
+artifact rewrite, Git/build/lint/full-suite execution, or running worker process.
+All follow-up files are now frozen for root integration.
+
+## #655 resource-seal correction — predecessor evidence
+
+September 8, 2026: root reported four resource-depth seal failures in its
+incomplete full-unit sweep, retained at `/tmp/kamilio-655-666-gate.2t9R06/unit.log`.
+Under the narrow follow-up grant, removed only the 24 appended lines from
+`packages/safe-bash/tests/commands/structured/resources.test.ts`. Its original
+SHA-256 is restored exactly:
+`55e0aecebc8c3e2deb3b78d90fcb612a54103866b7d8b2488900b2dcf1ba4a91`.
+Moved the identical five test bodies, with assert/test/run imports, into the new
+`packages/safe-bash/tests/commands/structured/whole-value-admission.test.ts`.
+Root must register this exact new path in the canonical inventory.
+
+Requested three-file focused validation: **80 pass, 1 fail, 81 total**, no
+cancellations/skips/TODOs. The remaining failure is
+`frozen historical evidence and retained non-native canonical seals remain intact`
+in `tests/commands/structured-stress/jq-42-review-fixes/evidence.test.ts`:
+the earlier approved async-only adaptation of
+`tests/commands/structured-stress/independent-increment/numeric-safety.test.ts`
+has current hash `0c77ece2993547da2bc7aee9192c728e2ab199bb6ccd0e87f4ea0b23ba2c04eb`,
+but its retained seal expects
+`5ad8d138f3733aa57f2c3a3147d20cb72affc6323111852cf646069da335e363`.
+This is an unresolved integration blocker, not GREEN. No product, numeric test,
+seal, receipt, evidence assertion, or historical artifact was changed in this
+follow-up. Exact follow-up write scope: restored resources, new admission test,
+and this plan. All are frozen; no worker processes remain.
+
+Command, from `packages/safe-bash`, with Node 22/tsx and maintained reporter:
+
+```sh
+TSX_DISABLE_CACHE=1 timeout 45s node --max-old-space-size=512 --import tsx --test \
+  --test-concurrency=1 --test-reporter=./scripts/test-reporting.mjs \
+  tests/commands/structured/whole-value-admission.test.ts \
+  tests/commands/structured/resources.test.ts \
+  tests/commands/structured-stress/jq-42-review-fixes/evidence.test.ts
+```
+
+Active jq only: held/inactive query-core/yq remains excluded and unvalidated.
+No Git/build/lint/full-suite execution or inventory write by this worker.
 
 ## #654 integration follow-up — frozen
 

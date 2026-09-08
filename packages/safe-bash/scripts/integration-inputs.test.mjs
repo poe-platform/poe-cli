@@ -405,6 +405,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/shell/brace-reservations.test.ts"));
   assert.ok(files.includes("tests/shell/value-scope-reservations.test.ts"));
   assert.ok(files.includes("tests/commands/predicate-depth.test.ts"));
+  assert.ok(files.includes("tests/commands/structured/whole-value-admission.test.ts"));
   assert.ok(files.includes("tests/plugins/portable-agent.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/awk-concat-work-budget.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/sed-program-budget.test.ts"));

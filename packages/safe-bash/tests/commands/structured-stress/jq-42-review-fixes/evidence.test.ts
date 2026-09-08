@@ -24,6 +24,36 @@ const unusedBindingMigration = {
     { offset: 1383, before: "_stderrBytes", after: "ignoredStderrBytes" },
   ],
 };
+const numericAsyncMigration = {
+  path: "tests/commands/structured-stress/independent-increment/numeric-safety.test.ts",
+  before: { bytes: 6788, sha256: "5ad8d138f3733aa57f2c3a3147d20cb72affc6323111852cf646069da335e363" },
+  after: { bytes: 6800, sha256: "0c77ece2993547da2bc7aee9192c728e2ab199bb6ccd0e87f4ea0b23ba2c04eb" },
+  insertions: [{ offset: 2020, text: "async " }, { offset: 2212, text: "await " }],
+};
+type NumericAsyncInput = { path: string; expected: string; current: Buffer; snapshot?: Buffer };
+
+function assertNumericAsyncMigration(input: NumericAsyncInput) {
+  assert.equal(input.path, numericAsyncMigration.path, "exact numeric async migration path");
+  assert.equal(input.expected, numericAsyncMigration.before.sha256, "original numeric async sealed digest");
+  assert.equal(input.current.length, numericAsyncMigration.after.bytes, "reviewed numeric async source size");
+  assert.equal(digest(input.current), numericAsyncMigration.after.sha256, "reviewed numeric async source digest");
+  const chunks: Buffer[] = [];
+  let previous = 0;
+  for (const insertion of numericAsyncMigration.insertions) {
+    const bytes = Buffer.from(insertion.text);
+    const end = insertion.offset + bytes.length;
+    assert.ok(insertion.offset >= previous && end <= input.current.length, "ordered exact numeric async offsets");
+    assert.deepEqual(input.current.subarray(insertion.offset, end), bytes, "exact reviewed async insertion");
+    chunks.push(input.current.subarray(previous, insertion.offset));
+    previous = end;
+  }
+  chunks.push(input.current.subarray(previous));
+  const original = Buffer.concat(chunks);
+  assert.equal(original.length, numericAsyncMigration.before.bytes, "original numeric async source size");
+  assert.equal(digest(original), input.expected, "only the two exact reviewed async insertions");
+  if (input.snapshot) assert.deepEqual(original, input.snapshot, "unchanged historical numeric snapshot");
+  return original;
+}
 const resourceDepthMigration = {
   path: "tests/commands/structured/resources.test.ts",
   owner: "tests/commands/structured-stress/jq-42-review-fixes/evidence.test.ts",
@@ -185,9 +215,14 @@ test("frozen historical evidence and retained non-native canonical seals remain 
   const compared = new Set<string>(), migrated = new Set<string>();
   const bindingMigrated = new Set<string>();
   const depthMigrated = new Set<string>();
+  const numericAsyncMigrated = new Set<string>();
   function assertCurrent(path: string, expected: string, snapshot?: Buffer) {
     assert.ok(!compared.has(path), "duplicate current comparison");
     let current = readFileSync(path);
+    if (path === numericAsyncMigration.path) {
+      current = assertNumericAsyncMigration({ path, expected, current, ...(snapshot ? { snapshot } : {}) });
+      numericAsyncMigrated.add(path);
+    }
     if (path === resourceDepthMigration.path) {
       assert.ok(snapshot, "resource-depth member retains its authenticated historical snapshot");
       current = assertResourceDepthMigration({
@@ -228,9 +263,10 @@ test("frozen historical evidence and retained non-native canonical seals remain 
   assert.equal(snapshots.size, 23, "all original historical snapshots");
   assert.deepEqual([...bindingMigrated], [unusedBindingMigration.path], "only the reviewed unused-binding helper migration");
   assert.deepEqual([...depthMigrated], [resourceDepthMigration.path], "only the reviewed resource-depth fixture migration");
-  const unchangedComparisons = compared.size - migrated.size - bindingMigrated.size - depthMigrated.size;
-  assert.equal(unchangedComparisons, 134, "byte-unchanged retained current comparisons");
-  context.diagnostic(JSON.stringify({ liveComparisons: compared.size, unchangedComparisons, spellingMigrations: migrated.size, historicalSnapshots: snapshots.size, unusedBindingMigrations: bindingMigrated.size, resourceDepthMigrations: depthMigrated.size, byteUnchangedComparisons: unchangedComparisons }));
+  assert.deepEqual([...numericAsyncMigrated], [numericAsyncMigration.path], "only the reviewed numeric async migration");
+  const unchangedComparisons = compared.size - migrated.size - bindingMigrated.size - depthMigrated.size - numericAsyncMigrated.size;
+  assert.equal(unchangedComparisons, 133, "byte-unchanged retained current comparisons");
+  context.diagnostic(JSON.stringify({ liveComparisons: compared.size, unchangedComparisons, spellingMigrations: migrated.size, historicalSnapshots: snapshots.size, unusedBindingMigrations: bindingMigrated.size, resourceDepthMigrations: depthMigrated.size, numericAsyncMigrations: numericAsyncMigrated.size, byteUnchangedComparisons: unchangedComparisons }));
 });
 
 type MigrationControl = { migration: SpellingMigration; expected: string; current: Buffer; receipt: Buffer };
@@ -330,6 +366,41 @@ for (const [name, mutate] of unusedBindingControls) test("reviewed unused-bindin
     assert.ok(firstByte !== undefined, "historical helper snapshot mutation requires a byte");
     snapshot[0] = firstByte ^ 1;
     assert.throws(() => assert.deepEqual(restored, snapshot), { code: "ERR_ASSERTION" });
+  }
+});
+
+const numericAsyncControls: Array<[string, ((input: NumericAsyncInput) => void) | null]> = [
+  ["reconstructs the original sealed bytes", null],
+  ["rejects a different path", input => { input.path = unusedBindingMigration.path; }],
+  ["rejects an aliased path", input => { input.path = "./" + input.path; }],
+  ["rejects a changed old digest", input => { input.expected = "0".repeat(64); }],
+  ["rejects same-size current byte mutation", input => { input.current[0] = input.current[0]! ^ 1; }],
+  ["rejects changed operands", input => { input.current = Buffer.from(input.current.toString("utf8").replace('parseJson("[12.3400]", budget)', 'parseJson("[12.3401]", budget)')); }],
+  ["rejects changed depth limits", input => { input.current = Buffer.from(input.current.toString("utf8").replace("maxDepth: 1", "maxDepth: 2")); }],
+  ["rejects changed collection limits", input => { input.current = Buffer.from(input.current.toString("utf8").replace("maxCollectionSize: 1", "maxCollectionSize: 2")); }],
+  ["rejects changed assertions", input => { input.current = Buffer.from(input.current.toString("utf8").replace("assert.equal(budget.value(value), 9)", "assert.equal(budget.value(value), 8)")); }],
+  ["rejects extra edits", input => { input.current = Buffer.concat([input.current, Buffer.from("\n")]); }],
+  ["rejects missing await", input => { input.current = Buffer.from(input.current.toString("utf8").replace("await stringify(value, budget)", "stringify(value, budget)")); }],
+  ["rejects missing async", input => { input.current = Buffer.concat([input.current.subarray(0, 2020), input.current.subarray(2026)]); }],
+  ["rejects changed snapshot bytes", input => { input.snapshot![0] = input.snapshot![0]! ^ 1; }],
+];
+
+for (const [name, mutate] of numericAsyncControls) test("reviewed numeric async migration " + name, () => {
+  const evidence = JSON.parse(readFileSync(new URL("./immutable-before.json", import.meta.url), "utf8")) as { files: Record<string, string> };
+  const expected = evidence.files[numericAsyncMigration.path];
+  assert.equal(expected, numericAsyncMigration.before.sha256, "retained numeric source seal");
+  const current = readFileSync(numericAsyncMigration.path);
+  const snapshot = Buffer.from(current.toString("utf8")
+    .replace('test("decimal metadata is scalar for depth and collection quotas", async () => {', 'test("decimal metadata is scalar for depth and collection quotas", () => {')
+    .replace("assert.equal(await stringify(value, budget)", "assert.equal(stringify(value, budget)"));
+  assert.equal(digest(snapshot), expected, "independently reconstructed control bytes match the retained seal");
+  const input: NumericAsyncInput = { path: numericAsyncMigration.path, expected: expected!, current, snapshot };
+  if (mutate) {
+    mutate(input);
+    assert.throws(() => assertNumericAsyncMigration(input), { code: "ERR_ASSERTION" });
+  } else {
+    assert.deepEqual(assertNumericAsyncMigration(input), snapshot);
+    assert.deepEqual(assertNumericAsyncMigration({ path: input.path, expected: input.expected, current }), snapshot);
   }
 });
 
