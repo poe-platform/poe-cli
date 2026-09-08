@@ -293,7 +293,7 @@ describe("Math.f16round independent review", () => {
       expect(pair[1]).toBe(regex);
       const serialized = JSON.parse(await dump(result));
       expect(restore(serialized, { source: capture.source })).toBe(serialized);
-      expectLegacyDumpGraph(serialized, expected);
+      expectLegacyDumpGraph(serialized, expected, ["globalThis"]);
       const { version: ignoredVersion, bindings: ignoredBindings, heap: ignoredHeap, ...legacyMetadata } = expected;
       const { version, bindings: ignoredNewBindings, heap: ignoredNewHeap, ...metadata } = serialized;
       expect(version).toBe(2);

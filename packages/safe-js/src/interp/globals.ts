@@ -23,7 +23,8 @@ import { createArrayBufferGlobal } from "./globals/array-buffer.js";
 import { createDataViewGlobal } from "./globals/data-view.js";
 import { createReflectGlobal } from "./globals/reflect.js";
 import type { RunClock } from "../run.js";
-import { mutableBuiltinBindings, registerBuiltinIdentities } from "./intrinsics.js";
+import { builtinGlobalObjects, mutableBuiltinBindings, registerBuiltinIdentities } from "./intrinsics.js";
+import { createIntrinsicObject, getSandboxPrototype, registerIntrinsicObject, setSandboxPrototype } from "./object-model.js";
 
 export function createBuiltinBindings(
   options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean; typedArrayPrototypes?: boolean }
@@ -59,5 +60,16 @@ export function createBuiltinBindings(
   registerBuiltinIdentities(options.budget, bindings);
   mutableBuiltinBindings.set(bindings, new Set(Object.keys(bindings).filter(name =>
     name !== "Infinity" && name !== "NaN" && name !== "undefined")));
+  const globalObject = createIntrinsicObject();
+  // Builtins already have canonical identities; register only the new root.
+  registerBuiltinIdentities(options.budget, {globalThis: globalObject});
+  for (const [name, value] of Object.entries({...bindings, undefined})) {
+    const mutable = name !== "Infinity" && name !== "NaN" && name !== "undefined";
+    Object.defineProperty(globalObject, name, {value, writable: mutable, configurable: mutable});
+  }
+  Object.defineProperty(globalObject, "globalThis", {value: globalObject, writable: true, configurable: true});
+  setSandboxPrototype(globalObject, getSandboxPrototype(globalObject, options.budget), options.budget);
+  registerIntrinsicObject(options.budget, globalObject, false);
+  builtinGlobalObjects.set(bindings, globalObject);
   return bindings;
 }

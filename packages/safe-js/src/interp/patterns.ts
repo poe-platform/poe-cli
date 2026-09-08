@@ -62,7 +62,7 @@ export async function bindPattern(
 ): Promise<BindPatternResult> {
   switch (pattern.type) {
     case "Identifier":
-      bindIdentifier(pattern, value, target, scope);
+      await bindIdentifier(pattern, value, target, scope, context);
       return { ok: true };
     case "MemberExpression":
       if ("kind" in target) {
@@ -84,8 +84,9 @@ function bindIdentifier(
   pattern: Identifier,
   value: SandboxValue,
   target: PatternTarget,
-  scope: Scope
-): void {
+  scope: Scope,
+  context: PatternContext
+): void | Promise<void> {
   if ("assign" in target || (target.kind === "var" && target.initialize !== true)) {
     if ("assign" in target) {
       const binding = scope.lookup(pattern.name);
@@ -96,8 +97,7 @@ function bindIdentifier(
         throw new TypeError(`Cannot assign to const '${pattern.name}'`);
       }
     }
-    scope.assign(pattern.name, value);
-    return;
+    return scope.assign(pattern.name, value, context.setProperty);
   }
 
   scope.declare(pattern.name, target.kind, value);

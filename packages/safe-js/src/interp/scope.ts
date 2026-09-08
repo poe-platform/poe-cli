@@ -2,7 +2,9 @@ import type { VariableDeclarationKind } from "../parse.js";
 import type { PrivateName } from "./private-state.js";
 import type { InterpreterSnapshot, InterpreterValue } from "./interpreter.js";
 import type { ResourceScopeState } from "./resource-management.js";
-import { getIntrinsicIdentity, mutableBuiltinBindings } from "./intrinsics.js";
+import { builtinGlobalObjects, getIntrinsicIdentity, mutableBuiltinBindings } from "./intrinsics.js";
+import { getSandboxPropertyDescriptor } from "./object-model.js";
+import type { SandboxObject } from "./values.js";
 
 type ScopeBinding = {
   kind: VariableDeclarationKind;
@@ -14,6 +16,7 @@ type ScopeLookupResult =
       found: true;
       kind: VariableDeclarationKind;
       value: InterpreterValue;
+      object?: SandboxObject;
     }
   | {
       found: false;
@@ -27,6 +30,7 @@ type ScopeOptions = {
 };
 
 export type ScopeFrame = {
+  objectEnvironment?: SandboxObject;
   resourceState?: ResourceScopeState;
   privateNames?: Array<[string, PrivateName]>;
   parent?: Scope;
@@ -41,6 +45,7 @@ export type ScopeFrame = {
 };
 
 export class Scope {
+  private objectEnvironment?: SandboxObject;
   resourceState?: ResourceScopeState;
   privateNames?: Map<string, PrivateName>;
   readonly #bindings = new Map<string, ScopeBinding>();
@@ -62,7 +67,8 @@ export class Scope {
         ? new Map(Object.entries(restoredBindings ?? {}))
         : parent.#restoredBindings;
     const mutable = mutableBuiltinBindings.get(bindings);
-    for (const [name, value] of Object.entries(bindings)) {
+    this.objectEnvironment = builtinGlobalObjects.get(bindings);
+    for (const [name, value] of Object.entries(this.objectEnvironment === undefined ? bindings : {})) {
       this.#bindings.set(name, {
         kind: mutable?.has(name) ? "var" : "const",
         value
@@ -148,6 +154,15 @@ export class Scope {
     return {};
   }
 
+  lookupThis(): InterpreterValue {
+    const binding = this.#bindings.get("this");
+    if (binding !== undefined) {
+      if (binding.value === uninitialized) throw new ReferenceError("Cannot access 'this' before initialization.");
+      return binding.value;
+    }
+    return this.parent?.lookupThis();
+  }
+
   retainedValues(): InterpreterValue[] {
     const values = this.parent?.retainedValues() ?? [];
     if (this.resourceState !== undefined) values.push(this.resourceState);
@@ -220,13 +235,23 @@ export class Scope {
     });
   }
 
-  assign(name: string, value: InterpreterValue): void {
+  assign(name: string, value: InterpreterValue,
+    setProperty?: (object: SandboxObject, key: string, value: InterpreterValue) => void | Promise<void>
+  ): void | Promise<void> {
     const scope = this.resolveScope(name);
     if (scope === undefined) {
       if (name === "undefined") throw new TypeError("Cannot assign to const binding 'undefined'.");
       throw new ReferenceError(`Cannot assign to undeclared binding '${name}'.`);
     }
 
+    if (!scope.#bindings.has(name) && scope.objectEnvironment !== undefined) {
+      if (setProperty !== undefined) return setProperty(scope.objectEnvironment, name, value);
+      const descriptor = getSandboxPropertyDescriptor(scope.objectEnvironment, name);
+      if (descriptor === undefined) throw new ReferenceError(`Cannot assign to undeclared binding '${name}'.`);
+      if (!("value" in descriptor)) throw new TypeError("Object environment accessors require a guest call context.");
+      if (!Reflect.set(scope.objectEnvironment, name, value)) throw new TypeError(`Cannot assign to read-only binding '${name}'.`);
+      return;
+    }
     const binding = scope.#bindings.get(name);
     if (binding === undefined) {
       throw new ReferenceError(`Cannot assign to undeclared binding '${name}'.`);
@@ -258,6 +283,10 @@ export class Scope {
       };
     }
 
+    if (this.objectEnvironment !== undefined) {
+      const descriptor = getSandboxPropertyDescriptor(this.objectEnvironment, name);
+      if (descriptor !== undefined) return {found: true, kind: "var", value: descriptor.value, object: this.objectEnvironment};
+    }
     if (this.parent !== undefined) {
       return this.parent.lookup(name);
     }
@@ -279,6 +308,14 @@ export class Scope {
     const bindings: Record<string, InterpreterValue> = {};
 
     for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const object = scopes[index].objectEnvironment;
+      if (object !== undefined) {
+        // Public dump discovery must still see builtin roots and mutations.
+        // Accessors are captured through the object, never invoked by a dump.
+        for (const [name, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
+          if ("value" in descriptor) defineSnapshotBinding(bindings, name, descriptor.value);
+        }
+      }
       for (const [name, binding] of scopes[index].#bindings.entries()) {
         if (binding.value === uninitialized) {
           continue;
@@ -310,6 +347,7 @@ export class Scope {
     }
     return {
       parent: this.parent,
+      ...(this.objectEnvironment === undefined ? {} : {objectEnvironment: this.objectEnvironment}),
       importMeta: this.importMeta,
       functionBoundary: this.isFunctionBoundary(),
       chargeData: this.options.chargeData !== false,
@@ -346,6 +384,7 @@ export class Scope {
     const restored = new Map(frame.restoredBindings ?? []);
     if (restored.size !== (frame.restoredBindings?.length ?? 0)) throw new TypeError("Duplicate restored binding.");
     this.importMeta = frame.importMeta;
+    this.objectEnvironment = frame.objectEnvironment;
     this.resourceState = frame.resourceState;
     if (frame.privateNames !== undefined) this.privateNames = new Map(frame.privateNames);
     for (const [name, binding] of bindings) {
@@ -373,7 +412,8 @@ export class Scope {
   }
 
   private resolveScope(name: string): Scope | undefined {
-    if (this.#bindings.has(name)) {
+    if (this.#bindings.has(name) || (this.objectEnvironment !== undefined &&
+        getSandboxPropertyDescriptor(this.objectEnvironment, name) !== undefined)) {
       return this;
     }
 

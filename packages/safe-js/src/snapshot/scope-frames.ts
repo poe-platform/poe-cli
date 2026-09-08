@@ -1,7 +1,7 @@
 import type { Budget } from "../interp/budget.js";
 import { assertSnapshotDataDepth } from "../graph-depth.js";
 import { Scope } from "../interp/scope.js";
-import type { SandboxValue } from "../interp/values.js";
+import type { SandboxObject, SandboxValue } from "../interp/values.js";
 import type { PrivateName } from "../interp/private-state.js";
 import type { ResourceScopeState } from "../interp/resource-management.js";
 import type { GuestHeapNode } from "./guest-heap.js";
@@ -69,6 +69,7 @@ export function hydrateGuestScopes(
       functionBoundary: frame.functionBoundary,
       chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.objectEnvironment === undefined ? {} : {objectEnvironment: decode(frame.objectEnvironment) as SandboxObject}),
       ...(resourceState === undefined ? {} : {resourceState: resourceState as ResourceScopeState}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, decode(identity) as PrivateName] as [string, PrivateName]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: decode(cell.value) } : cell),

@@ -6,7 +6,7 @@ type RecordValue = Record<string, unknown>;
 // Compare everything represented by the legacy format. V2 intrinsic descriptors
 // have no legacy counterpart; callers validate the full new envelope separately.
 // Heap IDs are allocation details, but their one-to-one alias relation is not.
-export function expectLegacyDumpGraph(actual: RecordValue, legacy: RecordValue): void {
+export function expectLegacyDumpGraph(actual: RecordValue, legacy: RecordValue, additionalIntrinsicBindings: readonly string[] = []): void {
   const actualHeap = actual.heap as Record<string, RecordValue>;
   const legacyHeap = legacy.heap as Record<string, RecordValue>;
   const forward = new Map<number, number>();
@@ -74,7 +74,13 @@ export function expectLegacyDumpGraph(actual: RecordValue, legacy: RecordValue):
 
   const bindings = actual.bindings as RecordValue;
   const oldBindings = legacy.bindings as RecordValue;
-  expect(Object.keys(bindings).sort()).toEqual(Object.keys(oldBindings).sort());
+  expect(Object.keys(bindings).sort()).toEqual([...Object.keys(oldBindings), ...additionalIntrinsicBindings].sort());
+  for (const name of additionalIntrinsicBindings) {
+    expect(Object.hasOwn(oldBindings, name)).toBe(false);
+    const reference = bindings[name] as {kind:string;id:number};
+    expect(reference).toEqual({kind:"ref",id:expect.any(Number)});
+    expect(actualHeap[reference.id]).toMatchObject({kind:"intrinsic",id:JSON.stringify([name])});
+  }
   for (const [key, value] of Object.entries(oldBindings)) compare(bindings[key], value, [key]);
   expect(forward.size).toBe(Object.keys(legacyHeap ?? {}).length);
 }

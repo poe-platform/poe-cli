@@ -120,6 +120,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
       environment?: { homeObject?: T; newTarget?: T; construction?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
+      objectEnvironment?: T;
       resourceState?: T;
       privateNames?: Array<[string, T]>;
       bindings: Array<[string, number]>;
@@ -340,6 +341,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       kind: "scope-frame", parent: encode(frame.parent), importMeta: encode(frame.importMeta),
       functionBoundary: frame.functionBoundary, chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.objectEnvironment === undefined ? {} : {objectEnvironment: encode(frame.objectEnvironment)}),
       ...(frame.resourceState === undefined ? {} : {resourceState: encode(frame.resourceState)}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, encode(identity)] as [string, T]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: encode(cell.value) } : cell),

@@ -17,6 +17,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "Error",
   "EvalError",
   "Infinity",
+  "globalThis",
   "isFinite",
   "isNaN",
   "Iterator",

@@ -269,9 +269,9 @@ export function registerIntrinsicFunction(budget: Budget, closure: SandboxClosur
   trackIntrinsicState(budget, closure, closure, [closure]);
 }
 
-export function registerIntrinsicObject(budget: Budget, value: SandboxObject): void {
-  const methods = Object.values(Object.getOwnPropertyDescriptors(value))
-    .map(descriptor => descriptor.value).filter(isGuestClosure);
+export function registerIntrinsicObject(budget: Budget, value: SandboxObject, trackMethods = true): void {
+  const methods = trackMethods ? Object.values(Object.getOwnPropertyDescriptors(value))
+    .map(descriptor => descriptor.value).filter(isGuestClosure) : [];
   trackIntrinsicState(budget, value, value, [value, ...methods]);
 }
 

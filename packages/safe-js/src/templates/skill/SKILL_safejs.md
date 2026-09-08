@@ -107,7 +107,12 @@ it is valid at top level and inside async functions, not ordinary functions.
 
 Not supported: `eval`, `Function`, dynamic
 imports, BigInt literals, and Node/browser globals such as `process`, `fetch`,
-`setTimeout`, or `globalThis`.
+or `setTimeout`.
+
+`globalThis` is the isolated guest global object, not the host global object.
+Its builtin properties share storage with unqualified builtin identifiers.
+Guest-added properties are visible as identifiers unless a lexical binding
+shadows them; lexical declarations do not become global-object properties.
 
 ## Schema Initializers
 

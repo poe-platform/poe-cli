@@ -41,19 +41,23 @@ it("preserves replacements across evaluations in a persistent realm", async () =
 });
 
 it("retains replaced global values without charging pristine intrinsic bindings", () => {
-  const bindings = createBuiltinBindings({budget:new Budget()});
+  const budget = new Budget();
+  const bindings = createBuiltinBindings({budget});
   const scope = new Scope(bindings,undefined,undefined,{chargeData:false});
   expect(scope.retainedValues()).toEqual([]);
   scope.assign("Math", bindings.Math);
   expect(scope.retainedValues()).toEqual([]);
   const replacement = "x".repeat(10000);
   scope.assign("Math", replacement);
-  expect(scope.retainedValues()).toEqual([replacement]);
+  // The global object now owns these roots, including property-only writes.
+  expect([...budget.retainedValues()]).toEqual(["Math", replacement]);
   const restored = new Scope({},undefined,undefined,{chargeData:false});
   restored.hydrateFrame(scope.captureFrame());
-  expect(restored.retainedValues()).toEqual([replacement]);
+  expect([...budget.retainedValues()]).toEqual(["Math", replacement]);
+  expect(restored.lookup("Math")).toMatchObject({found:true,value:replacement});
   restored.assign("Math", bindings.Math);
   expect(restored.retainedValues()).toEqual([]);
+  expect([...budget.retainedValues()]).toEqual([]);
 });
 
 it("enforces the aggregate data budget for values retained only by replaced globals", async () => {

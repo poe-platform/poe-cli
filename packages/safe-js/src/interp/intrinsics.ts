@@ -3,10 +3,12 @@ import { accessorClosure } from "./accessors.js";
 import { wellKnownSymbols } from "./symbols.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { isSandboxClosure } from "./values.js";
+import type { SandboxObject } from "./values.js";
 
 const identities = new WeakMap<object, string>();
 const realms = new WeakMap<Budget, Map<string, object>>();
 export const mutableBuiltinBindings = new WeakMap<object, ReadonlySet<string>>();
+export const builtinGlobalObjects = new WeakMap<object, SandboxObject>();
 
 // Paths encode trusted installation sites, never guest-visible function names.
 // Keeping identity separate from the realm map allows completed dumps after close.

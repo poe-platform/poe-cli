@@ -839,7 +839,12 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       if (Object.hasOwn(environment, "construction")) reference(environment.construction, ["construction-environment"]);
     }
   } else {
-    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames", "resourceState"]);
+    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames", "resourceState", "objectEnvironment"]);
+    if (node.objectEnvironment !== undefined) {
+      if (!absent(node.parent)) throw new TypeError("Only root scopes own global object environments.");
+      const globalObject = reference(node.objectEnvironment, ["intrinsic"]);
+      if (globalObject.id !== '["globalThis"]') throw new TypeError("Invalid global object environment.");
+    }
     if (node.resourceState !== undefined) reference(node.resourceState, ["object"]);
     if (node.privateNames !== undefined) {
       const names = new Set<string>();

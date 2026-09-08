@@ -1020,7 +1020,10 @@ async function evaluateAssignmentExpression(
   if (binding?.found === false) {
     throw new ReferenceError(`Cannot assign to undeclared binding '${node.left.name}'.`);
   }
-  const current = restored === undefined ? binding?.value : restored.current;
+  const current = restored === undefined
+    ? binding?.found && binding.object !== undefined
+      ? await getPropertyValue(binding.object, node.left.name, context) : binding?.value
+    : restored.current;
 
   if (node.operator === "&&=" && !isTruthy(current)) {
     return {
@@ -1065,7 +1068,8 @@ async function evaluateAssignmentExpression(
         ? right.value
         : await applyCompoundAssignmentOperator(node.operator, current, right.value, context);
 
-    context.scope.assign(node.left.name, value);
+    await context.scope.assign(node.left.name, value, (object, key, assigned) =>
+      setSandboxProperty(object, key, assigned, context.budget, true, createCoercionContext(context)));
 
     return {
       kind: "normal",
@@ -1291,7 +1295,7 @@ async function evaluateIdentifier(
   return {
     kind: "normal",
     hasValue: true,
-    value: binding.value
+    value: binding.object === undefined ? binding.value : await getPropertyValue(binding.object, node.name, context)
   };
 }
 
@@ -1299,11 +1303,10 @@ async function evaluateThisExpression(
   _node: ThisExpression,
   context: EvaluationContext
 ): Promise<EvaluationResult> {
-  const binding = context.scope.lookup("this");
   return {
     kind: "normal",
     hasValue: true,
-    value: binding.found ? binding.value : undefined
+    value: context.scope.lookupThis()
   };
 }
 
@@ -2819,12 +2822,14 @@ async function evaluateIdentifierUpdateExpression(
     };
   }
 
-  const primitive = await toNumericPrimitive(binding.value, context);
+  const primitive = await toNumericPrimitive(binding.object === undefined ? binding.value
+    : await getPropertyValue(binding.object, node.argument.name, context), context);
   const current = typeof primitive === "bigint" ? primitive : toNumber(primitive);
   const next = typeof current === "bigint"
     ? bigIntOperation(node.operator === "++" ? "+" : "-", current, 1n, context.budget)
     : node.operator === "++" ? current + 1 : current - 1;
-  context.scope.assign(node.argument.name, next);
+  await context.scope.assign(node.argument.name, next, (object, key, assigned) =>
+    setSandboxProperty(object, key, assigned, context.budget, true, createCoercionContext(context)));
 
   return {
     kind: "normal",
@@ -3123,10 +3128,9 @@ async function evaluateMemberAccess(
   const restored = context.generatorResume === undefined || node.nodeId === undefined
     ? undefined : context.restoredGeneratorExpressionStates?.get(node.nodeId);
   if (restored !== undefined && restored.kind !== "member") throw new TypeError("Invalid member continuation.");
-  const thisBinding = node.object.type === "Super" ? context.scope.lookup("this") : undefined;
   const superReceiver = restored?.kind === "member" && Object.hasOwn(restored, "superReceiver")
     ? { value: restored.superReceiver }
-    : thisBinding === undefined ? undefined : { value: thisBinding.found ? thisBinding.value : undefined };
+    : node.object.type === "Super" ? { value: context.scope.lookupThis() } : undefined;
   const object = restored?.kind === "member" ? { kind: "normal" as const, value: restored.object }
     : await evaluateNode(node.object, context);
   if (object.kind !== "normal") return object;
