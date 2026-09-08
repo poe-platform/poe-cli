@@ -267,6 +267,10 @@ class ASAsyncNotNeededScanner {
       case "FunctionExpression":
         this.visitFunctionExpression(node);
         return;
+      case "ImportExpression":
+        this.visitExpression(node.source);
+        if (node.options !== undefined) this.visitExpression(node.options);
+        return;
       case "AwaitExpression":
         this.visitExpression(node.argument);
         return;
@@ -627,6 +631,8 @@ function variableDeclarationContainsAwait(node: VariableDeclaration): boolean {
 
 function expressionContainsAwait(node: Expression): boolean {
   switch (node.type) {
+    case "ImportExpression":
+      return expressionContainsAwait(node.source) || (node.options !== undefined && expressionContainsAwait(node.options));
     case "PrivateIdentifier":
       return false;
     case "ClassExpression":

@@ -68,7 +68,8 @@ import {
   type SandboxValue,
   type SandboxPromise
 } from "./interp/values.js";
-import { resolveModuleImports, type ModuleRegistry } from "./modules/registry.js";
+import { createModuleEnvironment, resolveModuleImports, resolveModuleNamespace, type ModuleEnvironment, type ModuleEnvironmentOptions, type ModuleRegistry } from "./modules/registry.js";
+import { createModuleNamespace } from "./interp/module-namespace.js";
 import {
   activateOtelSink,
   getActiveOtelSpan,
@@ -80,7 +81,7 @@ import { attachDumpController, createDumpController } from "./snapshot/dump.js";
 import { DUMP_FORMAT_VERSION, EXECUTION_SEMANTICS, inMemoryRunSnapshots } from "./snapshot/dump-format.js";
 import { createSnapshotScheduler, type SnapshotScheduler } from "./snapshot/scheduler.js";
 import { UnsnapshotableValueError } from "./snapshot/serialize.js";
-import { prepareReplayInputs } from "./snapshot/replay-inputs.js";
+import { prepareReplayInputs, type ReplayInputs } from "./snapshot/replay-inputs.js";
 import {
   decodeReplayData,
   MissingReplayCapabilityError,
@@ -285,18 +286,37 @@ export function run(source: string, options: RunOptions = {}): Promise<RunResult
               writable: true
             });
           }
-          const initialInputs = prepareReplayInputs(
+          const prepareInputPromise = (promise: SandboxPromise | undefined, id: string): SandboxPromise => {
+            if (promise !== undefined) observeSandboxPromise(promise);
+            const operation = declareHostOperation(() => {
+              if (promise === undefined) throw new TypeError(`Missing initial promise '${id}'.`);
+              return promise.promise;
+            }, "read-side-effect");
+            const binding = wrapCallerInjectedBindings({[id]:operation},{
+              budget,hostCalls,moduleId:"<inputs>",compileOwner:compilation.owner,signal:options.signal,lifecycle
+            })[id]!;
+            if (!isSandboxClosure(binding)) throw new TypeError("Invalid initial promise operation.");
+            return binding.call([]) as SandboxPromise;
+          };
+          let moduleEnvironment: ModuleEnvironment | undefined;
+          const moduleOptions: ModuleEnvironmentOptions = {budget,compileOwner:operation.owner,hostCalls,signal:options.signal};
+          const moduleInputOwner = {};
+          let moduleInputSize = 0;
+          const initialInputs = prepareReplayInputs<ReplayInputs>(
             {
               bindings: callerBindings,
-              imports: convertInitialInput(() =>
-                resolveModuleImports(module, options.modules, {
+              imports: convertInitialInput(() => {
+                const modules = options.modules;
+                moduleEnvironment = createModuleEnvironment(modules, moduleOptions);
+                return resolveModuleImports(module, modules, {
+                  environment: moduleEnvironment,
                   budget,
                   compileOwner: operation.owner,
                   hostCalls,
                   signal: options.signal,
                   allowMissing: restoredSnapshot?.initialInputs !== undefined
-                })
-              ),
+                });
+              }),
               entryPointArgs: convertInitialInput(() =>
                 options.entryPointArgs === undefined
                   ? undefined
@@ -305,30 +325,33 @@ export function run(source: string, options: RunOptions = {}): Promise<RunResult
               importMeta
             },
             restoredSnapshot?.initialInputs,
-            (promise, id) => {
-              if (promise !== undefined) observeSandboxPromise(promise);
-              const operation = declareHostOperation(() => {
-                if (promise === undefined) throw new TypeError(`Missing initial promise '${id}'.`);
-                return promise.promise;
-              }, "read-side-effect");
-              const binding = wrapCallerInjectedBindings(
-                { [id]: operation },
-                {
-                  budget,
-                  hostCalls,
-                  moduleId: "<inputs>",
-                  compileOwner: compilation.owner,
-                  signal: options.signal,
-                  lifecycle
-                }
-              )[id]!;
-              if (!isSandboxClosure(binding))
-                throw new TypeError("Invalid initial promise operation.");
-              return binding.call([]) as SandboxPromise;
-            },
+            prepareInputPromise,
             hostCalls.rebindHostCapability.bind(hostCalls),
             compilation
           );
+          leaveInputReplay = () => {
+            budget.setRetainedDataUsage(initialInputs,0);
+            budget.setRetainedDataUsage(moduleInputOwner,0);
+          };
+          if (moduleEnvironment !== undefined) {
+            moduleOptions.prepareNamespace = (namespace,name) => {
+              const prepared = initialInputs.prepareNamespace(namespace,name);
+              const included = new Set<CompileTicket>();
+              const size = measureSandboxData([prepared],{ignoreClosureCaptures:true,compileTickets:included});
+              budget.reconcileCompileData(moduleInputSize+size,included,included,moduleInputOwner);
+              moduleInputSize += size;
+              return prepared;
+            };
+            for (const name of Object.keys(initialInputs.snapshot.namespaceRoots ?? {})) {
+              if (moduleEnvironment.available.includes(name)) resolveModuleNamespace(moduleEnvironment,name,false);
+              else {
+                moduleEnvironment.available.push(name);
+                moduleEnvironment.namespaces[name] = createModuleNamespace({});
+              }
+            }
+            for (const [name, namespace] of Object.entries(moduleEnvironment.namespaces))
+              initialInputs.captureNamespace(namespace as Record<string,SandboxValue>,name);
+          }
           hostCalls.validateHostCapabilities();
           const inputTickets = new Set<CompileTicket>();
           const inputSize = measureSandboxData(
@@ -341,7 +364,6 @@ export function run(source: string, options: RunOptions = {}): Promise<RunResult
             { ignoreClosureCaptures: true, compileTickets: inputTickets }
           );
           budget.reconcileCompileData(inputSize, inputTickets, inputTickets, initialInputs);
-          leaveInputReplay = () => budget.setRetainedDataUsage(initialInputs, 0);
           const entryPointArgs = initialInputs.values.entryPointArgs;
           const cancelableCallerBindings = wrapCancelableBindings(
             initialInputs.values.bindings,
@@ -362,6 +384,7 @@ export function run(source: string, options: RunOptions = {}): Promise<RunResult
             initialInputs.values.importMeta,
             { functionBoundary: true }
           );
+          executionScope.moduleEnvironment = moduleEnvironment;
           const activeSnapshotScheduler = createSnapshotScheduler<RunSnapshot>({
             snapshotBackend: options.snapshotBackend,
             snapshotIntervalMs: options.snapshotIntervalMs,
@@ -737,7 +760,7 @@ function createRunSnapshot(input: {
       : { hostCalls: input.hostCalls }),
     ...(input.loopIterations === undefined ? {} : { loopIterations: input.loopIterations }),
     ...(input.replay === undefined ? {} : { replay: input.replay }),
-    ...(input.initialInputs === undefined ? {} : { initialInputs: input.initialInputs }),
+    ...(input.initialInputs === undefined ? {} : { initialInputs: structuredClone(input.initialInputs) }),
     ...(input.promiseReplay === undefined ? {} : { promiseReplay: input.promiseReplay }),
     ...(input.pendingAwaits === undefined || input.pendingAwaits.length === 0
       ? {}

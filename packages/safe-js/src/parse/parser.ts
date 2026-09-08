@@ -273,6 +273,12 @@ export type MetaProperty = BaseNode & {
   property: Identifier & { name: "meta" };
 };
 
+export type ImportExpression = BaseNode & {
+  type: "ImportExpression";
+  source: Expression;
+  options?: Expression;
+};
+
 export type AssignmentOperator =
   | "="
   | "+="
@@ -564,6 +570,7 @@ export type Expression =
   | ClassExpression
   | FunctionExpression
   | Identifier
+  | ImportExpression
   | PrivateIdentifier
   | LogicalExpression
   | MemberExpression
@@ -1098,7 +1105,7 @@ class Parser {
       return this.parseTryStatement();
     }
 
-    if (token.type === "keyword" && token.value === "import" && !this.isImportMetaStart()) {
+    if (token.type === "keyword" && token.value === "import" && !this.isImportMetaStart() && this.peekToken(1).value !== "(") {
       return this.parseImportDeclaration();
     }
 
@@ -1221,7 +1228,9 @@ class Parser {
       if (token.type === "keyword" && token.value === "while") return this.parseWhileStatement(labels);
       if (token.type === "keyword" && token.value === "do") return this.parseDoWhileStatement(labels);
       if (token.type === "punctuator" && token.value === "{") return { ...this.parseBlockStatement(), labels };
-      if (["let", "const", "class", "function", "import", "export"].includes(token.value) || this.isAsyncFunctionDeclarationStart() || this.resourceDeclarationHint() !== undefined)
+      if (["let", "const", "class", "function", "export"].includes(token.value) ||
+          (token.value === "import" && this.peekToken(1).value !== "(") ||
+          this.isAsyncFunctionDeclarationStart() || this.resourceDeclarationHint() !== undefined)
         throw new DisallowedSyntaxError("labeled declaration", firstLabelToken.start);
       const statement = this.parseStatement();
       if (statement.type === "ImportDeclaration" || statement.type === "ExportDefaultDeclaration" || statement.type === "ExportNamedDeclaration")
@@ -3008,6 +3017,17 @@ class Parser {
     }
 
     if (token.type === "keyword") {
+      if (token.value === "import" && this.peekToken(1).value === "(") {
+        this.index += 2;
+        const source = this.parseExpression().node;
+        let options: Expression | undefined;
+        if (this.consumePunctuator(",") !== undefined && this.currentToken().value !== ")") {
+          options = this.parseExpression().node;
+          this.consumePunctuator(",");
+        }
+        const end = this.expectPunctuator(")");
+        return {node:{type:"ImportExpression",source,...(options === undefined ? {} : {options}),span:createSpan(token.start,end.end)},parenthesized:false};
+      }
       if (this.isImportMetaStart()) {
         return {
           node: this.parseImportMeta(),
@@ -3054,6 +3074,8 @@ class Parser {
   private parseNewExpression(): ParsedExpression {
     const newToken = this.currentToken();
     this.index += 1;
+    if (this.currentToken().value === "import" && this.peekToken(1).value === "(")
+      throw unexpectedTokenError(this.currentToken());
 
     if (this.consumePunctuator(".") !== undefined) {
       const target = this.currentToken();
@@ -3944,7 +3966,7 @@ class Parser {
       return true;
     }
     if (token.type === "keyword" && TOP_LEVEL_STATEMENT_KEYWORDS.has(token.value)) {
-      if (token.value === "import" && this.isImportMetaStart()) {
+      if (token.value === "import" && (this.isImportMetaStart() || this.peekToken(1).value === "(")) {
         return false;
       }
       return true;
@@ -4358,6 +4380,8 @@ function findImportMetaAssignmentInNode(
         findImportMetaAssignmentInNode(node.callee) ??
         findImportMetaAssignmentInList(node.arguments)
       );
+    case "ImportExpression":
+      return findImportMetaAssignmentInNode(node.source) ?? findImportMetaAssignmentInOptionalExpression(node.options);
     case "TaggedTemplateExpression":
       return findImportMetaAssignmentInNode(node.tag) ?? findImportMetaAssignmentInNode(node.quasi);
     case "TemplateLiteral":

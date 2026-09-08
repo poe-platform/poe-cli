@@ -1,4 +1,5 @@
 import { types } from "node:util";
+import { moduleFunctionOrigins } from "./module-function-origin.js";
 import { normalizeClosureResult } from "./async.js";
 import { copyNativeDate } from "./date.js";
 import { boxedDataProperties, createSandboxBox, nativeBoxedValue } from "./boxed.js";
@@ -84,6 +85,7 @@ export type HostBridgeOptions = {
   realm?: RealmBridge;
   registerCapabilities?: boolean;
   capabilityPath?: readonly string[];
+  moduleCapabilities?: Map<string, SandboxClosure>;
   budget: Budget;
   compileOwner?: CompileOwner;
   hostCalls?: HostCallJournal;
@@ -344,6 +346,11 @@ function wrapCallerInjectedFunction(
     properties: (closure) => {
       state.seen.set(value, closure);
       if (options.registerCapabilities) {
+        if (options.moduleCapabilities !== undefined && options.moduleId !== undefined) {
+          const origin = { module: options.moduleId, path: [...(options.capabilityPath ?? [bindingName])] };
+          moduleFunctionOrigins.set(closure, origin);
+          options.moduleCapabilities.set(JSON.stringify([origin.module, ...origin.path]), closure);
+        }
         options.hostCalls?.registerHostCapability(
           JSON.stringify([
             options.moduleId ?? "<bindings>",

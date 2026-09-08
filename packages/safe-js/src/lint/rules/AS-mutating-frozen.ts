@@ -279,6 +279,10 @@ class ASMutatingFrozenScanner {
       case "ArrowFunctionExpression":
         this.visitArrowFunction(node);
         return;
+      case "ImportExpression":
+        this.visitExpression(node.source);
+        if (node.options !== undefined) this.visitExpression(node.options);
+        return;
       case "AwaitExpression":
         this.visitExpression(node.argument);
         return;

@@ -1,4 +1,5 @@
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
+import { moduleFunctionOrigins } from "../interp/module-function-origin.js";
 import { createModuleNamespace, isSandboxModuleNamespace } from "../interp/module-namespace.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { restorePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -84,7 +85,7 @@ type DataNode =
   | { kind: "map"; entries: Array<[Atom, Atom]>; propertyState?: PropertyDescriptorData<Atom> }
   | { kind: "set"; values: Atom[]; propertyState?: PropertyDescriptorData<Atom> }
   | ({ kind: "regex"; source: string; flags: string; lastIndex: Atom } & RegexPropertyData<Atom>);
-export type ReplayData = { root: Atom; nodes: DataNode[] };
+export type ReplayData = { root: Atom; nodes: DataNode[]; namespaceRoots?: Record<string, Atom> };
 export type ReplayPathSegment = string | { symbol: number };
 
 export class MissingReplayCapabilityError extends TypeError {}
@@ -107,6 +108,7 @@ export function encodeReplayData(
     identifyPromise?: (value: SandboxPromise, path: readonly ReplayPathSegment[]) => string | undefined;
     context?: ReturnType<typeof createReplayEncodingContext>;
     path?: readonly ReplayPathSegment[];
+    onValueEncoded?: (id: number, value: SandboxValue) => void;
   } = {}
 ): ReplayData {
   const context = options.context ?? createReplayEncodingContext();
@@ -124,6 +126,7 @@ export function encodeReplayData(
         id = nodes.length;
         symbols.set(entry, id);
         nodes.push(symbolData(entry));
+        options.onValueEncoded?.(id, entry);
       }
       return { tag: "ref", id };
     }
@@ -159,6 +162,7 @@ export function encodeReplayData(
     const id = nodes.length;
     seen.set(entry, id);
     nodes.push(undefined as unknown as DataNode);
+    options.onValueEncoded?.(id, entry);
     const child = (value: SandboxValue, key: string) => encode(value, depth + 1, [...path, key]);
     if (isSandboxModuleNamespace(entry)) {
       nodes[id] = {kind:"module-namespace",entries:Object.keys(entry).map(key => [key,child((entry as Record<string,SandboxValue>)[key],key)])};
@@ -443,6 +447,8 @@ export function decodeReplayData(
           }
         });
         options.onCapabilityRestored?.(capability, copy);
+        const moduleFunction = moduleFunctionOrigins.get(capability);
+        if (moduleFunction !== undefined) moduleFunctionOrigins.set(copy, moduleFunction);
         return copy;
       }
       if (kind === "boxed") {

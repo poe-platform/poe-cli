@@ -18,6 +18,7 @@ export type GeneratorExpressionState<T = SandboxValue, S = Scope, I = SandboxIte
   | { kind: "for-in"; phase?: "left" | "body"; object: T; keys: string[]; index: number; scope: S }
   | { kind: "for"; phase: "init" | "test" | "body" | "update" | "dispose"; loopScope: S; activeScope: S }
   | { kind: "binary"; left: T }
+  | { kind: "dynamic-import"; source: T }
   | { kind: "identifier-assignment"; current: T }
   | { kind: "member"; object: T; superReceiver?: T }
   | { kind: "member-assignment"; object: T; property: T; current: T; key?: T; superReceiver?: T; privateName?: string }

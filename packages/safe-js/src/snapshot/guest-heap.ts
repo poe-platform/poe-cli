@@ -1,4 +1,5 @@
 import { getClosureOrigin, getGeneratorOrigin } from "../interp/closure-origin.js";
+import { moduleFunctionOrigins } from "../interp/module-function-origin.js";
 import { isSandboxModuleNamespace } from "../interp/module-namespace.js";
 import { boundFunctionStates } from "../interp/bound-function-state.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
@@ -117,9 +118,11 @@ export type GuestHeapNode<T> =
   | { kind: "guest-object"; state: GuestObjectState<T>; errorType?: SandboxErrorName }
   | { kind: "guest-array"; state: GuestObjectState<T>; templateNodeId?: number; templateOwner?: T }
   | { kind: "intrinsic"; id: string; state?: GuestObjectState<T>; symbolRegistry?: Array<[string, T]> }
+  | { kind: "module-function"; module: string; path: string[]; name?: string; state: GuestObjectState<T> }
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
       environment?: { homeObject?: T; newTarget?: T; construction?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
+      moduleEnvironment?: {available: string[]; namespaces: T};
       objectEnvironment?: T;
       resourceState?: T;
       privateNames?: Array<[string, T]>;
@@ -310,6 +313,12 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       ...(registry === undefined ? {} : {symbolRegistry: [...registry].map(([key, symbol]) => [key, encode(symbol)] as [string, T])}) };
   }
   const bound = boundFunctionStates.get(value);
+  const moduleFunction = isSandboxClosure(value) ? moduleFunctionOrigins.get(value) : undefined;
+  if (moduleFunction !== undefined) return {
+    kind: "module-function", module: moduleFunction.module, path: [...moduleFunction.path],
+    ...(isSandboxClosure(value) && value.name !== undefined ? { name: value.name } : {}),
+    state: captureObjectState(value, encode)!
+  };
   if (bound !== undefined && isSandboxClosure(value)) {
     return { kind: "bound-function", target: encode(bound.target), thisValue: encode(bound.thisValue),
       args: bound.args.map(encode), length: encode(value.length),
@@ -341,6 +350,9 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       kind: "scope-frame", parent: encode(frame.parent), importMeta: encode(frame.importMeta),
       functionBoundary: frame.functionBoundary, chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.moduleEnvironment === undefined ? {} : {moduleEnvironment: {
+        available: [...frame.moduleEnvironment.available], namespaces: encode(frame.moduleEnvironment.namespaces)
+      }}),
       ...(frame.objectEnvironment === undefined ? {} : {objectEnvironment: encode(frame.objectEnvironment)}),
       ...(frame.resourceState === undefined ? {} : {resourceState: encode(frame.resourceState)}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, encode(identity)] as [string, T]) }),
@@ -376,6 +388,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       ...(value.state !== "suspended" || origin.expressionStates === undefined ? {} : {
         expressionStates: Object.fromEntries([...origin.expressionStates].map(([id, expression]) => [String(id),
           expression.kind === "binary" ? { kind: "binary", left: encode(expression.left) }
+            : expression.kind === "dynamic-import" ? {kind:"dynamic-import",source:encode(expression.source)}
             : expression.kind === "declaration" ? { ...expression }
             : expression.kind === "switch" ? { ...expression, value: encode(expression.value), scope: encode(expression.scope) }
             : expression.kind === "yield-delegate" ? { kind: expression.kind, async: expression.async, value: encode(expression.value), current: encode(expression.current),

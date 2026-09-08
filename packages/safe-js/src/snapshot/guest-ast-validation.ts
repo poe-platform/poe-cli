@@ -47,7 +47,7 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
 
   let yieldBlocks: ReadonlySet<number> | undefined;
   let yieldFinalizers: ReadonlySet<number> | undefined;
-  type ExpressionPosition = { kind: "binary" } | { kind: "pattern-source" } | { kind: "identifier-assignment" } | { kind: "member"; superReceiver: boolean }
+  type ExpressionPosition = { kind: "dynamic-import" } | { kind: "binary" } | { kind: "pattern-source" } | { kind: "identifier-assignment" } | { kind: "member"; superReceiver: boolean }
     | { kind: "switch"; phase: "test" | "body"; index: number; statementIndex: number }
     | { kind: "for"; phase: string }
     | { kind: "for-in"; phase: string }
@@ -179,6 +179,8 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
           ? new Map([...frame.expressions, [node.nodeId, { kind: "for", phase: key }]])
           : node.type === "BinaryExpression" && key === "right" && typeof node.nodeId === "number"
           ? new Map([...frame.expressions, [node.nodeId, { kind: "binary" }]])
+          : node.type === "ImportExpression" && key === "options" && typeof node.nodeId === "number"
+          ? new Map([...frame.expressions, [node.nodeId, { kind: "dynamic-import" }]])
           : node.type === "AssignmentExpression" && key === "right" && typeof node.nodeId === "number" &&
               (node.left as Record<string, unknown>).type === "Identifier"
             ? new Map([...frame.expressions, [node.nodeId, { kind: "identifier-assignment" }]])
@@ -219,7 +221,7 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
       (expected?.kind === "for-of" && (expression.kind === "for-of-iterator" || (!expected.async && expression.kind === "for-of-array"))) ||
       (expected?.kind === "call" && expected.member === true && expression.kind === "array-call");
     if (expected === undefined || !compatibleKind ||
-        (expected.kind !== "binary" && expected.kind !== "yield-delegate" && expected.kind !== "pattern-source" && expected.kind !== "identifier-assignment" && expected.kind !== "member" && expected.kind !== "member-assignment" && expected.kind !== "for" && expected.kind !== "for-in" && expected.kind !== "for-of" && expected.index !== expression.index) ||
+        (expected.kind !== "dynamic-import" && expected.kind !== "binary" && expected.kind !== "yield-delegate" && expected.kind !== "pattern-source" && expected.kind !== "identifier-assignment" && expected.kind !== "member" && expected.kind !== "member-assignment" && expected.kind !== "for" && expected.kind !== "for-in" && expected.kind !== "for-of" && expected.index !== expression.index) ||
         (expected.kind === "yield-delegate" && expected.async !== expression.async) ||
         (expected.kind === "switch" && (expected.phase !== expression.phase || expected.statementIndex !== expression.statementIndex)) ||
         ((expected.kind === "for" || expected.kind === "for-of") && expected.phase !== expression.phase) ||

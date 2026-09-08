@@ -10,6 +10,8 @@ import { createInterpretedClosure, executeAsyncFunction, type AsyncEvaluationCon
 import { createBuiltinBindings } from "../interp/globals.js";
 import { resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { allocateGuestScopes, hydrateGuestScopes } from "./scope-frames.js";
+import { createModuleEnvironment, resolveModuleFunction, type ModuleEnvironment } from "../modules/registry.js";
+import { moduleFunctionOrigins } from "../interp/module-function-origin.js";
 import { assertResourceScopeState } from "../interp/resource-management.js";
 import { asyncFunctionDrivers, bindAsyncFunctionSignal, createAsyncFunctionHandler, type AsyncFunctionDriver } from "../interp/async-function-driver.js";
 import { asyncGeneratorDrivers, asyncGeneratorRequestOwners, bindAsyncGeneratorSignal, createAsyncGeneratorHandler, type AsyncGeneratorDriver } from "../interp/async-generator-driver.js";
@@ -182,6 +184,7 @@ export type RestoredSnapshot = {
 };
 
 type RestoreState = {
+  moduleFunctions: ModuleEnvironment;
   thenableBridges: Map<number, ReturnType<typeof createThenableBridge>>;
   constructionEnvironments: Map<number, NonNullable<NonNullable<AsyncEvaluationContext["functionEnvironment"]>["construction"]>>;
   promiseReactionRecords: Map<SandboxPromise, {source: SandboxPromise; capability: ReturnType<typeof createPendingPromiseCapability>; onFulfilled: SandboxValue; onRejected: SandboxValue;
@@ -242,6 +245,7 @@ export function restore(
     }
 
     const state: RestoreState = {
+      moduleFunctions: createModuleEnvironment(options.modules, {budget,compileOwner:operation.owner,signal:options.signal}),
       promiseReactionRecords: new Map(),
       constructionEnvironments: new Map(),
       thenableBridges: new Map(),
@@ -276,6 +280,13 @@ export function restore(
     state.guestScopes = allocateGuestScopes(guestFrames, budget);
     hydrateGuestScopes(guestFrames, state.guestScopes,
       value => deserializeValue(value as SerializedSnapshotValue, state) as SandboxValue, budget);
+    for (const scope of state.guestScopes.values()) {
+      if (scope.moduleEnvironment !== undefined) {
+        scope.moduleEnvironment = createModuleEnvironment(options.modules,{
+          budget,compileOwner:operation.owner,signal:options.signal
+        },scope.moduleEnvironment);
+      }
+    }
 
     const pendingPromises = snapshot.pendingPromises.map((entry) =>
       restorePendingPromise(entry, state)
@@ -1137,7 +1148,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1236,6 +1247,19 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         boundState.thisValue = deserializeValue(serialized.thisValue, state) as SandboxValue;
         boundState.args = serialized.args.map(entry => deserializeValue(entry, state) as SandboxValue);
       });
+    } else if (serialized.kind === "module-function") {
+      const capability = resolveModuleFunction(state.moduleFunctions, serialized);
+      value = createSandboxClosure({
+        ...capability, name: serialized.name,
+        properties: closure => {
+          state.heapValueById.set(id, closure);
+          const properties: Record<string, SandboxValue> = {};
+          restorePropertyDescriptors(properties, serialized.state.properties,
+            entry => deserializeValue(entry as SerializedSnapshotValue, state));
+          return properties;
+        }
+      });
+      moduleFunctionOrigins.set(value as SandboxClosure, { module: serialized.module, path: [...serialized.path] });
     } else if (serialized.kind === "intrinsic") {
       initializeIntrinsicRealm(state);
       value = resolveIntrinsicIdentity(state.budget, serialized.id) as RuntimeSnapshotValue;
@@ -1373,7 +1397,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         setSandboxPrototype(value as object, deserializeValue(objectState.prototype, state) as object | null, state.budget);
       if (serialized.kind === "guest-object" && serialized.errorType !== undefined)
         sandboxErrorTypes.set(value as object, serialized.errorType);
-      restorePropertyDescriptors(target, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (serialized.kind !== "module-function")
+        restorePropertyDescriptors(target, objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
       if (objectState.privateElements !== undefined)
         privateElements.set(value as object, restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
       if (serialized.kind === "guest-array" && serialized.templateNodeId !== undefined) {
@@ -1485,6 +1510,7 @@ function restoreGuestGenerator(
     for (const [id, expression] of Object.entries(serialized.expressionStates ?? {})) {
       expressions.set(Number(id), expression.kind === "binary"
         ? { kind: "binary", left: deserializeValue(expression.left, state) as SandboxValue }
+        : expression.kind === "dynamic-import" ? {kind:"dynamic-import",source:deserializeValue(expression.source,state) as SandboxValue}
         : expression.kind === "declaration" ? { ...expression }
         : expression.kind === "switch" ? { ...expression, value: deserializeValue(expression.value, state) as SandboxValue,
           scope: state.guestScopes.get((expression.scope as SerializedReferenceValue).id)! }

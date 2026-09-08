@@ -98,6 +98,7 @@ import { CompileScope, RegexCompileGuard } from "./regex/compile-guard.js";
 import { containsResumeTarget } from "./resume-target.js";
 import {
   createCapturedException,
+  coerceThrownValue,
   createThrowCompletion,
   evaluateThrowStatement as evaluateThrowStatementResult,
   evaluateTryStatement as evaluateTryStatementResult,
@@ -124,7 +125,8 @@ import {
   type MapMethodOptions
 } from "./methods/map.js";
 import { callNumberMethod, getNumberMember, isNumberMethodName } from "./methods/number.js";
-import { getPromiseMember } from "./promise.js";
+import { createPendingPromiseCapability, getPromiseMember } from "./promise.js";
+import { resolveModuleNamespace } from "../modules/registry.js";
 import { acquireSandboxIterator, closeIterator, readIteratorResult, restoreSandboxIterator } from "./iteration.js";
 import type { GeneratorExpressionState } from "./generator-expression-state.js";
 import { assertCollectionMutable } from "./running-state.js";
@@ -325,6 +327,54 @@ const dispatchTable: DispatchTable = {
   LogicalExpression: evaluateLogicalExpression,
   MemberExpression: evaluateMemberExpression,
   MetaProperty: evaluateMetaProperty,
+  ImportExpression: async (node, context) => {
+    const restored = context.generatorResume === undefined || node.nodeId === undefined
+      ? undefined : context.restoredGeneratorExpressionStates?.get(node.nodeId);
+    if (restored !== undefined && restored.kind !== "dynamic-import") throw new TypeError("Invalid dynamic import continuation.");
+    const source = restored === undefined ? await evaluateNode(node.source, context)
+      : {kind:"normal" as const,hasValue:true,value:restored.source};
+    if (source.kind !== "normal") return source;
+    if (context.generatorYield !== undefined && node.nodeId !== undefined) context = {
+      ...context,generatorExpressionStates:new Map([...(context.generatorExpressionStates ?? []),
+        [node.nodeId,{kind:"dynamic-import",source:source.value}]])
+    };
+    const retained: SandboxValue[] = [source.value];
+    const release = retainValues(context.budget,()=>retained);
+    try {
+    const options = node.options === undefined ? {kind:"normal" as const,value:undefined}
+      : await evaluateNode(node.options, context);
+    if (options.kind !== "normal") return options;
+    retained.push(options.value);
+    const callContext = createCoercionContext(context);
+    const capability = createPendingPromiseCapability(context.budget,callContext);
+    retained.push(capability.promise);
+    try {
+      const specifier = await sandboxString(source.value,context.budget,callContext);
+      if (options.value !== undefined) {
+        if (typeof options.value !== "object" || options.value === null) throw new TypeError("Import options must be an object.");
+        const attributes = await getPropertyValue(options.value,"with",context);
+        if (attributes !== undefined) {
+          if (typeof attributes !== "object" || attributes === null) throw new TypeError("Import attributes must be an object.");
+          const keys = ownEnumerableSandboxKeys(attributes);
+          const values = [];
+          for (const key of keys) values.push(await getPropertyValue(attributes,key,context));
+          if (values.some(value=>typeof value !== "string")) throw new TypeError("Import attribute values must be strings.");
+          if (keys.length !== 0) throw new TypeError("Registered modules do not support import attributes.");
+        }
+      }
+      const environment = context.scope.lookupModuleEnvironment();
+      if (environment === undefined) throw new Error(`Unknown module '${specifier}'. No modules are registered.`);
+      await invokeBuiltinClosure(capability.resolve,[resolveModuleNamespace(environment,specifier)],context.budget,callContext,undefined);
+    } catch (error) {
+      const captured = isCapturedException(error) ? error : undefined;
+      const reason = captured === undefined ? error : captured.reason;
+      if (isFatalSandboxError(reason) || reason instanceof HostCallResumabilityError) throw error;
+      const value = coerceThrownValue(reason,context.budget,captured?.stackFrames ?? context.callStack,node.span,captured?.sandbox ?? true);
+      await invokeBuiltinClosure(capability.reject,[value],context.budget,callContext,undefined);
+    }
+    return {kind:"normal",hasValue:true,value:capability.promise};
+    } finally { release(); }
+  },
   NewExpression: evaluateNewExpression,
   NullLiteral: evaluatePrimitiveLiteral,
   NumericLiteral: evaluatePrimitiveLiteral,

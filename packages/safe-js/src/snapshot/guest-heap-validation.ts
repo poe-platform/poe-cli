@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -84,7 +84,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["async-generator-handler", "async-function-handler", "async-cleanup-handler", "thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
+    const target = reference(value, ["module-function", "async-generator-handler", "async-function-handler", "async-cleanup-handler", "thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
@@ -491,6 +491,12 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if ((node.action !== "fulfilled" && node.action !== "rejected") || integer(node.generation) > integer(cleanup.generation))
       throw new TypeError("Invalid async cleanup handler.");
     state(node.state);
+  } else if (node.kind === "module-function") {
+    fields(node, ["kind", "module", "path", "state"], ["name"]);
+    if (typeof node.module !== "string" || !Array.isArray(node.path) || node.path.length === 0 ||
+        node.path.some(key => typeof key !== "string") || (node.name !== undefined && typeof node.name !== "string"))
+      throw new TypeError("Invalid module function identity.");
+    state(node.state);
   } else if (node.kind === "intrinsic") {
     fields(node, ["kind", "id"], ["state", "symbolRegistry"]);
     if (typeof node.id !== "string" || !intrinsicCatalogue().has(node.id)) throw new TypeError("Unknown intrinsic identity.");
@@ -652,6 +658,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
         const expression = record(raw);
         if (expression.kind === "binary") {
           fields(expression, ["kind", "left"]);
+        } else if (expression.kind === "dynamic-import") {
+          fields(expression,["kind","source"]);
         } else if (expression.kind === "declaration") {
           fields(expression, ["kind", "index"]);
           integer(expression.index);
@@ -839,7 +847,17 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       if (Object.hasOwn(environment, "construction")) reference(environment.construction, ["construction-environment"]);
     }
   } else {
-    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames", "resourceState", "objectEnvironment"]);
+    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames", "resourceState", "objectEnvironment", "moduleEnvironment"]);
+    if (node.moduleEnvironment !== undefined) {
+      const environment = record(node.moduleEnvironment);
+      fields(environment,["available","namespaces"]);
+      const available = array(environment.available);
+      if (available.some(name=>typeof name !== "string") || new Set(available).size !== available.length)
+        throw new TypeError("Invalid module environment names.");
+      const namespaces = reference(environment.namespaces,["object"]);
+      fields(namespaces,["kind","entries"],["sandboxNullPrototype"]);
+      for (const namespace of Object.values(record(namespaces.entries))) reference(namespace,["module-namespace"]);
+    }
     if (node.objectEnvironment !== undefined) {
       if (!absent(node.parent)) throw new TypeError("Only root scopes own global object environments.");
       const globalObject = reference(node.objectEnvironment, ["intrinsic"]);

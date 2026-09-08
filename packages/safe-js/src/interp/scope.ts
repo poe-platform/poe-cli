@@ -5,6 +5,7 @@ import type { ResourceScopeState } from "./resource-management.js";
 import { builtinGlobalObjects, getIntrinsicIdentity, mutableBuiltinBindings } from "./intrinsics.js";
 import { getSandboxPropertyDescriptor } from "./object-model.js";
 import type { SandboxObject } from "./values.js";
+import type { ModuleEnvironment } from "../modules/registry.js";
 
 type ScopeBinding = {
   kind: VariableDeclarationKind;
@@ -30,6 +31,7 @@ type ScopeOptions = {
 };
 
 export type ScopeFrame = {
+  moduleEnvironment?: ModuleEnvironment;
   objectEnvironment?: SandboxObject;
   resourceState?: ResourceScopeState;
   privateNames?: Array<[string, PrivateName]>;
@@ -45,6 +47,7 @@ export type ScopeFrame = {
 };
 
 export class Scope {
+  moduleEnvironment?: ModuleEnvironment;
   private objectEnvironment?: SandboxObject;
   resourceState?: ResourceScopeState;
   privateNames?: Map<string, PrivateName>;
@@ -163,8 +166,13 @@ export class Scope {
     return this.parent?.lookupThis();
   }
 
+  lookupModuleEnvironment(): ModuleEnvironment | undefined {
+    return this.moduleEnvironment ?? this.parent?.lookupModuleEnvironment();
+  }
+
   retainedValues(): InterpreterValue[] {
     const values = this.parent?.retainedValues() ?? [];
+    if (this.moduleEnvironment !== undefined) values.push(...Object.values(this.moduleEnvironment.namespaces));
     if (this.resourceState !== undefined) values.push(this.resourceState);
     if (this.options.chargeData !== false) {
       if (this.importMeta !== undefined) values.push(this.importMeta);
@@ -347,6 +355,7 @@ export class Scope {
     }
     return {
       parent: this.parent,
+      ...(this.moduleEnvironment === undefined || this.moduleEnvironment.available.length === 0 ? {} : {moduleEnvironment: this.moduleEnvironment}),
       ...(this.objectEnvironment === undefined ? {} : {objectEnvironment: this.objectEnvironment}),
       importMeta: this.importMeta,
       functionBoundary: this.isFunctionBoundary(),
@@ -384,6 +393,7 @@ export class Scope {
     const restored = new Map(frame.restoredBindings ?? []);
     if (restored.size !== (frame.restoredBindings?.length ?? 0)) throw new TypeError("Duplicate restored binding.");
     this.importMeta = frame.importMeta;
+    this.moduleEnvironment = frame.moduleEnvironment;
     this.objectEnvironment = frame.objectEnvironment;
     this.resourceState = frame.resourceState;
     if (frame.privateNames !== undefined) this.privateNames = new Map(frame.privateNames);

@@ -285,6 +285,10 @@ class ASFloatingPromiseScanner {
       case "ArrowFunctionExpression":
         this.visitArrowFunction(node);
         return;
+      case "ImportExpression":
+        this.visitExpression(node.source);
+        if (node.options !== undefined) this.visitExpression(node.options);
+        return;
       case "AwaitExpression":
         this.visitExpression(node.argument);
         return;
@@ -498,6 +502,7 @@ class ASFloatingPromiseScanner {
   }
 
   private isUnhandledLikelyPromiseExpression(node: Expression): boolean {
+    if (node.type === "ImportExpression") return true;
     if (node.type !== "CallExpression") {
       return false;
     }
@@ -603,7 +608,7 @@ class ASFloatingPromiseScanner {
   }
 
   private isLikelyPromiseExpression(node: Expression): boolean {
-    return node.type === "CallExpression" && this.isLikelyPromiseCall(node);
+    return node.type === "ImportExpression" || (node.type === "CallExpression" && this.isLikelyPromiseCall(node));
   }
 
   private resolveAsyncFunctionBinding(name: string): boolean {

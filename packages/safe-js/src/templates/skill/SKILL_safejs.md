@@ -105,8 +105,12 @@ generators. Consume them with `for await...of` or explicit `await iterator.next(
 For-await also consumes synchronous iterables and unwraps their promised values;
 it is valid at top level and inside async functions, not ordinary functions.
 
-Not supported: `eval`, `Function`, dynamic
-imports, BigInt literals, and Node/browser globals such as `process`, `fetch`,
+`await import(name)` resolves only modules registered by the host runner and
+shares namespace identity with static imports. It does not load arbitrary Node
+packages, files, or URLs. Unknown modules and unsupported import attributes
+reject the import promise; pending host effects still require reconciliation.
+
+Not supported: `eval`, `Function`, BigInt literals, and Node/browser globals such as `process`, `fetch`,
 or `setTimeout`.
 
 `globalThis` is the isolated guest global object, not the host global object.

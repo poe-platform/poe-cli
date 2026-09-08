@@ -242,6 +242,10 @@ class ASShadowGlobalScanner {
       case "ArrayExpression":
         this.visitArrayExpression(node);
         return;
+      case "ImportExpression":
+        this.visitExpression(node.source);
+        if (node.options !== undefined) this.visitExpression(node.options);
+        return;
       case "AwaitExpression":
         this.visitAwaitExpression(node);
         return;

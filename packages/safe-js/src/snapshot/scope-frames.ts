@@ -69,6 +69,10 @@ export function hydrateGuestScopes(
       functionBoundary: frame.functionBoundary,
       chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.moduleEnvironment === undefined ? {} : {moduleEnvironment: {
+        available: [...frame.moduleEnvironment.available],
+        namespaces: decode(frame.moduleEnvironment.namespaces) as Record<string,SandboxValue>
+      }}),
       ...(frame.objectEnvironment === undefined ? {} : {objectEnvironment: decode(frame.objectEnvironment) as SandboxObject}),
       ...(resourceState === undefined ? {} : {resourceState: resourceState as ResourceScopeState}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, decode(identity) as PrivateName] as [string, PrivateName]) }),

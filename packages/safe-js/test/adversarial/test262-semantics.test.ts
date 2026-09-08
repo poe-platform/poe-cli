@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { run } from "../../src/run.js";
 
 describe("targeted Test262-style supported semantics", () => {
+  it("imports registered modules without exposing an ambient loader", async () => {
+    await expect(run("return (await import('fixture')).value",{modules:{fixture:{value:7}}}))
+      .resolves.toMatchObject({ok:true,returnValue:7});
+    await expect(run("try{await import('node:fs')}catch(error){return error.message.includes('Unknown module')}"))
+      .resolves.toMatchObject({ok:true,returnValue:true});
+  });
   it.each([
     [
       "keeps finally completion after catch",
@@ -40,6 +46,5 @@ describe("targeted Test262-style supported semantics", () => {
 });
 
 describe("explicit unsupported ECMAScript syntax", () => {
-  it.skip("skips dynamic import rather than registering arbitrary modules", () => undefined);
   it.skip("skips proxies and weak references outside the sandbox language", () => undefined);
 });

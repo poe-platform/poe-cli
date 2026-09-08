@@ -54,7 +54,7 @@ import {
   type HostOperation,
   type SafeJSExtension
 } from "./extensions.js";
-import { resolveModuleImports, type ModuleRegistry } from "./modules/registry.js";
+import { createModuleEnvironment, resolveModuleImports, type ModuleRegistry } from "./modules/registry.js";
 import { parseExecutableModule } from "./parse/parser.js";
 import { createReplayableRandom } from "./random.js";
 import { hashSource } from "./parse/hash.js";
@@ -725,10 +725,13 @@ class RealmState {
     if (typeof source !== "string") throw new TypeError("Realm source must be a string.");
     const module = parseExecutableModule(source, filename, this.lease.owner);
     this.initialize();
+    const moduleEnvironment = createModuleEnvironment(this.modules, {...this.bridgeOptions(),wrappedModules:this.convertedModules});
     const imports = resolveModuleImports(module, this.modules, {
+      environment: moduleEnvironment,
       ...this.bridgeOptions(),
       wrappedModules: this.convertedModules
     });
+    this.scope!.moduleEnvironment = moduleEnvironment;
     for (const [name, value] of Object.entries(imports)) {
       const binding = this.scope!.lookup(name);
       if (!binding.found) this.scope!.declare(name, "const", value);

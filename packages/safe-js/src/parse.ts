@@ -31,6 +31,7 @@ export type {
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
   ImportDeclaration,
+  ImportExpression,
   ImportDefaultSpecifier,
   ImportNamespaceSpecifier,
   ImportSpecifier,
