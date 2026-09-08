@@ -202,6 +202,29 @@ export function createObjectGlobal(methods: SandboxObject, budget: Budget): Sand
   for (const [name, method] of Object.entries(prototypeMethods)) {
     Object.defineProperty(prototype, name, { value: method, writable: true, configurable: true });
   }
+  Object.defineProperty(prototype, "__proto__", {
+    configurable: true,
+    get: accessorAdapter(createSandboxClosure({
+      guest: true, sandbox: true, name: "get __proto__", length: 0,
+      call: (_args, context) => {
+        const target = construct([requireReceiver(context?.thisValue)]);
+        objectProperties(target);
+        return getSandboxPrototype(target as object, budget) as SandboxValue;
+      }
+    }), "get"),
+    set: accessorAdapter(createSandboxClosure({
+      guest: true, sandbox: true, name: "set __proto__", length: 1,
+      call: ([parent], context) => {
+        const target = requireReceiver(context?.thisValue);
+        if (parent !== null && typeof parent !== "object") return undefined;
+        if (typeof target !== "object") return undefined;
+        objectProperties(target, true);
+        if (parent !== null) objectProperties(parent);
+        setSandboxPrototype(target, parent, budget);
+        return undefined;
+      }
+    }), "set")
+  });
   markDescriptorObject(prototype);
   installObjectPrototype(budget, prototype, constructor);
   return constructor;

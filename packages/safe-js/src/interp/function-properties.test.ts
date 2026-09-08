@@ -81,12 +81,12 @@ describe("guest function objects through the public core", () => {
 
   it("does not inherit native fields from intrinsic function property tables", async () => {
     const result = await run(
-      "return [Array.constructor, Array.__proto__, Number.constructor, String.constructor, Promise.constructor];",
+      "return [Array.constructor, Array.__proto__ === Object.getPrototypeOf(Array), Number.constructor, String.constructor, Promise.constructor, Array.__proto__.constructor, Array.__proto__.kind, Array.__proto__.properties];",
       { budget: new Budget() }
     );
     expect(result).toMatchObject({
       ok: true,
-      returnValue: [undefined, undefined, undefined, undefined, undefined]
+      returnValue: [undefined, true, undefined, undefined, undefined, undefined, undefined, undefined]
     });
   });
 
