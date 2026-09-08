@@ -2804,6 +2804,10 @@ async function evaluateDeleteExpression(
   context: EvaluationContext
 ): Promise<EvaluationResult> {
   if (node.argument.type !== "MemberExpression") {
+    if (node.argument.type !== "Identifier") {
+      const argument = await evaluateNode(node.argument, context);
+      return argument.kind === "normal" ? {kind: "normal", hasValue: true, value: true} : argument;
+    }
     throw createError(
       "UNSUPPORTED_NODE",
       node,
@@ -2815,10 +2819,6 @@ async function evaluateDeleteExpression(
     if (member.kind === "resolved" && member.superReceiver !== undefined)
       throw new ReferenceError("Cannot delete a super property.");
     if (member.kind === "nullish" || member.object === null || member.object === undefined) {
-    if (node.argument.type !== "Identifier") {
-      const argument = await evaluateNode(node.argument, context);
-      return argument.kind === "normal" ? {kind: "normal", hasValue: true, value: true} : argument;
-    }
       if (member.kind === "nullish") {
         return {
           kind: "normal",
@@ -4179,6 +4179,7 @@ export function deleteSandboxProperty(
   target: SandboxValue,
   property: PropertyKey
 ): boolean {
+  if (target !== null && target !== undefined && typeof target !== "object") target = Object(target) as SandboxObject;
   if (isGuestHostObject(target)) return deleteHostObjectMember(target, String(property));
   if (isSandboxClosure(target)) target = materializeFunctionProperties(target);
   if (isSandboxRegex(target)) target = getRegexProperties(target);
@@ -4211,7 +4212,6 @@ async function evaluateResolvedCallExpression(
       hasValue: true,
       value: undefined
     };
-  if (target !== null && target !== undefined && typeof target !== "object") target = Object(target) as SandboxObject;
   }
 
   const call = createCallContinuation(node, callee, context, thisValue);

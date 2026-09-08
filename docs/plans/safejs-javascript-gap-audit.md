@@ -55,7 +55,10 @@ Other verified remote-main changes include:
   These parser changes do not deliver the uncommitted runtime constructors.
 - Value-expression deletion, delivered in b400fda35 and published in SafeJS
   0.1.485. Primitive-property deletion is verified on remote main in 04b1bbd25;
-  its scoped release run 34258998616 is still in progress.
+  its scoped release run 34258998616 failed. Inspection exposed misplaced
+  partial-staging insertions in both deletion commits. The exact committed-code
+  repair is documented in safejs-delete-delivery-repair.md; publication of the
+  earlier version is not proof of the intended deletion semantics.
 
 A new native prototype-name comparison no longer reports the String HTML,
 Object legacy accessor, __proto__, or RegExp.compile omissions. RegExp.compile
@@ -76,8 +79,10 @@ is verified on remote main and published as noted above.
 - The earlier full runtime suite reported 68 failures. Focused fixes address
   intrinsic initialization accounting, implicit async prototypes, circular
   source-metadata imports and outdated constructor-absence assertions. Snapshot
-  and accounting coverage passes 1,491 tests, but the maintained full rerun is
-  still active; focused passes do not certify the complete runtime changes.
+  and accounting coverage passes 1,491 tests. The maintained full rerun finishes
+  with 21,662 passes, eight failures and 37 skips: camera and D3 timing failures,
+  snapshot-corpus timing, three modeled-error proof timeouts and two unresolved
+  host-promise property-import tests. Runtime delivery remains incomplete.
 - Older Intl investigations include Node 18 offset-timezone support and draft
   PluralRules notation options; revalidate concrete behavior before changing code.
 
