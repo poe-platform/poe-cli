@@ -216,6 +216,25 @@ assertion counts. Root owns admission of the new test into the exact maintained
 inventory, broader gates, Git, integration and release. A focused GREEN is not
 remote-main delivery or a release claim.
 
+## Root integration evidence — September 8, 2026
+
+- The maintained selected virtual-bash/SafeFS build closure passed. Root lint
+  passed after the nl await integration. Browser-engine tests passed 166/166;
+  the production site built and actual browser output verified nl matching and
+  nonmatching lines, sed captures, awk match offsets, jq key ordering and repeated
+  redirect cleanup. Screenshot: `/tmp/kamilio-653-654-664-browser.png`.
+- The complete maintained SafeBash unit route exercised 22,120 tests: 22,055
+  passed, 63 were explicitly skipped, and two old synchronous jq comparator
+  tests failed. The runner checks passed 282/282. No other full-sweep failures
+  occurred after the nl correction.
+- The two jq tests were migrated to the asynchronous comparator contract with
+  every value, limit, equality assertion and abort identity unchanged. Their
+  affected cohort then passed 102/102. Product source was unchanged by that
+  test-only follow-up. This is broad coverage plus a focused correction, not a
+  claimed uninterrupted clean full-suite rerun.
+- The earlier partial run that exposed the nl caller is retained as failed,
+  incomplete evidence. Gate logs are under `/tmp/kamilio-653-654-664.tX9mlg`.
+
 ## Integration follow-up: nl asynchronous caller
 
 Root reports candidate commit `a784e3da9` and current HEAD `b60a6a7c5`; the full

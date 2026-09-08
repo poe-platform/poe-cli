@@ -10,6 +10,59 @@ readiness: ready
 TDD implementation handoff, September 8, 2026. Active-jq #654 is implemented,
 focused GREEN and now FROZEN for root review. #655 remains a plan only.
 
+## #654 integration follow-up — frozen
+
+September 8, 2026: root's full Safe Bash run found two older synchronous compare
+consumers in the active canonical file
+`packages/safe-bash/tests/commands/structured-stress/jq-grammar-review-fixes/limits.test.ts`.
+Root granted this exact test file plus this plan; no product-source change.
+
+- Fresh RED, maintained reporter and `--unhandled-rejections=strict`: six tests,
+  four pass, two fail. The failures were Promise-versus-`-1` and synchronous
+  assert.throws against an async rejection, followed by post-test uncaught/
+  unhandled rejection activity for the original abort reason.
+- Minimal five-line adaptation: make both callbacks async, await compare,
+  and await assert.rejects for maxSteps and abort. Preserve every operand,
+  the four alias/NaN cases, synchronous identity equality, maxSteps 8, the exact
+  limit error predicate, and original abort-object identity.
+- Focused GREEN: **102/102 tests pass**, zero failures/cancellations/skips/TODOs,
+  with no post-test async activity. Cohort: the six-test target plus
+  `tests/commands/jq-control-flow-limits.test.ts` and
+  `tests/commands/structured/string-work.test.ts`; Node 22, tsx, cache disabled,
+  concurrency 1, default process isolation, maintained reporter, strict rejection
+  handling. No full test/build/lint/Git command was run by this worker.
+- Bounded active TypeScript import/call audit used maintained test discovery and
+  boundary declarations, excluded held query-core/yq, declared fixtures, snapshot/
+  sealed/evidence/archive copies and manifest-listed paths except this expressly
+  granted active target. It inspected 900 selected source/canonical TS files;
+  no oversized/nonregular file was skipped. Four direct compare/binary importer
+  modules were identified: interpreter, jq-control-flow-limits, string-work and
+  this target. All identified calls now await results/rejections or return their
+  promise to the awaited stable-sort comparator; no additional synchronous direct
+  consumer was found. This does not qualify held or historical replay consumers.
+- Provenance: no deeper AGENTS instruction applies. The target's pre-edit hash
+  matched its historical `MANIFEST.sha256` entry
+  `e3cbea29f8661193eba400c608c8ffa2012f1b42225e6a3544559891b9b7e513`.
+  Root's current explicit active-test grant authorizes this adaptation. Preserve
+  the historical manifest, captures and verifier unchanged: its old seal no
+  longer matches the adapted active test, and no historical sealed replay or
+  integrity pass is claimed. Root must retain this provenance qualification.
+
+**Follow-up changed paths: exactly this plan and the single test file above.
+Both are now FROZEN for root integration.** No source changes, inventory changes
+or outstanding worker test processes. #655 preparation is paused; its existing
+`/tmp` fragments/evidence are retained, with no assembled or applied #655 patch.
+
+Exact focused command from `packages/safe-bash`:
+
+```sh
+TSX_DISABLE_CACHE=1 node --unhandled-rejections=strict --import tsx --test \
+  --test-concurrency=1 --test-reporter=./scripts/test-reporting.mjs \
+  tests/commands/structured-stress/jq-grammar-review-fixes/limits.test.ts \
+  tests/commands/jq-control-flow-limits.test.ts \
+  tests/commands/structured/string-work.test.ts
+```
+
 ## #654 frozen handoff
 
 Root opened the source-writer window after reporting the full npm test pass and
