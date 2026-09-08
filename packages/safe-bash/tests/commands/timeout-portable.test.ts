@@ -18,7 +18,6 @@ test("timeout scheduler browser graph has no Node clock or timer dependency", as
   const delays: number[] = [];
   const cleared: number[] = [];
   const performance = { now() { assert.equal(this, performance); clockCalls++; return now; } };
-  let globalObject: unknown;
   const sandbox = createContext({
     AbortController, performance,
     setTimeout(this: unknown, callback: () => void, milliseconds: number) {
@@ -33,7 +32,7 @@ test("timeout scheduler browser graph has no Node clock or timer dependency", as
       active.delete(handle);
     },
   });
-  globalObject = runInContext("globalThis", sandbox);
+  const globalObject: unknown = runInContext("globalThis", sandbox);
   const scheduler = runInContext(`(function(){ const module = { exports: {} }; ${result.outputFiles![0]!.text}; return module.exports; })()`, sandbox) as typeof import("../../src/commands/timeout/scheduler.js");
   const deadline = scheduler.createDeadline(scheduler.defaultSchedulerBinding, 25, 10);
   deadline.start();
