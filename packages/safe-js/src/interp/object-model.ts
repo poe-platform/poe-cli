@@ -32,6 +32,7 @@ import {
 
 const guestClosures = new WeakSet<object>();
 const functionProperties = new WeakMap<object, SandboxObject>();
+export const hostFunctionPropertyTables = new WeakSet<object>();
 const functionPropertyRevisions = new WeakMap<object, {
   revision: number;
   measuredRevision?: number;
@@ -87,16 +88,22 @@ export function intrinsicFunctionDataDescriptors(properties: SandboxObject): Arr
   return descriptors;
 }
 
-export function materializeFunctionProperties(closure: SandboxClosure): SandboxObject {
-  if (!isGuestClosure(closure)) throw new TypeError("Host function properties are read only.");
+export function materializeFunctionProperties(closure: SandboxClosure, initialProperties?: SandboxObject): SandboxObject {
   const existing = functionProperties.get(closure);
   if (existing !== undefined) return existing;
+  if (initialProperties !== undefined) {
+    // Restored graph roots may already alias this exact property table.
+    descriptorObjects.add(initialProperties);
+    if (!isGuestClosure(closure)) hostFunctionPropertyTables.add(initialProperties);
+    functionProperties.set(closure, initialProperties);
+    return initialProperties;
+  }
   const properties = Object.create(null) as SandboxObject;
   Object.defineProperties(properties, {
     length: { value: closure.length ?? 0, configurable: true },
     name: { value: closure.name ?? "", configurable: true }
   });
-  if (closure.construct !== undefined && closure.boundTarget === undefined) {
+  if (isGuestClosure(closure) && closure.construct !== undefined && closure.boundTarget === undefined) {
     const prototype = Object.create(null) as SandboxObject;
     Object.defineProperty(prototype, "constructor", {
       value: closure,
@@ -108,6 +115,7 @@ export function materializeFunctionProperties(closure: SandboxClosure): SandboxO
   }
   const tracked = trackPropertyTable(properties);
   descriptorObjects.add(tracked);
+  if (!isGuestClosure(closure)) hostFunctionPropertyTables.add(tracked);
   functionProperties.set(closure, tracked);
   return tracked;
 }
@@ -390,7 +398,7 @@ export function getSandboxPrototype(value: object, budget?: Budget): object | nu
     const prototype = errorPrototypes.get(budget)?.get(errorType);
     if (prototype !== undefined) return prototype;
   }
-  if (budget !== undefined && isGuestClosure(value) && runResources.getStore()?.functionSourceText !== false)
+  if (budget !== undefined && isSandboxClosure(value) && runResources.getStore()?.functionSourceText !== false)
     return functionPrototypes.get(budget) ?? null;
   if (budget !== undefined && Array.isArray(value)) return arrayPrototypes.get(budget) ?? null;
   if (budget !== undefined && isSandboxDate(value)) return datePrototypes.get(budget) ?? null;
@@ -420,11 +428,6 @@ export function getSandboxPropertyDescriptor(
   key: PropertyKey,
   budget?: Budget
 ): PropertyDescriptor | undefined {
-  const hostProperties = isSandboxClosure(value) ? value.properties : undefined;
-  if (isSandboxClosure(value) && !isGuestClosure(value))
-    return hostProperties === undefined
-      ? undefined
-      : Object.getOwnPropertyDescriptor(hostProperties, key);
   let current = value;
   let depth = 0;
   while (
@@ -436,11 +439,11 @@ export function getSandboxPropertyDescriptor(
     // inside another object's prototype chain and the index is invalid.
     if (isNumericTypedArray(current) && typeof key !== "symbol" && isTypedArrayIndex(String(key)))
       return Object.getOwnPropertyDescriptor(current, key);
-    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isGuestClosure(current)
+    const properties = isSandboxGenerator(current) ? getGeneratorProperties(current) : isSandboxPromise(current) ? getPromiseProperties(current) : isSandboxClosure(current)
       ? key === "prototype" && current.construct !== undefined && current.boundTarget === undefined
         ? materializeFunctionProperties(current) : getGuestFunctionProperties(current)
       : isSandboxRegex(current) ? getRegexProperties(current) : isSandboxMap(current) || isSandboxSet(current) ? getCollectionProperties(current) : current;
-    if (properties === undefined && isGuestClosure(current) && (key === "name" || key === "length"))
+    if (properties === undefined && isSandboxClosure(current) && (key === "name" || key === "length"))
       return { value: key === "name" ? current.name ?? "" : current.length ?? 0,
         writable: false, enumerable: false, configurable: true };
     const descriptor =
@@ -473,14 +476,9 @@ export function getSandboxDataProperty(
       if (descriptor !== undefined) return descriptor.value;
     }
     if (isSandboxMap(current) || isSandboxSet(current)) return Object.getOwnPropertyDescriptor(getCollectionProperties(current), key)?.value;
-    if (isGuestClosure(current)) {
+    if (isSandboxClosure(current)) {
       const entry = getGuestFunctionProperty(current, key);
       if (entry !== undefined || Object.hasOwn(current.properties ?? {}, key)) return entry;
-    } else if (isSandboxClosure(current)) {
-      const properties = current.properties;
-      return properties !== undefined && Object.hasOwn(properties, key)
-        ? properties[key]
-        : undefined;
     }
     if (
       isSandboxMap(current) ||
@@ -522,7 +520,7 @@ export function setSandboxPrototype(
     if (prototype === null) storePrototype(value, null);
     return true;
   }
-  if (!Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
+  if (!Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value)) {
     if (!throwOnFailure) return false;
     throw new TypeError("Cannot change the prototype of a non-extensible object.");
   }
@@ -543,7 +541,7 @@ function isPrototypeRecord(value: object): boolean {
   if (isSandboxDataView(value)) return true;
   if (isSandboxArrayBuffer(value)) return true;
   if (isNumericTypedArray(value)) return true;
-  if (isGuestClosure(value)) return true;
+  if (isSandboxClosure(value)) return true;
   if (isGuestHostObject(value)) return false;
   if (
     isSandboxClosure(value) ||

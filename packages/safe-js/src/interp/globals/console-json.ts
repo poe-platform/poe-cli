@@ -3,7 +3,8 @@ import { retainValues } from "../resources.js";
 import { parseJsonWithReviver } from "./json-parse.js";
 import { createRawJson, isRawJson } from "../raw-json.js";
 import { readPropertyDescriptor } from "../accessors.js";
-import { createIntrinsicObject, getBoxedPrototype, getSandboxPropertyDescriptor, registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
+import { createIntrinsicObject, getBoxedPrototype, getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
+import { hostFunctionMetadata } from "../host-function-metadata.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { isSandboxDate } from "../date.js";
 import { dateToJSON } from "./date.js";
@@ -92,7 +93,6 @@ export function createConsoleJsonGlobals(
         ? {
             error: createSandboxClosure({
               sandbox: true,
-              properties: {},
               call: async (args, context) => {
                 const operation = options.budget.acquireCompileOwner(
                   false,
@@ -111,7 +111,6 @@ export function createConsoleJsonGlobals(
             }),
             log: createSandboxClosure({
               sandbox: true,
-              properties: {},
               call: async (args, context) => {
                 const operation = options.budget.acquireCompileOwner(
                   false,
@@ -148,6 +147,10 @@ export function createConsoleJsonGlobals(
             }
           )
   };
+  for (const method of Object.values(globals.console)) {
+    const properties = materializeFunctionProperties(method as SandboxClosure);
+    hostFunctionMetadata.set(properties, new Map(Object.entries(Object.getOwnPropertyDescriptors(properties))));
+  }
   const jsonMethods = Object.entries(globals.JSON);
   for (const [name] of jsonMethods) {
     Object.defineProperty(globals.JSON, name, { enumerable: false });

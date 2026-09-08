@@ -1,5 +1,6 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
 import { scopeDataRoots } from "./scope-data-roots.js";
+import { hostFunctionMetadata } from "./host-function-metadata.js";
 import { NativeSuppressedError } from "../error/native-suppressed-error.js";
 import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
@@ -54,7 +55,7 @@ import {
 import { parseRegex, type RegexPattern } from "./regex/parse.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { sandboxErrorTypes } from "../error/shape.js";
-import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, intrinsicFunctionDataDescriptors, isGuestClosure, isIntrinsicFunction, isTrackedIntrinsicObject, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
+import { getGuestFunctionProperties, materializeFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, intrinsicFunctionDataDescriptors, isIntrinsicFunction, isTrackedIntrinsicObject, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
 import type { FunctionSource } from "../parse/function-source.js";
 import {
   copySandboxArgumentProperties,
@@ -281,18 +282,14 @@ export function createSandboxClosure(input: {
     });
   }
 
-  if (input.guest === true) {
-    registerGuestClosure(closure);
-    Object.defineProperty(closure, "properties", {
-      get: () => getGuestFunctionProperties(closure)
-    });
-  } else if (input.properties !== undefined) {
-    Object.defineProperty(closure, "properties", {
-      enumerable: false,
-      value: Object.freeze(
-        typeof input.properties === "function" ? input.properties(closure) : input.properties
-      )
-    });
+  if (input.guest === true) registerGuestClosure(closure);
+  Object.defineProperty(closure, "properties", {
+    get: () => getGuestFunctionProperties(closure)
+  });
+  if (input.guest !== true && input.properties !== undefined) {
+    const properties = typeof input.properties === "function" ? input.properties(closure) : input.properties;
+    const target = materializeFunctionProperties(closure, properties);
+    if (!Object.isExtensible(properties)) Object.preventExtensions(target);
   }
 
   if (input.retainedValues !== undefined) {
@@ -318,12 +315,11 @@ export function ownEnumerableSandboxEntries(
   }
   if (value === null || value === undefined) throw new TypeError("Cannot convert undefined or null to object.");
   let entries: Array<[string, SandboxValue]>;
-  if (isGuestClosure(value)) entries = Object.entries(value.properties ?? {});
+  if (isSandboxClosure(value)) entries = Object.entries(value.properties ?? {});
   else if (isSandboxRegex(value)) entries = Object.entries(getRegexProperties(value));
   else if (isSandboxPromise(value)) entries = Object.entries(getPromiseProperties(value));
   else if (isSandboxGenerator(value)) entries = Object.entries(getGeneratorProperties(value));
   else if (isSandboxMap(value) || isSandboxSet(value)) entries = Object.entries(getCollectionProperties(value));
-  else if (isSandboxClosure(value) || isSandboxGenerator(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxPromise(value) || isSandboxRegex(value)) return [];
   else entries = Object.entries(Object(value)) as Array<[string, SandboxValue]>;
   return excludedKeys === undefined ? entries : entries.filter(([key]) => !excludedKeys.has(key));
 }
@@ -350,12 +346,11 @@ export function ownEnumerableSandboxKeys(value: SandboxValue, includeSymbols = f
   }
   if (isGuestHostObject(value)) return getHostObjectKeys(value);
   if (value === null || value === undefined) throw new TypeError("Cannot convert undefined or null to object.");
-  if (isGuestClosure(value)) return Object.keys(value.properties ?? {});
+  if (isSandboxClosure(value)) return Object.keys(value.properties ?? {});
   if (isSandboxPromise(value)) return Object.keys(getPromiseProperties(value));
   if (isSandboxGenerator(value)) return Object.keys(getGeneratorProperties(value));
   if (isSandboxRegex(value)) return Object.keys(getRegexProperties(value));
   if (isSandboxMap(value) || isSandboxSet(value)) return Object.keys(getCollectionProperties(value));
-  if (isSandboxClosure(value) || isSandboxGenerator(value) || isSandboxMap(value) || isSandboxSet(value) || isSandboxPromise(value) || isSandboxRegex(value)) return [];
   return Object.keys(Object(value));
 }
 
@@ -984,6 +979,7 @@ export function measureSandboxData(
     const proxyDescriptors = proxyKeys?.map(key => Object.getOwnPropertyDescriptor(value,key));
     const includeNonEnumerable = isSandboxDate(value) || isSandboxArrayBuffer(value) || isSandboxDataView(value) || sandboxErrorTypes.has(value) || hasManagedDescriptors(value);
     const keys = proxyKeys ?? (includeNonEnumerable ? Object.getOwnPropertyNames(value) : Object.keys(value));
+    const metadata = hostFunctionMetadata.get(value);
     const retained: unknown[] = [];
     for (let index = 0; index < keys.length; index++) {
       const key = keys[index]!;
@@ -991,6 +987,10 @@ export function measureSandboxData(
         ? Object.getOwnPropertyDescriptor(value,key) : proxyDescriptors[index];
       if (descriptor === undefined) continue;
       if (!descriptor.enumerable && !includeNonEnumerable) continue;
+      const initial = metadata?.get(key);
+      if (initial !== undefined && "value" in descriptor && Object.is(initial.value, descriptor.value) &&
+          initial.enumerable === descriptor.enumerable && initial.configurable === descriptor.configurable &&
+          initial.writable === descriptor.writable) continue;
       usage += 1 + key.length;
       if ("value" in descriptor) retained.push(descriptor.value);
       else for (const closure of retainedAccessorClosures(descriptor)) retained.push(closure);

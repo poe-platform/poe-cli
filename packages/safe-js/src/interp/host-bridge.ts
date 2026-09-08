@@ -1,5 +1,6 @@
 import { types } from "node:util";
 import { moduleFunctionOrigins } from "./module-function-origin.js";
+import { hostFunctionMetadata } from "./host-function-metadata.js";
 import { normalizeClosureResult } from "./async.js";
 import { copyNativeDate } from "./date.js";
 import { boxedDataProperties, createSandboxBox, nativeBoxedValue } from "./boxed.js";
@@ -170,7 +171,8 @@ function wrapCallerInjectedFunction(
 ): SandboxValue {
   const existing = state.seen.get(value) ?? options.hostCalls?.nativeClosures.get(value);
   if (existing !== undefined) return existing;
-  const bindingName = name === "default" && value.name.length > 0 ? value.name : name;
+  const nativeName = name === "default" ? Object.getOwnPropertyDescriptor(value, "name")?.value : undefined;
+  const bindingName = typeof nativeName === "string" && nativeName.length > 0 ? nativeName : name;
   const callable = value as (...args: readonly unknown[]) => unknown;
 
   return createSandboxClosure({
@@ -1339,6 +1341,7 @@ function copyFunctionProperties(
   path: string
 ): SandboxObject | undefined {
   const properties: SandboxObject = {};
+  const metadata = new Map<string, PropertyDescriptor>();
 
   for (const key of Object.getOwnPropertyNames(callable)) {
     const descriptor = Object.getOwnPropertyDescriptor(callable, key);
@@ -1346,6 +1349,13 @@ function copyFunctionProperties(
       continue;
     }
     if ("get" in descriptor || "set" in descriptor) {
+      continue;
+    }
+
+    if ((key === "name" && typeof descriptor.value === "string") ||
+        (key === "length" && typeof descriptor.value === "number")) {
+      Object.defineProperty(properties, key, descriptor);
+      metadata.set(key, descriptor);
       continue;
     }
 
@@ -1362,7 +1372,8 @@ function copyFunctionProperties(
     );
   }
 
-  return Object.keys(properties).length > 0 ? properties : undefined;
+  if (metadata.size > 0) hostFunctionMetadata.set(properties, metadata);
+  return Reflect.ownKeys(properties).length > 0 ? properties : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

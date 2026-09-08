@@ -26,13 +26,14 @@ describe("Symbol intrinsic descriptors", () => {
     expect([...budget.retainedValues()]).toEqual([]);
   });
 
-  it("does not make host capability properties mutable", async () => {
+  it("allows guest capability properties without replacing the implementation", async () => {
     const capability = createSandboxClosure({ call: () => undefined, properties: { safe: 7 } });
     expect(
-      await run("try{capability.safe=9}catch(error){return [error.name,capability.safe]}", {
+      await run("capability.safe=9;capability.call=7;return [capability.safe,capability.call,capability()]", {
         bindings: { capability }
       })
-    ).toMatchObject({ ok: true, returnValue: ["TypeError", 7] });
+    ).toMatchObject({ ok: true, returnValue: [9, 7, undefined] });
+    expect(Object.isFrozen(capability)).toBe(true);
   });
   it.each([
     "length",

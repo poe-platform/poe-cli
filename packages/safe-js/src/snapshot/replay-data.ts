@@ -1,5 +1,6 @@
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
 import { moduleFunctionOrigins } from "../interp/module-function-origin.js";
+import { hostFunctionMetadata } from "../interp/host-function-metadata.js";
 import { createModuleNamespace, isSandboxModuleNamespace } from "../interp/module-namespace.js";
 import { serializeCollectionProperties } from "./collection-properties.js";
 import { restorePropertyDescriptors, type PropertyDescriptorData } from "./property-descriptors.js";
@@ -10,7 +11,7 @@ import { wellKnownSymbols } from "../interp/symbols.js";
 import { symbolData, serializeSymbolProperties, type SerializedSymbol, type SerializedSymbolProperty } from "./symbols.js";
 import { isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState, restoreSandboxRegExpIterator } from "../interp/regexp-iterator.js";
-import { hasGuestObjectState, hasNullObjectPrototype, setSandboxPrototype } from "../interp/object-model.js";
+import { hasExplicitSandboxPrototype, hasGuestObjectState, hasNullObjectPrototype, hostFunctionPropertyTables, isGuestClosure, setSandboxPrototype } from "../interp/object-model.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
 import { typedArrayDataProperties, typedArrayStorage, isNumericTypedArray } from "../interp/typed-array.js";
 import { decodeTypedArrayStorage, encodeTypedArrayLayout, type TypedArrayData } from "./typed-array.js";
@@ -115,7 +116,7 @@ export function encodeReplayData(
   if (context.failed) throw new TypeError("Cannot extend an incomplete graph.");
   const { nodes, seen, symbols, float32Buffers } = context;
   const initialNodeCount = nodes.length;
-  const encode = (entry: SandboxValue, depth: number, path: readonly ReplayPathSegment[]): Atom => {
+  const encode = (entry: SandboxValue, depth: number, path: readonly ReplayPathSegment[], capabilityProperties = false): Atom => {
     if (depth > MAX_DATA_DEPTH) throw new TypeError("Replay data exceeds the nesting limit.");
     if (entry === null || typeof entry === "boolean" || typeof entry === "string") return entry;
     if (entry === undefined) return { tag: "undefined" };
@@ -142,7 +143,8 @@ export function encodeReplayData(
       const id = options.identifyPromise?.(entry, path);
       if (typeof id === "string" && id.length > 0) return { tag: "promise-capability", id };
     }
-    if (typeof entry === "object" && entry !== null && hasGuestObjectState(entry) && !isSandboxModuleNamespace(entry)) {
+    if (typeof entry === "object" && entry !== null && hasGuestObjectState(entry) && !isSandboxModuleNamespace(entry) &&
+        !(!hasExplicitSandboxPrototype(entry) && (capabilityProperties || hostFunctionPropertyTables.has(entry) || (isSandboxClosure(entry) && !isGuestClosure(entry))))) {
       throw new MissingReplayCapabilityError("Guest function properties and prototype links cannot be serialized.");
     }
     let capabilityId: string | undefined;
@@ -170,7 +172,7 @@ export function encodeReplayData(
       nodes[id] = {
         kind: "capability",
         id: capabilityId!,
-        properties: child(entry.properties, "properties")
+        properties: encode(entry.properties, depth + 1, [...path, "properties"], true)
       };
     } else if (isRawJson(entry)) {
       nodes[id] = { kind: "raw-json", text: entry.rawJSON };
@@ -446,6 +448,8 @@ export function decodeReplayData(
             return properties as Record<string, SandboxValue>;
           }
         });
+        const metadata = capability.properties === undefined ? undefined : hostFunctionMetadata.get(capability.properties);
+        if (copy.properties !== undefined && metadata !== undefined) hostFunctionMetadata.set(copy.properties, metadata);
         options.onCapabilityRestored?.(capability, copy);
         const moduleFunction = moduleFunctionOrigins.get(capability);
         if (moduleFunction !== undefined) moduleFunctionOrigins.set(copy, moduleFunction);

@@ -5,7 +5,7 @@ import { hasCustomRegexProperties, serializeRegexProperties, type RegexPropertyD
 import { ownSerializableSymbolKeys, serializeSymbol, serializeSymbolProperties, type SerializedSymbol, type SerializedSymbolProperty } from "./symbols.js";
 import { collectionIteratorState, isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod, type SandboxCollectionIterator } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState, type SandboxRegExpIterator } from "../interp/regexp-iterator.js";
-import { hasGuestObjectState, hasNullObjectPrototype } from "../interp/object-model.js";
+import { hasGuestObjectState, hasNullObjectPrototype, isGuestClosure } from "../interp/object-model.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { assertSnapshotDataDepth, assertSnapshotGraphDepth } from "../graph-depth.js";
 import { captureGuestHeapNode, type GuestHeapNode, type GuestObjectState, type PrivateElementData } from "./guest-heap.js";
@@ -23,6 +23,7 @@ import { serializeDate, type SerializedDate } from "./date-properties.js";
 import { boxedDataProperties, isSandboxBox, type SandboxBox } from "../interp/boxed.js";
 import { encodeBoxedData, type BoxedData } from "./boxed.js";
 import {
+  isSandboxClosure,
   isSandboxArguments,
   isSandboxGenerator,
   isSandboxMap,
@@ -351,6 +352,7 @@ function serializeValue(
     }
     return { kind: "ref", id };
   }
+  if (isSandboxClosure(value) && !isGuestClosure(value)) throw new TypeError(`Cannot serialize host reference at ${path}.`);
   if (typeof value === "object" && value !== null && hasGuestObjectState(value) && !isSandboxMap(value) && !isSandboxSet(value) && !isNumericTypedArray(value) && !isSandboxArrayBuffer(value) && !isSandboxDataView(value)) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }

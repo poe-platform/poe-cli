@@ -45,14 +45,10 @@ export function getFunctionMember(
   let current: object | null = target;
   let depth = 0;
   while (current !== null) {
-    if (isGuestClosure(current)) {
+    if (isSandboxClosure(current)) {
       const value = getGuestFunctionProperty(current, String(property));
       if (value !== undefined || Object.hasOwn(current.properties ?? {}, String(property)))
         return value;
-    } else if (isSandboxClosure(current)) {
-      if (current.properties !== undefined && Object.hasOwn(current.properties, String(property)))
-        return current.properties[String(property)];
-      if (property === "length") return current.length;
     } else if (Object.hasOwn(current, String(property))) {
       return (current as Record<string, SandboxValue>)[String(property)];
     }

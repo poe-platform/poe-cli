@@ -2147,8 +2147,8 @@ async function evaluateForInStatement(
 }
 
 function forInObject(value: SandboxValue): object | undefined {
-  if (isGuestClosure(value)) return value;
-  if (value === null || value === undefined || isSandboxClosure(value)) {
+  if (isSandboxClosure(value)) return value;
+  if (value === null || value === undefined) {
     return undefined;
   }
   if (
@@ -4003,7 +4003,7 @@ function toString(value: InterpreterValue): string {
 
 function isIndexableSandboxValue(value: SandboxValue): value is SandboxArray | SandboxObject {
   if (isSandboxDate(value)) return true;
-  return Array.isArray(value) || isPlainSandboxObject(value) || isGuestClosure(value);
+  return Array.isArray(value) || isPlainSandboxObject(value) || isSandboxClosure(value);
 }
 
 function appendArrayValues(target: SandboxValue[], values: readonly SandboxValue[]): void {
@@ -4084,7 +4084,7 @@ export function setSandboxProperty(
     if (descriptor !== undefined && !("value" in descriptor))
       return writePropertyDescriptor(descriptor, target, value, context);
   }
-  if (isGuestClosure(target)) target = materializeFunctionProperties(target);
+  if (isSandboxClosure(target)) target = materializeFunctionProperties(target);
   if (isSandboxPromise(target)) target = getPromiseProperties(target);
   if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
   if (isSandboxMap(target) || isSandboxSet(target)) target = getCollectionProperties(target);
@@ -4176,7 +4176,7 @@ export function deleteSandboxProperty(
   property: PropertyKey
 ): boolean {
   if (isGuestHostObject(target)) return deleteHostObjectMember(target, String(property));
-  if (isGuestClosure(target)) target = materializeFunctionProperties(target);
+  if (isSandboxClosure(target)) target = materializeFunctionProperties(target);
   if (isSandboxRegex(target)) target = getRegexProperties(target);
   if (isSandboxPromise(target)) target = getPromiseProperties(target);
   if (isSandboxGenerator(target)) target = getGeneratorProperties(target);
@@ -4497,12 +4497,6 @@ async function evaluateObjectSpread(
     return { ok: true, value: entries };
   }
 
-  if (isSandboxClosure(value.value) && !isGuestClosure(value.value)) {
-    throw new TypeError(
-      `Cannot spread ${describeObjectSpreadValue(value.value)} into object literal.`
-    );
-  }
-
   const keys = ownEnumerableSandboxKeys(value.value, true);
   context.budget.allocateArrayLength(keys.length);
   const entries: Array<readonly [PropertyKey, SandboxValue]> = [];
@@ -4516,26 +4510,6 @@ async function evaluateObjectSpread(
   } finally {
     release();
   }
-}
-
-function describeObjectSpreadValue(value: SandboxValue): string {
-  if (value === null) {
-    return "null";
-  }
-
-  if (value === undefined) {
-    return "undefined";
-  }
-
-  if (isSandboxClosure(value)) {
-    return "function";
-  }
-
-  if (isSandboxPromise(value)) {
-    return "promise";
-  }
-
-  return typeof value;
 }
 
 function defineSandboxProperty(

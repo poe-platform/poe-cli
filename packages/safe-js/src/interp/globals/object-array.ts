@@ -31,7 +31,6 @@ import {
   getBoxedPrototype,
   getSandboxPrototype,
   installArrayPrototype,
-  isGuestClosure,
   markDescriptorObject,
   materializeFunctionProperties,
   registerIntrinsicObject,
@@ -259,7 +258,7 @@ export function createObjectArrayGlobals(options: {
           call: ([value]) => {
             if (isGuestHostObject(value))
               throw new TypeError("Live host objects cannot be made non-extensible.");
-            Object.preventExtensions(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
+            Object.preventExtensions(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
             return value;
           },
           name: "preventExtensions"
@@ -267,7 +266,7 @@ export function createObjectArrayGlobals(options: {
         isExtensible: createSandboxClosure({
           sandbox: true,
           call: ([value]) =>
-            Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
+            Object.isExtensible(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
           name: "isExtensible"
         }),
         seal: createSandboxClosure({
@@ -275,7 +274,7 @@ export function createObjectArrayGlobals(options: {
           call: ([value]) => {
             if (isGuestHostObject(value))
               throw new TypeError("Live host objects cannot be sealed.");
-            Object.seal(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
+            Object.seal(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
             return value;
           },
           name: "seal"
@@ -283,7 +282,7 @@ export function createObjectArrayGlobals(options: {
         isSealed: createSandboxClosure({
           sandbox: true,
           call: ([value]) =>
-            Object.isSealed(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
+            Object.isSealed(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
           name: "isSealed"
         }),
         freeze: createSandboxClosure({
@@ -292,7 +291,7 @@ export function createObjectArrayGlobals(options: {
             if (isGuestHostObject(value))
               throw new TypeError("Live host objects cannot be frozen.");
             if (typeof value === "object" && value !== null) {
-            Object.freeze(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
+            Object.freeze(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value);
             }
 
             return value;
@@ -302,7 +301,7 @@ export function createObjectArrayGlobals(options: {
         isFrozen: createSandboxClosure({
           sandbox: true,
           call: ([value]) =>
-            Object.isFrozen(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isGuestClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
+            Object.isFrozen(isSandboxGenerator(value) ? getGeneratorProperties(value) : isSandboxPromise(value) ? getPromiseProperties(value) : isSandboxClosure(value) ? materializeFunctionProperties(value) : isSandboxRegex(value) ? getRegexProperties(value) : isSandboxMap(value) || isSandboxSet(value) ? getCollectionProperties(value) : value),
           name: "isFrozen"
         }),
         assign: createSandboxClosure({
@@ -677,7 +676,7 @@ function reflectionProperties(value: SandboxValue): SandboxObject | SandboxArray
   return objectProperties(value);
 }
 
-export function objectProperties(value: SandboxValue, mutable = false): SandboxObject | SandboxArray {
+export function objectProperties(value: SandboxValue, _mutable = false): SandboxObject | SandboxArray {
   if (isSandboxGenerator(value)) return getGeneratorProperties(value);
   if (isSandboxPromise(value)) return getPromiseProperties(value);
   if (isSandboxMap(value) || isSandboxSet(value)) return getCollectionProperties(value);
@@ -687,11 +686,7 @@ export function objectProperties(value: SandboxValue, mutable = false): SandboxO
   }
   if (isGuestHostObject(value))
     throw new TypeError("Live host object descriptors are not supported.");
-  if (isGuestClosure(value)) return materializeFunctionProperties(value);
-  if (isSandboxClosure(value)) {
-    if (mutable) throw new TypeError("Host function properties are read only.");
-    return value.properties ?? (Object.create(null) as SandboxObject);
-  }
+  if (isSandboxClosure(value)) return materializeFunctionProperties(value);
   if (!isAssignableSandboxTarget(value))
     throw new TypeError("Expected a sandbox object or function.");
   return value;

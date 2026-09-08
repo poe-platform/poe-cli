@@ -47,6 +47,10 @@ it("keeps Date construction independent of the mutable public Date.now property"
   expect(result.returnValue).toEqual([42, 7]);
 });
 
-it("does not expose host callback properties as mutable guest properties", async () => {
-  await expect(run("Object.defineProperty(read,'label',{value:42});", { bindings: { read: () => 7 } })).rejects.toThrow("read only");
+it("keeps guest callback properties separate from the native callback", async () => {
+  const read = () => 7;
+  expect(await run("Object.defineProperty(read,'label',{value:42});return [read.label,read()];", {
+    bindings: { read }
+  })).toMatchObject({ ok: true, returnValue: [42, 7] });
+  expect(Object.hasOwn(read, "label")).toBe(false);
 });

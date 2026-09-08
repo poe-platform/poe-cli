@@ -12,6 +12,7 @@ import { resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { allocateGuestScopes, hydrateGuestScopes } from "./scope-frames.js";
 import { createModuleEnvironment, resolveModuleFunction, type ModuleEnvironment } from "../modules/registry.js";
 import { moduleFunctionOrigins } from "../interp/module-function-origin.js";
+import { hostFunctionMetadata } from "../interp/host-function-metadata.js";
 import { assertResourceScopeState } from "../interp/resource-management.js";
 import { asyncFunctionDrivers, bindAsyncFunctionSignal, createAsyncFunctionHandler, type AsyncFunctionDriver } from "../interp/async-function-driver.js";
 import { asyncGeneratorDrivers, asyncGeneratorRequestOwners, bindAsyncGeneratorSignal, createAsyncGeneratorHandler, type AsyncGeneratorDriver } from "../interp/async-generator-driver.js";
@@ -1256,6 +1257,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
           const properties: Record<string, SandboxValue> = {};
           restorePropertyDescriptors(properties, serialized.state.properties,
             entry => deserializeValue(entry as SerializedSnapshotValue, state));
+          const metadata = capability.properties === undefined ? undefined : hostFunctionMetadata.get(capability.properties);
+          if (metadata !== undefined) hostFunctionMetadata.set(properties, metadata);
           return properties;
         }
       });

@@ -17,16 +17,16 @@ describe("supported guest prototype access", () => {
       )
     ).toMatchObject({ ok: true, returnValue: [7, true, 9] });
   });
-  it("keeps native host function prototypes hidden for literal and computed keys", async () => {
+  it("exposes only the sandbox function prototype for native capabilities", async () => {
     const host = () => 7;
     expect(
       await run(
-        "const key='constructor';return [host.constructor,host.prototype,host.__proto__,host[key],Object.getPrototypeOf(host),host.bind(null).constructor,host.call.constructor];",
+        "const key='constructor';return [host.constructor,host.prototype,host.__proto__,host[key],Object.getPrototypeOf(host)===Object.getPrototypeOf(function(){}),host.bind(null).constructor,host.call.constructor];",
         { bindings: { host } }
       )
     ).toMatchObject({
       ok: true,
-      returnValue: [undefined, undefined, undefined, undefined, null, undefined, undefined]
+      returnValue: [undefined, undefined, undefined, undefined, true, undefined, undefined]
     });
   });
 });

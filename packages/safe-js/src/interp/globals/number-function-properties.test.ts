@@ -42,7 +42,9 @@ it("still charges guest replacements of builtin metadata", () => {
   expect(measureSandboxData(budget.retainedValues())).toBeGreaterThanOrEqual(1000);
 });
 
-it("does not make other host closures guest-mutable", () => {
+it("keeps mutable host properties separate from the implementation", () => {
   const capability = createSandboxClosure({ sandbox: true, call: () => 3 });
-  expect(() => materializeFunctionProperties(capability)).toThrow("Host function properties are read only.");
+  materializeFunctionProperties(capability).call = 7;
+  expect(capability.call([])).toBe(3);
+  expect(Object.isFrozen(capability)).toBe(true);
 });

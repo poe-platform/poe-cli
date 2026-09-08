@@ -177,16 +177,18 @@ describe("sandbox Object intrinsic", () => {
     expect([...budget.retainedValues()]).toEqual([]);
   });
 
-  it("keeps native capabilities read-only and implementation fields private", async () => {
+  it("isolates guest capability properties and keeps implementation fields private", async () => {
     expect(
       await run(
         "return [Object.keys(host), Object.prototype.toString.call(host), Object.hasOwn(host, 'call'), Object.hasOwn(host, 'kind')];",
         { bindings: { host: () => 1 } }
       )
     ).toMatchObject({ returnValue: [[], "[object Function]", false, false] });
-    await expect(
-      run("Object.defineProperty(host, 'x', { value: 1 });", { bindings: { host: () => 1 } })
-    ).rejects.toMatchObject({ name: "TypeError" });
+    const host = () => 1;
+    expect(await run("Object.defineProperty(host, 'x', { value: 2 }); return [host.x, host()];", {
+      bindings: { host }
+    })).toMatchObject({ returnValue: [2, 1] });
+    expect(Object.hasOwn(host, "x")).toBe(false);
   });
 
   it("keeps the intrinsic root prototype immutable", async () => {

@@ -20,11 +20,12 @@ describe("createConsoleJsonGlobals", () => {
         const plainFunction = getClosure(getProperty(plain.console, name));
         const journaledFunction = getClosure(getProperty(journaled.console, name));
         expect(plainFunction.properties).toBeDefined();
+        expect(plainFunction.properties).toMatchObject({ name, length: 0 });
         expect(Object.getOwnPropertyDescriptors(plainFunction.properties!)).toEqual(
           Object.getOwnPropertyDescriptors(journaledFunction.properties!)
         );
-        expect(Object.isExtensible(plainFunction.properties)).toBe(false);
-        expect(Object.isExtensible(journaledFunction.properties)).toBe(false);
+        expect(Object.isExtensible(plainFunction.properties)).toBe(true);
+        expect(Object.isExtensible(journaledFunction.properties)).toBe(true);
       }
     } finally { hostCalls.dispose(); }
   });

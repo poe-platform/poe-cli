@@ -2,9 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import { hashSource } from "./parse/hash.js";
 import { restore } from "./restore.js";
+import { run } from "./run.js";
 import { SnapshotValidationError } from "./snapshot/validation.js";
 
 describe("restore", () => {
+  it("does not transfer runtime snapshot trust to a copied envelope", async () => {
+    const source = "host.extra=7;return host()";
+    const result = await run(source, { bindings: { host: () => 1 } });
+    expect(restore(result.snapshot, { source })).toBe(result.snapshot);
+    expect(() => restore({ ...result.snapshot }, { source })).toThrow("cannot be restored");
+  });
+
+  it("rejects an execution-semantics accessor without evaluating it", () => {
+    let reads = 0;
+    const snapshot = Object.defineProperty({ version: 1, sourceHash: hashSource("1") }, "executionSemantics", {
+      enumerable: true,
+      get() { reads++; throw new Error("snapshot getter ran"); }
+    });
+    expect(() => restore(snapshot, { source: "1" })).toThrow("must be a data property");
+    expect(reads).toBe(0);
+  });
+
   it("accepts snapshots whose source hash matches the current source", () => {
     const snapshot = {
       version: 1,

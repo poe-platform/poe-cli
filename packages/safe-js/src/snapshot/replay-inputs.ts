@@ -121,6 +121,10 @@ export function prepareReplayInputs<T extends ReplayInputs | ModuleReplayInputs>
         value = [...value.values][index];
         continue;
       }
+      if (key === "properties" && isSandboxClosure(value)) {
+        value = value.properties;
+        continue;
+      }
       if (value === null || typeof value !== "object") return undefined;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) return undefined;

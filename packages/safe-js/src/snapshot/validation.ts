@@ -5,14 +5,15 @@ import { wellKnownSymbols } from "../interp/symbols.js";
 import { types } from "node:util";
 import type { Budget } from "../interp/budget.js";
 import type { ParseResult } from "../parse/parser.js";
-import { DUMP_FORMAT_VERSION } from "./dump-format.js";
+import { DUMP_FORMAT_VERSION, EXECUTION_SEMANTICS, inMemoryRunSnapshots } from "./dump-format.js";
 import { MAX_DATA_DEPTH } from "../graph-depth.js";
 import { validateTypedArrayStorage } from "./typed-array.js";
 import { validateArrayBufferStorage } from "./array-buffer.js";
 import { validateDataViewStorage } from "./data-view.js";
 import { restoreDateTime } from "../interp/date.js";
 import { validateBoxedProperties } from "./boxed.js";
-import { hasGuestObjectState } from "../interp/object-model.js";
+import { hasGuestObjectState, isGuestClosure } from "../interp/object-model.js";
+import { isSandboxClosure } from "../interp/values.js";
 import { validateGuestHeapNode, validateGuestHeapGraphs } from "./guest-heap-validation.js";
 import { validateGuestFunctionAst } from "./guest-ast-validation.js";
 import { validateTemplateObjects } from "./template-validation.js";
@@ -78,6 +79,7 @@ type ValidationState = {
   limits: ValidationLimits;
   validateTaggedPayloads: boolean;
   dataPropertiesOnly?: boolean;
+  allowHostFunctionState?: boolean;
 };
 
 export function validateSnapshotData(value: unknown): void {
@@ -93,7 +95,8 @@ export function validateSnapshotData(value: unknown): void {
 }
 
 export function validateDumpEnvelope(
-  snapshot: unknown
+  snapshot: unknown,
+  options: { resume?: boolean } = {}
 ): asserts snapshot is Record<string, unknown> {
   const limits = defaultLimits();
   const root = requireRecord(snapshot, "$");
@@ -107,7 +110,23 @@ export function validateDumpEnvelope(
     const reason = requireNonEmptyString(replayError.value, "$.replayError", limits);
     fail("invalidState", "$.replayError", `snapshot is not replayable: ${reason}`);
   }
+  const semanticsDescriptor = Object.getOwnPropertyDescriptor(root, "executionSemantics");
+  if (semanticsDescriptor !== undefined && !("value" in semanticsDescriptor))
+    fail("invalidType", "$.executionSemantics", "must be a data property");
+  const semantics = semanticsDescriptor?.value;
+  if (
+    options.resume === true &&
+    semantics !== EXECUTION_SEMANTICS && semantics !== "jobs-v6" && semantics !== "jobs-v7" &&
+    (semantics !== undefined || ["promiseReplay", "replay", "initialInputs"].some(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(root, key);
+      return descriptor !== undefined && (!("value" in descriptor) || descriptor.value !== undefined);
+    }))
+  ) {
+    fail("unsupportedVersion", "$.executionSemantics",
+      "incompatible execution semantics; resume with the SafeJS version that created this snapshot. Migration requires explicit reconciliation, not changing its version marker.");
+  }
   const state = {
+    allowHostFunctionState: inMemoryRunSnapshots.has(root),
     allowFunctions: true,
     allowUndefined: true,
     entries: 0,
@@ -878,7 +897,8 @@ function validateGenericValue(
   depth: number,
   state: ValidationState
 ): void {
-  if (typeof value === "object" && value !== null && hasGuestObjectState(value)) {
+  if (typeof value === "object" && value !== null && hasGuestObjectState(value) &&
+      !(state.allowHostFunctionState && isSandboxClosure(value) && !isGuestClosure(value))) {
     fail("invalidState", path, "guest function properties, prototype links and custom descriptors cannot be restored");
   }
   if (state.dataPropertiesOnly && types.isProxy(value)) {

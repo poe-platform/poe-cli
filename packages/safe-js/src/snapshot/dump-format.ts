@@ -1,6 +1,6 @@
 export const DUMP_FORMAT_VERSION = 2;
 export const inMemoryRunSnapshots = new WeakSet<object>();
-import { getRegexProperties, isSandboxPromise, isSandboxRegex, type SandboxPromise } from "../interp/values.js";
+import { getRegexProperties, isSandboxClosure, isSandboxPromise, isSandboxRegex, type SandboxPromise } from "../interp/values.js";
 import { promiseContinuations, promiseProducers, promiseReactionResults, promiseAdoptions, promiseAdoptionBridges } from "../interp/promise-continuations.js";
 import { isPromiseResolvingFunction } from "../interp/promise.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
@@ -13,7 +13,7 @@ import { hasCustomRegexProperties, serializeRegexProperties, type RegexPropertyD
 export const EXECUTION_SEMANTICS = "jobs-v8";
 import { assertSnapshotGraphDepth, assertSnapshotDataDepth } from "../graph-depth.js";
 import { captureGuestHeapNode, type GuestHeapNode } from "./guest-heap.js";
-import { hasGuestObjectState, hasNullObjectPrototype } from "../interp/object-model.js";
+import { hasGuestObjectState, hasNullObjectPrototype, isGuestClosure } from "../interp/object-model.js";
 import { sandboxErrorTypes, type SandboxErrorName } from "../error/shape.js";
 import { getSandboxArgumentEntries, isSandboxArguments } from "../interp/arguments.js";
 import { serializeArguments, type SerializedArguments } from "./arguments.js";
@@ -207,7 +207,7 @@ function serializeDumpValue(
   // Trusted run snapshots rebuild Date, promise and resolver properties by replay;
   // retain their ordinary runtime metadata below. Arbitrary snapshot inputs
   // still cannot serialize their managed state through this path.
-  if (hasGuestObjectState(value) && !isSandboxDataView(value) && !isNumericTypedArray(value) && !(state.trustedRunReplay && (isSandboxDate(value) || isSandboxPromise(value) || isPromiseResolvingFunction(value)))) {
+  if (hasGuestObjectState(value) && !isSandboxDataView(value) && !isNumericTypedArray(value) && !(state.trustedRunReplay && ((isSandboxClosure(value) && !isGuestClosure(value)) || isSandboxDate(value) || isSandboxPromise(value) || isPromiseResolvingFunction(value)))) {
     throw new TypeError("Guest function properties and prototype links cannot be serialized.");
   }
 

@@ -2,7 +2,7 @@ import { hashSource } from "./parse/hash.js";
 import type { CompileOwner } from "./interp/budget.js";
 import { replaceErrorStack } from "./error/shape.js";
 import { SnapshotValidationError, validateDumpEnvelope } from "./snapshot/validation.js";
-import { EXECUTION_SEMANTICS, inMemoryRunSnapshots, serializeSafeJSSnapshot } from "./snapshot/dump-format.js";
+import { inMemoryRunSnapshots, serializeSafeJSSnapshot } from "./snapshot/dump-format.js";
 import { assertSnapshotInactive } from "./interp/running-state.js";
 import { validateSnapshotMigration, type SnapshotMigration } from "./snapshot/migration.js";
 import { parseModule } from "./parse/parser.js";
@@ -52,32 +52,16 @@ export function restore<TSnapshot extends SafeJSSnapshot>(
 ): TSnapshot {
   assertSnapshotInactive(snapshot);
   try {
-    validateDumpEnvelope(snapshot);
+    validateDumpEnvelope(snapshot, { resume: true });
   } catch (error) {
     if (!(error instanceof SnapshotValidationError) || error.code !== "invalidState" ||
         !inMemoryRunSnapshots.has(snapshot)) throw error;
     // Runtime snapshots can retain guest descriptor state. Use the same portable
     // representation as dump(), then apply all normal validation below.
     snapshot = JSON.parse(serializeSafeJSSnapshot(snapshot)) as TSnapshot;
-    validateDumpEnvelope(snapshot);
+    validateDumpEnvelope(snapshot, { resume: true });
   }
   validateSnapshotMigration(snapshot.migration, snapshot.sourceHash, owner);
-
-  if (
-    snapshot.executionSemantics !== EXECUTION_SEMANTICS &&
-    snapshot.executionSemantics !== "jobs-v6" &&
-    snapshot.executionSemantics !== "jobs-v7" &&
-    (snapshot.executionSemantics !== undefined ||
-      snapshot.promiseReplay !== undefined ||
-      snapshot.replay !== undefined ||
-      snapshot.initialInputs !== undefined)
-  ) {
-    throw new SnapshotValidationError(
-      "unsupportedVersion",
-      "$.executionSemantics",
-      "incompatible execution semantics; resume with the SafeJS version that created this snapshot. Migration requires explicit reconciliation, not changing its version marker."
-    );
-  }
 
   const currentSourceHash = hashSource(
     options.source,

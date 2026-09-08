@@ -13,7 +13,7 @@ describe("function methods", () => {
     expect(Object.keys(target)).not.toContain("length");
     expect(
       getFunctionMember(createSandboxClosure({ call: () => undefined }), "length", options)
-    ).toBeUndefined();
+    ).toBe(0);
   });
 
   it.each([undefined, 7])(
