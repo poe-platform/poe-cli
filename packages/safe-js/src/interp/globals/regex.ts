@@ -4,6 +4,7 @@ import {
   isSandboxClosure,
   isSandboxRegex,
   reconcileCompiledValues,
+  recompileSandboxRegex,
   type SandboxCallContext,
   type SandboxClosure,
   type SandboxObject,
@@ -139,6 +140,40 @@ export function createRegexGlobals(options: { budget: Budget; compileOwner?: Com
     }), writable: true, configurable: true
   });
   const prototype = createIntrinsicObject();
+  Object.defineProperty(prototype, "compile", {
+    value: createSandboxClosure({
+      guest: true, sandbox: true, name: "compile", length: 2,
+      call: async ([pattern, flags], context) => {
+        const receiver = context?.thisValue;
+        if (!isSandboxRegex(receiver)) throw new TypeError("RegExp.compile requires a regex receiver.");
+        if (isSandboxRegex(pattern) && flags !== undefined) throw new TypeError("Cannot supply flags with a RegExp pattern.");
+        const selected = options.compileOwner ?? context?.compilation?.owner;
+        if (context?.compilation?.owner !== undefined && selected !== context.compilation.owner) throw new SandboxError("reentry");
+        const operation = options.budget.acquireCompileOwner(false, selected);
+        const compilation = context?.compilation?.owner === operation.owner ? context.compilation : new CompileScope(operation.owner);
+        let source = "";
+        const release = retainValues(options.budget, () => [receiver, pattern, flags, source]);
+        try {
+          if (isSandboxRegex(pattern)) {
+            flags = pattern.flags;
+            pattern = pattern.source;
+          }
+          source = pattern === undefined ? "" : await sandboxString(pattern, options.budget, context);
+          const flagText = flags === undefined ? "" : await sandboxString(flags, options.budget, context);
+          recompileSandboxRegex(receiver, source, flagText, compilation);
+          return receiver;
+        } finally {
+          release();
+          try {
+            if (compilation !== context?.compilation) reconcileCompiledValues(options.budget, [receiver], compilation);
+          } finally {
+            if (compilation !== context?.compilation) compilation.dispose();
+            operation.release();
+          }
+        }
+      }
+    }), writable: true, configurable: true
+  });
   Object.defineProperty(materializeFunctionProperties(constructor), Symbol.species, {
     get: accessorAdapter(createSandboxClosure({ sandbox: true, name: "get [Symbol.species]", length: 0,
       call: (_args, context) => context?.thisValue }), "get"), configurable: true

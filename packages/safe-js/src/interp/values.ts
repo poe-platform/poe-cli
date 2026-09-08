@@ -527,13 +527,24 @@ export function createSandboxRegex(
   regexGuestProperties.set(regex, properties);
   Object.defineProperties(regex, {
     [sandboxRegexBrand]: { value: true },
-    [sandboxRegexPattern]: { value: pattern }
+    [sandboxRegexPattern]: { value: pattern, writable: true }
   });
   return Object.seal(regex);
 }
 
 export function getSandboxRegexPattern(regex: SandboxRegex): RegexPattern {
   return regex[sandboxRegexPattern];
+}
+
+export function recompileSandboxRegex(regex: SandboxRegex, source: string, flags: string, compilation: CompileScope): void {
+  const pattern = parseRegex(source, flags, compilation, 7 + source.length + flags.length);
+  Object.defineProperties(regex, {
+    source: { value: source },
+    flags: { value: flags },
+    [sandboxRegexPattern]: { value: pattern }
+  });
+  // RegExpInitialize installs the new matcher before its throwing lastIndex Set.
+  regex.lastIndex = 0;
 }
 
 export function isSandboxClosure(value: unknown): value is SandboxClosure {
