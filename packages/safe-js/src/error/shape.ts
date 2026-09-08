@@ -24,6 +24,7 @@ export const sandboxErrorNames = [
   "EvalError",
   "AbortError",
   "AggregateError",
+  "SuppressedError",
   "HarnessFailure"
 ] as const;
 

@@ -641,12 +641,13 @@ function createHostErrorValue(
   if (nativeError) {
     state.seen.set(reason, error);
     copyHostErrorMetadata(error, reason, budget, chargeBudget);
-    const errors = Object.getOwnPropertyDescriptor(reason, "errors");
-    const registered = hostErrorData.get(reason);
-    const data =
-      errors !== undefined && "value" in errors
-        ? { ...registered, errors: errors.value }
-        : registered;
+    let data = hostErrorData.get(reason);
+    for (const key of ["errors", "error", "suppressed"]) {
+      const descriptor = Object.getOwnPropertyDescriptor(reason, key);
+      if (descriptor !== undefined && "value" in descriptor) {
+        data = { ...data, [key]: descriptor.value };
+      }
+    }
     if (data !== undefined) {
       const copied = copyHostValueToSandbox(
         data,

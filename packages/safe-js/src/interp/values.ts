@@ -1,4 +1,5 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
+import { NativeSuppressedError } from "../error/native-suppressed-error.js";
 import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
 import { copyDataViewStorage, dataViewBuffer, dataViewDataProperties, dataViewGetters, isSandboxDataView } from "./data-view.js";
@@ -1424,7 +1425,8 @@ function copyFromSandbox(
       const nativePrototypes: Record<string, object> = {
         Error: Error.prototype, TypeError: TypeError.prototype, RangeError: RangeError.prototype,
         ReferenceError: ReferenceError.prototype, SyntaxError: SyntaxError.prototype,
-        URIError: URIError.prototype, EvalError: EvalError.prototype, AggregateError: AggregateError.prototype
+        URIError: URIError.prototype, EvalError: EvalError.prototype, AggregateError: AggregateError.prototype,
+        SuppressedError: NativeSuppressedError.prototype
       };
       const path = identity === undefined ? [] : JSON.parse(identity) as unknown[];
       if (path.length !== 2 || typeof path[0] !== "string" || path[1] !== "prototype" || !Object.hasOwn(nativePrototypes, path[0]))

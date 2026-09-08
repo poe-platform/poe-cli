@@ -242,6 +242,7 @@ describe("Math.f16round independent review", () => {
         Date: { kind: "fn", name: "Date" },
         URIError: { kind: "fn", name: "URIError" },
         EvalError: { kind: "fn", name: "EvalError" },
+        SuppressedError: { kind: "fn", name: "SuppressedError" },
         encodeURI: { kind: "fn", name: "encodeURI" },
         encodeURIComponent: { kind: "fn", name: "encodeURIComponent" },
         decodeURI: { kind: "fn", name: "decodeURI" },

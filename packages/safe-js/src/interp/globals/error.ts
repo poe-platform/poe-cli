@@ -32,7 +32,8 @@ const errorNames = [
   "SyntaxError",
   "URIError",
   "EvalError",
-  "AggregateError"
+  "AggregateError",
+  "SuppressedError"
 ] as const;
 
 export type ErrorName = (typeof errorNames)[number];
@@ -69,7 +70,7 @@ function createErrorConstructor(name: ErrorName, budget: Budget, guest: boolean)
   const call = (args: readonly SandboxValue[], context?: Parameters<SandboxClosure["call"]>[1]) =>
     errorPrototypes.has(budget) ? createNativeError(name, args, budget, context, closure)
       : createSubsetError(name, args, context?.stack ?? [], budget);
-  const closure = createSandboxClosure({ guest, sandbox: true, call, construct: call, name, length: name === "AggregateError" ? 2 : 1 });
+  const closure = createSandboxClosure({ guest, sandbox: true, call, construct: call, name, length: name === "SuppressedError" ? 3 : name === "AggregateError" ? 2 : 1 });
 
   errorConstructorNames.set(closure, name);
   return closure;
@@ -140,14 +141,20 @@ async function createNativeError(name: ErrorName, args: readonly SandboxValue[],
   const errors: SandboxValue[] = [];
   const release = retainValues(budget, () => [prototype, error, iterator?.retainedValue, ...errors, ...args]);
   try {
-    const message = name === "AggregateError" ? args[1] : args[0];
-    const options = name === "AggregateError" ? args[2] : args[1];
+    const message = name === "SuppressedError" ? args[2] : name === "AggregateError" ? args[1] : args[0];
+    const options = name === "SuppressedError" ? undefined : name === "AggregateError" ? args[2] : args[1];
     const text = message === undefined ? undefined : await sandboxString(message, budget, context);
     error = createSubsetErrorValue(name, text, context?.stack ?? [], budget);
     setSandboxPrototype(error, prototype, budget);
     if (options !== null && typeof options === "object" && getSandboxPropertyDescriptor(options, "cause", budget) !== undefined) {
       const cause = await readErrorProperty(options, "cause", budget, context);
       Object.defineProperty(error, "cause", { value: cause, writable: true, configurable: true });
+    }
+    if (name === "SuppressedError") {
+      Object.defineProperties(error, {
+        error: { value: args[0], writable: true, configurable: true },
+        suppressed: { value: args[1], writable: true, configurable: true }
+      });
     }
     if (name === "AggregateError") {
       iterator = context === undefined ? getSandboxIterator(args[0], budget) : await acquireSandboxIterator(args[0], budget, context);
@@ -172,9 +179,14 @@ function createSubsetError(
   stackFrames: readonly string[],
   budget: Budget
 ): SandboxObject {
-  const message = name === "AggregateError" ? args[1] : args[0];
-  const options = name === "AggregateError" ? args[2] : args[1];
+  const message = name === "SuppressedError" ? args[2] : name === "AggregateError" ? args[1] : args[0];
+  const options = name === "SuppressedError" ? undefined : name === "AggregateError" ? args[2] : args[1];
   const error = createSubsetErrorValue(name, message, stackFrames, budget);
+
+  if (name === "SuppressedError") {
+    error.error = args[0];
+    error.suppressed = args[1];
+  }
 
   if (name === "AggregateError") {
     const errors = Array.isArray(args[0]) ? ([...args[0]] as SandboxArray) : [];

@@ -34,6 +34,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "RegExp",
   "Set",
   "String",
+  "SuppressedError",
   "Symbol",
   "structuredClone",
   "SyntaxError",
