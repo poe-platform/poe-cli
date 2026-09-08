@@ -187,7 +187,10 @@ export type CommandInvoker = (
 
 export type InvocationCleanup = () => void | Promise<void>;
 
+export type InternalErrorHandler = (error: unknown) => void | Promise<void>;
+
 export interface CommandContext {
+  readonly onInternalError?: InternalErrorHandler | undefined;
   readonly executionScope?: object;
   readonly command: string;
   readonly args: readonly string[];

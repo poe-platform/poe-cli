@@ -1,3 +1,4 @@
+import { PublicDiagnostic, publicDiagnosticMessage } from "../../diagnostics.js";
 import { toByteSource, writeBytes, type CommandDefinition, type VirtualShellPlugin } from "../../contracts/index.js";
 import { writeDiagnostic } from "../../escaping.js";
 import { makeSafeJsFsModule } from "../../integrations/safejs/index.js";
@@ -21,6 +22,10 @@ export interface SafeJsCommandDialect {
     readonly source: string;
     readonly bindings: SafeJsModule;
   };
+}
+
+class GuestDiagnostic extends PublicDiagnostic {
+  constructor(readonly info: { name: string; code: string; message: string }) { super(info.message); }
 }
 
 function errorInfo(error: unknown): { name: string; code: string; message: string } {
@@ -57,7 +62,7 @@ export function createSafeJsCommands<Budget = unknown>(options: SafeJsCommandsOp
     };
     let parsed;
     try { parsed = dialect.invocation(context.args); }
-    catch (error) { await diagnose(errorInfo(error).message); return { exitCode: 2 }; }
+    catch (error) { await diagnose(publicDiagnosticMessage(error, context.onInternalError)); return { exitCode: 2 }; }
     context.signal.throwIfAborted();
     if (parsed.help) { await writeBytes(context.stdout, Buffer.from(dialect.help), context.signal); return { exitCode: 0 }; }
     if (!runtime) { await diagnose("runtime not installed; inject run, createBudget, makeFsModule and declareHostOperation"); return { exitCode: 127 }; }
@@ -122,20 +127,24 @@ export function createSafeJsCommands<Budget = unknown>(options: SafeJsCommandsOp
       })), "SafeJS run result");
       signal.throwIfAborted();
       if (result.ok !== true && result.ok !== false) throw new TypeError("Invalid SafeJS run result.ok");
-      if (!result.ok) throw result.error;
+      if (!result.ok) {
+        const info = errorInfo(result.error);
+        throw new GuestDiagnostic(info);
+      }
       if (parsed.print && result.returnValue !== undefined) await output.result(result.returnValue);
       await output.drain();
-    } catch (error) { thrown = failure ?? error; failed = true; }
+    } catch (error) { thrown = hasFailure ? failure : error; failed = true; }
     finally {
-      try { await output.drain(); } catch (error) { thrown = failure ?? error; failed = true; }
+      try { await output.drain(); } catch (error) { thrown = hasFailure ? failure : error; failed = true; }
       controller.abort();
       clearTimeout(timeout);
       await input?.close().catch(() => {});
     }
     context.signal.throwIfAborted();
     if (failed) {
-      const info = errorInfo(thrown);
-      if (!output.stderrFailed) await diagnose(info.message);
+      const info = thrown instanceof GuestDiagnostic ? thrown.info : { name: "", code: "", message: "" };
+      const detail = thrown instanceof SafeJsCommandLimitError ? thrown.message : publicDiagnosticMessage(thrown, context.onInternalError);
+      if (!output.stderrFailed) await diagnose(detail);
       return { exitCode: thrown instanceof SafeJsCommandLimitError || info.code === "budgetExceeded" ? 124
         : thrown instanceof UsageError || info.name === "ParseError" ? 2 : 1 };
     }

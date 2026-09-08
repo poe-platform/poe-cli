@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { FsError, toByteSource } from "../contracts/index.js";
 import type { ByteSource, FileSystem } from "../contracts/index.js";
 import { yieldTurn } from "../contracts/yield.js";
@@ -258,7 +259,7 @@ export class ShellInput implements ByteSource {
       decoder.decode();
       return { value: text.finish(), escaped, terminated };
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes("encoded data")) throw new Error("read: unsupported non-UTF-8 text boundary");
+      if (error instanceof TypeError && error.message.includes("encoded data")) throw new PublicDiagnostic("read: unsupported non-UTF-8 text boundary");
       throw error;
     } finally {
       if (offset < chunk.length) this.#cursor.remainder = chunk.subarray(offset);

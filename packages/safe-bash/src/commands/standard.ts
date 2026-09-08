@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { type CommandDefinition, type CommandHandler } from "../contracts/index.js";
 import { basicCommands } from "./basic.js";
 import { filesystemCommands } from "./filesystem.js";
@@ -26,7 +27,7 @@ export function createStandardCommandsWithGrep(options: StandardCommandsOptions,
   const execute = directExecutor(options.execute ?? (async context => {
     const command = commands.find(definition => definition.name === context.command);
     if (command) return command.execute(context);
-    await diagnostic(context, new Error("command not found"));
+    await diagnostic(context, new PublicDiagnostic("command not found"));
     return { exitCode: 127 };
   }));
   commands.push(...basicCommands(), ...filesystemCommands(options.maxDirectoryEntries), ...streamCommands(options.maxTeeTargets, options.maxTailFollowHandles), ...textCommands(), ...grep, ...predicateCommands(), ...executionCommands(execute, options.execution), ...findCommands(execute, options.maxDirectoryEntries));

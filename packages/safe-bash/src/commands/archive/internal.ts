@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import { collectBytes, readBytes, writeBytes, type ByteSource, type CommandContext, type FileStat } from "../../contracts/index.js";
 
@@ -49,7 +50,7 @@ export function settings(options: ArchiveCommandsOptions): ArchiveLimits {
   return Object.freeze(limits);
 }
 
-export function fail(message: string): never { throw new Error(message); }
+export function fail(message: string): never { throw new PublicDiagnostic(message); }
 
 export function vfsPath(cwd: string, path: string): string {
   return path.startsWith("/") ? path : `${cwd === "/" ? "" : cwd}/${path}`;

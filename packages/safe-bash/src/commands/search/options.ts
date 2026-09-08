@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
 import type { RegexExecutionOptions } from "../regex-execution/protocol.js";
 import { defaultFileTypes } from "./file-types.js";
 
@@ -11,7 +12,7 @@ export interface SearchOptions {
   readonly regex?: RegexExecutionOptions;
 }
 
-export class SearchError extends Error {}
+export class SearchError extends PublicDiagnostic {}
 
 export interface Arguments {
   patterns: string[];

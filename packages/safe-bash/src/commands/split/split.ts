@@ -1,3 +1,4 @@
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { writeDiagnostic } from "../../escaping.js";
 import { FsError, isFsError, collectBytes, type ByteSource, type CommandContext, type CommandDefinition } from "../../contracts/index.js";
 import { Budget, Cursor, interruptible } from "./io.js";
@@ -115,7 +116,7 @@ export function createSplitCommand(limits: SplitLimits): CommandDefinition {
       return { exitCode: 0 };
     } catch (error) {
       context.signal.throwIfAborted();
-      const message = error instanceof FsError ? error.message.slice(error.code.length + 2) : error instanceof Error ? error.message : String(error);
+      const message = error instanceof FsError ? error.message.slice(error.code.length + 2) : publicDiagnosticMessage(error, context.onInternalError);
       await writeDiagnostic(context.stderr, `split: ${message.slice(0, 4096)}\n`, context.signal);
       return { exitCode: 1 };
     }

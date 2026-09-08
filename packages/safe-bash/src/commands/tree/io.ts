@@ -1,3 +1,4 @@
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import { escapeText } from "../../escaping.js";
 import { FsError, writeBytes, type ByteSink, type CommandContext } from "../../contracts/index.js";
@@ -12,10 +13,7 @@ export class TreeLimitError extends FsError {
 }
 
 export function message(error: unknown, budget: WalkBudget): string {
-  const value: unknown = error instanceof Error ? error.message : error;
-  const text = typeof value === "string" ? value
-    : value === null || value === undefined || typeof value === "number" || typeof value === "boolean" ? String(value)
-    : "non-string filesystem error";
+  const text = publicDiagnosticMessage(error, budget.context.onInternalError);
   budget.text(text);
   return error instanceof Error ? text.replace(/^[A-Z][A-Z0-9]+: /u, "") : text;
 }

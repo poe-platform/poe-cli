@@ -1,3 +1,5 @@
+import { UsageError } from "./format.js";
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { cancelTurn, scheduleTurn, type TurnHandle } from "../../contracts/yield.js";
 import { escapeText } from "../../escaping.js";
 import { FsError, writeBytes, type ByteSink, type CommandContext } from "../../contracts/index.js";
@@ -123,7 +125,7 @@ export class Budget {
 
   async diagnostic(error: unknown, path?: string): Promise<void> {
     this.active(this.caller.signal);
-    const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "filesystem operation failed";
+    const raw = error instanceof UsageError ? error.message : publicDiagnosticMessage(error, this.context.onInternalError);
     const maximum = 4096;
     const short = raw.length > maximum ? raw.slice(0, maximum) + " [diagnostic truncated]" : raw;
     const message = short.replace(/^[A-Z][A-Z0-9]+: /u, "");

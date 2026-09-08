@@ -1,3 +1,4 @@
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { createOutputOperation, writeBytes, type CommandDefinition, type OutputOperation, type VirtualShellPlugin } from "../../contracts/index.js";
 import { escapeText } from "../../escaping.js";
 import { Budget } from "./budget.js";
@@ -38,7 +39,7 @@ export function createHtmlToMarkdownCommand(options: HtmlToMarkdownCommandsOptio
       try {
         context.signal.throwIfAborted();
         if (operation?.signal.aborted && error === operation.signal.reason) throw error;
-        const message = error instanceof Error ? error.message : String(error);
+        const message = error instanceof HtmlUsageError ? error.message : publicDiagnosticMessage(error, context.onInternalError);
         const text = `html-to-markdown: ${escapeText(message.slice(0, limits.maxDiagnosticBytes), "diagnostic")}\n`;
         let bytes = Buffer.from(text);
         if (bytes.length > limits.maxDiagnosticBytes) {

@@ -1,3 +1,5 @@
+import type { InternalErrorHandler } from "../contracts/command.js";
+import { PublicDiagnostic, publicDiagnosticMessage } from "../diagnostics.js";
 import { writeDiagnostic } from "../escaping.js";
 import { cancelTurn, monotonicNow, registerYieldCheckpoint, scheduleTurn, yieldTurn, type TurnHandle } from "../contracts/yield.js";
 import {
@@ -122,7 +124,7 @@ export class Budget {
   #fileSystemOperations = 0;
   readonly #cpuStarted = monotonicNow();
 
-  constructor(readonly limits: Required<ShellLimits>, signal?: AbortSignal) {
+  constructor(readonly limits: Required<ShellLimits>, signal?: AbortSignal, readonly onInternalError?: InternalErrorHandler) {
     this.signal = signal ? AbortSignal.any([signal, this.controller.signal]) : this.controller.signal;
     this.parsing = new ParseBudget(limits.maxParseUnits, this.signal, error => this.controller.abort(error));
     this.values = new ValueArena(limits.maxExpansionBytes, limits.maxExpansionFields, () => this.signal.throwIfAborted(), limit => this.fail(limit));
@@ -604,12 +606,17 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error ? String(error.code) : undefined;
 }
 
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function message(error: unknown, onInternalError?: InternalErrorHandler): string {
+  if (error instanceof ExpansionFailure || error instanceof CommandFailure || error instanceof ArrayFailure || error instanceof BraceExpansionFailure) return error.message;
+  return publicDiagnosticMessage(error, onInternalError);
+}
 
-function filesystemDiagnostic(error: unknown, target: string): string | undefined {
+function filesystemDiagnostic(error: unknown, target: string, onInternalError?: InternalErrorHandler): string | undefined {
   const descriptions: Readonly<Record<string, string>> = { ENOENT: "No such file or directory", EACCES: "Permission denied", EPERM: "Operation not permitted", ENOTDIR: "Not a directory", EISDIR: "Is a directory", ELOOP: "Too many levels of symbolic links", ENOSPC: "No space left on device", EROFS: "Read-only file system" };
   const description = descriptions[errorCode(error) ?? ""];
-  return description ? `${target}: ${description}` : undefined;
+  if (!description) return undefined;
+  publicDiagnosticMessage(error, onInternalError);
+  return `${target}: ${description}`;
 }
 
 function cdUtf8Width(codePoint: number): number {
@@ -649,7 +656,7 @@ class CdLookup {
 
   private async charge(amount: number): Promise<void> {
     this.signal.throwIfAborted();
-    if (amount > 8_388_608 - this.spent) throw new Error("cd: helper work limit exceeded");
+    if (amount > 8_388_608 - this.spent) throw new PublicDiagnostic("cd: helper work limit exceeded");
     while (amount > 0) {
       const step = Math.min(amount, 128 - this.spent % 128);
       this.spent += step;
@@ -673,8 +680,8 @@ class CdLookup {
     for (let index = 0; index < value.length;) {
       const codePoint = value.codePointAt(index)!;
       const width = cdUtf8Width(codePoint);
-      if (bytes + width > 65_536) throw new Error(search ? "cd: CDPATH exceeds 65536 UTF-8 bytes" : "cd: path exceeds 65536 UTF-8 bytes");
-      if (search && codePoint === 58 && ++slots > 4096) throw new Error("cd: CDPATH exceeds 4096 components");
+      if (bytes + width > 65_536) throw new PublicDiagnostic(search ? "cd: CDPATH exceeds 65536 UTF-8 bytes" : "cd: path exceeds 65536 UTF-8 bytes");
+      if (search && codePoint === 58 && ++slots > 4096) throw new PublicDiagnostic("cd: CDPATH exceeds 4096 components");
       await this.charge(width);
       if (search && codePoint === 58) {
         components.push({ start, end: index, bytes: bytes - startBytes });
@@ -697,14 +704,14 @@ class CdLookup {
     const probe = async (component: string, componentBytes: number): Promise<string> => {
       const rawBytes = absolute ? targetBytes : component.startsWith("/") ? componentBytes + 1 + targetBytes
         : cwdBytes + 1 + (component ? componentBytes + 1 : 0) + targetBytes;
-      if (rawBytes > 65_536) throw new Error("cd: path exceeds 65536 UTF-8 bytes");
+      if (rawBytes > 65_536) throw new PublicDiagnostic("cd: path exceeds 65536 UTF-8 bytes");
       await this.charge(2 * rawBytes);
       const raw = absolute ? target : component.startsWith("/") ? `${component}/${target}`
         : component ? `${cwd}/${component}/${target}` : `${cwd}/${target}`;
       const path = resolvePath(cwd, raw);
       await this.scan(path);
       this.signal.throwIfAborted();
-      if (++this.probes > 4097) throw new Error("cd: probe limit exceeded");
+      if (++this.probes > 4097) throw new PublicDiagnostic("cd: probe limit exceeded");
       await this.charge(1);
       this.signal.throwIfAborted();
       const stat = await fs.stat(path, { signal: this.signal });
@@ -856,7 +863,7 @@ class DirectoryStackWork {
   }
 }
 
-const closedSink: ByteSink = { async write() { throw Object.assign(new Error("Bad file descriptor"), { code: "EBADF" }); } };
+const closedSink: ByteSink = { async write() { throw Object.assign(new PublicDiagnostic("Bad file descriptor"), { code: "EBADF" }); } };
 const closedSource: ByteSource = { [Symbol.asyncIterator]() {
   let closed = false;
   let completion = Promise.resolve();
@@ -870,7 +877,7 @@ const closedSource: ByteSource = { [Symbol.asyncIterator]() {
       return enqueue<IteratorResult<Uint8Array>>(() => {
         if (closed) return { done: true, value: undefined };
         closed = true;
-        throw Object.assign(new Error("Bad file descriptor"), { code: "EBADF" });
+        throw Object.assign(new PublicDiagnostic("Bad file descriptor"), { code: "EBADF" });
       });
     },
     return(value?: unknown) { return enqueue(async () => { closed = true; return { done: true, value: await value }; }); },
@@ -1344,11 +1351,11 @@ export class Runtime {
 
   writeVariable(state: State, name: string, value: ShellValue, origin: "assignment" | "arithmetic" | "getopts" = "assignment"): void {
     if (arrayStore(state)?.get(name)) throw new ArrayFailure(origin === "arithmetic" ? "indexed arithmetic is unsupported" : "indexed write requires prepared publication");
-    if (state.readonlyVariables?.has(name)) throw new Error(`${name}: readonly variable`);
+    if (state.readonlyVariables?.has(name)) throw new PublicDiagnostic(`${name}: readonly variable`);
     if (shellValueByteLength(value) > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
     if (name === "OPTIND" && state.getopts?.integer && origin !== "arithmetic") {
       try { value = String(evaluateArithmetic(prepareArithmetic(shellValueText(value) || "0", this.budget.parsing), this.arithmeticVariables(state), this.budget.parsing)); }
-      catch (error) { this.rethrowArithmeticControl(error); throw new ExpansionFailure(message(error)); }
+      catch (error) { this.rethrowArithmeticControl(error); throw new ExpansionFailure(message(error, this.budget.onInternalError)); }
     }
     publishVariable(state, name, value);
     if (name === "OPTIND" && origin !== "getopts") this.syncGetopts(state);
@@ -1368,7 +1375,7 @@ export class Runtime {
   }
 
   private unsetVariable(state: State, name: string, internal = false): void {
-    if (state.readonlyVariables?.has(name)) throw new Error(`${name}: readonly variable`);
+    if (state.readonlyVariables?.has(name)) throw new PublicDiagnostic(`${name}: readonly variable`);
     delete state.variables[name];
     state.exported.delete(name);
     if (name === "OPTIND" && !internal) this.syncGetopts(state);
@@ -1994,7 +2001,7 @@ export class Runtime {
             limit: () => this.budget.fail("maxExpansionBytes"),
           }, (prepared) => evaluateArithmetic(prepared, this.arithmeticVariables(state, io.diagnosticLine), this.budget.parsing)) === 0n);
         }
-        catch (error) { this.rethrowArithmeticControl(error); throw new Error(`((: ${message(error)}`); }
+        catch (error) { this.rethrowArithmeticControl(error); throw new PublicDiagnostic(`((: ${message(error, this.budget.onInternalError)}`); }
       }
       if (command.kind === "subshell") {
         const child = await cloneState(state, this.signal);
@@ -2080,9 +2087,10 @@ export class Runtime {
         if (command.kind !== "simple" && command.kind !== "subshell" && command.kind !== "arithmetic" && command.kind !== "conditional") this.errexit(141, state, io);
         return 141;
       }
+      const publicMessage = message(error, this.budget.onInternalError);
       const line = error instanceof ExpansionFailure ? error.line ?? io.diagnosticLine ?? 1 : io.diagnosticLine ?? 1;
       if (error instanceof NounsetFailure || error instanceof ParameterExpansionFailure) {
-        const detail = error instanceof ParameterExpansionFailure ? diagnostic ?? message(error) : message(error);
+        const detail = error instanceof ParameterExpansionFailure ? diagnostic ?? publicMessage : publicMessage;
         try { await writeDiagnostic(io.stderr, `${io.scriptName ?? "shell"}: line ${line}: ${detail}\n`); }
         catch (reason) {
           this.signal.throwIfAborted();
@@ -2092,10 +2100,10 @@ export class Runtime {
         }
         throw completedExit(error instanceof ParameterExpansionFailure && !state.isolated ? 127 : 1);
       }
-      if (error instanceof ArrayFailure) await writeDiagnostic(io.stderr, `${io.scriptName ?? "shell"}: line ${line}: ${diagnostic ?? message(error)}\n`);
+      if (error instanceof ArrayFailure) await writeDiagnostic(io.stderr, `${io.scriptName ?? "shell"}: line ${line}: ${diagnostic ?? publicMessage}\n`);
       else {
-        try { await writeDiagnostic(io.stderr, `${io.scriptName ?? "shell"}: line ${line}: ${diagnostic ?? message(error)}\n`); }
-        catch { this.signal.throwIfAborted(); }
+        try { await writeDiagnostic(io.stderr, `${io.scriptName ?? "shell"}: line ${line}: ${diagnostic ?? publicMessage}\n`); }
+        catch (failure) { this.signal.throwIfAborted(); publicDiagnosticMessage(failure, this.budget.onInternalError); }
       }
       if (error instanceof ExpansionFailure || error instanceof BraceExpansionFailure) throw completedExit(error instanceof ParameterExpansionFailure && !state.isolated ? 127 : 1);
       if (error instanceof FatalCommandFailure) throw completedExit(error.status);
@@ -2199,7 +2207,7 @@ export class Runtime {
           if (error instanceof NounsetFailure) throw error;
           if (error instanceof ParameterExpansionFailure && !isolatedInlineInput) throw error;
           if (error instanceof ParameterExpansionFailure) throw new CommandFailure(error.message, state.isolated ? 1 : 127);
-          if (error instanceof ExpansionFailure) throw new Error(error.message);
+          if (error instanceof ExpansionFailure) throw new PublicDiagnostic(error.message);
           throw error;
         }
         if (hereString) {
@@ -2212,18 +2220,18 @@ export class Runtime {
         continue;
       }
       const targets = await this.word(redirect.target, state, currentIO());
-      if (targets.length !== 1) throw new Error("Ambiguous redirect");
+      if (targets.length !== 1) throw new PublicDiagnostic("Ambiguous redirect");
       const target = targets[0]!;
       errorTarget = target;
       if (redirect.operator.endsWith("&")) {
         if (target === "-") descriptors.delete(redirect.descriptor);
         else {
-          if (!/^\d+-?$/u.test(target)) throw new Error(`${target}: Bad file descriptor`);
+          if (!/^\d+-?$/u.test(target)) throw new PublicDiagnostic(`${target}: Bad file descriptor`);
           const move = target.endsWith("-");
-          if (move && !redirect.move) throw new Error(`${target}: ambiguous redirect`);
+          if (move && !redirect.move) throw new PublicDiagnostic(`${target}: ambiguous redirect`);
           const sourceDescriptor = Number(move ? target.slice(0, -1) : target);
           const descriptor = descriptors.get(sourceDescriptor);
-          if (!descriptor || descriptor.closed || (!move && (redirect.operator === "<&" ? !descriptor.input : !descriptor.output))) throw new Error(`${move ? sourceDescriptor : target}: Bad file descriptor`);
+          if (!descriptor || descriptor.closed || (!move && (redirect.operator === "<&" ? !descriptor.input : !descriptor.output))) throw new PublicDiagnostic(`${move ? sourceDescriptor : target}: Bad file descriptor`);
           descriptors.set(redirect.descriptor, { ...descriptor });
           if (move && sourceDescriptor !== redirect.descriptor) {
             descriptors.delete(sourceDescriptor);
@@ -2236,7 +2244,7 @@ export class Runtime {
         if (redirect.operator === "<") {
           await interruptible(this.fs.access(path, 4, options), this.signal);
           const stat = await interruptible(this.fs.stat(path, options), this.signal);
-          if (stat.type === "directory" && !fileShortcut) throw new Error(`${target}: Is a directory`);
+          if (stat.type === "directory" && !fileShortcut) throw new PublicDiagnostic(`${target}: Is a directory`);
           const source = stat.type === "directory" ? toByteSource("")
             : await fileInput(this.fs, path, this.budget.limits.maxInputBytes, this.signal);
           const input = new ShellInput(source, this.budget, this.signal);
@@ -2476,7 +2484,7 @@ export class Runtime {
       if (!inlineInput) await assign();
       if (fileShortcut) {
         const input = io.descriptors?.get(command.redirects[0]!.descriptor)?.input;
-        if (!input) throw new Error("Bad file descriptor");
+        if (!input) throw new PublicDiagnostic("Bad file descriptor");
         await pipeBytes(input, io.stdout, this.signal);
         return 0;
       }
@@ -2486,7 +2494,7 @@ export class Runtime {
       this.signal.throwIfAborted();
       const original = error instanceof ExecutionFailure ? error.original : error;
       if (special && !(original instanceof ShellLimitError) && !(original instanceof ExpansionFailure) && !(original instanceof Flow) && !(original instanceof ShellSyntaxError)) {
-        throw new ExecutionFailure(new FatalCommandFailure(message(original), 1), error instanceof ExecutionFailure ? error.io : io, error instanceof ExecutionFailure ? error.diagnostic : undefined);
+        throw new ExecutionFailure(new FatalCommandFailure(message(original, this.budget.onInternalError), 1), error instanceof ExecutionFailure ? error.io : io, error instanceof ExecutionFailure ? error.diagnostic : undefined);
       }
       if (error instanceof ExecutionFailure) throw error;
       throw new ExecutionFailure(error, io);
@@ -2529,6 +2537,7 @@ export class Runtime {
     const context: ShellCommandContext = {
       ...publicIO, command: name, args: argumentValues.args, argumentValues, env, cwd: state.cwd, fs: this.fs, signal: this.commandSignal,
       executionScope: this.budget.executionScope,
+      onInternalError: this.budget.onInternalError,
       registerCleanup: (cleanup) => { scope.register(cleanup); },
       invoke: (name, args, options) => {
         const invocation = this.invoke(name, args, options, context, state, scope);
@@ -2861,8 +2870,8 @@ export class Runtime {
         if (error instanceof CommandFailure) { if (discovery) continue; throw error; }
         const code = errorCode(error);
         if (code === "ENOENT" || code === "ENOTDIR") continue;
-        if (code !== "EACCES" && code !== "EPERM") throw new CommandFailure(filesystemDiagnostic(error, target) ?? `${target}: ${message(error)}`, 126);
-        denied ??= new CommandFailure(filesystemDiagnostic(error, target) ?? `${target}: ${message(error)}`, 126);
+        if (code !== "EACCES" && code !== "EPERM") throw new CommandFailure(filesystemDiagnostic(error, target, this.budget.onInternalError) ?? `${target}: ${message(error, this.budget.onInternalError)}`, 126);
+        denied ??= new CommandFailure(filesystemDiagnostic(error, target, this.budget.onInternalError) ?? `${target}: ${message(error, this.budget.onInternalError)}`, 126);
       }
     }
     if (denied && !matches.length && !discovery) throw denied;
@@ -3058,6 +3067,7 @@ export class Runtime {
       const context: ShellCommandContext = {
         ...incoming, args: argumentValues.args, argumentValues,
         executionScope: this.budget.executionScope,
+        onInternalError: this.budget.onInternalError,
         env: Object.assign(Object.create(null) as Record<string, string>, incoming.env),
         stdin: input ?? incoming.stdin,
         stdout: this.budget.sink(incoming.stdout, runtime.signal), stderr: this.budget.sink(incoming.stderr, runtime.signal),
@@ -3236,7 +3246,7 @@ export class Runtime {
       this.signal.throwIfAborted();
       if (error instanceof ShellLimitError || error instanceof CommandFailure) throw error;
       if (errorCode(error) === "EFBIG") this.budget.fail("maxSourceBytes");
-      throw new CommandFailure(filesystemDiagnostic(error, target) ?? `${target}: ${message(error)}`, errorCode(error) === "ENOENT" ? 127 : 126);
+      throw new CommandFailure(filesystemDiagnostic(error, target, this.budget.onInternalError) ?? `${target}: ${message(error, this.budget.onInternalError)}`, errorCode(error) === "ENOENT" ? 127 : 126);
     }
     if (direct && environmentInterpreter) return this.envShebang(context, state, io, environmentInterpreter[1], target, args, { path, source });
     const units: Script[] = [];
@@ -3374,7 +3384,7 @@ export class Runtime {
       this.signal.throwIfAborted();
       if (error instanceof ShellLimitError) throw error;
       if (errorCode(error) === "EFBIG") this.budget.fail("maxSourceBytes");
-      const diagnostic = error instanceof CommandFailure ? error.message : filesystemDiagnostic(error, target) ?? `${target}: ${message(error)}`;
+      const diagnostic = error instanceof CommandFailure ? error.message : filesystemDiagnostic(error, target, this.budget.onInternalError) ?? `${target}: ${message(error, this.budget.onInternalError)}`;
       if (special) throw new FatalCommandFailure(diagnostic, 1);
       throw new CommandFailure(diagnostic, error instanceof CommandFailure ? error.status : 1);
     }
@@ -3562,7 +3572,7 @@ export class Runtime {
       try { value = evaluateArithmetic(prepareArithmetic(args[index]!, this.budget.parsing), variables, this.budget.parsing); }
       catch (error) {
         this.rethrowArithmeticControl(error);
-        throw new Error(`let: ${message(error)}`);
+        throw new PublicDiagnostic(`let: ${message(error, this.budget.onInternalError)}`);
       }
       if ((index - offset + 1) % 128 === 0) await checkpoint();
     }
@@ -3655,7 +3665,7 @@ export class Runtime {
     this.writeVariable(state, "OPTIND", String(result.optind), "getopts");
     if (result.argument.kind === "set") this.writeVariable(state, "OPTARG", result.argument.value, "getopts");
     else this.unsetVariable(state, "OPTARG", true);
-    if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) throw new Error(`getopts: \`${name}': not a valid identifier`);
+    if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) throw new PublicDiagnostic(`getopts: \`${name}': not a valid identifier`);
     await this.assignVariable(state, name, result.option, "getopts");
     return result.status;
   }
@@ -3671,8 +3681,8 @@ export class Runtime {
       selected = await new CdLookup(this.signal).find(this.fs, state.cwd, target || ".", state.variables.CDPATH);
     } catch (error) {
       this.signal.throwIfAborted();
-      const description = filesystemDiagnostic(error, "");
-      const text = description ? "" : message(error);
+      const description = filesystemDiagnostic(error, "", this.budget.onInternalError);
+      const text = description ? "" : message(error, this.budget.onInternalError);
       diagnose?.(error, cdDiagnostic(description ? [name, ": ", target, description]
         : stackHooks && text.startsWith("cd: ") ? [name, text.slice(2)] : [text]));
       throw error;
@@ -4429,7 +4439,7 @@ export class Runtime {
           limit: () => this.budget.fail("maxExpansionBytes"),
         }, (prepared) => evaluateArithmetic(prepared, this.arithmeticVariables(state, io.diagnosticLine ?? part.line), this.budget.parsing)));
       }
-      catch (error) { this.rethrowArithmeticControl(error); throw new ExpansionFailure(message(error), io.diagnosticLine ?? part.line); }
+      catch (error) { this.rethrowArithmeticControl(error); throw new ExpansionFailure(message(error, this.budget.onInternalError), io.diagnosticLine ?? part.line); }
     }
     if (part.kind === "substitution") {
       if (state.depth >= this.budget.limits.maxSubstitutionDepth) this.budget.fail("maxSubstitutionDepth");
@@ -4528,7 +4538,7 @@ export class Runtime {
         alternate = shellValueText(retained);
         if (operator === "?") throw new ParameterExpansionFailure(`${part.name}: ${alternate || (part.operator.startsWith(":") ? "parameter null or not set" : "parameter not set")}`, io.diagnosticLine ?? part.line);
         if (operator === "=") {
-          if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(part.name)) throw new Error("Cannot assign special parameter");
+          if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(part.name)) throw new PublicDiagnostic("Cannot assign special parameter");
           this.writeVariable(state, part.name, retained);
         }
         value = alternate;
@@ -4584,7 +4594,7 @@ export class Runtime {
       try { return { value: evaluateArithmetic(prepareArithmetic(source, this.budget.parsing), variables, this.budget.parsing), source }; }
       catch (error) {
         this.rethrowArithmeticControl(error);
-        throw new ExpansionFailure(`${part.name}: ${message(error)}`, line);
+        throw new ExpansionFailure(`${part.name}: ${message(error, this.budget.onInternalError)}`, line);
       }
       finally { retained?.release(); }
     };

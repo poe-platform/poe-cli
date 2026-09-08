@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { ShellSyntaxError } from "./types.js";
 import { ParseBudget } from "./parse-budget.js";
 
@@ -40,16 +41,16 @@ const precedence: Record<string, number> = {
 function integer(text: string): bigint {
   if (/^0[xX][\da-fA-F]+$/u.test(text)) return BigInt(text);
   if (/^0[0-7]+$/u.test(text)) return BigInt(`0o${text.slice(1)}`);
-  if (/^0\d+$/u.test(text)) throw new Error("Invalid octal constant");
+  if (/^0\d+$/u.test(text)) throw new PublicDiagnostic("Invalid octal constant");
   if (/^\d+$/u.test(text)) return BigInt(text);
   const match = /^(\d+)#([\da-zA-Z@_]+)$/u.exec(text);
-  if (!match) throw new Error("Invalid arithmetic constant");
+  if (!match) throw new PublicDiagnostic("Invalid arithmetic constant");
   const base = Number(match[1]);
-  if (base < 2 || base > 64) throw new Error("Invalid arithmetic base");
+  if (base < 2 || base > 64) throw new PublicDiagnostic("Invalid arithmetic base");
   let value = 0n;
   for (const character of match[2]!) {
     const digit = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@_".indexOf(base <= 36 ? character.toLowerCase() : character);
-    if (digit >= base || digit < 0) throw new Error("Digit exceeds arithmetic base");
+    if (digit >= base || digit < 0) throw new PublicDiagnostic("Digit exceeds arithmetic base");
     value = BigInt.asIntN(64, value * BigInt(base) + BigInt(digit));
   }
   return value;
@@ -172,7 +173,7 @@ export function evaluateArithmetic(program: ArithmeticProgram, variables: Record
       case "<=": return BigInt(left <= right);
       case ">": return BigInt(left > right);
       case ">=": return BigInt(left >= right);
-      default: throw new Error(`Unsupported arithmetic operator ${operator}`);
+      default: throw new PublicDiagnostic(`Unsupported arithmetic operator ${operator}`);
     }
   };
   type Frame = { kind: "evaluate"; node: Arithmetic }
@@ -189,11 +190,11 @@ export function evaluateArithmetic(program: ArithmeticProgram, variables: Record
     while (pending.length) {
       const frame = pending.pop()!;
       if (frame.kind === "evaluate") {
-        if (++steps > 10_000) throw new Error("Arithmetic operation limit exceeded");
+        if (++steps > 10_000) throw new PublicDiagnostic("Arithmetic operation limit exceeded");
         const node = frame.node;
         if (node.kind === "literal") value = node.value;
         else if (node.kind === "name") {
-          if (visiting.has(node.name) || visiting.size >= 64) throw new Error("Arithmetic variable recursion");
+          if (visiting.has(node.name) || visiting.size >= 64) throw new PublicDiagnostic("Arithmetic variable recursion");
           visiting.add(node.name);
           pending.push({ kind: "variable", name: node.name }, { kind: "evaluate", node: parseArithmetic(variables[node.name] ?? "0", 0, budget) });
         } else if (node.kind === "conditional") {
@@ -239,11 +240,11 @@ export function evaluateArithmetic(program: ArithmeticProgram, variables: Record
     }
     return value;
   } catch (error) {
-    if (error instanceof ArithmeticFailure) throw new Error(`${program.source.trimStart()}: ${error.message} (error token is "${program.source.slice(error.offset)}")`);
+    if (error instanceof ArithmeticFailure) throw new PublicDiagnostic(`${program.source.trimStart()}: ${error.message} (error token is "${program.source.slice(error.offset)}")`);
     if (error instanceof ShellSyntaxError) {
       const offset = error.offset >= program.source.trimEnd().length ? Math.max(0, program.source.trimEnd().length - 1) : error.offset;
       const reason = error.reason === "Invalid arithmetic operand" ? "arithmetic syntax error: operand expected" : "arithmetic syntax error in expression";
-      throw new Error(`${program.source.trimStart()}: ${reason} (error token is "${program.source.slice(offset)}")`);
+      throw new PublicDiagnostic(`${program.source.trimStart()}: ${reason} (error token is "${program.source.slice(offset)}")`);
     }
     throw error;
   }

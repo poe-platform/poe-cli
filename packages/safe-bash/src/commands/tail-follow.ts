@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { createOutputOperation, FsError, type ByteSource, type CommandContext, type FileReadHandle, type FileStat, type OutputOperation } from "../contracts/index.js";
 import { monotonicNow, yieldTurn } from "../contracts/yield.js";
 import { compareCopyIdentity } from "./copy-identity.js";
@@ -126,7 +127,7 @@ class FollowSession {
         if ("reason" in outcome) reject(outcome.reason);
         else resolve(outcome.value);
       };
-      const cancel = () => finish({ reason: this.operation.signal.aborted ? this.operation.signal.reason : new Error("Tail follow is closed") });
+      const cancel = () => finish({ reason: this.operation.signal.aborted ? this.operation.signal.reason : new PublicDiagnostic("Tail follow is closed") });
       this.waiting.add(cancel);
       this.operation.signal.addEventListener("abort", cancel, { once: true });
       pending?.then(value => finish({ value }), reason => finish({ reason }));
@@ -307,7 +308,7 @@ export async function followTail(
     entry.offset = 0;
     if (!initial) {
       const message = replaced ? "has been replaced; following new file" : entry.error === "ENOENT" ? "has appeared; following new file" : "has become accessible";
-      await diagnostic(context, new Error(`'${entry.name}' ${message}`));
+      await diagnostic(context, new PublicDiagnostic(`'${entry.name}' ${message}`));
     }
     entry.error = undefined;
     return stat;
@@ -363,7 +364,7 @@ export async function followTail(
           }
           if (!stat) continue;
           if (stat.size < entry.offset) {
-            await diagnostic(context, new Error(`${entry.name}: file truncated`));
+            await diagnostic(context, new PublicDiagnostic(`${entry.name}: file truncated`));
             entry.offset = 0;
           }
           if (stat.size > entry.offset) round.push({ entry, end: stat.size });

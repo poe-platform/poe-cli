@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import type { CommandDefinition, VirtualShellPlugin } from "../contracts/index.js";
 import { grepCommands } from "./grep.js";
 import { diagnostic } from "./internal.js";
@@ -16,7 +17,7 @@ export function standardCommands(options: StandardCommandsOptions = {}): Virtual
       const commands = createStandardCommands({ ...options, execute: options.execute ?? (async context => {
         const command = host.commands.get(context.command);
         if (command) return command.execute(context);
-        await diagnostic(context, new Error("command not found"));
+        await diagnostic(context, new PublicDiagnostic("command not found"));
         return { exitCode: 127 };
       }) });
       if (!options.replace) {

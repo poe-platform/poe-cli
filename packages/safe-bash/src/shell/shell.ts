@@ -104,6 +104,7 @@ export class Shell implements PluginHost {
 
   constructor(options: ShellOptions) {
     if (!options?.fs) throw new TypeError("Shell requires an explicit filesystem");
+    if (options.onInternalError !== undefined && typeof options.onInternalError !== "function") throw new TypeError("onInternalError must be callable");
     warnIfHostProcessEnv(options.env);
     resolveLimits(options.limits);
     this.#options = { ...options, cwd: resolvePath("/", options.cwd ?? "/"), env: { ...options.env }, limits: { ...options.limits } };
@@ -166,8 +167,9 @@ export class Shell implements PluginHost {
 
   async exec(source: string, options: ShellExecOptions = {}): Promise<ShellResult> {
     if (this.#disposed) throw new Error("Shell is disposed");
+    if (options.onInternalError !== undefined && typeof options.onInternalError !== "function") throw new TypeError("onInternalError must be callable");
     warnIfHostProcessEnv(options.env);
-    const budget = new Budget(resolveLimits(this.#options.limits, options.limits), options.signal);
+    const budget = new Budget(resolveLimits(this.#options.limits, options.limits), options.signal, options.onInternalError ?? this.#options.onInternalError);
     const scope = new InvocationScope(options.signal);
     const cancellationState = new RuntimeCancellationState();
     const owner = new RootInvocationCancellationOwner(scope);

@@ -4,6 +4,7 @@ import {
   type CommandContext, type FileStat,
 } from "../../../contracts/index.js";
 import { codeOf, pathOf } from "../../internal.js";
+import { PublicDiagnostic } from "../../../diagnostics.js";
 import type { CompressionOptions } from "./options.js";
 import { chunkBytes, stagingLimit, transform } from "./stream.js";
 
@@ -182,7 +183,10 @@ export async function writeFileOperand(context: CommandContext, plan: Operand, o
     }
     await context.fs.rm(directory, { recursive: true, signal });
   } catch (error) {
-    if (failed) throw new AggregateError([failure, error], "compression failed and staging cleanup failed; input retained");
+    if (failed) {
+      const aggregate = new AggregateError([failure, error], "compression failed and staging cleanup failed; input retained");
+      throw new PublicDiagnostic(aggregate.message, { cause: aggregate });
+    }
     throw error;
   }
   if (failed) throw failure;

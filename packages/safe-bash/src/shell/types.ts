@@ -1,5 +1,5 @@
 import type { ByteSink, ByteSource, CommandContext, CommandRegistry, CommandResult, FileSystem } from "../contracts/index.js";
-import type { CommandArguments } from "../contracts/command.js";
+import type { InternalErrorHandler, CommandArguments } from "../contracts/command.js";
 
 export interface ShellInvokeOptions {
   readonly argumentValues?: CommandArguments;
@@ -43,6 +43,7 @@ export interface ShellParseOptions {
 }
 
 export interface ShellOptions {
+  readonly onInternalError?: InternalErrorHandler;
   readonly fs: FileSystem;
   readonly commands?: CommandRegistry;
   readonly cwd?: string;
@@ -51,6 +52,7 @@ export interface ShellOptions {
 }
 
 export interface ShellExecOptions {
+  readonly onInternalError?: InternalErrorHandler;
   readonly fs?: FileSystem;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;

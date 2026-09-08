@@ -203,14 +203,33 @@ test("curl generated transport errors escape controls with an in-memory transpor
   assert.equal(actual.stderr.toString().includes(escaped), true, JSON.stringify(actual.stderr.toString()));
 });
 
-test("safejs generated exceptions are escaped but guest stderr remains raw", async () => {
+test("safejs host exceptions are opaque but guest stderr remains raw", async () => {
+  const failure = new Error(marker);
+  const seen: unknown[] = [];
   const runtime = contractRuntime(async (_source, options) => {
     await operation(options, "stdio", "error")(marker);
-    throw new Error(marker);
+    throw failure;
   });
-  const actual = await runSafeJs(["-e", "contract"], { runtime });
-  assert.notEqual(actual.exitCode, 0);
+  const actual = await runSafeJs(["-e", "contract"], { runtime }, "", { onInternalError(error) { seen.push(error); } });
+  assert.equal(actual.exitCode, 1);
+  assert.equal(actual.stderr, `${marker}safejs: internal error\n`);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0], failure);
+});
+
+test("safejs explicit guest errors are escaped but guest stderr remains raw", async () => {
+  const seen: unknown[] = [];
+  const runtime: ReturnType<typeof contractRuntime> = {
+    ...contractRuntime(async () => {}),
+    async run(_source, options) {
+      await operation(options, "stdio", "error")(marker);
+      return { ok: false, error: { name: "Error", message: marker } };
+    },
+  };
+  const actual = await runSafeJs(["-e", "contract"], { runtime }, "", { onInternalError(error) { seen.push(error); } });
+  assert.equal(actual.exitCode, 1);
   assert.equal(JSON.stringify(actual.stderr), JSON.stringify(`${marker}safejs: ${escaped}\n`));
+  assert.deepEqual(seen, []);
 });
 
 test("node provider diagnostics escape controls but guest stderr is raw", async () => {

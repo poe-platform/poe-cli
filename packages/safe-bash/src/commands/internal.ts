@@ -1,3 +1,4 @@
+import { PublicDiagnostic, publicDiagnosticMessage } from "../diagnostics.js";
 import { assertCommandRequirements } from "../contracts/command-requirements.js";
 import { writeDiagnostic } from "../escaping.js";
 import { inputRequirements } from "./portable-requirements.js";
@@ -11,7 +12,7 @@ export const encoder = new TextEncoder();
 export const decoder = new TextDecoder();
 export const bufferLimit = 32 * 1024 * 1024;
 
-export class UsageError extends Error {}
+export class UsageError extends PublicDiagnostic {}
 
 export interface ParsedOptions {
   readonly flags: Set<string>;
@@ -105,7 +106,7 @@ export async function output(context: CommandContext, text: string | Uint8Array)
 
 export async function diagnostic(context: CommandContext, error: unknown): Promise<void> {
   context.signal.throwIfAborted();
-  await writeDiagnostic(context.stderr, `${context.command}: ${error instanceof Error ? error.message : String(error)}\n`, context.signal);
+  await writeDiagnostic(context.stderr, `${context.command}: ${publicDiagnosticMessage(error, context.onInternalError)}\n`, context.signal);
 }
 
 export function define(name: string, handler: CommandHandler, failureCode = 1): CommandDefinition {

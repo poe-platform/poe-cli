@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { yieldTurn } from "../contracts/yield.js";
 import { dirname, FsError, isPathWithin, joinPath, type CommandContext, type FileStat } from "../contracts/index.js";
 import { compareCopyIdentity, compareObservedEntries } from "./copy-identity.js";
@@ -135,7 +136,7 @@ export async function moveAcrossDevices(context: CommandContext, source: string,
         catch (error) {
           context.signal.throwIfAborted();
           if (codeOf(error) !== "ENOTSUP" && codeOf(error) !== "EOPNOTSUPP") throw error;
-          await diagnostic(context, new Error(`cannot preserve timestamps for '${entry.target}': operation not supported; retaining copied data`));
+          await diagnostic(context, new PublicDiagnostic(`cannot preserve timestamps for '${entry.target}': operation not supported; retaining copied data`));
         }
       }
     }

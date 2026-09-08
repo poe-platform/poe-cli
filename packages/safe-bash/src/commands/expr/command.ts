@@ -1,4 +1,5 @@
 import { writeBytes, type CommandDefinition } from "../../contracts/index.js";
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { escapeText } from "../../escaping.js";
 import { RegexExecutor, RegexExecutionError, withRegexSession } from "../regex-execution/portable.js";
 import { ExprMatchError, exprMatchCeilings } from "../regex-execution/protocol.js";
@@ -55,7 +56,8 @@ export function createExprCommandWithExecutor(executor: RegexExecutor, options: 
         await budget.yield();
       } catch (error) {
         context.signal.throwIfAborted();
-        const detail = error instanceof ExprError || error instanceof ExprMatchError || error instanceof RegexExecutionError ? error.message : "execution or output failure";
+        const projected = error instanceof ExprError || error instanceof ExprMatchError ? error.message : publicDiagnosticMessage(error, context.onInternalError);
+        const detail = error instanceof ExprError || error instanceof ExprMatchError || error instanceof RegexExecutionError ? projected : "execution or output failure";
         let message: string;
         try {
           budget.check(detail.length + 7, limits.maxOutputBytes, "output bytes");

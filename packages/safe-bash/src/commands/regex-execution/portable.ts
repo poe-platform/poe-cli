@@ -68,7 +68,7 @@ class Slot {
     if (this.receiver) this.receiver(value);
     else this.fail(new RegexExecutionError("PROTOCOL", "unexpected idle message"));
   };
-  private readonly error = (error: Error) => this.fail(new RegexExecutionError("WORKER_ERROR", error.message));
+  private readonly error = (error: Error) => this.fail(new RegexExecutionError("WORKER_ERROR", "internal error", { cause: error }));
   private readonly messageerror = () => this.fail(new RegexExecutionError("PROTOCOL", "worker message could not be deserialized"));
   private readonly exit = (code: number) => {
     this.exited = true;

@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
 export interface RegexExecutionOptions {
   readonly requestTimeoutMs?: number;
   readonly startupTimeoutMs?: number;
@@ -17,9 +18,9 @@ export const defaults: Required<RegexExecutionOptions> = Object.freeze({
 
 export type RegexErrorCode = "QUEUE_EXHAUSTED" | "REQUEST_TIMEOUT" | "STARTUP_TIMEOUT" | "WORKER_EXIT" | "WORKER_ERROR" | "PROTOCOL" | "CLOSED" | "MATCH";
 
-export class RegexExecutionError extends Error {
-  constructor(readonly code: RegexErrorCode, message: string) {
-    super(code === "MATCH" ? message : `regex ${code}: ${message}`);
+export class RegexExecutionError extends PublicDiagnostic {
+  constructor(readonly code: RegexErrorCode, message: string, options?: ErrorOptions) {
+    super(code === "MATCH" ? message : `regex ${code}: ${message}`, options);
     this.name = "RegexExecutionError";
   }
 }

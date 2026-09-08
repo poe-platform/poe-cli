@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { FsError, type ByteSource, type CommandContext, type CommandDefinition } from "../contracts/index.js";
 import { assertInputRequirements, bufferLimit, concatenate, define, diagnostic, encoder, input, integer, lines, options, output, pathOf, requireOperands, UsageError, value } from "./internal.js";
 import { assertCommandRequirements } from "../contracts/command-requirements.js";
@@ -410,7 +411,7 @@ export function textCommands(): CommandDefinition[] {
             if (!parsed.flags.has("c")) { records.push(bytes); return; }
             return (async () => {
               if (records.length && (await compare(records.at(-1)!, bytes) > 0 || parsed.flags.has("u") && await keyCompare(records.at(-1)!, bytes) === 0)) {
-                await diagnostic(context, new Error(`disorder at record ${records.length + 1}`));
+                await diagnostic(context, new PublicDiagnostic(`disorder at record ${records.length + 1}`));
                 return false;
               }
               records.push(bytes);

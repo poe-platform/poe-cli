@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../../diagnostics.js";
 import { readBytes, writeBytes, type CommandDefinition } from "../../../contracts/index.js";
 import { define, diagnostic, output } from "../../internal.js";
 import { planOperands, unchangedSource, writeFileOperand } from "./files.js";
@@ -28,7 +29,7 @@ export function createCompressionCommands(): readonly CommandDefinition[] {
           }, { ...options, force: options.force && (options.stdout || options.test || plan.source === "-") }, context.signal);
         }
         if (warned) {
-          await diagnostic(context, new Error(`${plan.source}: decompression OK, trailing garbage ignored`));
+          await diagnostic(context, new PublicDiagnostic(`${plan.source}: decompression OK, trailing garbage ignored`));
           if (exitCode === 0) exitCode = 2;
         }
       } catch (error) {

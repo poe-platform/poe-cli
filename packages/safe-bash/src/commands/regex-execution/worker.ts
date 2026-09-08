@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
 import { parentPort } from "node:worker_threads";
 import { compile } from "./matching.js";
 import { matchExpr } from "../expr/bre-worker.js";
@@ -32,8 +33,8 @@ port.on("message", (request: Request | ExprMatchRequest) => {
     let retainedRanges = 0;
     const results = request.rows.map((row, index) => {
       const matches = matcher!(row, index);
-      if (matches.length > matchRangeLimits.perRow) throw new Error("matches per row limit exceeded");
-      if (matches.length > matchRangeLimits.perReply - retainedRanges) throw new Error("matches per reply limit exceeded");
+      if (matches.length > matchRangeLimits.perRow) throw new PublicDiagnostic("matches per row limit exceeded");
+      if (matches.length > matchRangeLimits.perReply - retainedRanges) throw new PublicDiagnostic("matches per reply limit exceeded");
       retainedRanges += matches.length;
       const ranges = new Float64Array(matches.length * 2);
       for (let index = 0; index < matches.length; index++) {
@@ -45,7 +46,8 @@ port.on("message", (request: Request | ExprMatchRequest) => {
     reply = { id: request.id, results };
     port.postMessage(reply, results.map(result => result.buffer));
   } catch (error) {
-    reply = { id: request.id, error: error instanceof Error ? error.message : String(error) };
+    if (!(error instanceof PublicDiagnostic)) throw error;
+    reply = { id: request.id, error: error.message };
     port.postMessage(reply);
   }
 });

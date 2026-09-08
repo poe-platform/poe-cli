@@ -34,8 +34,9 @@ export async function transform(
   const controller = new AbortController();
   const signal = AbortSignal.any([parentSignal, controller.signal]);
   let failure: unknown;
+  let hasFailure = false;
   const fail = (error: unknown): void => {
-    if (!controller.signal.aborted) { failure = error; controller.abort(error); }
+    if (!controller.signal.aborted) { hasFailure = true; failure = error; controller.abort(error); }
   };
   let prepared: ByteSource = split(typeof source === "function" ? source(signal) : source, signal);
   let warned = false;
@@ -72,7 +73,7 @@ export async function transform(
     }, { signal });
   } catch (error) {
     parentSignal.throwIfAborted();
-    throw failure ?? error;
+    throw hasFailure ? failure : error;
   } finally {
     controller.abort();
     readable.destroy();

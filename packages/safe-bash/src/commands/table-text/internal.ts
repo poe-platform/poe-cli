@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import { FsError, readBytes, resolvePath, writeBytes, type ByteSource, type CommandContext, type CommandDefinition, type CommandHandler } from "../../contracts/index.js";
 import { diagnostic } from "../internal.js";
@@ -129,7 +130,7 @@ export class RecordReader {
   }
   async closeOperand(name: string): Promise<void> {
     this.budget.context.signal.throwIfAborted();
-    if (this.closed) throw new Error(`${name}: Bad file descriptor`);
+    if (this.closed) throw new PublicDiagnostic(`${name}: Bad file descriptor`);
     await this.close();
   }
   async close(): Promise<void> {
@@ -196,7 +197,7 @@ export class OrderCheck {
       const message = `file ${file} is not in sorted order`;
       if (this.mode === "check") fail(message);
       this.warned.add(file); this.failed = true;
-      await diagnostic(this.context, new Error(message));
+      await diagnostic(this.context, new PublicDiagnostic(message));
     }
   }
 }

@@ -1,3 +1,4 @@
+import { PublicDiagnostic, publicDiagnosticMessage } from "../../diagnostics.js";
 import { writeDiagnostic } from "../../escaping.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import {
@@ -16,7 +17,7 @@ export interface DiffPatchOptions {
   readonly maxHunks?: number;
 }
 
-export class ToolError extends Error {
+export class ToolError extends PublicDiagnostic {
   constructor(message: string, readonly exitCode = 2) { super(message); }
 }
 
@@ -166,7 +167,7 @@ export function definition(name: string, options: DiffPatchOptions, run: (contex
       try { return { exitCode: await run(context, new Budget(context, options)) }; }
       catch (error) {
         context.signal.throwIfAborted();
-        const message = error instanceof Error ? error.message : String(error);
+        const message = publicDiagnosticMessage(error, context.onInternalError);
         await writeDiagnostic(context.stderr, `${name}: ${message.slice(0, 1000)}${message.length > 1000 ? "…" : ""}\n`, context.signal);
         return { exitCode: error instanceof ToolError ? error.exitCode : 2 };
       }

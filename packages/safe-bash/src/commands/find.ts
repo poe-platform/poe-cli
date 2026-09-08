@@ -1,3 +1,4 @@
+import { PublicDiagnostic } from "../diagnostics.js";
 import { basename, FsError, getCommandArguments, type CommandDefinition, type CommandHandler, type FileStat } from "../contracts/index.js";
 import { compilePattern } from "../shell/pattern.js";
 import { codeOf, define, diagnostic, integer, output, pathOf, replaceArgument, UsageError } from "./internal.js";
@@ -184,7 +185,7 @@ export function findCommands(execute: CommandHandler, maxDirectoryEntries?: numb
     };
     const evaluate: Expression = args.length ? disjunction() : async () => true;
     if (offset !== args.length) throw new UsageError(`unexpected expression '${args[offset]}'`);
-    if (deletes && prunes && !explicitDepth) throw new Error("-delete implies -depth; -prune is ineffective unless -depth is explicitly supplied");
+    if (deletes && prunes && !explicitDepth) throw new PublicDiagnostic("-delete implies -depth; -prune is ineffective unless -depth is explicitly supplied");
     for (const reference of references.keys()) {
       context.signal.throwIfAborted();
       const path = pathOf(context, reference);

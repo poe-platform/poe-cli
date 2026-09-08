@@ -230,3 +230,40 @@ operands (including split-string token generation), xargs fixed/replaced argv,
 find -exec and timeout transport explicit carriers rather than recover values
 by text equality. Existing string environment/path interfaces and xargs' strict
 UTF-8 stdin parser remain separate boundaries, not newly certified binary APIs.
+
+
+## Unexpected errors and host diagnostics
+
+ShellOptions and ShellExecOptions accept an optional onInternalError callback.
+The per-exec callback overrides the shell default; omission inherits it.
+The same callback is available on CommandContext for direct command hosts.
+Its type is (error: unknown) => void | Promise<void>.
+
+Unexpected failures converted into utility/shell diagnostics are reported at
+their conversion boundary with the original thrown value, including falsey
+values. The callback runs synchronously before writing the safe diagnostic.
+Independent conversions of the same value are separate events; there is no
+identity-deduplication set, retained error collection or result field.
+Tagged intermediate wrappers preserve the original value for this callback.
+An already-public FsError message remains public; its cause is not traversed,
+reported as a new event, or included in tenant output.
+
+Callback throws and returned-promise rejections are consumed without recursive
+notification, tenant output or status changes. Returned promises are observed
+but not awaited, tracked as invocation work or awaited by dispose. Thus a
+pending host callback cannot delay shell settlement. The host owns asynchronous
+logging lifetime and delivery; completion is not a promise of log persistence.
+This does not preempt synchronous blocking or other effects of trusted host JS.
+If a callback aborts the caller signal, normal subsequent cancellation checks
+still govern; the callback does not acquire a new cancellation channel.
+
+Existing cancellation, flow, EPIPE, shell-limit and cleanup outcomes retain
+their original precedence and direct host rejection identity. Such outcomes
+do not become observer events solely because they terminate execution.
+Other swallowed diagnostic-sink faults are reported without changing status.
+Unknown failures render internal error; explicitly authored utility diagnostics
+and FsError messages retain their existing public text and status. Adapter
+authors must use virtual operands in public fields and keep native details in
+causes. This is accidental-disclosure defense, not hostile-host-JS isolation.
+Explicit guest-error results from an injected interpreter remain guest data;
+an injected host hook throwing or rejecting is an unexpected host failure.

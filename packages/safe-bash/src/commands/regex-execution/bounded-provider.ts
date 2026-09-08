@@ -1,3 +1,5 @@
+import { PublicDiagnostic } from "../../diagnostics.js";
+import { EreSyntaxError, EreUnsupportedError, EreProfileLimitError, EreUsageUnknownError } from "./ere/errors.js";
 import { EreLedger } from "./ere/limits.js";
 import { compileEre } from "./ere/syntax.js";
 import { matchEre } from "./ere/matcher.js";
@@ -43,7 +45,7 @@ const byteOffset = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteOff
 const byteBuffer = Object.getOwnPropertyDescriptor(typedArrayPrototype, "buffer")!.get!;
 
 function fail(kind: "protocol" | "unsupported" | "limit", message: string): never {
-  throw new Error(`bounded regex ${kind}: ${message}`);
+  throw new PublicDiagnostic(`bounded regex ${kind}: ${message}`);
 }
 
 function record(value: unknown, keys: readonly string[], optional: readonly string[] = []): asserts value is Record<string, unknown> {
@@ -362,7 +364,10 @@ class CooperativeWorker implements RegexWorker {
     let owned: OwnedRequest | undefined;
     let failure: string | undefined;
     try { owned = admit(input, this.limits, this.#controller.signal); }
-    catch (error) { failure = error instanceof Error ? error.message.slice(0, 512) : "bounded regex protocol: request admission failed"; }
+    catch (error) {
+      if (!(error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) throw error;
+      failure = error.message.slice(0, 512);
+    }
     this.#busy = true;
     const task = Promise.resolve().then(async () => {
       let reply: Reply | ExprMatchReply;
@@ -370,7 +375,13 @@ class CooperativeWorker implements RegexWorker {
         this.#controller.signal.throwIfAborted();
         reply = owned ? await execute(owned, this.#controller.signal) : { id, error: failure! };
       } catch (error) {
-        reply = { id, error: error instanceof Error ? error.message.slice(0, 512) : "bounded regex request failed" };
+        if (!(error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) {
+          owned = undefined;
+          this.#busy = false;
+          for (const listener of this.#listeners.get("error") ?? []) (listener as (reason: unknown) => void)(error);
+          return;
+        }
+        reply = { id, error: error.message.slice(0, 512) };
       }
       if (expression && "error" in reply) reply = { id, operation: "expr-match", category: "unsupported", error: reply.error };
       // Clear request-owned payloads before notifying the consumer or allowing reuse.

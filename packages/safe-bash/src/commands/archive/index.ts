@@ -1,3 +1,4 @@
+import { publicDiagnosticMessage } from "../../diagnostics.js";
 import { readBytes, writeBytes, type ByteSource, type CommandContext, type CommandDefinition, type VirtualShellPlugin } from "../../contracts/index.js";
 import { escapeText } from "../../escaping.js";
 import { createArchive, manifest } from "./create.js";
@@ -41,7 +42,7 @@ export function createTarCommand(options: ArchiveCommandsOptions = {}): CommandD
     } catch (error) {
       controller.abort(error);
       original.signal.throwIfAborted();
-      const message = escapeText(display((error instanceof Error ? error.message : String(error)).slice(0, 1024)), "diagnostic");
+      const message = escapeText(display((publicDiagnosticMessage(error, original.onInternalError)).slice(0, 1024)), "diagnostic");
       await writeBytes(original.stderr, Buffer.from(`tar: ${message}\n`).subarray(0, limits.maxDiagnosticBytes), original.signal);
       return { exitCode: 2 };
     } finally { controller.abort(new Error("tar command finished")); }

@@ -1,5 +1,7 @@
 import { createGunzip, createGzip } from "node:zlib";
-import { readBytes, type ByteSource } from "../../contracts/index.js";
+import { FsError, readBytes, type ByteSource } from "../../contracts/index.js";
+import { PublicDiagnostic } from "../../diagnostics.js";
+import { compressionDiagnostic } from "../bytes/compression/errors.js";
 import { bounded, fail, wait, type ArchiveLimits } from "./internal.js";
 
 export async function* compressed(source: ByteSource, decode: boolean, signal: AbortSignal, limits: ArchiveLimits): ByteSource {
@@ -15,20 +17,24 @@ export async function* compressed(source: ByteSource, decode: boolean, signal: A
     try {
       for await (const chunk of bounded(source, limits.maxArchiveBytes, combined, limits.chunkSize)) {
         await wait(combined, () => new Promise<void>((resolve, reject) => {
-          transform.write(chunk, error => error ? reject(error) : resolve());
+          transform.write(chunk, error => error ? reject(compressionDiagnostic(error)) : resolve());
         }));
       }
       combined.throwIfAborted();
       transform.end();
     } catch (error) {
-      transform.destroy(error instanceof Error ? error : new Error(String(error)));
-      throw error;
+      const failure = error instanceof PublicDiagnostic || error instanceof FsError ? error : new PublicDiagnostic("internal error", { cause: error });
+      transform.destroy(failure);
+      throw failure;
     }
   })();
   void pump.catch(() => {});
   try {
     yield* bounded(transform, limits.maxArchiveBytes, combined, limits.chunkSize);
     await pump;
+  } catch (error) {
+    signal.throwIfAborted();
+    throw compressionDiagnostic(error);
   } finally {
     controller.abort(new Error("archive compression finished"));
     combined.removeEventListener("abort", destroy);
