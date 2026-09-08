@@ -43,7 +43,7 @@ export function createIntlGlobal(budget: Budget): SandboxObject {
   }
   Object.defineProperty(intl, Symbol.toStringTag, { value: "Intl", configurable: true });
   registerBuiltinIdentities(budget, { Intl: intl });
-  for (const constructor of [locale, collator, numberFormat, listFormat]) {
+  for (const constructor of [locale, collator, numberFormat, listFormat, relativeTimeFormat, displayNames]) {
     const prototype = constructor.properties!.prototype as SandboxObject;
     for (const owner of [prototype, constructor.properties!])
       for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(owner)))
