@@ -117,3 +117,19 @@ and monitor both releases until successful publication. No fix is claimed yet.
   is finished. Preserve that failure and rerun the full route after the worker
   freezes. Full repository tests, persistent workerd acceptance, and publication
   remain pending; focused results do not substitute for those gates.
+- Candidate `765f74fb9affc8fc522421fa30e385f083b5fdc8` passes 37 actual
+  workerd groups using three recreated instances sharing persisted local R2.
+  Historical bytes, ETag and metadata are unchanged; device mutations remain
+  zero. A 256 MiB finite drain yields cooperatively, and six logically 1 TiB
+  canceled streams produce only 64 KiB each and await producer cleanup once.
+  The report is
+  `/tmp/kamilio-700-workerd-qa.vtgWif/candidate-XE8woS/continuity-5avclZ/final-report.json`.
+  This is local Miniflare persistence, not a remote Cloudflare deployment or a
+  publication claim. Later runtime changes require fresh candidate validation.
+- The next full test run catches eager buffered-input acquisition that can
+  block cancellation before the caller receives its source. The focused fix
+  defers the bounded read until consumption; all 49 input tests then pass.
+  Other current comparisons need explicit ordinary-fixture namespaces or
+  metadata-only probe expectations because the Shell root now contains `/dev`.
+  Preserve frozen native captures, original output bounds, and mutation checks.
+  Remaining full-suite findings are still being validated; no push is claimed.
