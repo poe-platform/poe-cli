@@ -130,6 +130,11 @@
     "./portable": {
       "types": "./dist/portable.d.ts",
       "import": "./dist/portable.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "browser": null,
+      "import": "./dist/node.js"
     }
   },
   "files": [

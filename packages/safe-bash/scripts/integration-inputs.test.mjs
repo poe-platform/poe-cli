@@ -408,6 +408,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/predicate-depth.test.ts"));
   assert.ok(files.includes("tests/commands/structured/whole-value-admission.test.ts"));
   assert.ok(files.includes("tests/plugins/portable-agent.test.ts"));
+  assert.ok(files.includes("tests/plugins/portable-default-agent.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/awk-concat-work-budget.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/sed-program-budget.test.ts"));
   assert.ok(files.includes("tests/shell/memory-storage-limits.test.ts"));
@@ -1833,6 +1834,8 @@ test("default normal runner passes every discovered active file to serial Node e
   assert.ok(files.includes("tests/commands/regex-execution/portable.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/provider.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/bounded-provider.test.ts"));
+  assert.ok(files.includes("tests/commands/regex-execution/default-provider.test.ts"));
+  assert.ok(files.includes("tests/commands/regex-execution/node-provider.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/range-admission.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/reply-admission.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/worker-range-admission.test.ts"));

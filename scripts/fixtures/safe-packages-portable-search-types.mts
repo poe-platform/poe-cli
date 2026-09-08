@@ -9,6 +9,13 @@ import {
   type BoundedRegexProviderOptions as BrowserProviderOptions,
   type PortableSearchOptions as BrowserSearchOptions,
 } from "@poe-platform/safe-bash/browser";
+import { portableAgentCommands, type PortableAgentCommandsOptions } from "@poe-platform/safe-bash/portable";
+import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
+
+const defaultAgentOptions: PortableAgentCommandsOptions = {};
+portableAgentCommands();
+portableAgentCommands(defaultAgentOptions);
+portableAgentCommands({ provider: createNodeRegexProvider() });
 
 export function portablePlugins(provider: BoundedRegexProvider & BrowserProvider) {
   const options: PortableSearchOptions & BrowserSearchOptions = {

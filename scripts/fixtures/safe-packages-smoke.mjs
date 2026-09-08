@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { browser as mixedBrowser, portable as mixedPortable, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import "./safe-packages-realms.mjs";
 import "./safe-packages-retained.mjs";
 import "./safe-packages-date.mjs";
@@ -26,6 +28,34 @@ for (const paths of [posixPath, portablePosixPath]) {
   assert.equal(paths.delimiter, ":");
   assert.equal(paths.normalize("/a/../b"), "/b");
   assert.equal(paths.format(paths.parse("/a/file.txt")), "/a/file.txt");
+}
+for (const entry of [mixedBrowser, mixedPortable]) {
+  const nested = await runNestedCommands(entry);
+  assert.deepEqual(nested.failures, []);
+  for (const result of nested.results) {
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, "2\n");
+    assert.equal(result.stderr, "");
+  }
+}
+assert.equal(mixedBrowser.Shell, mixedPortable.Shell);
+for (const provider of [undefined, createNodeRegexProvider()]) {
+  const fs = new mixedBrowser.MemoryFileSystem();
+  await fs.mkdir("/notes");
+  await fs.writeFile("/notes/report.txt", new TextEncoder().encode("report\n"));
+  const shell = new mixedBrowser.Shell({ fs }).use(mixedPortable.portableAgentCommands(provider === undefined ? undefined : { provider }));
+  try {
+    const report = await shell.exec("printf /notes/report.txt | xargs cat");
+    assert.equal(report.exitCode, 0, report.stderr);
+    assert.equal(report.stdout, "report\n");
+    const environment = await shell.exec("env NOTE=local env");
+    assert.equal(environment.exitCode, 0, environment.stderr);
+    assert.ok(environment.stdout.split("\n").includes("NOTE=local"));
+    assert.equal((await shell.exec("printf hello | xargs node")).exitCode, 127);
+    const matched = await shell.exec(provider === undefined ? "printf 'abc\\n' | egrep '^abc$'" : "printf 'Abc\\n' | grep -i abc");
+    assert.equal(matched.exitCode, 0, matched.stderr);
+    assert.equal(matched.stdout, provider === undefined ? "abc\n" : "Abc\n");
+  } finally { await shell.dispose(); }
 }
 const portableShell = new PortableShell({ fs: createMemoryFileSystem() }).use(
   portableAgentCommands({ provider: createBoundedRegexProvider() }),

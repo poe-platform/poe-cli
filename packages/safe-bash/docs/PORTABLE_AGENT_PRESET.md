@@ -7,9 +7,9 @@ The standalone entry is `@poe-platform/safe-bash/portable`; the bundled entry is
 `portableAgentCommandNames` inventory, `PortableAgentCommandsOptions`, and the
 existing browser shell, filesystem and regex-provider APIs.
 
-Public installation availability remains pending until the corresponding release
-is actually published. Source implementation and packed-consumer validation alone
-do not establish a published release.
+Check the installed package version before using newly added options or entries.
+Source implementation and packed-consumer validation alone do not establish a
+published release of a change.
 
 The complete preset targets workerd with `nodejs_compat` and equivalent compatible
 runtimes. Compression, archives, checksums and timers use supported pure Node
@@ -25,17 +25,19 @@ which, timeout and apply_patch. It excludes curl, node and safejs; these remain
 separate explicit capability opt-ins. Existing Node `agentCommands` and
 `createAgentCommands` APIs remain available and retain their options and independent
 regex pools for grep, the egrep/fgrep family, expr and search. Portable composition
-shares the explicitly owned host-provider executor instead.
+shares its owned executor endpoints instead. The `/browser` and `/portable`
+public entries share one runtime, so their Shell and portable preset can compose
+without duplicating argument ownership identities.
 
 ## Configuration
 
 ```ts
 import {
-  Shell, MemoryFileSystem, createBoundedRegexProvider, portableAgentCommands,
+  Shell, MemoryFileSystem, portableAgentCommands,
 } from "@poe-platform/safe-bash/portable";
 
 const shell = new Shell({ fs: new MemoryFileSystem() }).use(
-  portableAgentCommands({ provider: createBoundedRegexProvider() }),
+  portableAgentCommands(),
 );
 try {
   await shell.exec("printf 'one\\ntwo\\n' | fgrep two");
@@ -44,17 +46,37 @@ try {
 }
 ```
 
-`provider` is mandatory. Every `AgentCommandsOptions` field is supported, including
+`provider` is optional. Omission constructs the existing bounded cooperative ERE
+provider for that preset; a supplied provider overrides it. Invalid supplied
+providers are rejected rather than silently replaced. Every `AgentCommandsOptions`
+field is supported, including
 family limits, `execution`, `execute`, `replace`, stream/directory limits and
 `regex`. `search.regex`, when supplied, configures a separate executor using the
-same required provider; otherwise search shares the preset executor and `regex`
+same selected provider; otherwise search shares the preset executor and `regex`
 policy. Registration checks all collisions before modifying the host registry.
 There are no new environment variables, implicit host filesystem capabilities,
 network authorizations or native process fallbacks.
 
+The explicit host-specific entry `@poe-platform/safe-bash/node` (or
+`poe-code/safe-bash/node`) preserves the existing Node-root exports and adds
+`createNodeRegexProvider`. Inject that provider when the portable preset needs
+the existing Node worker-thread regex behavior:
+
+```ts
+import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
+
+const plugin = portableAgentCommands({ provider: createNodeRegexProvider() });
+```
+
+Use Shell and legacy Node command factories together from `/node`; injecting its
+provider into the portable preset is the supported cross-entry override. The
+ordinary root preset remains unchanged in this additive stage. The broader
+portable-default root transition and its breaking-version boundary are tracked
+in `docs/plans/issue-669-portable-default-api.md` at the repository root.
+
 ## Regex capability and lifetime
 
-grep, rg, egrep, fgrep and expr matching all use the supplied provider. sed and awk
+grep, rg, egrep, fgrep and expr matching all use the selected provider. sed and awk
 retain their independently bounded cooperative implementations. The built-in
 `createBoundedRegexProvider` is a restricted cooperative implementation, not a
 native-worker, wall-clock-preemption or RSS-isolation guarantee.
@@ -68,7 +90,9 @@ For example `expr aa : 'a*'` exits 2 with a bounded-regex unsupported diagnostic
 `expr 2 + 3` still works. A different host provider may implement more descriptors
 while respecting the existing bounded request/reply and retirement contracts.
 
-The plugin owns its executor(s), not the host provider itself. Shell disposal
+The plugin owns its executor(s) and their endpoints, not an injected provider
+object or another preset's endpoints. Shared providers remain caller-owned and
+can be reused after one preset is disposed. Shell disposal
 awaits plugin disposal; direct plugin hosts must call and await `dispose`, even
 after failed installation. Disposal is idempotent, rejects further regex work and
 setup, and awaits worker retirement. Each command also closes its invocation

@@ -91,11 +91,10 @@ for (const kind of ["definitions", "plugin"] as const) {
   });
 }
 
-test("complete portable agent preset requires an explicit provider", async () => {
+test("complete portable agent preset accepts an omitted provider", async () => {
   assert.equal(typeof portableAgentCommands, "function");
-  assert.throws(() => portableAgentCommands({ provider: undefined! }), /bounded regex provider is required/);
   const commands = new browser.CommandRegistry();
-  const plugin = portableAgentCommands({ provider: browser.createBoundedRegexProvider() });
+  const plugin = portableAgentCommands({});
   await plugin.setup({ commands, use() {}, registerFileSystem() {} });
   assert.deepEqual(commands.list().map(command => command.name).sort(), expected);
   await plugin.dispose?.();
@@ -125,8 +124,20 @@ test("portable preset graph never loads fs, native workers, or host command adap
 test("original browser graph remains buildable without Node builtin polyfills", async () => {
   const { resolveBrowserShellBuild } = await import(new URL("../../../../scripts/bundle-safe-bash.mjs", import.meta.url).href);
   const result = await build(resolveBrowserShellBuild(fileURLToPath(new URL("../../../../", import.meta.url))));
-  for (const input of Object.values(result.metafile!.inputs)) {
-    for (const imported of input.imports) assert.ok(!imported.path.startsWith("node:"), imported.path);
+  const outputs = result.metafile!.outputs;
+  const pending = Object.keys(outputs).filter(filename => filename.endsWith("/browser.js"));
+  assert.equal(pending.length, 1);
+  const reachable = new Set<string>();
+  while (pending.length) {
+    const filename = pending.pop()!;
+    if (reachable.has(filename)) continue;
+    reachable.add(filename);
+    const output = outputs[filename];
+    assert.ok(output, filename);
+    for (const imported of output.imports) {
+      assert.ok(!imported.path.startsWith("node:"), `${filename}: ${imported.path}`);
+      if (!imported.external) pending.push(imported.path);
+    }
   }
 });
 

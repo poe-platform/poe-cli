@@ -61,7 +61,7 @@ it.each([
           })
         : Object.entries(options.entryPoints ?? {});
       const metafile: Metafile = { inputs: {}, outputs: {} };
-      if (options.splitting)
+      if (options.splitting && entries.some(([, source]) => source.startsWith(path.join(root, "packages/safe-fs/src") + path.sep)))
         metafile.inputs[`packages/safe-fs/src/platform/${options.platform}.ts`] = {
           bytes: 0,
           imports: []
@@ -141,10 +141,9 @@ it.each([
       }
       expect(options.metafile).toBe(true);
     }
-    expect(build.mock.calls.filter(([options]) => options.platform === "browser" && !options.splitting)
+    expect(build.mock.calls.filter(([options]) => options.outdir === path.join(root, "packages/safe-bash/dist"))
       .map(([options]) => options.entryPoints)).toEqual([
-      [path.join(root, "packages/safe-bash/src/browser.ts")],
-      [path.join(root, "packages/safe-bash/src/portable.ts")],
+      [path.join(root, "packages/safe-bash/src/browser.ts"), path.join(root, "packages/safe-bash/src/portable.ts")],
     ]);
   }
 );

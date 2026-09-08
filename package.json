@@ -226,6 +226,11 @@
     "./safe-bash/portable": {
       "types": "./packages/safe-bash/dist/portable.d.ts",
       "import": "./packages/safe-bash/dist/portable.js"
+    },
+    "./safe-bash/node": {
+      "types": "./packages/safe-bash/dist/node.d.ts",
+      "browser": null,
+      "import": "./packages/safe-bash/dist/node.js"
     }
   },
   "workspaces": [

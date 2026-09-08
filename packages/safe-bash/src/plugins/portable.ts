@@ -1,10 +1,11 @@
 import type { VirtualShellPlugin } from "../contracts/index.js";
+import { createBoundedRegexProvider } from "../commands/regex-execution/bounded-provider.js";
 import { RegexExecutor } from "../commands/regex-execution/portable.js";
 import type { BoundedRegexProvider } from "../commands/regex-execution/provider.js";
 import { commandExecutor, composeAgentCommands, type AgentCommandsOptions } from "./composition.js";
 
 export interface PortableAgentCommandsOptions extends AgentCommandsOptions {
-  readonly provider: BoundedRegexProvider;
+  readonly provider?: BoundedRegexProvider;
 }
 
 export const portableAgentCommandNames: readonly string[] = Object.freeze([
@@ -17,9 +18,10 @@ export const portableAgentCommandNames: readonly string[] = Object.freeze([
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ]);
 
-export function portableAgentCommands(options: PortableAgentCommandsOptions): VirtualShellPlugin {
-  const executor = new RegexExecutor(options.provider, options.regex);
-  const searchExecutor = options.search?.regex === undefined ? executor : new RegexExecutor(options.provider, options.search.regex);
+export function portableAgentCommands(options: PortableAgentCommandsOptions = {}): VirtualShellPlugin {
+  const provider = options.provider === undefined ? createBoundedRegexProvider() : options.provider;
+  const executor = new RegexExecutor(provider, options.regex);
+  const searchExecutor = options.search?.regex === undefined ? executor : new RegexExecutor(provider, options.search.regex);
   let disposal: Promise<void> | undefined;
   return {
     name: "portable-agent-commands",
