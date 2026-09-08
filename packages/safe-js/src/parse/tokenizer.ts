@@ -81,6 +81,7 @@ const CONTROL_FLOW_PAREN_KEYWORDS = new Set(["if", "while", "for", "catch"]);
 const MAX_UNICODE_CODE_POINT = 0x10ffff;
 const IDENTIFIER_START_PATTERN = /^\p{ID_Start}$/u;
 const IDENTIFIER_PART_PATTERN = /^\p{ID_Continue}$/u;
+const SPACE_SEPARATOR_PATTERN = /^\p{Zs}$/u;
 
 const PUNCTUATORS = [
   ">>>=",
@@ -1170,7 +1171,8 @@ function isOctalDigit(char: string): boolean {
 }
 
 function isWhitespace(char: string): boolean {
-  return char === " " || char === "\t" || char === "\v" || char === "\f" || char === "\uFEFF";
+  return char === " " || char === "\t" || char === "\v" || char === "\f" || char === "\uFEFF" ||
+    (char.charCodeAt(0) > 0x7f && SPACE_SEPARATOR_PATTERN.test(char));
 }
 
 function isLineBreak(char: string): boolean {
