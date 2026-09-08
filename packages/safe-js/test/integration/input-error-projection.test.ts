@@ -283,13 +283,17 @@ async function observe(
       leftDomain,
       apiMode,
       publicRuntimeURL: observation.publicRuntimeURL,
-      typedV8Base64: serialize(observation).toString("base64"),
       status: observation.status,
       error: observation.error?.message,
-      value: observation.value,
-      requests: observation.requests,
-      proofs: observation.proofs,
-      acknowledgements: observation.acknowledgements
+      ...(process.env.SAFEJS_O12_API === undefined
+        ? {}
+        : {
+            typedV8Base64: serialize(observation).toString("base64"),
+            value: observation.value,
+            requests: observation.requests,
+            proofs: observation.proofs,
+            acknowledgements: observation.acknowledgements
+          })
     })
   );
   return observation;
@@ -431,6 +435,7 @@ describe("O12 exact modeled Error proof projection", () => {
         leftDomain === "modeled"
           ? `classifies ${projection} proof ${repeat} against the same capture and request`
           : `preserves ${leftDomain} proof provenance with the complete right receipt`;
+      let completedProof: Observation;
       it(title, async () => {
         expect(captured.status).toBe("ok");
         const before = serialize(captured.saved);
@@ -571,15 +576,25 @@ describe("O12 exact modeled Error proof projection", () => {
         expect(resumed.completed.promiseReplay.settlements.slice(0, recorded.length)).toEqual(
           recorded
         );
-        expect(serialize(captured.saved)).toEqual(before);
-        expect(serialize(captured.model.receiptSnapshot)).toEqual(receiptBefore);
-        const completedReplay = await observe("restore", projection, resumed.completed, leftDomain);
+        expect(serialize(captured.saved).equals(before)).toBe(true);
+        expect(serialize(captured.model.receiptSnapshot).equals(receiptBefore)).toBe(true);
+        completedProof = resumed;
+      });
+
+      it(`${title}: completed replay`, async () => {
+        expect(completedProof?.status).toBe("ok");
+        const completedReplay = await observe(
+          "restore",
+          projection,
+          completedProof.completed,
+          leftDomain
+        );
         expect(completedReplay.status).toBe("ok");
-        expect(completedReplay.value).toEqual(expected);
+        expect(completedReplay.value).toEqual(structuredClone(captured.nativeValue));
         expect(completedReplay.calls).toEqual([]);
         expect(completedReplay.requests).toEqual([]);
-        expect(completedReplay.completed.replay).toEqual(resumed.completed.replay);
-        expect(completedReplay.completed.promiseReplay).toEqual(resumed.completed.promiseReplay);
+        expect(completedReplay.completed.replay).toEqual(completedProof.completed.replay);
+        expect(completedReplay.completed.promiseReplay).toEqual(completedProof.completed.promiseReplay);
       });
     }
 
