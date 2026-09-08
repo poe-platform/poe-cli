@@ -31,20 +31,15 @@ const dateTimeOptions: ReadonlyArray<readonly [string, IntlOptionType | "number"
   ["timeStyle", ["full", "long", "medium", "short"]]
 ];
 
-export async function formatDateLocale(
-  name: string,
-  time: number,
-  args: readonly SandboxValue[],
+export async function readDateTimeFormatOptions(
+  input: SandboxValue,
   budget: Budget,
   context?: SandboxCallContext
-): Promise<string> {
-  if (Number.isNaN(time)) return budget.allocateString("Invalid Date");
-  let locales: string[] = [];
+): Promise<Record<string, string | number | boolean>> {
   const options: Record<string, string | number | boolean> = Object.create(null);
-  const release = retainValues(budget, () => [locales, options]);
+  const release = retainValues(budget, () => [input, options]);
   try {
-    locales = await canonicalizeGuestLocales(args[0], budget, context);
-    const inputOptions = intlOptionsObject(args[1], budget);
+    const inputOptions = intlOptionsObject(input, budget);
     for (const [key, type] of dateTimeOptions) {
       const value = await readIntlProperty(inputOptions, key, budget, context);
       if (value === undefined) continue;
@@ -61,6 +56,24 @@ export async function formatDateLocale(
         options[key] = text;
       } else options[key] = await convertIntlOption(value, key, type, budget, context);
     }
+    return options;
+  } finally { release(); }
+}
+
+export async function formatDateLocale(
+  name: string,
+  time: number,
+  args: readonly SandboxValue[],
+  budget: Budget,
+  context?: SandboxCallContext
+): Promise<string> {
+  if (Number.isNaN(time)) return budget.allocateString("Invalid Date");
+  let locales: string[] = [];
+  let options: Record<string, string | number | boolean> = Object.create(null);
+  const release = retainValues(budget, () => [locales, options]);
+  try {
+    locales = await canonicalizeGuestLocales(args[0], budget, context);
+    options = await readDateTimeFormatOptions(args[1], budget, context);
     const date = name !== "toLocaleTimeString";
     const clock = name !== "toLocaleDateString";
     if (options.dateStyle !== undefined || options.timeStyle !== undefined) {

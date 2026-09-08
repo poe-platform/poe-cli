@@ -29,6 +29,7 @@ import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from ".
 import { isSandboxLocale, localeTag } from "./intl-locale.js";
 import { isSandboxCollator, collatorState } from "./intl-collator.js";
 import { isSandboxNumberFormat, numberFormatState } from "./intl-numberformat.js";
+import { isSandboxDateTimeFormat, dateTimeFormatState } from "./intl-datetimeformat.js";
 import { isSandboxListFormat, listFormatState } from "./intl-listformat.js";
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState } from "./intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState } from "./intl-displaynames.js";
@@ -813,6 +814,11 @@ export function measureSandboxData(
     if (isSandboxDisplayNames(value)) visit(displayNamesState(value).options, depth + 1);
     if (isSandboxNumberFormat(value)) {
       const state = numberFormatState(value);
+      visit(state.options, depth + 1);
+      visit(state.format, depth + 1);
+    }
+    if (isSandboxDateTimeFormat(value)) {
+      const state = dateTimeFormatState(value);
       visit(state.options, depth + 1);
       visit(state.format, depth + 1);
     }

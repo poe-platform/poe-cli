@@ -38,6 +38,7 @@ import { createSandboxListFormat } from "../interp/intl-listformat.js";
 import { createSandboxRelativeTimeFormat } from "../interp/intl-relativetimeformat.js";
 import { createSandboxDisplayNames } from "../interp/intl-displaynames.js";
 import { createSandboxNumberFormat, numberFormatState } from "../interp/intl-numberformat.js";
+import { createSandboxDateTimeFormat, dateTimeFormatState } from "../interp/intl-datetimeformat.js";
 import { restoreBoxedProperties } from "./boxed.js";
 import { sandboxErrorNames, sandboxErrorTypes } from "../error/shape.js";
 import { SnapshotMismatchError } from "../restore.js";
@@ -1155,7 +1156,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-displaynames" || serialized.kind === "guest-relativetimeformat" || serialized.kind === "guest-listformat" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-displaynames" || serialized.kind === "guest-relativetimeformat" || serialized.kind === "guest-listformat" || serialized.kind === "guest-datetimeformat" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1234,6 +1235,13 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       value = createSandboxRegex(serialized.source, serialized.flags, 0, state.compilation);
     } else if (serialized.kind === "guest-boxed") {
       value = createSandboxBox(deserializeValue(serialized.value, state));
+    } else if (serialized.kind === "guest-datetimeformat") {
+      value = createSandboxDateTimeFormat(serialized.options.locale as string, serialized.options, true);
+      if (serialized.format !== undefined) state.initializeIterators.push(() => {
+        const format = deserializeValue(serialized.format!, state);
+        if (!isSandboxClosure(format)) throw new TypeError("Invalid cached DateTimeFormat function.");
+        dateTimeFormatState(value).format = format;
+      });
     } else if (serialized.kind === "guest-numberformat") {
       value = createSandboxNumberFormat(serialized.options.locale as string, serialized.options);
       if (serialized.format !== undefined) state.initializeIterators.push(() => {

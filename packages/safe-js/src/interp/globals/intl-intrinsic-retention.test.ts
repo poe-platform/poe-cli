@@ -2,12 +2,16 @@ import { expect, it } from "vitest";
 import { Budget } from "../budget.js";
 import { defineOwnDataProperty, isSandboxClosure, measureSandboxData, type SandboxObject } from "../values.js";
 import { createIntlGlobal } from "./intl.js";
+import { createDateGlobal } from "./date.js";
 
-it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames"])(
+it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat"])(
   "accounts for retained mutations on Intl.%s.prototype and its methods",
   name => {
     const budget = new Budget();
-    const intl = createIntlGlobal(budget);
+    const date = createDateGlobal({ budget });
+    const now = date.properties!.now;
+    if (!isSandboxClosure(now)) throw new Error("Expected Date.now");
+    const intl = createIntlGlobal(budget, now);
     const constructor = intl[name];
     if (!isSandboxClosure(constructor)) throw new Error("Expected an Intl constructor");
     const prototype = constructor.properties!.prototype as SandboxObject;

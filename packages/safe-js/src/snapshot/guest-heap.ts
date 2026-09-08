@@ -18,6 +18,7 @@ import { isSandboxListFormat, listFormatState, type ResolvedListFormatOptions } 
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState, type ResolvedRelativeTimeFormatOptions } from "../interp/intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState, type ResolvedDisplayNamesOptions } from "../interp/intl-displaynames.js";
 import { isSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
+import { isSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
@@ -99,6 +100,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-locale"; tag: string; state: GuestObjectState<T> }
   | { kind: "guest-collator"; options: ResolvedCollatorOptions; compare?: T; state: GuestObjectState<T> }
   | { kind: "guest-numberformat"; options: NumberFormatOptions; format?: T; state: GuestObjectState<T> }
+  | { kind: "guest-datetimeformat"; options: DateTimeFormatOptions; format?: T; state: GuestObjectState<T> }
   | { kind: "guest-listformat"; options: ResolvedListFormatOptions; state: GuestObjectState<T> }
   | { kind: "guest-relativetimeformat"; options: ResolvedRelativeTimeFormatOptions; state: GuestObjectState<T> }
   | { kind: "guest-displaynames"; options: ResolvedDisplayNamesOptions; state: GuestObjectState<T> }
@@ -287,6 +289,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   if (isSandboxListFormat(value)) return { kind: "guest-listformat", options: { ...listFormatState(value).options }, state: captureObjectState(value, encode)! };
   if (isSandboxRelativeTimeFormat(value)) return { kind: "guest-relativetimeformat", options: { ...relativeTimeFormatState(value).options }, state: captureObjectState(value, encode)! };
   if (isSandboxDisplayNames(value)) return { kind: "guest-displaynames", options: { ...displayNamesState(value).options }, state: captureObjectState(value, encode)! };
+  if (isSandboxDateTimeFormat(value)) {
+    const { options, format } = dateTimeFormatState(value);
+    return { kind: "guest-datetimeformat", options: { ...options }, ...(format === undefined ? {} : { format: encode(format) }), state: captureObjectState(value, encode)! };
+  }
   if (isSandboxNumberFormat(value)) {
     const { options, format } = numberFormatState(value);
     return { kind: "guest-numberformat", options: { ...options }, ...(format === undefined ? {} : { format: encode(format) }), state: captureObjectState(value, encode)! };

@@ -30,12 +30,13 @@ import { createIntrinsicObject, getSandboxPrototype, registerIntrinsicObject, se
 export function createBuiltinBindings(
   options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean; typedArrayPrototypes?: boolean }
 ) {
+  const date = createDateGlobal(options);
   const bindings = {
     ...createConsoleJsonGlobals(options),
     ...createCollectionGlobals(options),
     ...Object.fromEntries(Object.entries(numericTypedArrayConstructors).map(([name, Native]) =>
       [name, createNumericTypedArrayGlobal(options.budget, options.typedArrayPrototypes !== false, Native)])) as Record<keyof typeof numericTypedArrayConstructors, SandboxClosure>,
-    Date: createDateGlobal(options),
+    Date: date,
     Symbol: createSymbolGlobal(options.budget),
     BigInt: createBigIntGlobal(options.budget),
     ...createErrorGlobals({ ...options, errorPrototypes: options.errorPrototypes !== false }),
@@ -45,7 +46,7 @@ export function createBuiltinBindings(
     DisposableStack: createDisposableStackGlobal(options.budget),
     AsyncDisposableStack: createAsyncDisposableStackGlobal(options.budget),
     Reflect: createReflectGlobal(options.budget),
-    Intl: createIntlGlobal(options.budget),
+    Intl: createIntlGlobal(options.budget, date.properties!.now as SandboxClosure),
     ArrayBuffer: createArrayBufferGlobal(options.budget),
     DataView: createDataViewGlobal(options.budget),
     ...createMiscGlobals(options),
