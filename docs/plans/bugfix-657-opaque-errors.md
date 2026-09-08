@@ -76,6 +76,29 @@ plus this plan). Final focused checks are GREEN; tools are frozen for root gates
 
 ## Evidence
 
+### Final maintained delivery gate, September 8
+
+Frozen candidate `d25afdaaa` passed every maintained stage in
+`/tmp/kamilio-657-verified-gate.W61BGq`: normal `npm run build`,
+`npm run typecheck --workspace=virtual-bash`, `npm run lint`, and full `npm test`.
+The typecheck includes source/tests and 26 current consumer groups; it is not
+runtime acceptance. Exclusive root lint completed with 25 receipts and no
+unaccepted errors or warnings. No owned worker or preview ran during lint.
+
+The uncached full test route passed 40,444 shared tests (38 skipped), 282 Bash
+runner controls, 22,298 Bash tests (63 skipped, zero failures/cancellations),
+288 terminal tests and both native root posttest controls. Workspace membership
+and lifecycle dependencies came from the maintained orchestrator; absent unit
+tasks and optional skipped profiles are not counted as passes. The earlier
+failed full sweep and strict-type run remain retained separately.
+
+The only changes after the successful `9b20027cd` built API/browser checks were
+strict test typing and plan records; product sources stayed identical. The
+historical HTML live-hash seal is an explicit opt-in tool, not part of the
+maintained unit/typecheck route; its original evidence is unchanged and no
+unnecessary migration gate was added. Delivery reporting must distinguish the
+verified remote-main push from the later scoped and root release results.
+
 - Rebased the two product commits onto upstream `9664c440a` (intrinsic prototype
   tracking), producing `2e011832e` and `9b20027cd`. Normal `npm run build` passed
   on that frozen candidate; built public API smoke and the final browser check
