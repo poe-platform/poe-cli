@@ -2,6 +2,7 @@ import { Budget } from "../interp/budget.js";
 import { sandboxErrorNames, type SandboxErrorName } from "../error/shape.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxLocale, localeTag } from "../interp/intl-locale.js";
+import { createSandboxCollator, collatorState } from "../interp/intl-collator.js";
 import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { releaseObjectPrototype } from "../interp/object-model.js";
@@ -74,7 +75,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -345,6 +346,24 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   } else if (node.kind === "guest-regex") {
     fields(node, ["kind", "source", "flags", "state"]);
     if (typeof node.source !== "string" || typeof node.flags !== "string") throw new TypeError("Invalid guest RegExp payload.");
+    state(node.state);
+  } else if (node.kind === "guest-collator") {
+    fields(node, ["kind", "options", "state"], ["compare"]);
+    const options = record(node.options);
+    const names = ["locale", "usage", "sensitivity", "ignorePunctuation", "collation", "numeric", "caseFirst"];
+    fields(options, names);
+    for (const key of names)
+      if (typeof options[key] !== (key === "numeric" || key === "ignorePunctuation" ? "boolean" : "string"))
+        throw new TypeError("Invalid Collator option type.");
+    const restored = collatorState(createSandboxCollator(options.locale as string, options as Record<string, string | boolean>)).options;
+    for (const key of names)
+      if (options[key] !== restored[key as keyof typeof restored]) throw new TypeError("Invalid resolved Collator options.");
+    if (node.compare !== undefined) {
+      const compare = reference(node.compare, ["bound-function"]);
+      if (reference(compare.thisValue) !== node || array(compare.args).length !== 0 || compare.name !== "" || compare.length !== 2 ||
+          reference(compare.target, ["intrinsic"]).id !== '["%CollatorCompare%"]')
+        throw new TypeError("Invalid cached Collator comparison.");
+    }
     state(node.state);
   } else if (node.kind === "guest-locale") {
     fields(node, ["kind", "tag", "state"]);

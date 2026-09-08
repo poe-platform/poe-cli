@@ -154,6 +154,7 @@ describe("compile checkpoint hash compatibility", () => {
         Float16Array: { kind: "fn", name: "Float16Array" },
         Iterator: { kind: "fn", name: "Iterator" },
         Intl: {
+          Collator: { kind: "fn", name: "Collator" },
           Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },

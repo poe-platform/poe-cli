@@ -27,6 +27,7 @@ import { privateElements } from "./private-state.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
 import { copyNativeDate, dateDataProperties, exportDate, isSandboxDate } from "./date.js";
 import { isSandboxLocale, localeTag } from "./intl-locale.js";
+import { isSandboxCollator, collatorState } from "./intl-collator.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
 import { boxedDataProperties, boxedValue, createSandboxBox, isSandboxBox, nativeBoxedValue } from "./boxed.js";
 import { getHostObjectKeys, getHostObjectMember, hasHostObjectMember, measureHostObjectData, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
@@ -803,6 +804,11 @@ export function measureSandboxData(
     }
     if (isSandboxDate(value)) usage += 8;
     if (isSandboxLocale(value)) usage += localeTag(value).length;
+    if (isSandboxCollator(value)) {
+      const state = collatorState(value);
+      visit(state.options, depth + 1);
+      visit(state.compare, depth + 1);
+    }
     if (isGuestHostObject(value)) {
       usage += measureHostObjectData(value);
       return;
