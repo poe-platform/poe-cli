@@ -138,3 +138,29 @@ zero failures, cancellations or skips. The earlier eight-file aggregate
 invocation reported eight file-level passes; those are not added to the case
 total. All owned sessions finished. Source, tests and plan are frozen for
 root integration; no leaf build, lint, full suite or Git operation was run.
+
+## Root delivery qualification
+
+September 8, 2026: root committed the candidate as `f667f5d76` and ran the
+following uncached checks with source and tests frozen. Evidence directory:
+`/tmp/kamilio-667-gate.gFWzPl`.
+
+- Maintained selected build closure:
+  `npm run build:workspaces -- --workspace=virtual-bash`, exit 0; SafeFS and
+  SafeBash built from workspace declarations.
+- Maintained `npm run test:runner --workspace=virtual-bash`: 282/282 pass.
+- Current maintained discovery selected all 108 `tests/shell/` files:
+  3,638/3,638 pass, no failures, cancellations or skips. This is a complete
+  shell selection, not a claim of a full repository or full package test run.
+- Built public exports, with the standard-command plugin registered, matched
+  native Bash for 2,000 separate options (`2000:2001`) and a 2,000-option cluster
+  (`2000:2`), including exact stdout, stderr and exit status. The initial smoke
+  fixture omitted that plugin and failed with `printf: command not found`;
+  its separate log is retained, not counted as a product failure or a pass.
+- Exclusive guarded root `npm run lint`: exit 0, including ESLint, root type
+  checking and workflow lint. No other owned writer or test process ran during
+  that lint invocation.
+
+The change has no intended visual CLI changes. These checks do not assert
+wall-clock, RSS or arbitrary near-limit headroom guarantees. Remote delivery
+and release publication are verified separately after the push.
