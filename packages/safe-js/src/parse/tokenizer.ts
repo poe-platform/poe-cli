@@ -20,6 +20,7 @@ export type TokenType =
 export type Token = {
   type: TokenType;
   value: string;
+  legacyEscape?: boolean;
   start: Position;
   end: Position;
 };
@@ -34,6 +35,7 @@ export type Comment = {
 export type TokenizeOptions = {
   allowRegexLiterals?: boolean;
   allowLegacyNumbers?: boolean;
+  allowLegacyEscapes?: boolean;
   comments?: Comment[];
   compilation?: CompileScope;
 };
@@ -164,6 +166,7 @@ class Lexer {
   private readonly tokens: Token[] = [];
   private readonly groupingStack: GroupingContext[] = [];
   private lastClosedControlParenthesis = false;
+  private legacyStringEscape = false;
 
   constructor(
     private readonly source: string,
@@ -302,6 +305,7 @@ class Lexer {
   }
 
   private readString(start: Position, quote: string): void {
+    this.legacyStringEscape = false;
     this.advance();
 
     while (!this.isAtEnd()) {
@@ -309,6 +313,7 @@ class Lexer {
       if (char === quote) {
         this.advance();
         this.pushToken("string", start, this.source.slice(start.offset, this.index));
+        if (this.legacyStringEscape) this.tokens[this.tokens.length - 1]!.legacyEscape = true;
         return;
       }
 
@@ -1009,13 +1014,22 @@ class Lexer {
     if (escaped === "0") {
       this.advance();
       if (isDecimalDigit(this.currentChar())) {
-        this.syntaxError("Legacy octal escape sequences are not supported", escapeStart);
+        if (!this.options.allowLegacyEscapes)
+          this.syntaxError("Legacy octal escape sequences are not supported", escapeStart);
+        this.legacyStringEscape = true;
       }
       return;
     }
 
     if (isOctalDigit(escaped)) {
-      this.syntaxError("Legacy octal escape sequences are not supported", escapeStart);
+      if (!this.options.allowLegacyEscapes)
+        this.syntaxError("Legacy octal escape sequences are not supported", escapeStart);
+      this.legacyStringEscape = true;
+    }
+    if (escaped === "8" || escaped === "9") {
+      if (!this.options.allowLegacyEscapes)
+        this.syntaxError("Legacy decimal escape sequences are not supported", escapeStart);
+      this.legacyStringEscape = true;
     }
 
     this.advance();

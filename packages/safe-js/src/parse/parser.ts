@@ -738,7 +738,7 @@ export function parseDynamicFunction(
     const bodySource = `{\n${body}\n}`;
     const source = `${prefix} anonymous(${parameters}\n) ${bodySource}`;
     const createParser = (text: string) => new Parser(
-      tokenize(text, {allowRegexLiterals: true, allowLegacyNumbers: true, compilation}), text, compilation,
+      tokenize(text, {allowRegexLiterals: true, allowLegacyNumbers: true, allowLegacyEscapes: true, compilation}), text, compilation,
       kind, {...ordinaryFunctionContext, grammar: {
         await: kind === "async" || kind === "async-generator",
         yield: kind === "generator" || kind === "async-generator", strict: false
@@ -1110,6 +1110,7 @@ class Parser {
   private parseBlockStatementBody(start: Token, functionBody = false): BlockStatement {
     const body: Statement[] = [];
     let directivePrologue = functionBody;
+    let legacyDirective = false;
 
     while (this.consumePunctuator("}") === undefined) {
       if (this.currentToken().type === "eof") {
@@ -1127,8 +1128,11 @@ class Parser {
           statement.span.start.offset === firstToken.start.offset && statement.span.end.offset === firstToken.end.offset;
         if (directivePrologue && statement.type === "ExpressionStatement" &&
           statement.expression.type === "StringLiteral" &&
-          (statement.expression.raw === '"use strict"' || statement.expression.raw === "'use strict'"))
+          (statement.expression.raw === '"use strict"' || statement.expression.raw === "'use strict'")) {
+          if (legacyDirective) throw new Error("Legacy escape sequences are not supported in strict directives.");
           this.lexicalContext.grammar.strict = true;
+        }
+        if (directivePrologue && firstToken.legacyEscape) legacyDirective = true;
       }
       let semicolons = 0;
       while (statement.type !== "EmptyStatement" && this.consumePunctuator(";") !== undefined) {
@@ -4316,6 +4320,8 @@ class Parser {
 
   private currentToken(): Token {
     const token = this.tokens[this.index] ?? this.tokens[this.tokens.length - 1];
+    if (this.lexicalContext.grammar?.strict !== false && token.legacyEscape)
+      throw new Error("Legacy escape sequences are not supported in strict mode.");
     if (this.lexicalContext.grammar?.strict !== false && token.type === "numeric" &&
       token.value[0] === "0" && isDecimalDigit(token.value[1] ?? ""))
       throw new Error("Legacy numeric literals are not supported in strict mode.");
@@ -4651,7 +4657,7 @@ function createStringLiteral(token: Token): StringLiteral {
   return {
     type: "StringLiteral",
     raw: token.value,
-    value: decodeEscapedText(token.value.slice(1, -1)),
+    value: decodeEscapedText(token.value.slice(1, -1), token.legacyEscape),
     span: createTokenSpan(token)
   };
 }
@@ -5119,7 +5125,7 @@ function skipEscapedCharacter(raw: string, start: number): number {
   return Math.min(start + 2, raw.length);
 }
 
-function decodeEscapedText(value: string): string {
+function decodeEscapedText(value: string, allowLegacy = false): string {
   let decoded = "";
   let index = 0;
 
@@ -5169,6 +5175,14 @@ function decodeEscapedText(value: string): string {
       }
     }
 
+    if (allowLegacy && isOctalDigit(next)) {
+      const start = index + 1;
+      const limit = next <= "3" ? 3 : 2;
+      index = start + 1;
+      while (index < start + limit && isOctalDigit(value[index] ?? "")) index++;
+      decoded += String.fromCharCode(Number.parseInt(value.slice(start, index), 8));
+      continue;
+    }
     decoded += decodeEscapeCharacter(next);
     index += 2;
   }
@@ -5253,7 +5267,8 @@ function parseEmbeddedExpression(
   compilation?: CompileScope
 ): Expression {
   const tokens = tokenize(source, {
-    allowRegexLiterals: true, allowLegacyNumbers: lexicalContext.grammar?.strict === false, compilation
+    allowRegexLiterals: true, allowLegacyNumbers: lexicalContext.grammar?.strict === false,
+    allowLegacyEscapes: lexicalContext.grammar?.strict === false, compilation
   }).map((token) => ({
     ...token,
     start: rebasePosition(token.start, base),
