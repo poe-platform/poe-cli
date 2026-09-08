@@ -6,6 +6,7 @@ import { collectionIteratorPrototypes, collectionIteratorState, isSandboxCollect
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { callMapMethod, mapMethodNames } from "../methods/map.js";
 import { callSetMethod, setMethodNames } from "../methods/set.js";
+import { createSetOperation, setOperationNames } from "./set-operations.js";
 import { createSandboxClosure, isSandboxMap, isSandboxSet, type SandboxClosure, type SandboxObject } from "../values.js";
 
 export function installCollectionPrototypes(budget: Budget, mapConstructor: SandboxClosure, setConstructor: SandboxClosure): void {
@@ -32,6 +33,7 @@ export function installCollectionPrototypes(budget: Budget, mapConstructor: Sand
     }
   })]));
   setMethods.keys = setMethods.values;
+  for (const name of setOperationNames) setMethods[name] = createSetOperation(name, budget);
   const mapSize = createSandboxClosure({ guest: true, sandbox: true, name: "get size", length: 0,
     call: (_args, context) => {
       if (!isSandboxMap(context?.thisValue)) throw new TypeError("Map.prototype.size requires a Map receiver.");

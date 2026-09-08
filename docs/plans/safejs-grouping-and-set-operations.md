@@ -48,3 +48,36 @@ by the guest runtime.
 
 This delivery covers grouping only. Set operations remain the next separate
 atomic improvement, and the broader goal is not complete.
+
+## Set operations implementation
+
+The initial 45 cases all failed on the missing APIs before implementation.
+The implementation now supports all seven operations and their set-like
+size/has/keys protocol. It preserves receiver traversal during callbacks,
+the initial copy used by difference, duplicate handling, ordinary Set result
+prototypes, and early keys-iterator closing for boolean predicates.
+
+One initial Node 22 oracle was invalid: union copies receiver data after
+GetIteratorFromMethod in the current specification, whereas Node 22.23
+copies before calling keys. Node 24.14 independently produced [1,2,3] for
+the same receiver-mutating keys probe. That case retains an explicit
+specification assertion; runtime behavior was not changed to follow Node 22.
+Source: https://tc39.es/ecma262/multipage/keyed-collections.html#sec-set.prototype.union
+
+Current focused set/mutation/subclass/legacy graph checks: 154 passed with
+one existing skipped case. Tests include four serialized result restorations,
+unbounded producer steps, retained values during producer allocation and
+overridden Symbol.iterator not replacing the keys protocol. Build, final
+lint and supported-Node probes were subsequently verified:
+
+- Two context typing defects were caught by the build and corrected: the
+  fallback property reader accepts all PropertyKey values, and its call
+  context explicitly carries thisValue. A no-emit type check then passed.
+- Final selected workspace build: 23 builds and four fresh import checks
+  passed. ESLint passed on all changed Set-operation files.
+- Additional receiver/callback replay and mutation checks: 156 passed.
+  Final focused Set-operation file: 54 passed.
+- Built Node 18.18.0 and Node 24.14.0 each passed 45 edge-case probes and a
+  175-case matrix over all seven operations and varying input sizes, order,
+  NaN and zero. The independent oracle was native Node 24, not a replacement
+  implementation of the algorithms.
