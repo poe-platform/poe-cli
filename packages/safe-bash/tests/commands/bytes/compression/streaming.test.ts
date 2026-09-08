@@ -98,9 +98,15 @@ test("sink error tears down a producer blocked in next and return", { timeout: 3
       };
     },
   };
-  const result = await run("gzip", [], source, { stdout: { async write() { throw new Error("broken consumer"); } } });
+  const failure = new Error("broken consumer");
+  const reported: unknown[] = [];
+  const result = await run("gzip", [], source, {
+    stdout: { async write() { throw failure; } }, onInternalError(error) { reported.push(error); },
+  });
   assert.equal(result.exitCode, 1);
-  assert.match(result.stderr, /broken consumer/);
+  assert.equal(result.stderr, "gzip: internal error\n");
+  assert.equal(reported.length, 1);
+  assert.equal(reported[0], failure);
   pendingNext.reject(new Error("late next"));
   pendingReturn.reject(new Error("late return"));
   await delay(10);
@@ -133,22 +139,32 @@ test("invalid gzip input closes its source without waiting for EOF", { timeout: 
 test("producer error cancels a blocked stdout write", { timeout: 3_000 }, async () => {
   const entered = deferred();
   const sink = deferred();
+  const failure = new Error("producer exploded");
+  const reported: unknown[] = [];
   const result = await run("gunzip", [], (async function* () {
     yield gzipSync(randomBytes(64 * 1024));
     await entered.promise;
-    throw new Error("producer exploded");
-  })(), { stdout: { async write() { entered.resolve(); await sink.promise; } } });
+    throw failure;
+  })(), { stdout: { async write() { entered.resolve(); await sink.promise; } }, onInternalError(error) { reported.push(error); } });
   assert.equal(result.exitCode, 1);
-  assert.match(result.stderr, /producer exploded/);
+  assert.equal(result.stderr, "gunzip: internal error\n");
+  assert.equal(reported.length, 1);
+  assert.equal(reported[0], failure);
   sink.reject(new Error("late sink"));
   await delay(10);
 });
 
 test("invalid byte-source chunks fail cleanly", async () => {
-  const source = { async *[Symbol.asyncIterator]() { yield "not bytes"; } } as unknown as ByteSource;
-  const result = await run("gzip", [], source);
+  let returned = 0;
+  const reported: unknown[] = [];
+  const source = { async *[Symbol.asyncIterator]() { try { yield "not bytes"; } finally { returned++; } } } as unknown as ByteSource;
+  const result = await run("gzip", [], source, { onInternalError(error) { reported.push(error); } });
   assert.equal(result.exitCode, 1);
-  assert.match(result.stderr, /Uint8Array/);
+  assert.equal(result.stderr, "gzip: internal error\n");
+  assert.equal(reported.length, 1);
+  assert.ok(reported[0] instanceof TypeError);
+  assert.match(reported[0].message, /Uint8Array/);
+  assert.equal(returned, 1);
 });
 
 test("already-aborted invocation never reads or writes", async () => {
@@ -197,6 +213,7 @@ for (const failure of ["cancellation", "producer error"]) {
     const aborted = deferred();
     const release = deferred();
     const reason = new Error(`blocked file ${failure}`);
+    const reported: unknown[] = [];
     let active = false;
     let settled = false;
     let sourceSignal: AbortSignal | undefined;
@@ -232,13 +249,15 @@ for (const failure of ["cancellation", "producer error"]) {
         await memory.rm(path, options);
       },
     });
-    const pending = run("gzip", ["input"], undefined, { fs, signal: controller.signal });
+    const pending = run("gzip", ["input"], undefined, { fs, signal: controller.signal, onInternalError(error) { reported.push(error); } });
     void pending.then(() => { settled = true; }, () => { settled = true; });
     const checked = failure === "cancellation"
       ? assert.rejects(pending, (error) => error === reason)
       : pending.then((result) => {
         assert.equal(result.exitCode, 1);
-        assert.match(result.stderr, /blocked file producer error/);
+        assert.equal(result.stderr, "gzip: internal error\n");
+        assert.equal(reported.length, 1);
+        assert.equal(reported[0], reason);
       });
     await entered.promise;
     if (failure === "cancellation") controller.abort(reason);
@@ -250,6 +269,7 @@ for (const failure of ["cancellation", "producer error"]) {
     assert.equal((await memory.readdir("/")).length, 2);
     release.resolve();
     await checked;
+    if (failure === "cancellation") assert.deepEqual(reported, []);
     assert.deepEqual((await memory.readdir("/")).map((entry) => entry.name), ["input"]);
     assert.ok(Buffer.from(await memory.readFile("/input")).equals(original));
   });

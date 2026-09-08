@@ -157,25 +157,32 @@ for (const factory of [egrepCommand, fgrepCommand]) {
   test(`${name} sink failure finalizes source and retains alias diagnostic`, async () => {
     let returns = 0;
     const failure = Object.assign(new Error("broken sink"), { code: "EPIPE" });
+    const internalErrors: unknown[] = [];
     const source: ByteSource = { [Symbol.asyncIterator]() { return {
       async next() { return { done: false, value: Buffer.from("a\n") }; },
       async return() { returns++; return { done: true, value: undefined }; },
     }; } };
-    const result = await run(factory(), ["a"], source, { stdout: { async write() { throw failure; } } });
+    const result = await run(factory(), ["a"], source, { onInternalError(error) { internalErrors.push(error); }, stdout: { async write() { throw failure; } } });
     assert.equal(result.code, 2);
-    assert.equal(result.stderr.toString(), `${name}: broken sink\n`);
+    assert.equal(result.stderr.toString(), `${name}: internal error\n`);
+    assert.equal(internalErrors.length, 1);
+    assert.equal(internalErrors[0], failure);
     assert.equal(returns, 1);
   });
 
   test(`${name} input error precedes return error and closes once`, async () => {
     let returns = 0;
+    const failure = new Error("input failed");
+    const internalErrors: unknown[] = [];
     const source: ByteSource = { [Symbol.asyncIterator]() { return {
-      async next(): Promise<IteratorResult<Uint8Array>> { throw new Error("input failed"); },
+      async next(): Promise<IteratorResult<Uint8Array>> { throw failure; },
       async return(): Promise<IteratorResult<Uint8Array>> { returns++; throw new Error("return failed"); },
     }; } };
-    const result = await run(factory(), ["a"], source);
+    const result = await run(factory(), ["a"], source, { onInternalError(error) { internalErrors.push(error); } });
     assert.equal(result.code, 2);
-    assert.equal(result.stderr.toString(), `${name}: input failed\n`);
+    assert.equal(result.stderr.toString(), `${name}: internal error\n`);
+    assert.equal(internalErrors.length, 1);
+    assert.equal(internalErrors[0], failure);
     assert.equal(returns, 1);
   });
 

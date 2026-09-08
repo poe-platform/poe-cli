@@ -117,19 +117,23 @@ test("sed direct file output keeps raw bytes and its existing newline for unterm
 
 test("sed failed append is not retried and preserves its completed prefix", async () => {
   const { fs, shell } = fixture(1024);
+  const failure = new Error("injected append failure");
+  const errors: unknown[] = [];
   const original = fs.appendFile.bind(fs);
   let appends = 0, closed = false;
   fs.appendFile = async (...args) => {
-    if (++appends === 2) throw new Error("injected append failure");
+    if (++appends === 2) throw failure;
     return original(...args);
   };
   const stdin = (async function* () {
     try { for (let index = 0; index < 3; index++) yield Buffer.from("abc\n"); }
     finally { closed = true; }
   })();
-  const result = await shell.exec("sed -n 'w /out'", { stdin });
+  const result = await shell.exec("sed -n 'w /out'", { stdin, onInternalError(error) { errors.push(error); } });
   assert.equal(result.exitCode, 1);
-  assert.equal(result.stderr, "sed: injected append failure\n");
+  assert.equal(result.stderr, "sed: internal error\n");
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0], failure);
   assert.equal(appends, 2);
   assert.equal(closed, true);
   assert.equal(Buffer.from(await fs.readFile("/out")).toString(), "abc\n");

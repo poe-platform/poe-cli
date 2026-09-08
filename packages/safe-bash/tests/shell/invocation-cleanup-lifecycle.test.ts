@@ -69,16 +69,20 @@ test("execution rejection wins while every delayed cleanup failure is observed",
   await shell.dispose();
 });
 
-test("ordinary command throw keeps its diagnostic and status after cleanup", { timeout: 2000 }, async () => {
+test("ordinary command throw keeps its opaque diagnostic, private identity and status after cleanup", { timeout: 2000 }, async () => {
   const { shell, commands } = setup();
+  const failure = new Error("ordinary command failure");
+  const observed: unknown[] = [];
   let done = false;
   commands.register({ name: "owned", execute(context) {
     context.registerCleanup!(async () => { await delay(); done = true; });
-    throw new Error("ordinary command failure");
+    throw failure;
   } });
-  const result = await shell.exec("owned");
+  const result = await shell.exec("owned", { onInternalError(error) { observed.push(error); } });
   assert.equal(result.exitCode, 1);
-  assert.equal(result.stderr, "shell: line 1: ordinary command failure\n");
+  assert.equal(result.stderr, "shell: line 1: internal error\n");
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0], failure);
   assert.equal(done, true);
   await shell.dispose();
 });

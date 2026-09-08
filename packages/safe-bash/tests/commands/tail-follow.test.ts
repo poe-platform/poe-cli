@@ -428,13 +428,18 @@ test("polling reuses one session cleanup registration", async context => {
 
 for (const reason of [undefined, null, false, 0, ""]) test(`falsey stdin primary ${String(reason)} survives a different close failure`, async () => {
   const closeFailure = new Error("secondary close");
+  const reported: unknown[] = [];
+  let closed = 0;
   const stdin: ByteSource = { [Symbol.asyncIterator]() { return {
     next: () => Promise.reject(reason),
-    return: () => Promise.reject(closeFailure),
+    return: () => { closed++; return Promise.reject(closeFailure); },
   }; } };
-  const run = launch(["-f"], await fixture(), { stdin });
+  const run = launch(["-f"], await fixture(), { stdin, onInternalError(error) { reported.push(error); } });
   assert.equal((await run.completion).exitCode, 1);
-  assert.equal(run.errors(), `tail: ${String(reason)}\n`);
+  assert.equal(run.errors(), "tail: internal error\n");
+  assert.equal(reported.length, 1);
+  assert.ok(Object.is(reported[0], reason));
+  assert.equal(closed, 1);
 });
 
 test("late acquired handles and closing comparison slots remain owned until release settles", async context => {
@@ -492,6 +497,7 @@ test("name comparison cannot reuse a held or failed close slot", async context =
   const clock = new Clock(context);
   const fs = await fixture();
   const release = deferred();
+  const reported: unknown[] = [];
   let opened = 0;
   let closed = 0;
   let live = 0;
@@ -508,7 +514,7 @@ test("name comparison cannot reuse a held or failed close slot", async context =
       live--;
     } };
   });
-  const run = launch(["-F", "-n0", "/log"], bound, {}, 2);
+  const run = launch(["-F", "-n0", "/log"], bound, { onInternalError(error) { reported.push(error); } }, 2);
   try {
     await until(() => closed === 1 || run.settled);
     clock.advance(10000);
@@ -517,7 +523,9 @@ test("name comparison cannot reuse a held or failed close slot", async context =
     assert.equal(run.settled, false);
     release.resolve();
     assert.equal((await run.completion).exitCode, 1);
-    assert.equal(run.errors(), "tail: false\n");
+    assert.equal(run.errors(), "tail: internal error\n");
+    assert.equal(reported.length, 1);
+    assert.equal(reported[0], false);
     assert.equal(opened, 2);
     assert.equal(closed, 2);
   } finally { release.resolve(); run.controller.abort(); await run.completion.catch(() => {}); }
@@ -553,32 +561,38 @@ test("stock overridden adapter refusal is not bypassed by path reads", async () 
 
 for (const reason of [undefined, null, false, 0, ""]) test(`retained stat primary ${String(reason)} is not replaced by failed candidate cleanup`, async () => {
   const fs = await fixture();
+  const reported: unknown[] = [];
   let closed = 0;
   const bound = composition(fs, async (...args) => {
     const handle = await fs.openReadFile!(...args);
     return { ...handle, async stat() { throw reason; }, async close() { closed++; await handle.close(); throw new Error("secondary close"); } };
   });
-  const run = launch(["-F", "--max-idle=0", "/log"], bound);
+  const run = launch(["-F", "--max-idle=0", "/log"], bound, { onInternalError(error) { reported.push(error); } });
   assert.equal((await run.completion).exitCode, 1);
-  assert.equal(run.errors(), `tail: ${String(reason)}\n`);
+  assert.equal(run.errors(), "tail: internal error\n");
+  assert.equal(reported.length, 1);
+  assert.ok(Object.is(reported[0], reason));
   assert.equal(closed, 1);
 });
 
 test("timer clear failure is exact and still closes retained readers", async context => {
   const clock = new Clock(context);
   const fs = await fixture();
+  const reported: unknown[] = [];
   let closed = 0;
   const bound = composition(fs, async (...args) => {
     const handle = await fs.openReadFile!(...args);
     return { ...handle, async close() { closed++; await handle.close(); } };
   });
-  const run = launch(["-f", "--max-idle=.1", "/log"], bound);
+  const run = launch(["-f", "--max-idle=.1", "/log"], bound, { onInternalError(error) { reported.push(error); } });
   try {
     await until(() => clock.timers.size > 0 || run.settled);
     context.mock.method(tailFollowScheduler, "clearTimeout", (handle: number) => { clock.timers.delete(handle); throw 0; });
     clock.advance(100);
     assert.equal((await run.completion).exitCode, 1);
-    assert.equal(run.errors(), "tail: 0\n");
+    assert.equal(run.errors(), "tail: internal error\n");
+    assert.equal(reported.length, 1);
+    assert.equal(reported[0], 0);
     assert.equal(closed, 1);
     assert.equal(clock.timers.size, 0);
   } finally { run.controller.abort(); await run.completion.catch(() => {}); }

@@ -294,11 +294,14 @@ for (const rejectRelease of [false, true]) test(`copied local binding retirement
 for (const reason of [undefined, null, false, 0, ""]) {
   test(`inline command throw ${String(reason)} preserves shell diagnostic classification`, async () => {
     const { shell, commands } = fixture();
+    const observed: unknown[] = [];
     commands.register({ name: "fail", execute() { throw reason; } });
-    const result = await shell.exec("fail <<EOF\nx\nEOF\n");
+    const result = await shell.exec("fail <<EOF\nx\nEOF\n", { onInternalError(error) { observed.push(error); } });
     assert.equal(result.exitCode, 1);
     assert.equal(result.stdout, "");
-    assert.equal(result.stderr, `shell: line 1: ${String(reason)}\n`);
+    assert.equal(result.stderr, "shell: line 1: internal error\n");
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0], reason);
   });
 }
 

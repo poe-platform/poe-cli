@@ -287,13 +287,17 @@ test("cancelled queued readers cannot bypass an active shared read", async () =>
 
 test("input errors still close their owned iterator exactly once", async () => {
   const { shell } = setup();
+  const failure = new Error("read failed");
+  const observed: unknown[] = [];
   let returned = 0;
   const stdin: ByteSource = { [Symbol.asyncIterator]() { return {
-    async next() { throw new Error("read failed"); },
+    async next() { throw failure; },
     async return() { returned++; return { value: undefined, done: true }; },
   }; } };
-  const result = await shell.exec("pass", { stdin });
+  const result = await shell.exec("pass", { stdin, onInternalError(error) { observed.push(error); } });
   assert.equal(result.exitCode, 1);
-  assert.match(result.stderr, /read failed/u);
+  assert.equal(result.stderr, "shell: line 1: internal error\n");
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0], failure);
   assert.equal(returned, 1);
 });

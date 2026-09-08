@@ -19,6 +19,7 @@ export interface RunOptions {
   readonly env?: Record<string, string>;
   readonly cwd?: string;
   readonly signal?: AbortSignal;
+  readonly onInternalError?: CommandContext["onInternalError"];
   readonly execute?: CommandHandler;
 }
 
@@ -31,6 +32,7 @@ export async function run(command: string, args: readonly string[] = [], options
   const context: CommandContext = {
     command, args, cwd: options.cwd ?? "/work", env: options.env ?? {}, fs,
     signal: options.signal ?? new AbortController().signal,
+    ...(options.onInternalError === undefined ? {} : { onInternalError: options.onInternalError }),
     stdin: typeof options.stdin === "string" || options.stdin instanceof Uint8Array || options.stdin === undefined
       ? toByteSource(options.stdin ?? "") : options.stdin,
     stdout: { async write(chunk) { stdout.push(chunk.slice()); } },

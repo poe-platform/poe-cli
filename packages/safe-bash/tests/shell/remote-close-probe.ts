@@ -10,6 +10,8 @@ const keepAlive = setInterval(() => {}, 1000);
 const controller = new AbortController();
 const callerReason = new Error("external caller reason");
 const unexpected = new Error("genuine producer rejection");
+const consumerFailure = new Error("genuine consumer rejection");
+const internalErrors: unknown[] = [];
 const unhandled: unknown[] = [];
 const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
 process.on("unhandledRejection", onUnhandled);
@@ -103,7 +105,7 @@ commands.register({ name: "first", async execute({ stdin, stdout, signal }) {
     signal.throwIfAborted();
   }
   consumerFinished();
-  if (scenario === "consumer-rejection") throw new Error("genuine consumer rejection");
+  if (scenario === "consumer-rejection") throw consumerFailure;
   return { exitCode: scenario === "middle-status" || scenario === "consumer-status" ? 7 : 0 };
 } });
 commands.register({ name: "no-read", execute() { consumerFinished(); return { exitCode: 0 }; } });
@@ -119,7 +121,7 @@ try {
   if (scenario === "delayed-no-write" || scenario === "zero-byte-no-write" || scenario === "closed-before-write") source = "stream | no-read";
   const pipefail = !["transport", "caller-abort", "budget-abort"].includes(scenario);
   if (pipefail) source = `set -o pipefail; ${source}`;
-  const execution = shell.exec(`${source}; status $?`, { signal: controller.signal,
+  const execution = shell.exec(`${source}; status $?`, { signal: controller.signal, onInternalError(error) { internalErrors.push(error); },
     ...(scenario === "budget-abort" ? { limits: { maxOutputBytes: 6 } } : {}),
   });
   if (scenario === "caller-abort") await assert.rejects(execution, error => error === callerReason);
@@ -131,8 +133,11 @@ try {
       : scenario === "transport" || scenario === "completed-success" ? 0 : 141;
     assert.equal(result.exitCode, expected);
     assert.equal(result.stdout, ["delayed-no-write", "zero-byte-no-write", "closed-before-write"].includes(scenario) ? "" : "first\n");
-    assert.equal(result.stderr, scenario === "completed-rejection" ? "shell: line 1: genuine producer rejection\n"
-      : scenario === "consumer-rejection" ? "shell: line 1: genuine consumer rejection\n" : "");
+    assert.equal(result.stderr, scenario === "completed-rejection" || scenario === "consumer-rejection" ? "shell: line 1: internal error\n" : "");
+    if (scenario === "completed-rejection" || scenario === "consumer-rejection") {
+      assert.equal(internalErrors.length, 1);
+      assert.equal(internalErrors[0], scenario === "completed-rejection" ? unexpected : consumerFailure);
+    } else assert.deepEqual(internalErrors, []);
     assert.equal(controller.signal.aborted, false);
   }
   releaseLate?.();

@@ -45,24 +45,35 @@ for (const [character, escaped] of [
   });
 }
 
+for (const reason of [new Error("private\u001b".repeat(3000)), new TypeError("private storage"), Object.assign(new Error("private code"), { code: "EIO" }), undefined, null, false, 0, ""]) {
+  test(`unknown diagnostic retains private identity without exposing host details: ${typeof reason}`, async () => {
+    const observed: unknown[] = [];
+    const { value, chunks } = context({ onInternalError(error) { observed.push(error); } });
+    await diagnostic(value, reason);
+    assert.equal(Buffer.concat(chunks).toString(), "probe: internal error\n");
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0], reason);
+  });
+}
+
 test("diagnostics preserve LF, TAB, ordinary Unicode and existing backslash text", async () => {
   const { value, chunks } = context();
   const message = "line\n\té \\033 \\n";
-  await diagnostic(value, new Error(message));
-  assert.equal(Buffer.concat(chunks).toString(), `probe: ${message}\n`);
+  await diagnostic(value, new FsError("EIO", { message }));
+  assert.equal(Buffer.concat(chunks).toString(), `probe: EIO: ${message}\n`);
 });
 
 test("generated diagnostics use bounded output chunks", async () => {
   const { value, chunks } = context();
-  await diagnostic(value, new Error("x".repeat(20_000)));
-  assert.equal(Buffer.concat(chunks).toString(), `probe: ${"x".repeat(20_000)}\n`);
+  await diagnostic(value, new FsError("EIO", { message: "x".repeat(20_000) }));
+  assert.equal(Buffer.concat(chunks).toString(), `probe: EIO: ${"x".repeat(20_000)}\n`);
   assert.ok(chunks.every(chunk => chunk.length <= 16_384));
 });
 
 test("long generated diagnostic formatting cooperatively observes cancellation", async () => {
   const controller = new AbortController();
   const { value } = context({ signal: controller.signal });
-  const running = diagnostic(value, new Error("\u001b".repeat(3000)));
+  const running = diagnostic(value, new FsError("EIO", { message: "\u001b".repeat(3000) }));
   const rejected = assert.rejects(running, error => error === false);
   const turn = setImmediate(() => controller.abort(false));
   try { await rejected; } finally { clearImmediate(turn); }
@@ -87,7 +98,7 @@ test("diagnostic chunks await backpressure and retain distinct immutable bytes",
   } } });
   const message = "\u001b".repeat(6000);
   let finished = false;
-  const pending = diagnostic(value, new Error(message)).then(() => { finished = true; });
+  const pending = diagnostic(value, new FsError("EIO", { message })).then(() => { finished = true; });
   await entered.promise;
   const first = chunks[0]!.slice();
   assert.equal(finished, false);
@@ -97,7 +108,7 @@ test("diagnostic chunks await backpressure and retain distinct immutable bytes",
   assert.equal(chunks.length, 2);
   assert.notEqual(chunks[0]!.buffer, chunks[1]!.buffer);
   assert.deepEqual(chunks[0], first);
-  assert.equal(Buffer.concat(chunks).toString(), `probe: ${"\\033".repeat(6000)}\n`);
+  assert.equal(Buffer.concat(chunks).toString(), `probe: EIO: ${"\\033".repeat(6000)}\n`);
 });
 
 for (const reason of [null, false, 0, ""]) {
@@ -108,9 +119,9 @@ for (const reason of [null, false, 0, ""]) {
       if (++writes === 2) throw reason;
       accepted.push(bytes);
     } } });
-    await assert.rejects(diagnostic(value, new Error("\u001b".repeat(6000))), error => Object.is(error, reason));
+    await assert.rejects(diagnostic(value, new FsError("EIO", { message: "\u001b".repeat(6000) })), error => Object.is(error, reason));
     assert.equal(writes, 2);
-    const expected = `probe: ${"\\033".repeat(6000)}\n`;
+    const expected = `probe: EIO: ${"\\033".repeat(6000)}\n`;
     assert.equal(Buffer.concat(accepted).toString(), expected.slice(0, accepted[0]!.length));
     assert.ok(accepted[0]!.length <= 16_384);
   });
@@ -122,7 +133,7 @@ for (const reason of [null, false, 0, ""]) {
     const { value } = context({ signal: controller.signal, stderr: { async write() {
       writes++; entered.resolve(); await release.promise;
     } } });
-    const pending = diagnostic(value, new Error("\u001b".repeat(6000)));
+    const pending = diagnostic(value, new FsError("EIO", { message: "\u001b".repeat(6000) }));
     const rejection = assert.rejects(pending, error => Object.is(error, reason));
     await entered.promise;
     controller.abort(reason);
@@ -143,7 +154,7 @@ for (const reason of [null, false, 0, ""]) {
         writes++; entered.resolve(); await release.promise;
       } },
     });
-    const pending = diagnostic({ ...value, stderr: operation.output }, new Error("\u001b".repeat(6000)));
+    const pending = diagnostic({ ...value, stderr: operation.output }, new FsError("EIO", { message: "\u001b".repeat(6000) }));
     const rejection = assert.rejects(pending, error => Object.is(error, reason));
     await entered.promise;
     consumer.abort(reason);
@@ -164,14 +175,14 @@ test("rendered-byte admission precedes retaining an escaped part", () => {
 });
 
 test("column counts escaped bytes across successive diagnostics", async () => {
-  const text = "column: \\033\n";
+  const text = "column: EIO: \\033\n";
   const { value, chunks } = context();
   const emit = columnDiagnostics(value, Buffer.byteLength(text));
-  await emit(new Error("\u001b"));
-  await emit(new Error("unadmitted"));
+  await emit(new FsError("EIO", { message: "\u001b" }));
+  await emit(new FsError("EIO", { message: "unadmitted" }));
   assert.equal(Buffer.concat(chunks).toString(), text);
   const smaller = context();
-  await columnDiagnostics(smaller.value, Buffer.byteLength(text) - 1)(new Error("\u001b"));
+  await columnDiagnostics(smaller.value, Buffer.byteLength(text) - 1)(new FsError("EIO", { message: "\u001b" }));
   assert.ok(Buffer.concat(smaller.chunks).length <= Buffer.byteLength(text) - 1);
   assert.equal(Buffer.concat(smaller.chunks).includes(27), false);
 });

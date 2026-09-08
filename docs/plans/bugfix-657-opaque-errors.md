@@ -7,6 +7,21 @@ readiness: draft
 
 # #657 full-fix patch handoff
 
+## Source classification follow-up
+
+After root's full-sweep RED baseline (144 Bash failures), six source-only fixes
+were applied: bytes/checksums/index.ts, du/format.ts, du/du.ts,
+plugins/composition.ts, contracts/command.ts and diagnostics.ts (all under
+packages/safe-bash/src). Authored checksum/DU/fallback diagnostics are explicit
+PublicDiagnostic values; the fixed argv-identity diagnostic has its own TypeError
+subclass, preserving TypeError compatibility without trusting arbitrary TypeErrors.
+Exact before/after hashes: `/tmp/issue657-classification-followup.inventory.json`.
+Focused GREEN: **366/366**, no skips, approximately 3.2 seconds;
+`/tmp/issue657-classification-focused.log`. Session 22044 exited. No test files
+were changed in this follow-up; no full build/test/lint was run. Raw native rm/rmdir
+fixture failures, replaced CD middleware errors, and unknown tree backend errors
+remain opaque; their assertion migrations belong to root's other agents.
+
 September 8, 2026. Canonical 49-path grant applied after rechecking all before
 hashes; initial after-hashes also verified. Root owns Git, build, lint, full
 gates and release. Host access is included. The subsequent authorized grep
@@ -60,6 +75,51 @@ plus this plan). Final focused checks are GREEN; tools are frozen for root gates
   This is accidental-disclosure defense, not isolation from hostile host JavaScript.
 
 ## Evidence
+
+- Follow-up classification fixes retain authored checksum summaries, DU errors,
+  command-not-found fallback and stale-argument identity diagnostics. The latter
+  uses a dedicated TypeError subclass rather than trusting arbitrary TypeErrors.
+  Focused classification cohort: 366/366 passed. Raw native errors injected by
+  the empty-directory fixture remain private; genuine FsError controls stay public.
+- Host-error assertion migrations preserve original hook identity and previous
+  status/effect/cleanup assertions. Compression/column/archive/table/tail and
+  unchanged stream-inspection controls passed 362/362. Tree/sed/empty-directory
+  and unchanged agent/DU controls passed 148/148. These cohorts overlap other
+  evidence and are not an additive full-suite total. Tree scan instrumentation
+  now watches the complete public FsError message, including its errno prefix.
+- SafeJS boundary qualification: explicitly returned `{ ok: false, error }`
+  remains declared guest data. A rejected injected runtime promise has no trusted
+  guest provenance, including when the actual SafeJS run function rejects a
+  guest error, so its message becomes opaque and its original value reaches the
+  host callback. Retain the prior syntax/budget exit-status mapping from own
+  name/code fields without granting those fields permission to expose messages.
+  Do not implicitly import an interpreter or infer message safety from class names.
+- Shell/contracts host-error migrations passed 74/74 and five further focused
+  controls; unchanged byte-carrier rejection controls also passed. The two
+  invocation-cleanup-runtime historical manifests still authenticate the original
+  lifecycle test (`e61b1d76d32ba85c97de6ed73510adea26a9a6ef40b21d1ebce4ea5eb1be2dca`).
+  Their historical bytes are unchanged; no maintained test enforces those old
+  records against the changed current test. The active public-consumer binding
+  captures current inputs independently. No invented migration gate was added.
+
+- September 8 full maintained gate on local `9d35619a4`:
+  `npm run build` passed (71 workspaces, 70 declared builds, root suffix stages).
+  Full `npm test` shared stage passed 40,398 tests with 38 skips; SafeBash runner
+  passed 282 tests. The complete SafeBash stage failed: 22,131 passed, 144 failed,
+  63 skipped, zero cancellations (22,338 total). This is not a passing full gate.
+  Original logs remain in `/tmp/kamilio-657-gate.Jdyo0f`; no source inputs changed
+  during that run. Follow-up work separates missed authored public diagnostics
+  from tests intentionally asserting the old host-detail disclosure. Host-error
+  migrations must assert exact opaque output and original hook identity while
+  retaining status, cleanup, ordering and byte-effect checks. Public formatting
+  controls use actual public errors, not arbitrary host exceptions.
+- Built public API smoke passed on that candidate: command continuation, pipeline
+  opacity, original TypeError/false identities, per-exec override and public
+  FsError cause privacy. Browser screenshot
+  `/tmp/kamilio-657-browser-public-diagnostics.png` was captured and viewed:
+  native gzip and invalid-regex public messages survive and execution continues.
+  This browser check does not inject a host fault. The preview and browser were
+  closed; later source corrections require renewed applicable validation.
 
 - Original 57 RED/control witnesses retained; opaque-errors total now **121**.
 - Pre-fix baseline: **30 pass / 83 expected RED / exit 1**:
@@ -180,3 +240,50 @@ The following 49 original targets plus these three subsequently granted paths:
 
 The already-written repository plan is
 `docs/plans/bugfix-657-opaque-errors.md`; it is not duplicated inside the source patch.
+
+## SafeJS status-only follow-up and live harness migration (2026-09-08)
+
+The privacy decision intentionally makes raw runtime rejections opaque, including
+actual interpreter syntax, budget and guest-throw rejections. Without trusted
+provenance those rejections cannot distinguish a guest failure from a host bug.
+Their original identities reach `onInternalError`; the public text is
+`internal error`. Explicit returned `{ ok: false, error }` guest results remain
+public. No runtime classifier seam, import, new option or structural-message
+allowance was added, and the interpreter package was not modified.
+
+The SafeJS adapter restores only its prior own-data `name`/`code` status mapping:
+`budgetExceeded` takes precedence at 124, `ParseError` maps to 2, and other
+rejections map to 1. This is status compatibility, not proof of guest provenance.
+A spoofed host object with both fields consequently retains 124 without exposing
+its message. Rejection status extraction does not read `message`; throwing
+message-getter controls observe zero accesses. Existing limit and usage handling,
+output draining, cleanup and cancellation paths remain unchanged.
+
+The fresh maintained Node 22/tsx RED run had 25 tests: 18 passed and 7 failed on
+status assertions. After the status-only patch, the six owned harness files pass
+193/193, and adjacent SafeJS command/lifecycle tests pass 40/40, with no skips or
+cancellations. Actual runtime syntax, bounded 30-step exhaustion and guest throws
+check original hook identity; an explicit returned guest-error control checks
+public output and no hook event. The grep worker counters are 24 created,
+24 exited, zero active. Logs are `/tmp/kamilio-657-status-red.log`,
+`/tmp/kamilio-657-status-green.log`, and `/tmp/kamilio-657-status-adjacent.log`.
+These are focused checks, not a full build, lint or full-suite claim.
+
+Exact follow-up source and live test inventory:
+
+- `packages/safe-bash/src/commands/safejs/index.ts`
+- `packages/safe-bash/tests/commands/node-safejs.test.ts`
+- `packages/safe-bash/tests/commands/safejs-stress/lifecycle.test.ts`
+- `packages/safe-bash/tests/commands/html-to-markdown/io.test.ts`
+- `packages/safe-bash/tests/commands/html-to-markdown/inline-normalization-fix/bounds.test.ts`
+- `packages/safe-bash/tests/commands/grep-aliases/safety.test.ts`
+- `packages/safe-bash/tests/commands/xargs-parallel.test.ts`
+
+Live harness migrations retain original statuses, accepted byte prefixes, cleanup
+and settlement ordering, while asserting exact opaque text and original hook
+identity for injected host failures, including falsey rejection reasons. Historical
+receipts, manifests, capture data and seals are unchanged. The historical HTML
+inline-normalization `seal.mjs` compares the old receipt's `io.test.ts` hash with
+the live file: rerunning that author capture against this migrated harness needs
+an explicit root-owned versioned migration, not a rewrite of historical receipts
+to pretend unchanged source bytes. Root owns inventory, Git and integration gates.

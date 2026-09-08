@@ -267,3 +267,8 @@ authors must use virtual operands in public fields and keep native details in
 causes. This is accidental-disclosure defense, not hostile-host-JS isolation.
 Explicit guest-error results from an injected interpreter remain guest data;
 an injected host hook throwing or rejecting is an unexpected host failure.
+This also applies when an interpreter rejects a guest error instead of returning
+an explicit failed result: a rejection alone does not establish public-message
+provenance. SafeJS retains its existing syntax/budget exit-status mapping from
+own name/code fields, but those fields never authorize exposing a rejected
+error's message. The host callback receives the original rejection.

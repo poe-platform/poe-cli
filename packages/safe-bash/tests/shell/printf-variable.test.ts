@@ -230,6 +230,8 @@ for (const [name, script, expected] of [
 test("printf -v browser decoding does not relabel a storage TypeError", async context => {
   const decode = TextDecoder.prototype.decode;
   let failStorage = false;
+  const failure = new TypeError("storage read failed");
+  const observed: unknown[] = [];
   context.mock.method(TextDecoder.prototype, "decode", function (this: InstanceType<typeof TextDecoder>, ...args: Parameters<typeof decode>) {
     const result = decode.apply(this, args);
     if (this.fatal) failStorage = true;
@@ -241,15 +243,17 @@ test("printf -v browser decoding does not relabel a storage TypeError", async co
     if (failStorage) {
       failStorage = false;
       failures++;
-      throw new TypeError("storage read failed");
+      throw failure;
     }
     return get.apply(this, args);
   });
   const shell = new BrowserShell({ fs: new BrowserMemoryFileSystem() }).use(browserCommands());
   try {
-    const result = await shell.exec('value=old; printf -v "value[1]" %s new; printf "<%s:%s>" "$?" "$value"');
+    const result = await shell.exec('value=old; printf -v "value[1]" %s new; printf "<%s:%s>" "$?" "$value"', { onInternalError(error) { observed.push(error); } });
     assert.equal(result.stdout, "<1:old>");
-    assert.match(result.stderr, /storage read failed/u);
+    assert.equal(result.stderr, "shell: line 1: internal error\n");
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0], failure);
     assert.doesNotMatch(result.stderr, /non-UTF-8/u);
     assert.equal(failures, 1);
   } finally { await shell.dispose(); }

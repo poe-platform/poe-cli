@@ -220,24 +220,24 @@ for (const script of ["unset HOME; cd", "unset OLDPWD; cd -", "cd one two"]) tes
 
 for (const size of [65_792, 65_793]) test(`diagnostic payload ASCII boundary ${size}`, async () => {
   const { fs } = await fixture();
-  fs.stat = async () => { throw new Error("x".repeat(size)); };
+  fs.stat = async () => { throw new FsError("EIO", { message: "x".repeat(size - 5) }); };
   const result = await execute(fs, "cd target");
   const payload = result.stderr.replace(/^shell: line 1: /, "").replace(/\n$/, "");
-  assert.equal(payload, size === 65_792 ? "x".repeat(size) : "x".repeat(65_780) + " [truncated]");
+  assert.equal(payload, "EIO: " + (size === 65_792 ? "x".repeat(size - 5) : "x".repeat(65_775) + " [truncated]"));
 });
 
 test("multibyte diagnostic keeps scalar boundary and exact suffix", async () => {
   const { fs } = await fixture();
-  fs.stat = async () => { throw new Error("a" + "😀".repeat(20_000)); };
+  fs.stat = async () => { throw new FsError("EIO", { message: "a" + "😀".repeat(20_000) }); };
   const result = await execute(fs, "cd target");
   const payload = result.stderr.replace(/^shell: line 1: /, "").replace(/\n$/, "");
-  assert.equal(payload, "a" + "😀".repeat(16_444) + " [truncated]");
+  assert.equal(payload, "EIO: a" + "😀".repeat(16_443) + " [truncated]");
   assert.ok(Buffer.byteLength(payload) <= 65_792);
 });
 
 test("parent output budget remains authoritative for diagnostic writes", async () => {
   const { fs } = await fixture();
-  fs.stat = async () => { throw new Error("x".repeat(100_000)); };
+  fs.stat = async () => { throw new FsError("EIO", { message: "x".repeat(100_000) }); };
   await assert.rejects(execute(fs, "cd target", { limits: { maxOutputBytes: 10 } }), error => error instanceof ShellLimitError && error.limit === "maxOutputBytes");
 });
 

@@ -1,4 +1,5 @@
 import { yieldTurn } from "../../../contracts/yield.js";
+import { PublicDiagnostic } from "../../../diagnostics.js";
 import { createHash } from "node:crypto";
 import { FsError, readBytes, toByteSource, type ByteSource, type CommandContext, type CommandDefinition } from "../../../contracts/index.js";
 import { codeOf, define, diagnostic, encoder, options, output, pathOf, UsageError, value } from "../../internal.js";
@@ -208,7 +209,7 @@ async function verify(context: CommandContext, manifest: string, algorithm: Algo
     if (entry === "skip") continue;
     if (!entry || (manifest === "-" && entry.filename === "-")) {
       malformed++;
-      if (settings.report === "warn") await diagnostic(context, `${escaped(manifest).name}: ${lineNumber}: improperly formatted ${algorithm} checksum line`);
+      if (settings.report === "warn") await diagnostic(context, new PublicDiagnostic(`${escaped(manifest).name}: ${lineNumber}: improperly formatted ${algorithm} checksum line`));
       continue;
     }
     valid = true;
@@ -228,12 +229,12 @@ async function verify(context: CommandContext, manifest: string, algorithm: Algo
     else mismatched++;
     if (settings.report !== "status" && (!match || settings.report !== "quiet")) await report(context, entry.filename, match ? "OK" : "FAILED");
   }
-  if (!valid) await diagnostic(context, `${escaped(manifest).name}: no properly formatted checksum lines found`);
+  if (!valid) await diagnostic(context, new PublicDiagnostic(`${escaped(manifest).name}: no properly formatted checksum lines found`));
   else if (settings.report !== "status") {
-    if (malformed) await diagnostic(context, `WARNING: ${malformed} improperly formatted checksum line(s)`);
-    if (failures) await diagnostic(context, `WARNING: ${failures} listed file(s) could not be read`);
-    if (mismatched) await diagnostic(context, `WARNING: ${mismatched} computed checksum(s) did NOT match`);
-    if (settings.ignoreMissing && !matched) await diagnostic(context, `${escaped(manifest).name}: no file was verified`);
+    if (malformed) await diagnostic(context, new PublicDiagnostic(`WARNING: ${malformed} improperly formatted checksum line(s)`));
+    if (failures) await diagnostic(context, new PublicDiagnostic(`WARNING: ${failures} listed file(s) could not be read`));
+    if (mismatched) await diagnostic(context, new PublicDiagnostic(`WARNING: ${mismatched} computed checksum(s) did NOT match`));
+    if (settings.ignoreMissing && !matched) await diagnostic(context, new PublicDiagnostic(`${escaped(manifest).name}: no file was verified`));
   }
   return valid && matched && !failures && !mismatched && (!settings.strict || !malformed);
 }

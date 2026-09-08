@@ -184,6 +184,6 @@ test("stdin and file content are unused, genuine ELOOP is an error, diagnostics 
   assert.equal(result.exitCode, 1);
   assert.match(result.stderr, /too many symbolic links/u);
   assert.match(JSON.parse(result.stdout)[0].contents[0].error, /too many symbolic links/u);
-  const hugeError = wrapped(backing, { async lstat() { throw new Error("x".repeat(1000)); } });
+  const hugeError = wrapped(backing, { async lstat() { throw new FsError("EIO", { message: "x".repeat(1000) }); } });
   await assert.rejects(run([], { limits: { maxPathBytes: 100 } }, { fs: hugeError }), /path\/name limit/u);
 });

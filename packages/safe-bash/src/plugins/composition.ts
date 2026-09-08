@@ -1,4 +1,5 @@
 import { CommandRegistry, type CommandDefinition, type CommandHandler } from "../contracts/index.js";
+import { PublicDiagnostic } from "../diagnostics.js";
 import { createStandardCommandsWithGrep, type ExecutionCommandsOptions } from "../commands/standard.js";
 import { diagnostic } from "../commands/internal.js";
 import { createTextProgramCommands, type TextProgramOptions } from "../commands/text-programs/index.js";
@@ -64,7 +65,7 @@ export function commandExecutor(lookup: (name: string) => CommandDefinition | un
   return async context => {
     const command = lookup(context.command);
     if (command) return command.execute(context);
-    await diagnostic(context, new Error("command not found"));
+    await diagnostic(context, new PublicDiagnostic("command not found"));
     return { exitCode: 127 };
   };
 }

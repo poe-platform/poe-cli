@@ -86,6 +86,7 @@ for (const reason of [undefined, null, false, 0, ""]) test(`caller cancellation 
 
 for (const reason of [undefined, null, false, 0, ""]) test(`actual shell keeps ordinary child error mapping: ${String(reason)}`, async () => {
   const { shell, commands } = fixture();
+  const observed: unknown[] = [];
   const cleanup = deferred();
   let starts = 0;
   let cleaning = 0;
@@ -95,7 +96,7 @@ for (const reason of [undefined, null, false, 0, ""]) test(`actual shell keeps o
     context.registerCleanup!(() => { cleaning++; return cleanup.promise; });
     throw reason;
   } });
-  const running = shell.exec("xargs -P2 -n1 host-error", { stdin: "one two" });
+  const running = shell.exec("xargs -P2 -n1 host-error", { stdin: "one two", onInternalError(error) { observed.push(error); } });
   void running.then(() => { settled = true; }, () => { settled = true; });
   try {
     await until(() => cleaning === 2 || settled);
@@ -105,7 +106,9 @@ for (const reason of [undefined, null, false, 0, ""]) test(`actual shell keeps o
     cleanup.resolve();
     const result = await running;
     assert.equal(result.exitCode, 123);
-    assert.equal(result.stderr, `shell: line 1: ${String(reason)}\nshell: line 1: ${String(reason)}\n`);
+    assert.equal(result.stderr, "shell: line 1: internal error\nshell: line 1: internal error\n");
+    assert.equal(observed.length, 2);
+    for (const error of observed) assert.equal(error, reason);
   } finally { cleanup.resolve(); await running.catch(() => {}); await shell.dispose(); }
 });
 

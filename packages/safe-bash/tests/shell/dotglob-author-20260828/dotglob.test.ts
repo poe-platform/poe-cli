@@ -279,11 +279,14 @@ for (const names of ["dotglob expand_aliases", "expand_aliases dotglob"]) test(`
 test("diagnostic write failure stops operands under existing mapped status", async () => {
   const { shell } = await fixture();
   const reason = new Error("author-diagnostic-failure");
+  const observed: unknown[] = [];
   let calls = 0;
   try {
-    const result = await shell.exec("shopt -s expand_aliases dotglob; printf '%s\\n' \"$?\"; shopt -p", { stderr: { async write() { calls++; throw reason; } } });
+    const result = await shell.exec("shopt -s expand_aliases dotglob; printf '%s\\n' \"$?\"; shopt -p", { stderr: { async write() { calls++; throw reason; } }, onInternalError(error) { observed.push(error); } });
     assert.equal(result.stdout, "1\n" + line(false, true));
-    assert.equal(result.stderr, unsupported("expand_aliases") + "shell: line 1: author-diagnostic-failure\n");
+    assert.equal(result.stderr, unsupported("expand_aliases") + "shell: line 1: internal error\n");
+    assert.equal(observed.length, 2);
+    for (const error of observed) assert.equal(error, reason);
     assert.equal(calls, 2);
   } finally { await shell.dispose(); }
 });

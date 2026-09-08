@@ -24,19 +24,21 @@ async function until(predicate: () => boolean): Promise<void> {
 function launch(args: readonly string[], overrides: Partial<CommandContext> = {}, definitions = createStandardCommands()) {
   const stdout: number[] = [];
   const stderr: number[] = [];
+  const internalErrors: unknown[] = [];
   const controller = new AbortController();
   const context: CommandContext = {
     command: "xargs", args, cwd: "/", env: {}, fs: new MemoryFileSystem(), signal: controller.signal,
     stdin: toByteSource("one two three"),
     stdout: { async write(chunk) { stdout.push(...chunk); } },
     stderr: { async write(chunk) { stderr.push(...chunk); } },
+    onInternalError(error) { internalErrors.push(error); },
     ...overrides,
   };
   let settled = false;
   const promise = definitions.find(command => command.name === "xargs")!.execute(context);
   const completion = Promise.resolve(promise);
   void completion.then(() => { settled = true; }, () => { settled = true; });
-  return { completion, context, stdout, stderr, controller, get settled() { return settled; } };
+  return { completion, context, stdout, stderr, internalErrors, controller, get settled() { return settled; } };
 }
 
 for (const entry of [
@@ -118,9 +120,12 @@ test("throwing result access stops admission, cancels siblings and retains publi
     assert.equal(signals[1]!.aborted, true);
     assert.equal(run.settled, false);
     assert.deepEqual(run.stderr, []);
+    assert.deepEqual(run.internalErrors, []);
     release.resolve();
     assert.equal((await run.completion).exitCode, 1);
-    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), "xargs: false\n");
+    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), "xargs: internal error\n");
+    assert.equal(run.internalErrors.length, 1);
+    assert.equal(run.internalErrors[0], false);
     assert.equal(signals.length, 2);
   } finally { first.resolve(); release.resolve(); run.controller.abort(); await run.completion.catch(() => {}); }
 });
@@ -143,9 +148,12 @@ for (const reason of [undefined, null, false, 0, ""]) test(`mapped failure ${Str
     await until(() => signals[1]!.aborted);
     assert.equal(run.settled, false);
     assert.deepEqual(run.stderr, []);
+    assert.deepEqual(run.internalErrors, []);
     release.resolve();
     assert.equal((await run.completion).exitCode, 1);
-    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), `xargs: ${String(reason)}\n`);
+    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), "xargs: internal error\n");
+    assert.equal(run.internalErrors.length, 1);
+    assert.equal(run.internalErrors[0], reason);
     assert.equal(signals.length, 2);
   } finally { first.resolve(); release.resolve(); await run.completion.catch(() => {}); }
 });
@@ -275,7 +283,9 @@ for (const reason of [undefined, null, false, 0, ""]) {
     const invoke: CommandInvoker = synchronous ? () => { throw reason; } : () => Promise.reject(reason);
     const run = launch(["-P2", "-n1", "capture"], { invoke });
     assert.equal((await run.completion).exitCode, 1);
-    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), `xargs: ${String(reason)}\n`);
+    assert.equal(new TextDecoder().decode(Uint8Array.from(run.stderr)), "xargs: internal error\n");
+    assert.equal(run.internalErrors.length, 1);
+    assert.equal(run.internalErrors[0], reason);
   });
 }
 

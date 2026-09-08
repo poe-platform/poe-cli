@@ -16,6 +16,12 @@ export interface CommandArguments {
 
 const argumentCarriers = new WeakSet<CommandArguments>();
 
+export class CommandArgumentIdentityError extends TypeError {
+  constructor() {
+    super("Command argument identity does not match its carrier");
+  }
+}
+
 function argumentAllocation(allocation?: ValueAllocation) {
   const reservations: ValueReservation[] = [];
   const tracked: ValueAllocation | undefined = allocation && {
@@ -163,7 +169,7 @@ export function getCommandArguments(context: Pick<CommandContext, "args" | "argu
   const carrier = context.argumentValues;
   if (carrier === undefined) return createCommandArguments(context.args);
   if (!argumentCarriers.has(carrier)) throw new TypeError("Expected owned command arguments");
-  if (carrier.args !== context.args) throw new TypeError("Command argument identity does not match its carrier");
+  if (carrier.args !== context.args) throw new CommandArgumentIdentityError();
   return carrier;
 }
 

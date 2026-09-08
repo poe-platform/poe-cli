@@ -38,6 +38,12 @@ function errorInfo(error: unknown): { name: string; code: string; message: strin
   return { name: field("name"), code: field("code"), message: field("message") || "SafeJS execution failed" };
 }
 
+function statusField(error: unknown, name: "name" | "code"): string {
+  if (typeof error !== "object" || error === null) return "";
+  const descriptor = Object.getOwnPropertyDescriptor(error, name);
+  return descriptor && "value" in descriptor && typeof descriptor.value === "string" ? descriptor.value : "";
+}
+
 function validateRuntime<Budget>(runtime: SafeJsRuntime<Budget> | undefined): void {
   if (runtime === undefined) return;
   for (const key of ["run", "createBudget", "makeFsModule", "declareHostOperation"] as const) {
@@ -142,7 +148,7 @@ export function createSafeJsCommands<Budget = unknown>(options: SafeJsCommandsOp
     }
     context.signal.throwIfAborted();
     if (failed) {
-      const info = thrown instanceof GuestDiagnostic ? thrown.info : { name: "", code: "", message: "" };
+      const info = thrown instanceof GuestDiagnostic ? thrown.info : { name: statusField(thrown, "name"), code: statusField(thrown, "code") };
       const detail = thrown instanceof SafeJsCommandLimitError ? thrown.message : publicDiagnosticMessage(thrown, context.onInternalError);
       if (!output.stderrFailed) await diagnose(detail);
       return { exitCode: thrown instanceof SafeJsCommandLimitError || info.code === "budgetExceeded" ? 124
