@@ -102,6 +102,18 @@ and monitor both releases until successful publication. No fix is claimed yet.
   explicitly disabled streams, bounded fallbacks, cancellation, read-only
   backing files, and masked historical rows.
 - The third normal build succeeds. Its rebuilt public bundle, packaging, and
-  playground checks pass 177 tests. Full repository tests, final installed
-  consumers, persistent workerd acceptance, and publication remain pending;
-  these focused results do not substitute for those gates.
+  playground checks pass 177 tests. Installed local tarballs bound to commit
+  `765f74fb9affc8fc522421fa30e385f083b5fdc8` pass Node, Bun, public declaration,
+  browser bundle/runtime, legacy coexistence, and standalone SafeFS checks.
+  The initial standalone check exposed ambient `/tmp/node_modules` resolution;
+  rerunning in an isolated temporary root passes without product changes.
+- The full lint route passes with zero diagnostics. A subsequent source/test
+  typecheck identifies a frozen historical raw-memory snapshot type that cannot
+  represent the new general FileType. Its exact import edge gets a compile-only
+  declaration of raw MemoryFileSystem's actual three node kinds; general device
+  types remain unchanged and historical evidence is not rewritten.
+- A full test attempt passes 20,298 shared tests, with one existing skipped
+  test, but reaches the type-model worker's new test before its implementation
+  is finished. Preserve that failure and rerun the full route after the worker
+  freezes. Full repository tests, persistent workerd acceptance, and publication
+  remain pending; focused results do not substitute for those gates.
