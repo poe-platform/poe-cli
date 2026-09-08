@@ -124,23 +124,19 @@ export function createObjectGlobal(methods: SandboxObject, budget: Budget): Sand
       sandbox: true,
       name: "hasOwnProperty",
       length: 1,
-      call: async ([key], context) =>
-        hasOwnSandboxProperty(
-          requireReceiver(context?.thisValue),
-          await toPropertyKey(key, budget, context),
-          false
-        )
+      call: async ([key], context) => {
+        const property = await toPropertyKey(key, budget, context);
+        return hasOwnSandboxProperty(context?.thisValue, property, false);
+      }
     }),
     propertyIsEnumerable: createSandboxClosure({
       sandbox: true,
       name: "propertyIsEnumerable",
       length: 1,
-      call: async ([key], context) =>
-        hasOwnSandboxProperty(
-          requireReceiver(context?.thisValue),
-          await toPropertyKey(key, budget, context),
-          true
-        )
+      call: async ([key], context) => {
+        const property = await toPropertyKey(key, budget, context);
+        return hasOwnSandboxProperty(context?.thisValue, property, true);
+      }
     }),
     isPrototypeOf: createSandboxClosure({
       sandbox: true,
