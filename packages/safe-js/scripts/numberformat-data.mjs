@@ -145,9 +145,22 @@ export function isolatePluralRulesEngine(source, license) {
   const result = method?.body?.statements.at(-1);
   if (result === undefined || !ts.isReturnStatement(result) || !ts.isIdentifier(result.expression) || result.expression.text !== "opts")
     throw new TypeError("Unexpected plural engine resolved-options shape.");
+  const range = parsed.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "ResolvePluralRange");
+  const guard = range?.body?.statements[0];
+  if (guard === undefined || !ts.isIfStatement(guard) || !ts.isBinaryExpression(guard.expression) ||
+      guard.expression.operatorToken.kind !== ts.SyntaxKind.BarBarToken || !ts.isThrowStatement(guard.thenStatement) ||
+      ![guard.expression.left, guard.expression.right].every((node, index) => {
+        if (!ts.isPrefixUnaryExpression(node) || node.operator !== ts.SyntaxKind.ExclamationToken) return false;
+        const call = node.operand;
+        return ts.isCallExpression(call) && call.arguments.length === 0 && ts.isPropertyAccessExpression(call.expression) &&
+          ts.isIdentifier(call.expression.expression) && call.expression.expression.text === (index === 0 ? "x" : "y") &&
+          call.expression.name.text === "isFinite";
+      })) throw new TypeError("Unexpected plural engine range guard.");
   // Pass the already-rounded decimal text directly to the CLDR rule. Rebuilding
   // it from numeric fraction operands loses leading/trailing zeros and precision.
   const replacements = [
+    { start: guard.getStart(parsed), end: guard.end,
+      text: 'if (x.isNaN() || y.isNaN()) throw new RangeError("selectRange endpoints must not be NaN");' },
     { start: result.getStart(parsed), end: result.getStart(parsed),
       text: ["roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"]
         .map(field => `opts.${field} = internalSlots.${field};`).join("\n") + "\n" },

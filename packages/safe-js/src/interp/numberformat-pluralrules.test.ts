@@ -41,3 +41,27 @@ it.each(["ar", "ru", "en", "sl", "ak", "fr"])("preserves fractional plural opera
       expect(actual.select(value), JSON.stringify({ locale, options, value })).toBe(expected.select(value));
   }
 });
+
+// CLDR defaults absent category pairs to the end category. French other/one
+// is absent; preserve that documented fallback rather than Node's other result.
+it.each([
+  { locale: "en", toOne: "other" }, { locale: "fr", toOne: "one" },
+  { locale: "ar", toOne: "other" }, { locale: "ru", toOne: "one" },
+  { locale: "sl", toOne: "few" }
+].flatMap(({ locale, toOne }) => [
+  { start: Infinity, end: Infinity, expected: "other" },
+  { start: -Infinity, end: Infinity, expected: "other" },
+  { start: Infinity, end: 1, expected: toOne },
+  { start: 1, end: Infinity, expected: "other" },
+  { start: -Infinity, end: 1, expected: toOne },
+  { start: 1, end: -Infinity, expected: "other" }
+].map(values => ({ locale, ...values }))))("selects plural ranges with infinite endpoints: $locale/$start/$end", ({ locale, start, end, expected }) => {
+  const actual = new numberFormatIntl.PluralRules(locale);
+  expect(actual.selectRange(start, end)).toBe(expected);
+});
+
+it.each([[NaN, 1], [1, NaN], [NaN, Infinity], [-Infinity, NaN]])(
+  "continues rejecting NaN endpoints: %s/%s", (start, end) => {
+    expect(() => new numberFormatIntl.PluralRules("en").selectRange(start, end)).toThrow(RangeError);
+  }
+);
