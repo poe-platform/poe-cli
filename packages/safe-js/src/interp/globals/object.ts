@@ -1,6 +1,6 @@
 import { assertSandboxDataDepth } from "../../graph-depth.js";
 import { getGeneratorProperties } from "../generator-properties.js";
-import { readPropertyDescriptor } from "../accessors.js";
+import { accessorAdapter, accessorClosure, readPropertyDescriptor } from "../accessors.js";
 import { isSandboxArguments } from "../arguments.js";
 import type { Budget } from "../budget.js";
 import { isSandboxDate } from "../date.js";
@@ -38,6 +38,8 @@ import {
 } from "../values.js";
 import { measureSandboxData } from "../values.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
+import { retainValues } from "../resources.js";
+import { defineDataProperty, objectProperties } from "./object-array.js";
 
 export function createObjectGlobal(methods: SandboxObject, budget: Budget): SandboxClosure {
   const construct = ([value]: readonly SandboxValue[]): SandboxValue => {
@@ -161,6 +163,42 @@ export function createObjectGlobal(methods: SandboxObject, budget: Budget): Sand
       }
     })
   };
+  for (const [name, kind, define] of [
+    ["__defineGetter__", "get", true],
+    ["__defineSetter__", "set", true],
+    ["__lookupGetter__", "get", false],
+    ["__lookupSetter__", "set", false]
+  ] as const) {
+    prototypeMethods[name] = createSandboxClosure({
+      guest: true, sandbox: true, name, length: define ? 2 : 1,
+      call: async ([key, accessor], context) => {
+        const target = construct([requireReceiver(context?.thisValue)]);
+        const release = retainValues(budget, () => [target, key, accessor]);
+        try {
+          if (define && !isSandboxClosure(accessor)) throw new TypeError("Accessor must be callable.");
+          const property = await toPropertyKey(key, budget, context);
+          if (define) {
+            await defineDataProperty(target, property, {
+              [kind]: accessorAdapter(accessor as SandboxClosure, kind),
+              enumerable: true,
+              configurable: true
+            }, budget, context);
+            return undefined;
+          }
+          let current = target as SandboxObject;
+          let depth = 0;
+          while (current !== null) {
+            budget.visitNode();
+            assertSandboxDataDepth(depth++);
+            const descriptor = Object.getOwnPropertyDescriptor(objectProperties(current), property);
+            if (descriptor !== undefined) return accessorClosure(descriptor[kind]);
+            current = getSandboxPrototype(current, budget) as SandboxObject;
+          }
+          return undefined;
+        } finally { release(); }
+      }
+    });
+  }
   for (const [name, method] of Object.entries(prototypeMethods)) {
     Object.defineProperty(prototype, name, { value: method, writable: true, configurable: true });
   }
