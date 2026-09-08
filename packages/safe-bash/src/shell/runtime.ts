@@ -57,6 +57,7 @@ import { EreLedger } from "../commands/regex-execution/ere/limits.js";
 import { compileEre } from "../commands/regex-execution/ere/syntax.js";
 import { matchEre } from "../commands/regex-execution/ere/matcher.js";
 import type { EreFragment } from "../commands/regex-execution/ere/types.js";
+import { PathLookup, pathTargets } from "./path-lookup.js";
 
 export const defaultLimits: Required<ShellLimits> = {
   maxParseUnits: defaultMaxParseUnits,
@@ -64,6 +65,7 @@ export const defaultLimits: Required<ShellLimits> = {
   maxOutputBytes: 16 * 1024 * 1024,
   maxCommands: 10_000,
   maxFileSystemOperations: 100_000,
+  maxPathComponents: 64,
   maxRedirects: 64,
   maxPipelineStages: 64,
   maxLoopIterations: 10_000,
@@ -104,6 +106,7 @@ const budgetedSinks = new WeakMap<ByteSink, { budget: Budget; write: ByteSink["w
 
 export class Budget {
   readonly executionScope = Object.freeze({});
+  readonly pathLookup = new PathLookup();
   readonly parsing: ParseBudget;
   readonly values: ValueArena;
   commands = 0;
@@ -2283,9 +2286,11 @@ export class Runtime {
               });
             } };
           };
+          const resumePathCache = this.budget.pathLookup.suspend();
           const release = (): void => {
             if (closed) return;
             closed = true;
+            resumePathCache();
             if (--file.references === 0 && this.outputFiles.get(path) === file) this.outputFiles.delete(path);
           };
           let target;
@@ -2520,6 +2525,7 @@ export class Runtime {
     if (argumentValues.values.every(value => typeof value === "string")) Reflect.deleteProperty(context, "argumentValues");
     const middleware = this.middleware.map<Middleware>((handler) => (context, next) => {
       scope.assertOpen();
+      this.budget.pathLookup.suspendUntilClosed(scope);
       let downstream: Promise<CommandResult> | undefined;
       const raw = handler(context, () => {
         downstream = next();
@@ -2689,6 +2695,7 @@ export class Runtime {
           await this.diagnostic({ ...io, ...context }, `${context.command}: command not found`);
           return { exitCode: 127 };
         }
+        this.budget.pathLookup.suspendUntilClosed(scope);
         const raw = definition.execute(forwarded);
         const observed = this.observeRuntimeReturn(raw, runtimeFrame);
         return await interruptible(observed, this.signal);
@@ -2822,25 +2829,20 @@ export class Runtime {
 
   async searchPaths(name: string, state: State, all = false, discovery = false): Promise<string[]> {
     if (!name) return [];
-    const path = state.variables.PATH;
-    if (path !== undefined && Buffer.byteLength(path) > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
-    const components = name.includes("/") || path === undefined ? [undefined] : path.split(":");
-    if (components.length > this.budget.limits.maxExpansionFields) this.budget.fail("maxExpansionFields");
     let denied: CommandFailure | undefined;
     const matches: string[] = [];
-    for (const component of components) {
-      this.signal.throwIfAborted();
-      const target = component === undefined ? name : `${component || "."}${component?.endsWith("/") ? "" : "/"}${name}`;
+    for (const target of pathTargets(name, state.variables.PATH, this.budget.limits, this.signal, limit => this.budget.fail(limit))) {
       const resolved = resolvePath(state.cwd, target);
       try {
         const options = { signal: this.signal };
-        if ((await interruptible(this.fs.stat(resolved, options), this.signal)).type !== "file") continue;
+        if (!await interruptible(this.budget.pathLookup.isFile(this.fs, resolved, this.signal), this.signal)) continue;
         if (this.fs.capabilities.permissions !== true) throw new CommandFailure(`${target}: execution permissions are not supported by this filesystem`, 126);
         await interruptible(this.fs.access(resolved, ACCESS_MODES.X_OK, options), this.signal);
         matches.push(target);
         if (!all) return matches;
       } catch (error) {
         this.signal.throwIfAborted();
+        if (error instanceof ShellLimitError) throw error;
         if (error instanceof CommandFailure) { if (discovery) continue; throw error; }
         const code = errorCode(error);
         if (code === "ENOENT" || code === "ENOTDIR") continue;
@@ -3059,6 +3061,7 @@ export class Runtime {
       const runtimeFrame: RuntimeOutcomeFrame = {};
       const middleware = this.middleware.map<Middleware>(handler => (context, next) => {
         scope.assertOpen();
+        this.budget.pathLookup.suspendUntilClosed(scope);
         let downstream: Promise<CommandResult> | undefined;
         const raw = handler(context, () => {
           downstream = next();
@@ -3137,7 +3140,10 @@ export class Runtime {
         return { exitCode: await runtime.interpreter(forwarded, state, childIO, loadedSource) };
       }
       if (direct) return { exitCode: await runtime.scriptFile(forwarded, state, childIO, command, forwarded.args, true) };
-      if (definition) return definition.execute(forwarded);
+      if (definition) {
+        runtime.budget.pathLookup.suspendUntilClosed(childIO[invocationScope]);
+        return definition.execute(forwarded);
+      }
       await writeDiagnostic(forwarded.stderr, `env: ${command}: command not found\n`);
       return { exitCode: 127 };
     }, undefined, options.stdin !== context.stdin ? options.stdin : undefined, scope);
@@ -3154,6 +3160,7 @@ export class Runtime {
     return this.shebangStage({
       ...context, command: "env", args: argumentValues.args, argumentValues,
     }, state, io, async (runtime, forwarded) => {
+      runtime.budget.pathLookup.suspendUntilClosed(io[invocationScope]);
       let failed = false;
       let failure: unknown;
       let failureReport: CancellationReport | undefined;
@@ -3321,16 +3328,11 @@ export class Runtime {
     try {
       const options = { signal: this.signal };
       if (filename && !filename.includes("/") && state.variables.PATH) {
-        if (Buffer.byteLength(state.variables.PATH) > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
-        const components = state.variables.PATH.split(":");
-        if (components.length > this.budget.limits.maxExpansionFields) this.budget.fail("maxExpansionFields");
         let found = false;
-        for (const component of components) {
-          this.signal.throwIfAborted();
-          const candidate = `${component || "."}${component.endsWith("/") ? "" : "/"}${filename}`;
+        for (const candidate of pathTargets(filename, state.variables.PATH, this.budget.limits, this.signal, limit => this.budget.fail(limit))) {
           const path = resolvePath(state.cwd, candidate);
           try {
-            if ((await interruptible(this.fs.stat(path, options), this.signal)).type !== "file") continue;
+            if (!await interruptible(this.budget.pathLookup.isFile(this.fs, path, this.signal), this.signal)) continue;
             await interruptible(this.fs.access(path, ACCESS_MODES.R_OK, options), this.signal);
             target = candidate;
             found = true;

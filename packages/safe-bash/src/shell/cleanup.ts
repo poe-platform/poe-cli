@@ -5,6 +5,7 @@ export const invocationScope = Symbol("invocation cleanup scope");
 export class InvocationScope {
   readonly #children = new Set<InvocationScope>();
   readonly #callbacks: InvocationCleanup[] = [];
+  readonly #finalizers: (() => void)[] = [];
   readonly #work = new Set<Promise<void>>();
   readonly #controller = new AbortController();
   #closed = false;
@@ -17,6 +18,11 @@ export class InvocationScope {
   ) {}
 
   get signal(): AbortSignal { return this.#controller.signal; }
+
+  registerFinalizer(finalize: () => void): void {
+    this.assertOpen();
+    this.#finalizers.push(finalize);
+  }
 
   assertOpen(): void {
     this.callerSignal?.throwIfAborted();
@@ -72,6 +78,10 @@ export class InvocationScope {
             ...this.#work,
           ]);
         } finally {
+          for (const finalize of this.#finalizers.splice(0)) {
+            try { finalize(); }
+            catch (error) { this.failures.push(error); }
+          }
           if (this.parent) this.parent.#children.delete(this);
         }
       });

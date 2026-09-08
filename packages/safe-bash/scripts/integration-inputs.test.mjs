@@ -397,6 +397,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/integration/typecheck-consumer-resolution.test.ts"));
   assert.ok(files.includes("tests/shell/redirect-limits.test.ts"));
   assert.ok(files.includes("tests/shell/filesystem-budget.test.ts"));
+  assert.ok(files.includes("tests/shell/path-lookup-budget.test.ts"));
   assert.ok(files.includes("tests/shell/memory-storage-limits.test.ts"));
   assert.ok(files.includes("tests/shell/parse-budget.test.ts"));
   assert.ok(files.includes("tests/shell/parse-admission.test.ts"));
