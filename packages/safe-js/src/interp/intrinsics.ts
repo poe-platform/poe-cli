@@ -6,6 +6,7 @@ import { isSandboxClosure } from "./values.js";
 
 const identities = new WeakMap<object, string>();
 const realms = new WeakMap<Budget, Map<string, object>>();
+export const mutableBuiltinBindings = new WeakMap<object, ReadonlySet<string>>();
 
 // Paths encode trusted installation sites, never guest-visible function names.
 // Keeping identity separate from the realm map allows completed dumps after close.

@@ -23,7 +23,7 @@ import { createArrayBufferGlobal } from "./globals/array-buffer.js";
 import { createDataViewGlobal } from "./globals/data-view.js";
 import { createReflectGlobal } from "./globals/reflect.js";
 import type { RunClock } from "../run.js";
-import { registerBuiltinIdentities } from "./intrinsics.js";
+import { mutableBuiltinBindings, registerBuiltinIdentities } from "./intrinsics.js";
 
 export function createBuiltinBindings(
   options: Parameters<typeof createConsoleJsonGlobals>[0] & { random?: () => number; clock?: RunClock; functionHasInstance?: boolean; errorPrototypes?: boolean; typedArrayPrototypes?: boolean }
@@ -57,5 +57,7 @@ export function createBuiltinBindings(
   if (options.errorPrototypes !== false) createErrorPrototypes(options.budget, bindings);
   createGeneratorPrototypes(options.budget);
   registerBuiltinIdentities(options.budget, bindings);
+  mutableBuiltinBindings.set(bindings, new Set(Object.keys(bindings).filter(name =>
+    name !== "Infinity" && name !== "NaN" && name !== "undefined")));
   return bindings;
 }

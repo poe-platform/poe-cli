@@ -2,6 +2,7 @@ import type { VariableDeclarationKind } from "../parse.js";
 import type { PrivateName } from "./private-state.js";
 import type { InterpreterSnapshot, InterpreterValue } from "./interpreter.js";
 import type { ResourceScopeState } from "./resource-management.js";
+import { getIntrinsicIdentity, mutableBuiltinBindings } from "./intrinsics.js";
 
 type ScopeBinding = {
   kind: VariableDeclarationKind;
@@ -43,6 +44,7 @@ export class Scope {
   resourceState?: ResourceScopeState;
   privateNames?: Map<string, PrivateName>;
   readonly #bindings = new Map<string, ScopeBinding>();
+  readonly #replacedBindings = new Set<ScopeBinding>();
   readonly #restoredBindings: Map<string, InterpreterValue>;
   #frameHydrated = false;
 
@@ -59,9 +61,10 @@ export class Scope {
       parent === undefined
         ? new Map(Object.entries(restoredBindings ?? {}))
         : parent.#restoredBindings;
+    const mutable = mutableBuiltinBindings.get(bindings);
     for (const [name, value] of Object.entries(bindings)) {
       this.#bindings.set(name, {
-        kind: "const",
+        kind: mutable?.has(name) ? "var" : "const",
         value
       });
     }
@@ -154,6 +157,10 @@ export class Scope {
       for (const binding of this.#bindings.values()) {
         if (binding.value !== uninitialized) values.push(binding.value);
       }
+    } else {
+      for (const binding of this.#replacedBindings) {
+        if (binding.value !== uninitialized) values.push(binding.value);
+      }
     }
     return values;
   }
@@ -233,6 +240,7 @@ export class Scope {
     }
 
     binding.value = value;
+    scope.trackReplacement(name, binding);
   }
 
   lookup(name: string): ScopeLookupResult {
@@ -337,7 +345,10 @@ export class Scope {
     this.importMeta = frame.importMeta;
     this.resourceState = frame.resourceState;
     if (frame.privateNames !== undefined) this.privateNames = new Map(frame.privateNames);
-    for (const [name, binding] of bindings) this.#bindings.set(name, binding);
+    for (const [name, binding] of bindings) {
+      this.#bindings.set(name, binding);
+      this.trackReplacement(name, binding);
+    }
     if (this.parent === undefined)
       for (const [name, value] of restored) this.#restoredBindings.set(name, value);
     this.#frameHydrated = true;
@@ -364,6 +375,14 @@ export class Scope {
     }
 
     return this.parent?.resolveScope(name);
+  }
+
+  private trackReplacement(name: string, binding: ScopeBinding): void {
+    if (this.options.chargeData !== false || binding.kind === "const") return;
+    const value = binding.value;
+    if (typeof value === "object" && value !== null && getIntrinsicIdentity(value) === JSON.stringify([name]))
+      this.#replacedBindings.delete(binding);
+    else this.#replacedBindings.add(binding);
   }
 
   private requireInitializedBinding(name: string): {
