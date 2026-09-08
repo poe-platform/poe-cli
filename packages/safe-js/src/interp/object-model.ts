@@ -6,6 +6,7 @@ import { getIntrinsicIdentity, registerBuiltinIdentities, releaseIntrinsicIdenti
 import { releaseTemplateObjects } from "./template-objects.js";
 import { isSandboxDate } from "./date.js";
 import { retainedAccessorClosures } from "./accessors.js";
+import { internalSymbols } from "./internal-symbols.js";
 import { getHostObjectMember, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
 import type { Budget } from "./budget.js";
 import { errorPrototypes } from "./error-prototypes.js";
@@ -614,7 +615,9 @@ export function hasGuestObjectState(value: object): boolean {
     descriptorObjects.has(value) &&
     (isNumericTypedArray(value)
       ? typedArrayProperties(value).map(([, descriptor]) => descriptor)
-      : Object.values(Object.getOwnPropertyDescriptors(value))).some(
+      : Reflect.ownKeys(value)
+        .filter(key => typeof key !== "symbol" || !internalSymbols.has(key))
+        .map(key => Object.getOwnPropertyDescriptor(value, key)!)).some(
       (descriptor) => !descriptor.enumerable || !descriptor.configurable || !descriptor.writable
     )
   );
