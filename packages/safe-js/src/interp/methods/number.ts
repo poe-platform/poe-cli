@@ -24,8 +24,9 @@ export function getNumberMember(
 
   return createSandboxClosure({
     sandbox: true,
-    name: `Number#${property}`,
-    ...(property === "toLocaleString" ? { guest: true, name: property, length: 0 } : {}),
+    guest: true,
+    name: property,
+    length: property === "toLocaleString" ? 0 : 1,
     call: (args, context) => callNumberMethod(context?.thisValue, property, args, budget, context)
   });
 }
