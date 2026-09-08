@@ -707,11 +707,16 @@ export function measureSandboxData(
         }
       } else {
         for (const key of Object.getOwnPropertyNames(value)) {
-          if (key === "length" || (!managedArray && !isArrayIndexKey(key))) continue;
+          // Native array indices precede length, its first non-index own key.
+          // Proxy arrays use index lookup above; managed arrays retain all keys.
+          if (key === "length") {
+            if (!managedArray) break;
+            continue;
+          }
           const descriptor = Object.getOwnPropertyDescriptor(value, key);
           if (descriptor !== undefined) {
             if (arrayDescriptors !== undefined) arrayDescriptors.push([key, descriptor]);
-            else if ("value" in descriptor) arrayElements!.push(descriptor.value);
+            else if ("value" in descriptor && typeof descriptor.value !== "number") arrayElements!.push(descriptor.value);
           }
         }
       }
