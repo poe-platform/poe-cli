@@ -134,9 +134,23 @@ export function isolatePluralRulesEngine(source, license) {
   const call = calls[0];
   if (calls.length !== 1 || call.arguments.map(argument => argument.getText(parsed)).join("|") !== "locale|type|n|GetOperands(s, exponent)")
     throw new TypeError("Unexpected plural engine operand path.");
+  const classes = [];
+  const findClass = node => {
+    if ((ts.isClassExpression(node) || ts.isClassDeclaration(node)) && node.name?.text === "PluralRules") classes.push(node);
+    ts.forEachChild(node, findClass);
+  };
+  findClass(parsed);
+  const method = classes.length === 1 ? classes[0].members.find(node => ts.isMethodDeclaration(node) &&
+    ts.isIdentifier(node.name) && node.name.text === "resolvedOptions") : undefined;
+  const result = method?.body?.statements.at(-1);
+  if (result === undefined || !ts.isReturnStatement(result) || !ts.isIdentifier(result.expression) || result.expression.text !== "opts")
+    throw new TypeError("Unexpected plural engine resolved-options shape.");
   // Pass the already-rounded decimal text directly to the CLDR rule. Rebuilding
   // it from numeric fraction operands loses leading/trailing zeros and precision.
   const replacements = [
+    { start: result.getStart(parsed), end: result.getStart(parsed),
+      text: ["roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"]
+        .map(field => `opts.${field} = internalSlots.${field};`).join("\n") + "\n" },
     { start: call.getStart(parsed), end: call.end, text: "PluralRuleSelect(locale, type, s, exponent)" },
     { start: selector.getStart(parsed), end: selector.end,
       text: 'function PluralRuleSelect(locale, type, formattedString, exponent) {\n  return PluralRules.localeData[locale].fn(formattedString, type === "ordinal", exponent);\n}' }

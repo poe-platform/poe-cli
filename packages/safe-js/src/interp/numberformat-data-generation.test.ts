@@ -87,13 +87,16 @@ it("rejects unexpected engine shape instead of silently leaving host plural rule
 });
 
 it("retains exact formatted plural text and rejects changed dependency shapes", () => {
-  const source = 'function ResolvePluralInternal(){return PluralRuleSelect(locale, type, n, GetOperands(s, exponent));}\nfunction PluralRuleSelect(locale,type,n,operands){return "broken";}\n//# sourceMappingURL=index.js.map';
+  const source = 'function ResolvePluralInternal(){return PluralRuleSelect(locale, type, n, GetOperands(s, exponent));}\nfunction PluralRuleSelect(locale,type,n,operands){return "broken";}\nvar PluralRules=class PluralRules{resolvedOptions(){const internalSlots=getInternalSlots(this);const opts={};return opts;}};\n//# sourceMappingURL=index.js.map';
   const generated = isolatePluralRulesEngine(source, "MIT notice");
   expect(generated).toContain("PluralRuleSelect(locale, type, s, exponent)");
   expect(generated).toContain('fn(formattedString, type === "ordinal", exponent)');
   expect(generated).not.toContain("GetOperands(s, exponent)");
   expect(generated).not.toContain("sourceMappingURL");
   expect(generated).toContain("MIT notice");
+  for (const field of ["roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"])
+    expect(generated).toContain(`opts.${field} = internalSlots.${field};`);
+  expect(() => isolatePluralRulesEngine(source.replace("return opts;", "return different;"), "MIT")).toThrow("resolved-options shape");
   expect(() => isolatePluralRulesEngine(source.replace("GetOperands(s, exponent)", "differentOperands(s)"), "MIT")).toThrow();
   expect(() => isolatePluralRulesEngine("export const other=1;", "MIT")).toThrow();
 });

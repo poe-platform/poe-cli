@@ -17,6 +17,22 @@ it("does not replace host Intl or its constructors", () => {
   expect(numberFormatIntl.Locale).toBe(Intl.Locale);
 });
 
+it.each([
+  {},
+  { maximumFractionDigits: 0, roundingMode: "floor" },
+  { minimumFractionDigits: 2, maximumFractionDigits: 2, roundingIncrement: 5 },
+  { roundingPriority: "morePrecision", minimumFractionDigits: 2, maximumSignificantDigits: 3 },
+  { roundingPriority: "lessPrecision", minimumFractionDigits: 2, maximumSignificantDigits: 3 },
+  { trailingZeroDisplay: "stripIfInteger" }
+])("reports the resolved rounding configuration: %j", options => {
+  const fields = ["roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"];
+  const actual = new numberFormatIntl.PluralRules("en", options).resolvedOptions();
+  const expected = new Intl.PluralRules("en", options).resolvedOptions();
+  for (const field of fields)
+    expect(Reflect.get(actual, field), field).toBe(Reflect.get(expected, field));
+  expect(Object.keys(actual).slice(-4)).toEqual(fields);
+});
+
 it.each(["ar", "ru", "en", "sl", "ak", "fr"])("preserves fractional plural operands for %s", locale => {
   for (const options of [{}, { minimumFractionDigits: 3 }, { maximumFractionDigits: 2 }]) {
     const actual = new numberFormatIntl.PluralRules(locale, options);
