@@ -2830,7 +2830,7 @@ async function evaluateDeleteExpression(
       throw new TypeError("Cannot delete properties of null or undefined.");
     }
 
-    if (!isIndexableSandboxValue(member.object) && !isSandboxPromise(member.object) && !isSandboxRegex(member.object) && !isSandboxMap(member.object) && !isSandboxSet(member.object)) {
+    if (typeof member.object === "object" && !isIndexableSandboxValue(member.object) && !isSandboxPromise(member.object) && !isSandboxRegex(member.object) && !isSandboxMap(member.object) && !isSandboxSet(member.object)) {
       throw new TypeError("Unary operator 'delete' requires a sandbox object property.");
     }
 
@@ -4211,6 +4211,7 @@ async function evaluateResolvedCallExpression(
       hasValue: true,
       value: undefined
     };
+  if (target !== null && target !== undefined && typeof target !== "object") target = Object(target) as SandboxObject;
   }
 
   const call = createCallContinuation(node, callee, context, thisValue);
