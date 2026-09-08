@@ -1,10 +1,12 @@
 import type { Budget } from "../budget.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { createDataCheckpoint } from "../data-checkpoint.js";
+import { invokeBuiltinClosure } from "../builtin-call.js";
+import { wellKnownSymbols } from "../symbols.js";
 import { resolveIntrinsicIdentity } from "../intrinsics.js";
 import { setSandboxProperty } from "../interpreter.js";
 import { getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
-import { createSandboxClosure, defineOwnDataProperty, type SandboxClosure, type SandboxObject } from "../values.js";
+import { createSandboxClosure, defineOwnDataProperty, isSandboxClosure, type SandboxClosure, type SandboxObject } from "../values.js";
 import { objectProperties } from "./object-array.js";
 import { installIteratorFrom } from "./iterator-from.js";
 import { installIteratorConsumers } from "./iterator-consumers.js";
@@ -43,6 +45,21 @@ export function createIteratorGlobal(budget: Budget): SandboxClosure {
   Object.defineProperty(prototype,"constructor",{get:accessorAdapter(getter,"get"),set:accessorAdapter(setter,"set"),configurable:true});
   registerIntrinsicFunction(budget,getter);
   registerIntrinsicFunction(budget,setter);
+  const dispose = createSandboxClosure({
+    guest: true, sandbox: true, name: "[Symbol.dispose]", length: 0,
+    call: async (_args, context) => {
+      const receiver = context?.thisValue;
+      if (receiver === null || receiver === undefined) throw new TypeError("Cannot read return from a nullish receiver.");
+      const method = context?.getProperty !== undefined ? await context.getProperty(receiver, "return")
+        : await readPropertyDescriptor(getSandboxPropertyDescriptor(receiver, "return", budget) ?? {value: undefined}, receiver, context);
+      if (method === undefined || method === null) return undefined;
+      if (!isSandboxClosure(method)) throw new TypeError("Iterator return must be callable.");
+      await invokeBuiltinClosure(method, [], budget, context, receiver);
+      return undefined;
+    }
+  });
+  Object.defineProperty(prototype, wellKnownSymbols.dispose, {value: dispose, writable: true, configurable: true});
+  registerIntrinsicFunction(budget, dispose);
   installIteratorFrom(constructor,budget);
   installIteratorConsumers(prototype,budget);
   installLazyIteratorHelpers(prototype,budget);
