@@ -1883,10 +1883,11 @@ test("published root mirrors only declared subpaths and keeps the feature isolat
   const build = JSON.parse(readFileSync(new URL("../tsconfig.build.json", import.meta.url), "utf8"));
   const expected = Object.fromEntries(Object.entries(source.exports).map(([key, conditions]) => [
     key === "." ? "./safe-bash" : `./safe-bash${key.slice(1)}`,
-    Object.fromEntries(Object.entries(conditions).map(([condition, target]) => [condition, `./packages/safe-bash${target.slice(1)}`])),
+    Object.fromEntries(Object.entries(conditions).map(([condition, target]) => [condition, target === null ? null : `./packages/safe-bash${target.slice(1)}`])),
   ]));
   assert.deepEqual(Object.fromEntries(Object.entries(root.exports).filter(([key]) => key === "./safe-bash" || key.startsWith("./safe-bash/"))), expected);
   assert.equal(root.exports["./safe-bash/*"], undefined);
+  assert.equal(root.exports["./safe-bash/node"].browser, null);
   assert.equal(root.engines.node, ">=18.18");
   assert.equal(source.engines.node, ">=22");
   assert.equal(source.name, "virtual-bash");

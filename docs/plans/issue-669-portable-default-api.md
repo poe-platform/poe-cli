@@ -111,3 +111,29 @@ separately. The unchanged maintained command with required access passes all
 282 runner checks. Full build, strict typechecking, guarded lint, full unit work,
 installed Node/Bun/workerd acceptance, remote delivery, and publication remain
 pending; none is inferred from these focused results.
+
+## Author clarification and integrated acceptance
+
+The issue author's September 8, 2026, 16:30:31 UTC clarification supersedes the
+earlier compatibility proposal: breaking refactoring is permitted without aliases,
+a deprecation window, or a required major release. The next default-entry change
+uses `regexExecutor?: BoundedRegexProvider` directly. Issue #669 now targets
+workerd with `nodejs_compat`; the remaining zero-Node full-inventory work is #672.
+The earlier version-boundary section records the previous proposal, not a current
+delivery prerequisite. The additive corrections can ship independently first.
+
+The integrated #669/#670 candidate builds and passes strict SafeBash consumer
+types and the maintained repository lint route. Fresh installed local tarballs
+pass Node and Bun public smoke, public declaration checks, and the unshimmed
+browser bundle. Actual workerd passes nine browser/no-compat cases and 22 cases
+each for mixed-entry default and injected portable providers with compatibility
+enabled. This includes nested env/xargs and bounded expr matching, captures,
+anchored nonmatches, unsupported modes, and help. Runtime instances are disposed.
+
+Packing exposed a POSIX export regression; the preserved RED and corrected
+public-consumer checks retain the complete existing portable path API. Full unit
+validation then exposed a test-only export-mirror assumption that every condition
+is a string. It now preserves and explicitly asserts the Node entry's `browser:
+null` denial. The preceding shared unit phase passed 20,242 tests; that phase is
+not a claim that the full test route passed. Final full validation and delivery
+are recorded separately in the issue and retained gate receipts.
