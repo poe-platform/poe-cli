@@ -30,6 +30,7 @@ import { isSandboxLocale, localeTag } from "./intl-locale.js";
 import { isSandboxCollator, collatorState } from "./intl-collator.js";
 import { isSandboxNumberFormat, numberFormatState } from "./intl-numberformat.js";
 import { isSandboxListFormat, listFormatState } from "./intl-listformat.js";
+import { isSandboxRelativeTimeFormat, relativeTimeFormatState } from "./intl-relativetimeformat.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
 import { boxedDataProperties, boxedValue, createSandboxBox, isSandboxBox, nativeBoxedValue } from "./boxed.js";
 import { getHostObjectKeys, getHostObjectMember, hasHostObjectMember, measureHostObjectData, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
@@ -807,6 +808,7 @@ export function measureSandboxData(
     if (isSandboxDate(value)) usage += 8;
     if (isSandboxLocale(value)) usage += localeTag(value).length;
     if (isSandboxListFormat(value)) visit(listFormatState(value).options, depth + 1);
+    if (isSandboxRelativeTimeFormat(value)) visit(relativeTimeFormatState(value).options, depth + 1);
     if (isSandboxNumberFormat(value)) {
       const state = numberFormatState(value);
       visit(state.options, depth + 1);
