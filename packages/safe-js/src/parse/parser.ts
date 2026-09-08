@@ -5143,7 +5143,7 @@ function decodeEscapedText(value: string, allowLegacy = false): string {
       break;
     }
 
-    if (next === "\n") {
+    if (next === "\n" || next === "\u2028" || next === "\u2029") {
       index += 2;
       continue;
     }

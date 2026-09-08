@@ -322,7 +322,7 @@ class Lexer {
         continue;
       }
 
-      if (isLineBreak(char)) {
+      if (char === "\n" || char === "\r") {
         this.syntaxError("Unterminated string literal", start);
       }
 
@@ -526,7 +526,7 @@ class Lexer {
         this.readEscapedLiteralCharacter();
         continue;
       }
-      if (isLineBreak(char)) {
+      if (char === "\n" || char === "\r") {
         this.syntaxError("Unterminated string literal", start);
       }
       this.advance();
@@ -1115,7 +1115,7 @@ class Lexer {
     }
 
     this.index += 1;
-    if (char === "\n") {
+    if (isLineBreak(char)) {
       this.line += 1;
       this.column = 1;
       return;
@@ -1174,7 +1174,7 @@ function isWhitespace(char: string): boolean {
 }
 
 function isLineBreak(char: string): boolean {
-  return char === "\n" || char === "\r";
+  return char === "\n" || char === "\r" || char === "\u2028" || char === "\u2029";
 }
 
 function isExpressionEndingPunctuator(value: string): boolean {
