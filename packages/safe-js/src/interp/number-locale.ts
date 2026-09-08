@@ -1,21 +1,18 @@
 import type { Budget } from "./budget.js";
+import { createNumberFormatter, numberFormatterOptions, numberFormatterResult } from "./numberformat-backend.js";
 import { canonicalizeGuestLocales, convertIntlOption, intlOptionsObject, readIntlProperty, type IntlOptionType } from "./intl-options.js";
 import { retainValues } from "./resources.js";
 import { sandboxNumber, sandboxString } from "./string-coercion.js";
 import type { SandboxCallContext, SandboxValue } from "./values.js";
 
-const NativeNumberFormat = Intl.NumberFormat;
 const roundingIncrements = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000];
 
-export async function formatNumberLocale(value: number | bigint, args: readonly SandboxValue[], budget: Budget, context?: SandboxCallContext): Promise<string> {
-  let locales: string[] = [];
+export async function readNumberFormatOptions(inputValue: SandboxValue, locales: string[], budget: Budget, context?: SandboxCallContext): Promise<Record<string, string | number | boolean>> {
   const options: Record<string, string | number | boolean> = Object.create(null);
   const digits: Record<string, SandboxValue> = Object.create(null);
-  const release = retainValues(budget, () => [value, locales, options, digits]);
-  const allocation = {};
+  const release = retainValues(budget, () => [inputValue, locales, options, digits]);
   try {
-    locales = await canonicalizeGuestLocales(args[0], budget, context);
-    const input = intlOptionsObject(args[1], budget);
+    const input = intlOptionsObject(inputValue, budget);
     const readString = async (key: string, type?: IntlOptionType): Promise<string | undefined> => {
       const raw = await readIntlProperty(input, key, budget, context);
       if (raw === undefined) return undefined;
@@ -46,16 +43,16 @@ export async function formatNumberLocale(value: number | bigint, args: readonly 
     const unit = await readString("unit");
     if (unit === undefined) {
       if (style === "unit") throw new TypeError("Unit formatting requires a unit.");
-    } else new NativeNumberFormat("en", { style: "unit", unit });
+    } else createNumberFormatter("en", { style: "unit", unit });
     await readString("unitDisplay", ["short", "narrow", "long"]);
     const notation = await readString("notation", ["standard", "scientific", "engineering", "compact"]) ?? "standard";
 
     let minimumDefault = 0;
     let maximumDefault = style === "percent" ? 0 : 3;
     if (style === "currency" && notation === "standard") {
-      const currencyDefaults = new NativeNumberFormat("en", { style: "currency", currency }).resolvedOptions();
-      minimumDefault = currencyDefaults.minimumFractionDigits!;
-      maximumDefault = currencyDefaults.maximumFractionDigits!;
+      const currencyDefaults = numberFormatterOptions(createNumberFormatter("en", { style: "currency", currency: currency! }));
+      minimumDefault = currencyDefaults.minimumFractionDigits as number;
+      maximumDefault = currencyDefaults.maximumFractionDigits as number;
     }
     options.minimumIntegerDigits = (await numberOption(await readIntlProperty(input, "minimumIntegerDigits", budget, context), "minimumIntegerDigits", 1, 21, 1))!;
     for (const key of ["minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits", "maximumSignificantDigits"])
@@ -90,18 +87,29 @@ export async function formatNumberLocale(value: number | bigint, args: readonly 
       options.maximumFractionDigits = maximum!;
     }
     // Validate rounding combinations before any later guest option access.
-    new NativeNumberFormat(locales, options as Intl.NumberFormatOptions);
+    createNumberFormatter(locales, options);
     await readString("compactDisplay", ["short", "long"]);
     const grouping = await readIntlProperty(input, "useGrouping", budget, context);
     if (grouping !== undefined) options.useGrouping = grouping === true ? true : !grouping ? false
       : await convertIntlOption(grouping, "useGrouping", ["min2", "auto", "always", "true", "false"], budget, context);
     await readString("signDisplay", ["auto", "never", "always", "exceptZero", "negative"]);
+    return options;
+  } finally { release(); }
+}
 
+export async function formatNumberLocale(value: number | bigint, args: readonly SandboxValue[], budget: Budget, context?: SandboxCallContext): Promise<string> {
+  let locales: string[] = [];
+  let options: Record<string, string | number | boolean> = Object.create(null);
+  const release = retainValues(budget, () => [value, locales, options]);
+  const allocation = {};
+  try {
+    locales = await canonicalizeGuestLocales(args[0], budget, context);
+    options = await readNumberFormatOptions(args[1], locales, budget, context);
     const size = typeof value === "bigint" ? value.toString(16).length * 4 : 64;
     budget.visitNode(size);
     budget.setRetainedDataUsage(allocation, size);
-    const formatter = new NativeNumberFormat(locales, options as Intl.NumberFormatOptions);
-    return budget.allocateString(formatter.format(value));
+    const formatter = createNumberFormatter(locales, options);
+    return budget.allocateString(numberFormatterResult(formatter, "format", [value]) as string);
   } finally {
     budget.setRetainedDataUsage(allocation, 0);
     release();

@@ -155,6 +155,7 @@ describe("compile checkpoint hash compatibility", () => {
         Iterator: { kind: "fn", name: "Iterator" },
         Intl: {
           Collator: { kind: "fn", name: "Collator" },
+          NumberFormat: { kind: "fn", name: "NumberFormat" },
           Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },

@@ -1,6 +1,7 @@
 import type { Budget } from "../budget.js";
 import { createLocaleConstructor } from "./intl-locale.js";
 import { createCollatorConstructor } from "./intl-collator.js";
+import { createNumberFormatConstructor } from "./intl-numberformat.js";
 import { retainedAccessorClosures } from "../accessors.js";
 import { canonicalizeGuestLocales } from "../intl-options.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
@@ -23,15 +24,17 @@ export function createIntlGlobal(budget: Budget): SandboxObject {
   const intl = createIntrinsicObject();
   const locale = createLocaleConstructor(budget);
   const collator = createCollatorConstructor(budget);
+  const numberFormat = createNumberFormatConstructor(budget);
   Object.defineProperty(intl, "Locale", { value: locale, writable: true, configurable: true });
   Object.defineProperty(intl, "Collator", { value: collator, writable: true, configurable: true });
+  Object.defineProperty(intl, "NumberFormat", { value: numberFormat, writable: true, configurable: true });
   for (const [name, call] of Object.entries(methods)) {
     const closure = createSandboxClosure({ guest: true, sandbox: true, name, length: 1, call });
     Object.defineProperty(intl, name, { value: closure, writable: true, configurable: true });
   }
   Object.defineProperty(intl, Symbol.toStringTag, { value: "Intl", configurable: true });
   registerBuiltinIdentities(budget, { Intl: intl });
-  for (const constructor of [locale, collator]) {
+  for (const constructor of [locale, collator, numberFormat]) {
     const prototype = constructor.properties!.prototype as SandboxObject;
     for (const owner of [prototype, constructor.properties!])
       for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(owner)))

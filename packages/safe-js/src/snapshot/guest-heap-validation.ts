@@ -3,6 +3,7 @@ import { sandboxErrorNames, type SandboxErrorName } from "../error/shape.js";
 import { createRawJson } from "../interp/raw-json.js";
 import { createSandboxLocale, localeTag } from "../interp/intl-locale.js";
 import { createSandboxCollator, collatorState } from "../interp/intl-collator.js";
+import { createSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { releaseObjectPrototype } from "../interp/object-model.js";
@@ -75,7 +76,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -346,6 +347,22 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   } else if (node.kind === "guest-regex") {
     fields(node, ["kind", "source", "flags", "state"]);
     if (typeof node.source !== "string" || typeof node.flags !== "string") throw new TypeError("Invalid guest RegExp payload.");
+    state(node.state);
+  } else if (node.kind === "guest-numberformat") {
+    fields(node, ["kind", "options", "state"], ["format"]);
+    const options = record(node.options);
+    fields(options, ["locale"], ["numberingSystem", "style", "currency", "currencyDisplay", "currencySign", "unit", "unitDisplay", "minimumIntegerDigits", "minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits", "maximumSignificantDigits", "useGrouping", "notation", "compactDisplay", "signDisplay", "roundingIncrement", "roundingMode", "roundingPriority", "trailingZeroDisplay"]);
+    if (typeof options.locale !== "string" || Object.values(options).some(value => !["string", "number", "boolean"].includes(typeof value)))
+      throw new TypeError("Invalid NumberFormat option type.");
+    const restored = numberFormatState(createSandboxNumberFormat(options.locale, options as NumberFormatOptions)).options;
+    if (Object.keys(options).length !== Object.keys(restored).length || Object.keys(restored).some(key => options[key] !== restored[key]))
+      throw new TypeError("Invalid resolved NumberFormat options.");
+    if (node.format !== undefined) {
+      const format = reference(node.format, ["bound-function"]);
+      if (reference(format.thisValue) !== node || array(format.args).length !== 0 || format.name !== "" || format.length !== 1 ||
+          reference(format.target, ["intrinsic"]).id !== '["%NumberFormatFormat%"]')
+        throw new TypeError("Invalid cached NumberFormat function.");
+    }
     state(node.state);
   } else if (node.kind === "guest-collator") {
     fields(node, ["kind", "options", "state"], ["compare"]);

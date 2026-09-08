@@ -14,6 +14,7 @@ import { isRawJson } from "../interp/raw-json.js";
 import { isSandboxDate, dateTime } from "../interp/date.js";
 import { isSandboxLocale, localeTag } from "../interp/intl-locale.js";
 import { isSandboxCollator, collatorState, type ResolvedCollatorOptions } from "../interp/intl-collator.js";
+import { isSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
@@ -94,6 +95,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-locale"; tag: string; state: GuestObjectState<T> }
   | { kind: "guest-collator"; options: ResolvedCollatorOptions; compare?: T; state: GuestObjectState<T> }
+  | { kind: "guest-numberformat"; options: NumberFormatOptions; format?: T; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
       outer?: { iterator: T; next: T }; inner?: { iterator: T; next: T }; callback: T;
       remaining: number | "Infinity"; index: number; state: GuestObjectState<T> }
@@ -276,6 +278,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     return undefined;
   }
   if (isSandboxLocale(value)) return { kind: "guest-locale", tag: localeTag(value), state: captureObjectState(value, encode)! };
+  if (isSandboxNumberFormat(value)) {
+    const { options, format } = numberFormatState(value);
+    return { kind: "guest-numberformat", options: { ...options }, ...(format === undefined ? {} : { format: encode(format) }), state: captureObjectState(value, encode)! };
+  }
   if (isSandboxCollator(value)) {
     const { options, compare } = collatorState(value);
     return { kind: "guest-collator", options: { ...options }, ...(compare === undefined ? {} : { compare: encode(compare) }), state: captureObjectState(value, encode)! };
