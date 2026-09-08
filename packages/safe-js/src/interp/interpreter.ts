@@ -623,7 +623,7 @@ function reconcileDataBudget(
 ): void {
   reconcileCompiledValues(
     budget,
-    [...scope.retainedValues(), transient],
+    [...scope.retainedDataRoots(), transient],
     compilation,
     parent,
     [transient]

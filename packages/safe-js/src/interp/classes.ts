@@ -136,7 +136,7 @@ export function createClassConstructor(
     length: constructorElement === undefined ? 0 : getFunctionLength(constructorElement.value.params),
     sourceRange: functionSources.get(node),
     retainedValues: () => {
-      const values: SandboxValue[] = [...scope.retainedValues(), ...fields.flatMap(field => field.privateName === undefined ? [field.key] : [field.key, field.privateName])];
+      const values: SandboxValue[] = [...scope.retainedDataRoots(), ...fields.flatMap(field => field.privateName === undefined ? [field.key] : [field.key, field.privateName])];
       for (const [name, element] of classOrigins.get(constructor)?.privateMethods ?? []) {
         values.push(name);
         if (element.kind === "accessor") values.push(element.get, element.set);

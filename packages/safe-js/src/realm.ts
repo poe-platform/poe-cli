@@ -296,7 +296,7 @@ class RealmState {
       }
       if (captured.length > 0)
         this.budget.reconcileDataUsage(
-          measureSandboxData([...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()])
+          measureSandboxData([...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()])
         );
       return { args: values, rollback };
     } catch (error) {
@@ -313,7 +313,7 @@ class RealmState {
     if (this.active === undefined)
       reconcileCompiledValues(
         this.budget,
-        [...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()],
+        [...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()],
         this.compilation
       );
   };
@@ -507,7 +507,7 @@ class RealmState {
     });
     try {
       this.budget.reconcileDataUsage(
-        measureSandboxData([...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()])
+        measureSandboxData([...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()])
       );
     } catch (error) {
       this.poison(error);
@@ -523,7 +523,7 @@ class RealmState {
     if (this.active === undefined)
       reconcileCompiledValues(
         this.budget,
-        [...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()],
+        [...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()],
         this.compilation
       );
   };
@@ -601,7 +601,7 @@ class RealmState {
       if (!this.closed && this.active === undefined)
         reconcileCompiledValues(
           this.budget,
-          [...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()],
+          [...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()],
           this.compilation
         );
     }
@@ -827,7 +827,7 @@ class RealmState {
       if (!this.closed)
         reconcileCompiledValues(
           this.budget,
-          [...(this.scope?.retainedValues() ?? []), ...this.retainedRoots()],
+          [...(this.scope?.retainedDataRoots() ?? []), ...this.retainedRoots()],
           this.compilation
         );
       return result;

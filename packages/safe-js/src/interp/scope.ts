@@ -6,10 +6,12 @@ import { builtinGlobalObjects, getIntrinsicIdentity, mutableBuiltinBindings } fr
 import { getSandboxPropertyDescriptor } from "./object-model.js";
 import type { SandboxObject } from "./values.js";
 import type { ModuleEnvironment } from "../modules/registry.js";
+import { scopeDataRoots } from "./scope-data-roots.js";
 
 type ScopeBinding = {
   kind: VariableDeclarationKind;
   value: InterpreterValue | typeof uninitialized;
+  accounting?: { value: InterpreterValue; root: SandboxObject };
 };
 
 type ScopeLookupResult =
@@ -188,6 +190,28 @@ export class Scope {
     return values;
   }
 
+  retainedDataRoots(): InterpreterValue[] {
+    const values = this.parent?.retainedDataRoots() ?? [];
+    if (this.moduleEnvironment !== undefined) values.push(...Object.values(this.moduleEnvironment.namespaces));
+    if (this.resourceState !== undefined) values.push(this.resourceState);
+    if (this.options.chargeData !== false) {
+      if (this.importMeta !== undefined) values.push(this.importMeta);
+      if (this.privateNames !== undefined) values.push(...this.privateNames.values());
+    }
+    const bindings = this.options.chargeData === false ? this.#replacedBindings : this.#bindings.values();
+    for (const binding of bindings) {
+      const value = binding.value;
+      if (value === uninitialized || value == null || typeof value === "number" || typeof value === "boolean") continue;
+      if (binding.accounting === undefined || !Object.is(binding.accounting.value, value)) {
+        const root = Object.freeze({});
+        scopeDataRoots.set(root, {value});
+        binding.accounting = {value, root};
+      }
+      values.push(binding.accounting.root);
+    }
+    return values;
+  }
+
   declare(name: string, kind: VariableDeclarationKind, value: InterpreterValue): void {
     const existing = this.#bindings.get(name);
     if (existing !== undefined && existing.value !== uninitialized) {
@@ -197,7 +221,7 @@ export class Scope {
       throw new Error(`Cannot redeclare binding '${name}' in the same scope.`);
     }
 
-    if (existing !== undefined) existing.value = value;
+    if (existing !== undefined) writeBindingValue(existing, value);
     else this.#bindings.set(name, { kind, value });
   }
 
@@ -273,7 +297,7 @@ export class Scope {
       throw new TypeError(`Cannot assign to const binding '${name}'.`);
     }
 
-    binding.value = value;
+    writeBindingValue(binding, value);
     scope.trackReplacement(name, binding);
   }
 
@@ -417,7 +441,7 @@ export class Scope {
 
       const targetBinding = targetScope.#bindings.get(name)!;
       targetBinding.kind = sourceBinding.kind;
-      targetBinding.value = sourceBinding.value;
+      writeBindingValue(targetBinding, sourceBinding.value);
     }
   }
 
@@ -458,6 +482,12 @@ export class Scope {
       value: binding.value
     };
   }
+}
+
+function writeBindingValue(binding: ScopeBinding, value: InterpreterValue): void {
+  // Release the old snapshot even if this cell is no longer a charged root.
+  if (!Object.is(binding.value, value)) binding.accounting = undefined;
+  binding.value = value;
 }
 
 function defineSnapshotBinding(

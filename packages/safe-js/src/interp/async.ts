@@ -232,11 +232,11 @@ export function createInterpretedClosure(
       : { name: context.inferredName }),
     ...(construct === undefined ? {} : { construct }),
     retainedValues: () => {
-      const values = [...context.scope.retainedValues(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget];
+      const values = [...context.scope.retainedDataRoots(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget];
       if (constructionState !== undefined) {
         values.push(constructionState.constructor, constructionState.newTarget,
           constructionState.prototype, constructionState.thisValue);
-        if (constructionState.thisScope !== undefined) values.push(...constructionState.thisScope.retainedValues());
+        if (constructionState.thisScope !== undefined) values.push(...constructionState.thisScope.retainedDataRoots());
       }
       return values;
     },
@@ -273,7 +273,7 @@ export function createInterpretedClosure(
             }
           });
           const value = "hasValue" in result && result.hasValue ? result.value : undefined;
-          reconcileCompiledValues(context.budget, [...scope.retainedValues(), value], compilation, parent, [value]);
+          reconcileCompiledValues(context.budget, [...scope.retainedDataRoots(), value], compilation, parent, [value]);
           if (result.kind === "error") throw result.error;
           if (result.kind === "throw") throw result.value;
           return value;
@@ -343,7 +343,7 @@ function createGeneratorClosure(
     sandbox: true,
     length: getFunctionLength(node.params),
     ...(node.id === undefined ? { name: context.inferredName } : { name: node.id.name }),
-    retainedValues: () => [...context.scope.retainedValues(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget],
+    retainedValues: () => [...context.scope.retainedDataRoots(), context.functionEnvironment?.homeObject, context.functionEnvironment?.newTarget],
     call: async (args, callContext) => {
       // Native generators select their instance prototype before initializing parameters.
       const candidate = prototypes === undefined ? undefined : getGuestFunctionProperty(closure, "prototype");
@@ -530,7 +530,7 @@ export async function executeClosure(
     const value = "hasValue" in result && result.hasValue ? result.value : undefined;
     reconcileCompiledValues(
       context.budget,
-      [...scope.retainedValues(), value],
+      [...scope.retainedDataRoots(), value],
       compilation,
       parent,
       [value]

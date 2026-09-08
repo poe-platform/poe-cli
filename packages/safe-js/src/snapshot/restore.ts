@@ -329,7 +329,7 @@ export function restore(
     reconcileCompiledValues(
       budget,
       [
-        ...currentScope.retainedValues(),
+        ...currentScope.retainedDataRoots(),
         ...pendingPromises.flatMap((pending) =>
           Object.values(pending).filter(isSandboxSnapshotValue)
         )
@@ -1789,7 +1789,7 @@ async function executeRestoredClosure(
 
     reconcileCompiledValues(
       state.budget,
-      [...scope.retainedValues(), result.returnValue],
+      [...scope.retainedDataRoots(), result.returnValue],
       compilation,
       parent,
       [result.returnValue]

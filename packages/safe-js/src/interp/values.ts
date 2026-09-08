@@ -1,4 +1,5 @@
 import { bindOtelSpan, getBoundOtelSpan } from "../observability/otel.js";
+import { scopeDataRoots } from "./scope-data-roots.js";
 import { NativeSuppressedError } from "../error/native-suppressed-error.js";
 import { isSandboxModuleNamespace } from "./module-namespace.js";
 import { arrayBufferDataProperties, arrayBufferLength, arrayBufferOptions, copyArrayBufferStorage, isSandboxArrayBuffer } from "./array-buffer.js";
@@ -694,6 +695,12 @@ export function measureSandboxData(
     }
     if (typeof value !== "object" || value === null) return;
     if (seen.has(value)) return;
+    const bindingRoot = scopeDataRoots.get(value);
+    if (bindingRoot !== undefined) {
+      seen.add(value);
+      visit(bindingRoot.value, depth);
+      return;
+    }
     assertSandboxDataDepth(depth);
     seen.add(value);
 
