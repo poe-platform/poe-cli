@@ -948,9 +948,10 @@ function validateGenericValue(
       ? snapshotDataEntries(value, path)
       : Object.entries(value);
     for (const [key, entry] of entries) {
-      requireString(key, `${path}${formatKey(key)}`, state.limits);
+      const entryPath = `${path}${formatKey(key)}`;
+      requireString(key, entryPath, state.limits);
       state.dataSize += key.length;
-      validateGenericValue(entry, `${path}${formatKey(key)}`, depth + 1, state);
+      validateGenericValue(entry, entryPath, depth + 1, state);
     }
   } else if (
     !["boolean", "number"].includes(typeof value) &&
@@ -975,7 +976,8 @@ function snapshotDataEntries(value: object, path: string): Array<[string, unknow
   if (Object.getOwnPropertySymbols(value).length > 0) {
     fail("invalidType", path, "snapshot data must not have symbol properties");
   }
-  return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => {
+  return Object.getOwnPropertyNames(value).map(key => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
     if (!("value" in descriptor))
       fail("invalidType", `${path}${formatKey(key)}`, "snapshot data must not have accessors");
     return [key, descriptor.value];
