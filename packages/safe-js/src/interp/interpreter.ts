@@ -2815,6 +2815,10 @@ async function evaluateDeleteExpression(
     if (member.kind === "resolved" && member.superReceiver !== undefined)
       throw new ReferenceError("Cannot delete a super property.");
     if (member.kind === "nullish" || member.object === null || member.object === undefined) {
+    if (node.argument.type !== "Identifier") {
+      const argument = await evaluateNode(node.argument, context);
+      return argument.kind === "normal" ? {kind: "normal", hasValue: true, value: true} : argument;
+    }
       if (member.kind === "nullish") {
         return {
           kind: "normal",
