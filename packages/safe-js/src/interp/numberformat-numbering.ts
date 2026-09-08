@@ -2,7 +2,6 @@ import { NumberFormat } from "../intl-data/dist/numberformat-engine.js";
 
 type LocaleData = Parameters<typeof NumberFormat.__addLocaleData>[0]["data"];
 const NativeNumberFormat = Intl.NumberFormat;
-const nativeUnits = new Set(Intl.supportedValuesOf("unit"));
 
 export function localizeNumberParts<T extends { type: string; value: string }>(parts: T[], locale: string, options: Record<string, string | number | boolean>): T[] {
   parts = parts.flatMap(part => {
@@ -17,16 +16,12 @@ export function localizeNumberParts<T extends { type: string; value: string }>(p
     return separated;
   });
   const numberingSystem = options.numberingSystem as string;
-  const pluralType = options.style === "unit" ? "unit" : options.style === "currency" && options.currencyDisplay === "name" ? "currency" : undefined;
-  const nativePlural = pluralType !== "unit" || typeof options.unit === "string" && options.unit.split("-per-").every(unit => nativeUnits.has(unit));
-  const integralPlural = pluralType !== undefined && nativePlural && options.notation === "standard" && !parts.some(part => part.type === "fraction");
-  if (numberingSystem === "latn" && !integralPlural) return parts;
+  if (numberingSystem === "latn") return parts;
   const digitFormatter = new NativeNumberFormat(locale, { numberingSystem, useGrouping: false });
   const digits = Array.from({ length: 10 }, (_, digit) => digitFormatter.formatToParts(digit).find(part => part.type === "integer")!.value);
   const sourceFormatter = new NumberFormat(locale, { numberingSystem, useGrouping: false });
   const sourceDigits = Array.from({ length: 10 }, (_, digit) => sourceFormatter.formatToParts(digit).find(part => part.type === "integer")!.value);
   const result: T[] = [];
-  let roundedInteger: string | undefined;
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index]!;
     if (part.type === "exponentMinusSign") {
@@ -58,7 +53,6 @@ export function localizeNumberParts<T extends { type: string; value: string }>(p
       const digit = sourceDigits.indexOf(char);
       return digit < 0 ? char : String(digit);
     }).join("");
-    roundedInteger = ascii;
     const grouping = options.useGrouping;
     const formatter = new NativeNumberFormat(locale, { numberingSystem, maximumFractionDigits: 0,
       useGrouping: grouping !== false, minimumIntegerDigits: Math.min(21, ascii.length) });
@@ -80,16 +74,6 @@ export function localizeNumberParts<T extends { type: string; value: string }>(p
         : [{ type: "group" as const, value: separator! }, { type: "integer" as const, value }]);
     }
     for (const value of grouped) result.push({ ...part, type: value.type, value: value.value });
-  }
-  if (integralPlural && roundedInteger !== undefined) {
-    const native = new NativeNumberFormat(locale, {
-      style: options.style as "unit" | "currency", unit: options.unit as string | undefined,
-      unitDisplay: options.unitDisplay as "short" | "long" | "narrow" | undefined,
-      currency: options.currency as string | undefined, currencyDisplay: "name",
-      maximumFractionDigits: 0, minimumFractionDigits: 0
-    });
-    const word = native.formatToParts(BigInt(roundedInteger)).find(part => part.type === pluralType)?.value;
-    if (word !== undefined) for (const part of result) if (part.type === pluralType) part.value = word;
   }
   return result;
 }

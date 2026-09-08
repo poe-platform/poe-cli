@@ -5,18 +5,22 @@ import type { SandboxValue } from "./values.js";
 const NativeNumberFormat = Intl.NumberFormat;
 const modernNative = new NativeNumberFormat("en", { maximumFractionDigits: 0, ...{ roundingMode: "floor" } }).format(1.9) === "1" &&
   typeof Object.getOwnPropertyDescriptor(NativeNumberFormat.prototype, "formatRange")?.value === "function";
-const portable = modernNative ? undefined : portableBackend;
+const portableFormatters = new WeakSet<object>();
 type Formatter = Intl.NumberFormat | PortableFormatter;
 
 export function createNumberFormatter(locales: string | string[], options: Options): Formatter {
-  return portable === undefined ? new NativeNumberFormat(locales, options as Intl.NumberFormatOptions) : portable.createPortableNumberFormatter(locales, options);
+  if (modernNative && options.style !== "unit" && !(options.style === "currency" && options.currencyDisplay === "name"))
+    return new NativeNumberFormat(locales, options as Intl.NumberFormatOptions);
+  const formatter = portableBackend.createPortableNumberFormatter(locales, options);
+  portableFormatters.add(formatter);
+  return formatter;
 }
 
 export function numberFormatterOptions(formatter: Formatter): Options {
-  return portable === undefined ? { ...formatter.resolvedOptions() } as Options : portable.numberFormatterOptions(formatter as PortableFormatter);
+  return portableFormatters.has(formatter) ? portableBackend.numberFormatterOptions(formatter as PortableFormatter) : { ...formatter.resolvedOptions() } as Options;
 }
 
 export function numberFormatterResult(formatter: Formatter, method: "format" | "formatToParts" | "formatRange" | "formatRangeToParts", values: Array<string | number | bigint>): SandboxValue {
-  return portable === undefined ? Reflect.apply(Reflect.get(formatter, method), formatter, values)
-    : portable.numberFormatterResult(formatter as PortableFormatter, method, values);
+  return portableFormatters.has(formatter) ? portableBackend.numberFormatterResult(formatter as PortableFormatter, method, values)
+    : Reflect.apply(Reflect.get(formatter, method), formatter, values);
 }
