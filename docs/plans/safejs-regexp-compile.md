@@ -30,3 +30,10 @@ after a failed cursor reset. No matching open issue was found.
 An isolated Git index stages only the two regex hunks in values.ts plus the
 regex global, test, and this plan. The normal index and unrelated worktree edits
 are preserved; inspect the resulting commit before pushing.
+
+## Direct-call test typing follow-up
+
+An explicit TypeScript check of regex-compile.test.ts found TS2345 at both
+standalone method calls: their contexts omitted the required stack field. Supply
+an empty stack for these top-level calls without changing runtime code or relaxing
+SandboxCallContext. The explicit test-file type check and all 24 tests now pass.

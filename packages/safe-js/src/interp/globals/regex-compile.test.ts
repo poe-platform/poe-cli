@@ -56,11 +56,11 @@ it("reconciles standalone compilation charges after replacement and failed curso
   if (!isSandboxClosure(method)) throw new Error("Missing compile method");
   const receiver = createSandboxRegex("a");
   for (let index = 1; index <= 20; index++) {
-    await method.call([`b{${index}}`, "i"], {thisValue: receiver});
+    await method.call([`b{${index}}`, "i"], {stack: [], thisValue: receiver});
     expect(budget.currentDataSize).toBe(measureSandboxData([receiver,...budget.retainedValues()]));
   }
   Object.defineProperty(receiver, "lastIndex", {value: 4, writable: false});
-  await expect(method.call(["c+", "i"], {thisValue: receiver})).rejects.toThrow(TypeError);
+  await expect(method.call(["c+", "i"], {stack: [], thisValue: receiver})).rejects.toThrow(TypeError);
   expect(receiver.source).toBe("c+");
   expect(receiver.lastIndex).toBe(4);
   expect(budget.currentDataSize).toBe(measureSandboxData([receiver,...budget.retainedValues()]));
