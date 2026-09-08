@@ -590,7 +590,9 @@ export function* cloneStructuredGraph(
   if (typeof value === "symbol" || isSandboxModuleNamespace(value) || isSandboxClosure(value) || isSandboxPromise(value) ||
       isSandboxGenerator(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value) ||
       isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value) ||
-      isSandboxSegmenter(value) || isSandboxSegments(value))
+      isSandboxSegmenter(value) || isSandboxSegments(value) || isSandboxLocale(value) ||
+      isSandboxCollator(value) || isSandboxDateTimeFormat(value) || isSandboxDisplayNames(value) ||
+      isSandboxListFormat(value) || isSandboxNumberFormat(value) || isSandboxPluralRules(value) || isSandboxRelativeTimeFormat(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
   if (iteratorHelperStates.has(value) || iteratorWrapperStates.has(value))
