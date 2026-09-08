@@ -3,6 +3,7 @@ import { assertSnapshotDataDepth } from "../graph-depth.js";
 import { Scope } from "../interp/scope.js";
 import type { SandboxValue } from "../interp/values.js";
 import type { PrivateName } from "../interp/private-state.js";
+import type { ResourceScopeState } from "../interp/resource-management.js";
 import type { GuestHeapNode } from "./guest-heap.js";
 
 type Frame = Extract<GuestHeapNode<unknown>, { kind: "scope-frame" }>;
@@ -61,12 +62,14 @@ export function hydrateGuestScopes(
     if (scope === undefined) throw new TypeError(`Missing allocated scope ${id}.`);
     const parent = parentId(frame);
     if (parent !== undefined && !scopes.has(parent)) throw new TypeError(`Missing allocated parent ${parent}.`);
+    const resourceState = frame.resourceState === undefined ? undefined : decode(frame.resourceState);
     scope.hydrateFrame({
       parent: parent === undefined ? undefined : scopes.get(parent),
       importMeta: decode(frame.importMeta),
       functionBoundary: frame.functionBoundary,
       chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(resourceState === undefined ? {} : {resourceState: resourceState as ResourceScopeState}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, decode(identity) as PrivateName] as [string, PrivateName]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: decode(cell.value) } : cell),
       ...(frame.restoredBindings === undefined ? {} : {

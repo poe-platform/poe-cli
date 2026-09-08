@@ -10,13 +10,14 @@ import { createInterpretedClosure, executeAsyncFunction, type AsyncEvaluationCon
 import { createBuiltinBindings } from "../interp/globals.js";
 import { resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { allocateGuestScopes, hydrateGuestScopes } from "./scope-frames.js";
+import { assertResourceScopeState } from "../interp/resource-management.js";
+import { asyncFunctionDrivers, bindAsyncFunctionSignal, createAsyncFunctionHandler, type AsyncFunctionDriver } from "../interp/async-function-driver.js";
+import { asyncGeneratorDrivers, asyncGeneratorRequestOwners, bindAsyncGeneratorSignal, createAsyncGeneratorHandler, type AsyncGeneratorDriver } from "../interp/async-generator-driver.js";
 import { registerTemplateObject } from "../interp/template-objects.js";
 import type { SandboxArray } from "../interp/values.js";
 import { restorePropertyDescriptors } from "./property-descriptors.js";
 import { getCollectionProperties } from "../interp/collection-properties.js";
 import { registerGeneratorOrigin } from "../interp/closure-origin.js";
-import { awaitSandboxValue } from "../interp/cancel.js";
-import { runAsyncPrefix } from "../interp/jobs.js";
 import type { CompletionResult } from "../interp/exceptions.js";
 import { toPropertyKey } from "../interp/property-key.js";
 import { CompileScope } from "../interp/regex/compile-guard.js";
@@ -54,7 +55,7 @@ import type { PromiseCapabilityExecutorState } from "../interp/promise-continuat
 import { promiseAdoptionBridges, promiseContinuations, type PromiseContinuation } from "../interp/promise-continuations.js";
 import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
-import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
+import { isSandboxPromise, isSandboxGenerator, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
 import type { AsyncResourceData } from "./guest-heap.js";
 
@@ -63,7 +64,8 @@ function restoreAsyncResources(resources: AsyncResourceData<SerializedSnapshotVa
     const method = deserializeValue(resource.method, state);
     if (method !== undefined && !isSandboxClosure(method)) throw new TypeError("Invalid async disposer.");
     return {method, receiver: deserializeValue(resource.receiver, state) as SandboxValue,
-      args: resource.args.map(arg => deserializeValue(arg, state) as SandboxValue), syncFallback: resource.syncFallback};
+      args: resource.args.map(arg => deserializeValue(arg, state) as SandboxValue), syncFallback: resource.syncFallback,
+      ...(resource.synchronous === undefined ? {} : {synchronous: resource.synchronous})};
   });
 }
 
@@ -292,7 +294,15 @@ export function restore(
 
     const callStack = snapshot.callStack.map((frame) => restoreCallFrame(frame, state));
     for (const initialize of state.initializeIterators) initialize();
+    for (const scope of state.guestScopes.values()) {
+      if (scope.resourceState !== undefined) assertResourceScopeState(scope.resourceState);
+    }
     new SandboxJobQueue().bind(() => {
+      for (const value of state.heapValueById.values()) {
+        const driver = value !== null && typeof value === "object" ? asyncFunctionDrivers.get(value) : undefined;
+        if (driver !== undefined) bindAsyncFunctionSignal(driver, state.signal, budget);
+        if (isSandboxGenerator(value) && value.async) bindAsyncGeneratorSignal(value, state.signal, budget);
+      }
       for (const [source, reactions] of state.promiseReactionOrders) {
         for (const reaction of reactions) {
           const record = state.promiseReactionRecords.get(reaction);
@@ -969,6 +979,71 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
+  if (serialized.kind === "async-generator-driver") {
+    const driver = {} as AsyncGeneratorDriver;
+    state.heapValueById.set(id, driver);
+    asyncGeneratorDrivers.set(driver, driver);
+    state.initializeIterators.push(() => {
+      const generator = deserializeValue(serialized.generator, state);
+      if (!isSandboxGenerator(generator) || generator.async !== true) throw new TypeError("Invalid async generator frame.");
+      const requests = serialized.requests.map(request => {
+        const promise = deserializeValue(request.capability.promise, state);
+        const resolve = deserializeValue(request.capability.resolve, state);
+        const reject = deserializeValue(request.capability.reject, state);
+        if (!isSandboxPromise(promise) || !isSandboxClosure(resolve) || !isSandboxClosure(reject)) throw new TypeError("Invalid async generator capability.");
+        asyncGeneratorRequestOwners.set(promise, driver);
+        return {method: request.method, value: deserializeValue(request.value, state) as SandboxValue, capability: {promise, resolve, reject}};
+      });
+      Object.assign(driver, {generator, requests, phase: serialized.phase, suspension: serialized.suspension, awaitKind: serialized.awaitKind, generation: serialized.generation});
+      asyncGeneratorDrivers.set(generator, driver);
+    });
+    return driver;
+  }
+  if (serialized.kind === "async-generator-handler") {
+    const value = deserializeValue(serialized.driver, state);
+    const driver = value !== null && typeof value === "object" ? asyncGeneratorDrivers.get(value) : undefined;
+    const owner = deserializeValue(serialized.owner, state);
+    if (driver === undefined || !isSandboxPromise(owner)) throw new TypeError("Invalid async generator handler.");
+    const handler = createAsyncGeneratorHandler(driver, serialized.action, serialized.generation, state.budget, undefined, owner);
+    state.heapValueById.set(id, handler);
+    state.initializeIterators.push(() => {
+      const objectState = serialized.state;
+      if (objectState.prototype !== undefined) setSandboxPrototype(handler, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(materializeFunctionProperties(handler), objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined) privateElements.set(handler,
+        restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
+    });
+    return handler;
+  }
+  if (serialized.kind === "async-function-driver") {
+    const driver = {} as AsyncFunctionDriver;
+    state.heapValueById.set(id, driver);
+    asyncFunctionDrivers.set(driver, driver);
+    state.initializeIterators.push(() => {
+      const generator = deserializeValue(serialized.generator, state);
+      const promise = deserializeValue(serialized.capability.promise, state);
+      const resolve = deserializeValue(serialized.capability.resolve, state);
+      const reject = deserializeValue(serialized.capability.reject, state);
+      if (!isSandboxGenerator(generator) || !isSandboxPromise(promise) || !isSandboxClosure(resolve) || !isSandboxClosure(reject)) throw new TypeError("Invalid async function capability.");
+      Object.assign(driver, {generator, capability: {promise, resolve, reject}, phase: serialized.phase, generation: serialized.generation});
+    });
+    return driver;
+  }
+  if (serialized.kind === "async-function-handler") {
+    const value = deserializeValue(serialized.driver, state);
+    const driver = value !== null && typeof value === "object" ? asyncFunctionDrivers.get(value) : undefined;
+    if (driver === undefined) throw new TypeError("Invalid async function handler.");
+    const handler = createAsyncFunctionHandler(driver, serialized.action, serialized.generation, state.budget);
+    state.heapValueById.set(id, handler);
+    state.initializeIterators.push(() => {
+      const objectState = serialized.state;
+      if (objectState.prototype !== undefined) setSandboxPrototype(handler, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(materializeFunctionProperties(handler), objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined) privateElements.set(handler,
+        restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
+    });
+    return handler;
+  }
   if (serialized.kind === "async-cleanup") {
     const cleanup = {} as AsyncCleanupState;
     state.heapValueById.set(id, cleanup as unknown as RuntimeSnapshotValue);
@@ -1095,6 +1170,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       value = capability.promise;
       state.pendingCapabilities.set(capability.promise, capability);
       state.initializeIterators.push(() => {
+        if (serialized.kind === "pending-promise" && serialized.generatorOwner !== undefined)
+          deserializeValue(serialized.generatorOwner, state);
         if (serialized.kind === "pending-promise" && serialized.adoption !== undefined)
           deserializeValue(serialized.adoption, state);
         if (serialized.kind === "pending-promise" && serialized.thenable !== undefined)
@@ -1129,6 +1206,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       }), {trackReplay: false});
       value = restored;
       state.initializeIterators.push(() => {
+        if (serialized.generatorOwner !== undefined) deserializeValue(serialized.generatorOwner, state);
         const outcome = deserializeValue(serialized.value, state) as SandboxValue;
         promiseStates.set(restored, {status: serialized.status, value: outcome});
         if (serialized.status === "fulfilled") fulfill(outcome);
@@ -1330,7 +1408,8 @@ function restoreGuestGenerator(
   state: RestoreState
 ): SandboxGenerator {
   const node = state.nodeById.get(serialized.astNodeId);
-  if ((node?.type !== "FunctionDeclaration" && node?.type !== "FunctionExpression") || !node.generator || node.async !== serialized.async)
+  if ((node?.type !== "FunctionDeclaration" && node?.type !== "FunctionExpression" && !(serialized.asyncFunction && node?.type === "ArrowFunctionExpression")) ||
+      (serialized.asyncFunction ? !node.async || ("generator" in node && node.generator) || serialized.async : !("generator" in node) || !node.generator || node.async !== serialized.async))
     throw new TypeError("Invalid generator AST identity.");
   if (serialized.state === "running") throw new TypeError("Cannot restore an actively running generator.");
   const scope = state.guestScopes.get((serialized.scope as SerializedReferenceValue).id);
@@ -1357,8 +1436,10 @@ function restoreGuestGenerator(
   const createBody: Parameters<typeof createGeneratorChannel>[0] = generatorYield => {
     const execute = async () => {
       const result = await evaluateNode(node.body, {
-        ...context, scope: suspendedScope ?? scope, functionBody: node.body,
-        asyncGenerator: node.async, restoredGeneratorBlockScopes: blockScopes, generatorBlockScopes: new Map(),
+        ...context, scope: suspendedScope ?? scope, functionBody: node.body.type === "BlockStatement" ? node.body : undefined,
+        asyncGenerator: node.async && !serialized.asyncFunction, asyncFunction: serialized.asyncFunction,
+        asyncGeneratorFrame: serialized.async ? generator : undefined,
+        restoredGeneratorBlockScopes: blockScopes, generatorBlockScopes: new Map(),
         generatorExpressionStates: new Map(),
         ...(serialized.state === "suspended" ? { generatorResume: { sent, yieldNodeId: serialized.yieldNodeId! } } : {}),
         captureGeneratorScope: (current, blocks, completions, expressions) => {
@@ -1373,18 +1454,21 @@ function restoreGuestGenerator(
       if (result.kind === "error") throw result.error;
       if (result.kind === "throw") throw result.value;
       const value = result.hasValue ? result.value : undefined;
-      return node.async ? awaitSandboxValue(value, state.signal, state.budget) : value;
+      return value;
     };
-    return node.async ? runAsyncPrefix(execute) : execute();
+    return execute();
   };
   const channel = createGeneratorChannel(createBody);
-  const generator = createSandboxGenerator(channel, { async: node.async });
+  const generator = createSandboxGenerator(channel, { async: serialized.async });
   generator.state = serialized.state;
   const origin = registerGeneratorOrigin(generator, node, scope, context);
+  origin.asyncFunction = serialized.asyncFunction;
+  origin.awaitPhase = serialized.awaitPhase;
   origin.suspendedScope = suspendedScope;
   origin.blockScopes = blockScopes;
   if (serialized.state === "done") void channel.return();
   state.initializeIterators.push(() => {
+    if (serialized.driver !== undefined) deserializeValue(serialized.driver, state);
     for (const completion of serialized.sent) sent.push({ type: completion.type, value: deserializeValue(completion.value, state) });
     const completions = new Map<number, CompletionResult>();
     for (const [id, completion] of Object.entries(serialized.finallyCompletions ?? {})) {
@@ -1406,6 +1490,7 @@ function restoreGuestGenerator(
           scope: state.guestScopes.get((expression.scope as SerializedReferenceValue).id)! }
         : expression.kind === "yield-delegate" ? { ...expression, value: deserializeValue(expression.value, state) as SandboxValue,
           current: deserializeValue(expression.current, state) as SandboxValue,
+          ...(expression.completion === undefined ? {} : {completion: {...expression.completion, value: deserializeValue(expression.completion.value, state) as SandboxValue}}),
           iterator: mapIteratorSnapshot(expression.iterator, value => deserializeValue(value, state) as SandboxValue) }
         : expression.kind === "pattern-source" ? { kind: "pattern-source", value: deserializeValue(expression.value, state) as SandboxValue }
         : expression.kind === "object-pattern" ? { kind: "object-pattern", phase: expression.phase, index: expression.index,
@@ -1422,6 +1507,7 @@ function restoreGuestGenerator(
         : expression.kind === "for-of-array" ? { ...expression, values: deserializeValue(expression.values, state) as SandboxValue,
           current: deserializeValue(expression.current, state) as SandboxValue, scope: state.guestScopes.get((expression.scope as SerializedReferenceValue).id)! }
         : expression.kind === "for-of-iterator" ? { ...expression, value: deserializeValue(expression.value, state) as SandboxValue,
+          ...(expression.closeCompletion === undefined ? {} : {closeCompletion: {...expression.closeCompletion, value: deserializeValue(expression.closeCompletion.value, state) as SandboxValue}}),
           current: deserializeValue(expression.current, state) as SandboxValue, scope: state.guestScopes.get((expression.scope as SerializedReferenceValue).id)!,
           iterator: mapIteratorSnapshot(expression.iterator, value => deserializeValue(value, state) as SandboxValue) }
         : expression.kind === "for-in" ? { ...expression, keys: [...expression.keys], object: deserializeValue(expression.object, state) as SandboxValue,

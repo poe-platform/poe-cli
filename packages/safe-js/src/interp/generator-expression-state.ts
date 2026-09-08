@@ -1,18 +1,22 @@
 import type { SandboxValue } from "./values.js";
 import type { Scope } from "./scope.js";
-import type { SandboxIterator, IteratorSnapshot } from "./iteration.js";
+import type { CompletionResult } from "./exceptions.js";
+import type { SandboxIterator, IteratorSnapshot, IteratorAwaitState } from "./iteration.js";
 
 export type GeneratorExpressionState<T = SandboxValue, S = Scope, I = SandboxIterator | IteratorSnapshot> =
   | { kind: "switch"; phase: "test" | "body"; index: number; statementIndex: number; value: T; scope: S }
-  | { kind: "yield-delegate"; async: boolean; value: T; current: T; iterator: I }
+  | { kind: "yield-delegate"; async: boolean; value: T; current: T; iterator: I;
+      phase?: "await" | "close"; awaitState?: IteratorAwaitState; completion?: {type:"normal"|"return"|"throw";value:T} }
   | { kind: "declaration"; index: number }
   | { kind: "pattern-source"; value: T }
   | { kind: "object-pattern"; phase: "key" | "reference" | "binding"; index: number; excludedKeys: T[]; key: T; current: T; referenceObject?: T; referenceKey?: T; privateName?: string }
   | { kind: "array-pattern"; phase: "reference" | "binding"; index: number; done: boolean; current: T; iterator: I; referenceObject?: T; referenceKey?: T; privateName?: string }
   | { kind: "for-of-array"; phase: "left" | "body"; values: T; current: T; index: number; scope: S }
-  | { kind: "for-of-iterator"; phase: "left" | "body"; async: boolean; value: T; current: T; index: number; scope: S; iterator: I }
+  | { kind: "for-of-iterator"; phase: "left" | "body" | "next" | "close"; awaitState?: IteratorAwaitState;
+      closeCompletion?: Omit<CompletionResult, "value" | "node" | "stackFrames"> & {value: T; stackFrames?: string[]};
+      async: boolean; value: T; current: T; index: number; scope: S; iterator: I }
   | { kind: "for-in"; phase?: "left" | "body"; object: T; keys: string[]; index: number; scope: S }
-  | { kind: "for"; phase: "init" | "test" | "body" | "update"; loopScope: S; activeScope: S }
+  | { kind: "for"; phase: "init" | "test" | "body" | "update" | "dispose"; loopScope: S; activeScope: S }
   | { kind: "binary"; left: T }
   | { kind: "identifier-assignment"; current: T }
   | { kind: "member"; object: T; superReceiver?: T }

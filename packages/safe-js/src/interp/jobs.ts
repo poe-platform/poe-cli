@@ -82,6 +82,27 @@ export function runPromiseJob<T>(task: () => T | Promise<T>): Promise<T> {
   return job === undefined ? Promise.resolve().then(task) : job.queue.run(task);
 }
 
+// A suspended frame keeps its AsyncLocalStorage record across native awaits.
+// Reconnect that record to the job which is currently resuming the frame.
+export function createResumableJobContext(): {run<T>(task: () => T): T; release(): void} {
+  let frame: ExecutionJob | undefined;
+  return {run: task => {
+    const parent = activeJob.getStore();
+    if (parent === undefined) return task();
+    frame ??= {queue: parent.queue, ownsExecution: false};
+    // Reentry already belongs to this frame's execution ancestry. Reconnecting
+    // it to its descendant would make prefix-owner lookup cycle forever.
+    for (let ancestor: ExecutionJob | undefined = parent; ancestor !== undefined; ancestor = ancestor.prefixParent) {
+      if (ancestor === frame) return activeJob.run(frame, task);
+    }
+    frame.queue = parent.queue;
+    frame.prefixParent = parent;
+    return activeJob.run(frame, task);
+  }, release: () => {
+    if (frame !== undefined) frame.queue.release(frame);
+  }};
+}
+
 export function runAsyncPrefix<T>(task: () => Promise<T>): Promise<T> {
   const parent = activeJob.getStore();
   if (parent === undefined) return task();

@@ -8,6 +8,8 @@ import type {
   SourceSpan
 } from "../parse.js";
 import { createGeneratorChannel, type GeneratorCompletion } from "./generator.js";
+import { startAsyncFunction } from "./async-function-driver.js";
+import { asyncGeneratorDrivers, bindAsyncGeneratorSignal } from "./async-generator-driver.js";
 import { getBoundOtelSpan, type OtelSpan } from "../observability/otel.js";
 import type { Budget } from "./budget.js";
 import type { EvaluationResult } from "./exceptions.js";
@@ -17,10 +19,12 @@ import type {
   LoopIterationSnapshot
 } from "./interpreter.js";
 import { bindPattern } from "./patterns.js";
-import { requiresPromiseResolution, resolveSandboxValue } from "./promise.js";
+import { createPendingPromiseCapability, prepareAwaitedPromise, requiresPromiseResolution, resolveSandboxValue } from "./promise.js";
+import { promiseReplayContext } from "./promise-replay.js";
 import { runAsyncPrefix, suspendJob } from "./jobs.js";
 import { CompileScope } from "./regex/compile-guard.js";
-import { awaitSandboxValue } from "./cancel.js";
+import { awaitSandboxValue, awaitWithSignal } from "./cancel.js";
+import { observeSandboxPromise } from "./promise-tracker.js";
 import type { Scope } from "./scope.js";
 import { hoistVarDeclarations } from "./var-hoist.js";
 import { createCoercionContext, createPatternContext } from "./interpreter.js";
@@ -28,7 +32,7 @@ import { getGuestFunctionProperty, markDescriptorObject, materializeFunctionProp
 import { generatorPrototypes } from "./generator-prototypes.js";
 import { retainValues, runResources } from "./resources.js";
 import { functionSources } from "../parse/function-source.js";
-import { registerClosureOrigin, registerGeneratorOrigin } from "./closure-origin.js";
+import { getGeneratorOrigin, registerClosureOrigin, registerGeneratorOrigin } from "./closure-origin.js";
 import { constructionStates } from "./construction-state.js";
 import {
   boundIdentifiers,
@@ -46,7 +50,9 @@ import {
   isSandboxPromise,
   type SandboxCallContext,
   type SandboxClosure,
+  type SandboxGenerator,
   type SandboxObject,
+  type SandboxPromise,
   type SandboxValue
 } from "./values.js";
 
@@ -98,6 +104,8 @@ export type AsyncEvaluationContext = {
   };
   generatorYield?: (value?: SandboxValue, yieldNodeId?: number) => Promise<GeneratorCompletion>;
   asyncGenerator?: boolean;
+  asyncGeneratorFrame?: SandboxGenerator;
+  asyncFunction?: boolean;
   captureGeneratorScope?: (scope: Scope, blocks?: ReadonlyMap<number, Scope>, completions?: ReadonlyMap<number, import("./exceptions.js").CompletionResult>, expressions?: ReadonlyMap<number, import("./generator-expression-state.js").GeneratorExpressionState>) => void;
   generatorExpressionStates?: ReadonlyMap<number, import("./generator-expression-state.js").GeneratorExpressionState>;
   restoredGeneratorExpressionStates?: ReadonlyMap<number, import("./generator-expression-state.js").GeneratorExpressionState>;
@@ -118,7 +126,7 @@ export type EvaluateAsyncNode = (
 ) => Promise<AsyncEvaluationResult>;
 
 export function emitResumeBreakpoint(
-  context: AsyncEvaluationContext,
+  context: Pick<AsyncEvaluationContext, "onYield" | "snapshot" | "scope">,
   breakpoint: ResumeBreakpoint
 ): void {
   context.onYield?.({
@@ -241,19 +249,41 @@ export function createInterpretedClosure(
       if (!node.async)
         return executeClosure(node, args, callContext?.thisValue, invocationContext, evaluateNode);
 
-      return executeAsyncFunction(
-        (onSuspend) =>
-          executeClosure(
-            node,
-            args,
-            callContext?.thisValue,
-            { ...invocationContext, onSuspend },
-            evaluateNode
-          ),
-        context.budget,
-        context.signal,
-        callContext
-      );
+      return startAsyncFunction(async onSuspend => {
+        const parent = invocationContext.compilation;
+        const operation = context.budget.acquireCompileOwner(false, parent?.owner);
+        const compilation = new CompileScope(operation.owner, parent);
+        const executionContext = {...invocationContext, compilation, onSuspend};
+        let scope: Scope;
+        try {scope = await createClosureScope(node, args, callContext?.thisValue, executionContext, evaluateNode);}
+        catch (error) {compilation.dispose(); operation.release(); throw error;}
+        const channel = createGeneratorChannel(async generatorYield => {
+          try {
+          const result = await evaluateNode(node.body, {
+            ...executionContext, scope, asyncFunction: true, asyncGenerator: false, asyncGeneratorFrame: undefined,
+            functionBody: node.body.type === "BlockStatement" ? node.body : undefined,
+            generatorBlockScopes: new Map(), generatorExpressionStates: new Map(),
+            captureGeneratorScope: (current, blocks, completions, expressions) => {
+              origin.suspendedScope = current; origin.blockScopes = blocks;
+              origin.finallyCompletions = completions; origin.expressionStates = expressions;
+            },
+            generatorYield: (value, nodeId) => {
+              generator.state = "suspended";
+              return generatorYield(value, nodeId);
+            }
+          });
+          const value = "hasValue" in result && result.hasValue ? result.value : undefined;
+          reconcileCompiledValues(context.budget, [...scope.retainedValues(), value], compilation, parent, [value]);
+          if (result.kind === "error") throw result.error;
+          if (result.kind === "throw") throw result.value;
+          return value;
+          } finally {compilation.dispose(); operation.release();}
+        });
+        const generator = createSandboxGenerator(channel);
+        const origin = registerGeneratorOrigin(generator, node, scope, invocationContext);
+        origin.asyncFunction = true;
+        return generator;
+      }, context.budget, callContext, context.signal);
     }
   });
   registerClosureOrigin(closure, node, context);
@@ -336,8 +366,11 @@ function createGeneratorClosure(
           const execute = async () => {
             const result = await evaluateNode(node.body, {
               ...closureContext,
+              asyncFunction: false,
               functionBody: node.body,
               asyncGenerator: node.async,
+              asyncGeneratorFrame: node.async ? generator : undefined,
+              onSuspend: undefined,
               generatorBlockScopes: new Map(),
               generatorExpressionStates: new Map(),
               captureGeneratorScope: (suspendedScope, blocks, completions, expressions) => {
@@ -359,11 +392,12 @@ function createGeneratorClosure(
               throw result.value;
             }
             const value = result.hasValue ? result.value : undefined;
-            return node.async ? awaitSandboxValue(value, context.signal, context.budget, createCoercionContext(context)) : value;
+            return value;
           };
-          return node.async ? runAsyncPrefix(execute) : execute();
+          return execute();
         });
         const generator = createSandboxGenerator(channel, { async: node.async });
+        if (node.async) bindAsyncGeneratorSignal(generator, context.signal, context.budget);
         if (prototype !== undefined) setSandboxPrototype(generator, prototype, context.budget);
         const origin = registerGeneratorOrigin(generator, node, scope, closureContext);
         return generator;
@@ -390,10 +424,17 @@ export async function evaluateAwaitExpression(
   context: AsyncEvaluationContext,
   evaluateNode: EvaluateAsyncNode
 ): Promise<AsyncEvaluationResult> {
+  if ((context.asyncFunction || context.asyncGeneratorFrame !== undefined) && context.generatorResume?.completed !== true && context.generatorResume?.yieldNodeId === node.nodeId) {
+    return {kind: "normal", hasValue: true, value: await suspendAsyncFunctionValue(undefined, node, context)};
+  }
   const replayState = context.captureReplayState?.();
   const argument = await evaluateNode(node.argument, context);
   if (argument.kind !== "normal") {
     return argument;
+  }
+
+  if (context.asyncFunction || context.asyncGeneratorFrame !== undefined) {
+    return {kind: "normal", hasValue: true, value: await suspendAsyncFunctionValue(argument.value, node, context, replayState, createCoercionContext(context))};
   }
 
   context.onSuspend?.();
@@ -421,6 +462,48 @@ export async function evaluateAwaitExpression(
   }
 }
 
+export type AsyncSuspensionContext = Pick<AsyncEvaluationContext, "scope" | "captureGeneratorScope" | "generatorBlockScopes" |
+  "finallyCompletions" | "generatorExpressionStates" | "generatorYield" | "generatorResume" | "asyncFunction" | "asyncGeneratorFrame" |
+  "budget" | "onYield" | "snapshot" | "onSuspend" | "captureReplayState" | "signal">;
+
+export async function suspendAsyncFunctionValue(value: SandboxValue, node: ParseResult, context: AsyncSuspensionContext, replayState = context.captureReplayState?.(), callContext?: SandboxCallContext, phase: "await" | "yield" | "return" | "resume-return" = "await"): Promise<SandboxValue> {
+  if (context.generatorYield === undefined || node.nodeId === undefined) throw new TypeError("Missing async function suspension identity.");
+  let awaited: SandboxPromise;
+  if (isSandboxPromise(value)) {
+    const prepared = prepareAwaitedPromise(value, context.budget, callContext);
+    awaited = prepared instanceof Promise ? await prepared : prepared;
+  } else {
+    const wrapper = promiseReplayContext.exit(() => createPendingPromiseCapability(context.budget, callContext));
+    const prefix = wrapper.resolve.call([value], callContext);
+    if (prefix instanceof Promise) await prefix;
+    awaited = wrapper.promise;
+  }
+  if (context.signal?.aborted) {
+    observeSandboxPromise(awaited, true);
+    await awaitWithSignal(awaited.promise, context.signal);
+  }
+  context.captureGeneratorScope?.(context.scope, context.generatorBlockScopes, context.finallyCompletions, context.generatorExpressionStates);
+  context.onSuspend?.();
+  const otelSpan = getBoundOtelSpan(value);
+  emitResumeBreakpoint(context, {kind: "await", nodeId: node.nodeId, span: node.span, replayState,
+    ...(otelSpan === undefined ? {} : {otelSpan})});
+  const leaveAwait = context.budget.enterAwait();
+  const generator = context.asyncGeneratorFrame;
+  const origin = generator === undefined ? undefined : getGeneratorOrigin(generator);
+  if (generator !== undefined) {
+    const driver = asyncGeneratorDrivers.get(generator);
+    if (driver === undefined || origin === undefined) throw new TypeError("Missing async generator suspension owner.");
+    driver.suspension = "await";
+    origin.awaitPhase = phase;
+  }
+  try {
+    const completion = await context.generatorYield(awaited, node.nodeId);
+    if (context.generatorResume !== undefined) context.generatorResume.completed = true;
+    if (completion.type === "throw") throw completion.value;
+    return completion.value as SandboxValue;
+  } finally {if (origin !== undefined) origin.awaitPhase = undefined; leaveAwait();}
+}
+
 export async function executeClosure(
   node: ArrowFunctionExpression | FunctionDeclaration | FunctionExpression,
   args: readonly SandboxValue[],
@@ -438,6 +521,8 @@ export async function executeClosure(
     const result = await evaluateNode(node.body, {
       ...context,
       asyncGenerator: false,
+      asyncFunction: false,
+      asyncGeneratorFrame: undefined,
       functionBody: node.body.type === "BlockStatement" ? node.body : undefined,
       scope
     });

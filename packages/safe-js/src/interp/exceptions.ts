@@ -41,6 +41,8 @@ import { errorPrototypes } from "./error-prototypes.js";
 import { toPropertyKey } from "./property-key.js";
 import { internalSymbols } from "./internal-symbols.js";
 import { containsResumeTarget } from "./resume-target.js";
+import { evaluateResourceScope, resourceSuspension } from "./resource-management.js";
+import type { AsyncSuspensionContext } from "./async.js";
 
 const capturedExceptionBrand = Symbol("CapturedException");
 const readDOMExceptionCode = Object.getOwnPropertyDescriptor(DOMException.prototype, "code")!.get!;
@@ -82,7 +84,9 @@ type CapturedException = {
   readonly [capturedExceptionBrand]: true;
 };
 
-type ExceptionContext = {
+type ExceptionContext = AsyncSuspensionContext & {
+  onSuspend?: () => void;
+  signal?: AbortSignal;
   budget: Budget;
   callStack: readonly string[];
   scope: Scope;
@@ -568,6 +572,7 @@ async function evaluateBlockCompletion<TContext extends ExceptionContext, TError
     })
   };
   if (restoredScope === undefined) predeclareBlockBindings(node, blockContext.scope);
+  return evaluateResourceScope(scope, context.budget, {...resourceSuspension(blockContext, node), stack: context.callStack, thisValue: undefined, getProperty: context.getProperty, onSuspend: context.onSuspend, signal: context.signal}, async () => {
   let result: EvaluationResult<TError> = {
     kind: "normal",
     hasValue: false,
@@ -586,6 +591,7 @@ async function evaluateBlockCompletion<TContext extends ExceptionContext, TError
   }
 
   return result;
+  });
 }
 
 function predeclareBlockBindings(node: BlockStatement, scope: Scope): void {

@@ -9,6 +9,9 @@ import { propertyFunctionName, toPropertyKey } from "./property-key.js";
 import { assertPromiseExecutionAllowed } from "./promise-tracker.js";
 import { SandboxJobQueue, runAsyncPrefix, suspendJob } from "./jobs.js";
 import { awaitSandboxValue, withCancellationSignal } from "./cancel.js";
+import { evaluateResourceScope, registerScopeResource, resourceSuspension } from "./resource-management.js";
+import { asyncGeneratorDrivers } from "./async-generator-driver.js";
+import { getGeneratorOrigin } from "./closure-origin.js";
 import { retainValues } from "./resources.js";
 import { templateObject, templateRawArrays } from "./template-objects.js";
 import { evaluateClass } from "./classes.js";
@@ -81,6 +84,7 @@ import {
   evaluateFunctionExpression,
   evaluateAwaitExpression,
   emitResumeBreakpoint,
+  suspendAsyncFunctionValue,
   createInterpretedClosure,
   normalizeClosureResult,
   type AsyncEvaluationContext,
@@ -155,6 +159,7 @@ import { isNumericTypedArray } from "./typed-array.js";
 import { dateString, dateTime, isSandboxDate } from "./date.js";
 import {
   createSandboxRegex,
+  createSandboxPromise,
   allocateProducedSandboxValue,
   ownEnumerableSandboxKeys,
   isSandboxClosure,
@@ -402,8 +407,11 @@ export async function interpret(
       asyncGenerator: options.asyncGenerator,
       resumeTarget: { nodeId: options.snapshot?.resumeNodeId }
     };
+    const execute = () => node.type === "VariableDeclaration" && node.disposal !== undefined
+      ? evaluateResourceScope(scope, budget, {...createCoercionContext(context), onSuspend: context.onSuspend, signal: context.signal}, () => evaluateNode(node, context))
+      : evaluateNode(node, context);
     const evaluation = await withCancellationSignal(options.signal, () =>
-      options.nested ? runAsyncPrefix(() => evaluateNode(node, context)) : jobs.run(() => evaluateNode(node, context))
+      options.nested ? runAsyncPrefix(execute) : jobs.run(execute)
     );
     if (!options.nested) await jobs.drain();
     const snapshot = scope.snapshot();
@@ -1422,6 +1430,7 @@ async function evaluateVariableDeclaration(
       };
     const release = retainValues(context.budget, () => [value.value]);
     try {
+      if (node.disposal !== undefined) await registerScopeResource(context.scope, value.value, node.disposal, context.budget, createCoercionContext(context));
       const binding = await bindPattern(
         declarator.id,
         value.value,
@@ -1533,7 +1542,7 @@ async function evaluateBlockStatement(
   const blockContext = createBlockContext(node, context);
   const resumeIndex = findResumeStatementIndex(node, blockContext);
   const generatorResumeIndex = findGeneratorResumeStatementIndex(node, blockContext);
-
+  return evaluateResourceScope(blockContext.scope, context.budget, {...createCoercionContext(blockContext), ...resourceSuspension(blockContext, node), onSuspend: blockContext.onSuspend, signal: blockContext.signal}, async () => {
   for (let index = 0; index < node.body.length; index += 1) {
     const statement = node.body[index]!;
     if (generatorResumeIndex !== undefined && index < generatorResumeIndex) {
@@ -1557,6 +1566,7 @@ async function evaluateBlockStatement(
     hasValue: false,
     value: undefined
   };
+  });
 }
 
 function findGeneratorResumeStatementIndex(
@@ -1702,6 +1712,7 @@ async function evaluateSwitchStatement(
 
   const release = retainValues(context.budget, () => [progress.value]);
   try {
+    return await evaluateResourceScope(progress.scope, context.budget, {...createCoercionContext(switchContext), ...resourceSuspension(switchContext, node), onSuspend: switchContext.onSuspend, signal: switchContext.signal}, async () => {
     const defaultIndex = node.cases.findIndex(entry => entry.test === undefined);
     let startIndex: number | undefined = saved?.phase === "body" ? saved.index : undefined;
     for (let index = progress.index; startIndex === undefined && index < node.cases.length; index += 1) {
@@ -1745,6 +1756,7 @@ async function evaluateSwitchStatement(
     }
 
     return normalEmptyResult();
+    });
   } finally {
     release();
   }
@@ -1826,7 +1838,7 @@ async function evaluateForOfStatement(
 
     const iterationContext = createLoopIterationContext(phaseContext("body"), scope);
     emitLoopIterationBreakpoint(node, iterationContext);
-    const result = await evaluateNode(node.body, iterationContext);
+    const result = await evaluateResourceScope(scope, context.budget, {...createCoercionContext(iterationContext), ...resourceSuspension(iterationContext, node), onSuspend: iterationContext.onSuspend, signal: iterationContext.signal}, () => evaluateNode(node.body, iterationContext));
 
     if (isMatchingBreak(result, loopLabels(node))) {
       context.activeLoopIterations.delete(node.nodeId ?? -1);
@@ -1865,7 +1877,9 @@ async function evaluateForOfIterator(
   const saved = context.generatorResume === undefined || node.nodeId === undefined
     ? undefined : context.restoredGeneratorExpressionStates?.get(node.nodeId);
   if (saved !== undefined && saved.kind !== "for-of-iterator") throw new TypeError("Invalid iterator continuation.");
-  let resumeCurrent = saved !== undefined;
+  let resumeCurrent = saved !== undefined && saved.phase !== "next";
+  let resumeNext = saved?.phase === "next";
+  let index = saved?.index ?? consumeRestoredLoopIterationIndex(node, context);
   const iterator = saved === undefined
     ? await acquireSandboxIterator(value, context.budget, createCoercionContext(context), node.await, context.signal)
     : "kind" in saved.iterator ? await restoreSandboxIterator(saved.iterator, context.budget, createCoercionContext(context), context.signal) : saved.iterator;
@@ -1874,6 +1888,22 @@ async function evaluateForOfIterator(
   }
 
   const nextIteration = async () => {
+    if ((context.asyncFunction || context.asyncGeneratorFrame !== undefined) && node.await && iterator.resumeAwait !== undefined && node.nodeId !== undefined) {
+      iterator.awaitValue = (awaited, awaitState) => suspendAsyncFunctionValue(awaited, node, {
+        ...context,
+        generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []),
+          [node.nodeId!, {kind: "for-of-iterator", phase: "next", awaitState, async: true, value,
+            current: undefined, index, scope: context.scope, iterator}]])
+      }, undefined, createCoercionContext(context));
+      try {
+        if (resumeNext) {
+          resumeNext = false;
+          if (saved?.awaitState === undefined) throw new TypeError("Missing iterator await continuation.");
+          return await iterator.resumeAwait(saved.awaitState, () => iterator.awaitValue!(undefined, saved.awaitState!));
+        }
+        return await iterator.next();
+      } finally {delete iterator.awaitValue;}
+    }
     const pending = Promise.resolve(iterator.next());
     if (!node.await) return pending;
     context.onSuspend?.();
@@ -1886,9 +1916,36 @@ async function evaluateForOfIterator(
   };
 
   const releaseIterator = retainValues(context.budget, () => [value, iterator.retainedValue]);
+  const closeLoopIterator = async (completion: EvaluationResult): Promise<void> => {
+    const preserveThrow = completion.kind === "throw";
+    if ((!context.asyncFunction && context.asyncGeneratorFrame === undefined) || !node.await || iterator.resumeAwait === undefined || node.nodeId === undefined || completion.kind === "error") {
+      await closeIterator(iterator, preserveThrow);
+      return;
+    }
+    const {node: ignoredNode, stackFrames, ...metadata} = completion;
+    const closeCompletion = {...metadata, ...(stackFrames === undefined ? {} : {stackFrames: [...stackFrames]})};
+    iterator.awaitValue = (awaited, awaitState) => suspendAsyncFunctionValue(awaited, node, {
+      ...context,
+      generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []),
+        [node.nodeId!, {kind: "for-of-iterator", phase: "close", awaitState, closeCompletion, async: true, value,
+          current: undefined, index, scope: context.scope, iterator}]])
+    }, undefined, createCoercionContext(context));
+    try {
+      if (saved?.phase === "close" && context.generatorResume?.completed !== true) {
+        if (saved.awaitState === undefined) throw new TypeError("Missing iterator close continuation.");
+        await iterator.resumeAwait(saved.awaitState, () => iterator.awaitValue!(undefined, saved.awaitState!));
+      } else await closeIterator(iterator, preserveThrow);
+    } catch (error) {
+      if (!preserveThrow || isFatalSandboxError(error) || error instanceof HostCallResumabilityError) throw error;
+    } finally {delete iterator.awaitValue;}
+  };
   try {
+    if (saved?.phase === "close") {
+      if (saved.closeCompletion === undefined) throw new TypeError("Missing iterator close completion.");
+      await closeLoopIterator(saved.closeCompletion);
+      return saved.closeCompletion;
+    }
     const nodeId = node.nodeId ?? -1;
-    let index = saved?.index ?? consumeRestoredLoopIterationIndex(node, context);
     for (let skipped = 0; saved === undefined && skipped < index; skipped += 1) {
       const skippedIteration = await nextIteration();
       if (typeof skippedIteration !== "object" || skippedIteration === null) {
@@ -1935,20 +1992,20 @@ async function evaluateForOfIterator(
         binding = resuming && saved!.phase === "body" ? { ok: true } : await bindIterationVariable(node.left, nextValue, scope, phaseContext("left"));
       } catch (error) {
         if (isFatalSandboxError(error) || error instanceof HostCallResumabilityError) throw error;
-        await closeIterator(iterator, true);
+        await closeLoopIterator(createThrowCompletion(error, context.budget, context.callStack));
         throw error;
       }
       if (!binding.ok) {
-        await closeIterator(iterator, binding.result.kind === "throw");
+        await closeLoopIterator(binding.result);
         return binding.result;
       }
 
       const iterationContext = createLoopIterationContext(phaseContext("body"), scope);
       emitLoopIterationBreakpoint(node, iterationContext);
-      const result = await evaluateNode(node.body, iterationContext);
+      const result = await evaluateResourceScope(scope, context.budget, {...createCoercionContext(iterationContext), ...resourceSuspension(iterationContext, node), onSuspend: iterationContext.onSuspend, signal: iterationContext.signal}, () => evaluateNode(node.body, iterationContext));
       if (isMatchingBreak(result, loopLabels(node))) {
         context.activeLoopIterations.delete(nodeId);
-        await closeIterator(iterator);
+        await closeLoopIterator(normalEmptyResult());
         return normalEmptyResult();
       }
       if (isMatchingContinue(result, loopLabels(node))) {
@@ -1957,7 +2014,7 @@ async function evaluateForOfIterator(
       }
       if (result.kind !== "normal") {
         context.activeLoopIterations.delete(nodeId);
-        await closeIterator(iterator, result.kind === "throw");
+        await closeLoopIterator(result);
         return result;
       }
       index += 1;
@@ -2114,14 +2171,14 @@ async function evaluateForStatement(
     ...context,
     scope: loopScope
   };
-  const phaseContext = (phase: "init" | "test" | "body" | "update", scope: Scope): EvaluationContext => ({
+  const phaseContext = (phase: "init" | "test" | "body" | "update" | "dispose", scope: Scope): EvaluationContext => ({
     ...loopContext, scope,
     ...(context.generatorYield === undefined || node.nodeId === undefined ? {} : {
       generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []),
         [node.nodeId, { kind: "for", phase, loopScope, activeScope: scope }]])
     })
   });
-
+  return evaluateResourceScope(loopScope, context.budget, {...createCoercionContext(loopContext), ...resourceSuspension(phaseContext("dispose", loopScope), node), onSuspend: loopContext.onSuspend, signal: loopContext.signal}, async () => {
   if (node.init !== undefined && (resumePhase === undefined || resumePhase === "init")) {
     const init = await evaluateNode(node.init, phaseContext("init", loopScope));
     if (init.kind !== "normal") {
@@ -2185,6 +2242,7 @@ async function evaluateForStatement(
     loopScope.copyInitializedBindingsFrom(updateScope, loopBindingNames);
     resumePhase = undefined;
   }
+  });
 }
 
 async function evaluateWhileStatement(
@@ -2362,6 +2420,7 @@ async function bindIterationVariable(
     context = { ...context, generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []),
       [left.nodeId, { kind: "declaration", index: 0 }]]) };
   }
+  if (left.disposal !== undefined) await registerScopeResource(scope, value, left.disposal, context.budget, createCoercionContext({...context, scope}));
   return bindPattern(declarator.id, value, { kind: left.kind }, scope, createPatternContext(context, scope));
 }
 
@@ -2410,7 +2469,9 @@ async function evaluateReturnStatement(
     };
   }
 
-  const argument = await evaluateNode(node.argument, context);
+  const argument = context.asyncGeneratorFrame !== undefined && context.generatorResume?.completed !== true && context.generatorResume?.yieldNodeId === node.nodeId
+    ? {kind: "normal" as const, hasValue: true, value: undefined}
+    : await evaluateNode(node.argument, context);
   if (argument.kind !== "normal") {
     return argument;
   }
@@ -2418,8 +2479,9 @@ async function evaluateReturnStatement(
   return {
     kind: "return",
     hasValue: argument.hasValue,
-    value: context.asyncGenerator
-      ? await suspendJob(awaitSandboxValue(argument.value, context.signal, context.budget, createCoercionContext(context)))
+    value: context.asyncGeneratorFrame !== undefined
+      ? await suspendAsyncFunctionValue(argument.value, node, context, undefined, createCoercionContext(context), "return")
+      : context.asyncGenerator ? await suspendJob(awaitSandboxValue(argument.value, context.signal, context.budget, createCoercionContext(context)))
       : argument.value
   };
 }
@@ -2460,7 +2522,23 @@ async function evaluateYieldExpression(
 }
 
 async function yieldGeneratorValue(value: SandboxValue, node: YieldExpression, context: EvaluationContext): Promise<GeneratorCompletion> {
-  if (context.asyncGenerator && !node.delegate) value = await suspendJob(awaitSandboxValue(value, context.signal, context.budget, createCoercionContext(context)));
+  const frame = context.asyncGeneratorFrame;
+  const origin = frame === undefined ? undefined : getGeneratorOrigin(frame);
+  const resuming = context.generatorResume?.completed !== true && context.generatorResume?.yieldNodeId === node.nodeId;
+  if (frame !== undefined && resuming && origin?.awaitPhase === "resume-return") {
+    try {
+      return {type: "return", value: await suspendAsyncFunctionValue(undefined, node, context, undefined, createCoercionContext(context), "resume-return")};
+    } catch (error) {return {type: "throw", value: error};}
+  }
+  if (frame !== undefined && !node.delegate && (!resuming || origin?.awaitPhase === "yield"))
+    value = await suspendAsyncFunctionValue(value, node, context, undefined, createCoercionContext(context), "yield");
+  else if (frame === undefined && context.asyncGenerator && !node.delegate)
+    value = await suspendJob(awaitSandboxValue(value, context.signal, context.budget, createCoercionContext(context)));
+  if (frame !== undefined) {
+    const driver = asyncGeneratorDrivers.get(frame);
+    if (driver === undefined) throw new TypeError("Missing async generator yield owner.");
+    driver.suspension = "yield";
+  }
   context.captureGeneratorScope?.(context.scope, context.generatorBlockScopes, context.finallyCompletions, context.generatorExpressionStates);
   const completionPromise = context.generatorYield!(allocateProducedSandboxValue(value, context.budget), node.nodeId);
   emitResumeBreakpoint(context, {
@@ -2468,10 +2546,12 @@ async function yieldGeneratorValue(value: SandboxValue, node: YieldExpression, c
     nodeId: node.nodeId,
     span: node.span
   });
-  const completion = await (context.asyncGenerator ? suspendJob(completionPromise) : completionPromise);
+  const completion = await (context.asyncGenerator && frame === undefined ? suspendJob(completionPromise) : completionPromise);
   if (context.asyncGenerator && completion.type === "return") {
     try {
-      return { type: "return", value: await suspendJob(awaitSandboxValue(completion.value as SandboxValue, context.signal, context.budget, createCoercionContext(context))) };
+      return { type: "return", value: frame === undefined
+        ? await suspendJob(awaitSandboxValue(completion.value as SandboxValue, context.signal, context.budget, createCoercionContext(context)))
+        : await suspendAsyncFunctionValue(completion.value as SandboxValue, node, context, undefined, createCoercionContext(context), "resume-return") };
     } catch (error) {
       return { type: "throw", value: error };
     }
@@ -2507,39 +2587,64 @@ async function evaluateYieldDelegate(
 
   const state: Extract<GeneratorExpressionState, { kind: "yield-delegate" }> = {
     kind: "yield-delegate", async: context.asyncGenerator === true,
-    value: argument.value, current: saved?.current, iterator
+    value: argument.value, current: saved?.current, iterator,
+    ...(saved?.phase === undefined ? {} : {phase: saved.phase, awaitState: saved.awaitState, completion: saved.completion})
   };
   if (node.nodeId !== undefined) context = { ...context,
     generatorExpressionStates: new Map([...(context.generatorExpressionStates ?? []), [node.nodeId, state]]) };
+  if (context.asyncGeneratorFrame !== undefined && iterator.resumeAwait !== undefined)
+    iterator.awaitValue = (value, awaitState) => {
+      state.awaitState = awaitState;
+      return suspendAsyncFunctionValue(value, node, context, undefined, createCoercionContext(context));
+    };
   const releaseIterator = retainValues(context.budget, () => [
     argument.value,
     iterator.retainedValue,
     state.current
   ]);
   try {
-    let completion: { type: "normal" | "return" | "throw"; value: SandboxValue } = {
+    let completion: { type: "normal" | "return" | "throw"; value: SandboxValue } = saved?.completion ?? {
       type: "normal",
       value: undefined
     };
     const replay = saved === undefined ? context.generatorResume?.sent ?? [] : [];
     let replayIndex = 0;
-    if (saved !== undefined) {
+    let resumeOperation = saved?.phase !== undefined;
+    if (saved !== undefined && !resumeOperation) {
       completion = (await yieldGeneratorValue(saved.current, node, context)) as typeof completion;
       if (context.generatorResume !== undefined) context.generatorResume.completed = true;
       context.generatorResume = undefined;
     }
     while (true) {
       const method = completion.type === "normal" ? "next" : completion.type;
-      const iteratorMethod = iterator.getOperation === undefined ? iterator[method] : await iterator.getOperation(method);
-      if (iteratorMethod === undefined) {
-        if (completion.type === "throw") {
-          await closeIterator(iterator);
-          throw new TypeError("Delegated iterator does not provide a throw method.");
+      let result: IteratorResult<SandboxValue>;
+      if (resumeOperation) {
+        resumeOperation = false;
+        if (iterator.resumeAwait === undefined || iterator.awaitValue === undefined || saved?.awaitState === undefined)
+          throw new TypeError("Missing delegated iterator await continuation.");
+        result = await iterator.resumeAwait(saved.awaitState, () => iterator.awaitValue!(undefined, saved.awaitState!));
+        if (saved.phase === "close") throw new TypeError("Delegated iterator does not provide a throw method.");
+        context.generatorResume = undefined;
+      } else {
+        const iteratorMethod = iterator.getOperation === undefined ? iterator[method] : await iterator.getOperation(method);
+        if (iteratorMethod === undefined) {
+          if (completion.type === "throw") {
+            if (iterator.awaitValue !== undefined) {state.phase = "close"; state.completion = completion;}
+            await closeIterator(iterator, false, context.asyncGeneratorFrame === undefined ? suspendJob
+              : async pending => await suspendAsyncFunctionValue(createSandboxPromise(pending as Promise<SandboxValue>), node, context, undefined, createCoercionContext(context)) as Awaited<typeof pending>);
+            throw new TypeError("Delegated iterator does not provide a throw method.");
+          }
+          return generatorCompletionResult(completion);
         }
-        return generatorCompletionResult(completion);
+        if (iterator.awaitValue !== undefined) {state.phase = "await"; state.completion = completion;}
+        const pendingResult = Promise.resolve(iteratorMethod(completion.value));
+        result = context.asyncGeneratorFrame !== undefined && iterator.awaitValue === undefined
+          ? await suspendAsyncFunctionValue(createSandboxPromise(pendingResult as unknown as Promise<SandboxValue>), node, context, undefined, createCoercionContext(context)) as unknown as IteratorResult<SandboxValue>
+          : await (context.asyncGenerator && iterator.awaitValue === undefined ? suspendJob(pendingResult) : pendingResult);
       }
-      const pendingResult = Promise.resolve(iteratorMethod(completion.value));
-      const result = await (context.asyncGenerator ? suspendJob(pendingResult) : pendingResult);
+      delete state.phase;
+      delete state.awaitState;
+      delete state.completion;
       if ((typeof result !== "object" && typeof result !== "function") || result === null) {
         throw new TypeError("Iterator result must be an object.");
       }
@@ -2565,6 +2670,7 @@ async function evaluateYieldDelegate(
       context.generatorResume = undefined;
     }
   } finally {
+    delete iterator.awaitValue;
     releaseIterator();
   }
 }

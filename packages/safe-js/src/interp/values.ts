@@ -43,6 +43,7 @@ import { SandboxError } from "./budget.js";
 import { observeSandboxPromise, trackSandboxPromise } from "./promise-tracker.js";
 import { promiseStates } from "./promise-state.js";
 import { promiseContinuations, promiseReactionResults, promiseProducers } from "./promise-continuations.js";
+import { asyncGeneratorDrivers, asyncGeneratorRequestOwners } from "./async-generator-driver.js";
 import { promiseReplayContext } from "./promise-replay.js";
 import {
   invokeCancelableClosure,
@@ -891,6 +892,7 @@ export function measureSandboxData(
       return;
     }
     if (isSandboxGenerator(value)) {
+      visit(asyncGeneratorDrivers.get(value), depth + 1);
       const descriptors = Object.getOwnPropertyDescriptors(getGeneratorProperties(value));
       for (const key of Reflect.ownKeys(descriptors)) {
         const descriptor = descriptors[key as keyof typeof descriptors]!;
@@ -905,6 +907,7 @@ export function measureSandboxData(
       return;
     }
     if (isSandboxPromise(value)) {
+      visit(asyncGeneratorRequestOwners.get(value), depth + 1);
       const settlement = promiseStates.get(value);
       if (settlement !== undefined && settlement.status !== "pending") visit(settlement.value, depth + 1);
       const continuation = promiseContinuations.get(value);

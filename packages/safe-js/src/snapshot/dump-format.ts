@@ -1,6 +1,7 @@
 export const DUMP_FORMAT_VERSION = 2;
 export const inMemoryRunSnapshots = new WeakSet<object>();
-import { getRegexProperties, isSandboxPromise, isSandboxRegex } from "../interp/values.js";
+import { getRegexProperties, isSandboxPromise, isSandboxRegex, type SandboxPromise } from "../interp/values.js";
+import { promiseContinuations, promiseProducers, promiseReactionResults, promiseAdoptions, promiseAdoptionBridges } from "../interp/promise-continuations.js";
 import { isPromiseResolvingFunction } from "../interp/promise.js";
 import { unrepresentedPromiseContinuations } from "../interp/promise-tracker.js";
 import { promiseStates } from "../interp/promise-state.js";
@@ -94,6 +95,33 @@ export function serializeSafeJSSnapshot(snapshot: DumpableSnapshot): string {
     }
   }
   return JSON.stringify(createDumpFile(snapshot), null, 2);
+}
+
+// A replay-only promise cannot be referenced from a durable promise graph.
+// Keep its connected producer/reaction component on the trusted replay path.
+function requiresPromiseReplay(promise: SandboxPromise): boolean {
+  const seen = new Set<SandboxPromise>();
+  const pending = [promise];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    const continuation = promiseContinuations.get(current);
+    if (promiseStates.get(current)?.status === "pending" &&
+        (unrepresentedPromiseContinuations.has(current) || continuation === undefined)) return true;
+    pending.push(...(promiseProducers.get(current) ?? []), ...(promiseReactionResults.get(current) ?? []));
+    if (continuation?.kind === "reaction") {
+      pending.push(continuation.source);
+      if (continuation.aggregate !== undefined) pending.push(continuation.aggregate);
+      if (continuation.capability !== undefined) pending.push(continuation.capability.promise);
+    } else if (continuation?.resolution !== undefined && isSandboxPromise(continuation.resolution.value)) {
+      pending.push(continuation.resolution.value);
+    }
+    const adoption = promiseAdoptions.get(current);
+    const bridge = adoption === undefined ? undefined : promiseAdoptionBridges.get(adoption);
+    if (bridge !== undefined) pending.push(bridge.source);
+  }
+  return false;
 }
 
 function createDumpFile(snapshot: DumpableSnapshot): Record<string, DumpValue> {
@@ -430,8 +458,7 @@ function collectContainerStats(
   const guestEntries: unknown[] = [];
   const replayPromise = isSandboxPromise(value) ? value
     : isPromiseResolvingFunction(value) ? promiseResolvingFunctions.get(value)?.promise : undefined;
-  const replayMetadata = trustedRunReplay && replayPromise !== undefined &&
-    promiseStates.get(replayPromise)?.status === "pending" && unrepresentedPromiseContinuations.has(replayPromise);
+  const replayMetadata = trustedRunReplay && replayPromise !== undefined && requiresPromiseReplay(replayPromise);
   if (isSandboxDataView(value)) guestEntries.push(dataViewBuffer(value));
   if (isNumericTypedArray(value)) guestEntries.push(typedArrayStorage(value).buffer);
   const guest = isSandboxDataView(value)

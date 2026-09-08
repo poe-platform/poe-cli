@@ -323,6 +323,7 @@ export type VariableDeclaration = BaseNode & {
   type: "VariableDeclaration";
   declarations: VariableDeclarator[];
   kind: VariableDeclarationKind;
+  disposal?: "sync" | "async";
 };
 
 export type ReturnStatement = BaseNode & {
@@ -1034,13 +1035,18 @@ class Parser {
     };
   }
 
-  private parseStatement(): Statement {
+  private parseStatement(allowResourceDeclaration = true): Statement {
     const emptyStatement = this.parseEmptyStatement();
     if (emptyStatement !== undefined) {
       return emptyStatement;
     }
 
     const token = this.currentToken();
+
+    if (this.resourceDeclarationHint() !== undefined) {
+      if (!allowResourceDeclaration) throw unexpectedTokenError(token);
+      return this.parseResourceDeclaration();
+    }
 
     if (
       token.type === "identifier" &&
@@ -1215,7 +1221,7 @@ class Parser {
       if (token.type === "keyword" && token.value === "while") return this.parseWhileStatement(labels);
       if (token.type === "keyword" && token.value === "do") return this.parseDoWhileStatement(labels);
       if (token.type === "punctuator" && token.value === "{") return { ...this.parseBlockStatement(), labels };
-      if (["let", "const", "class", "function", "import", "export"].includes(token.value) || this.isAsyncFunctionDeclarationStart())
+      if (["let", "const", "class", "function", "import", "export"].includes(token.value) || this.isAsyncFunctionDeclarationStart() || this.resourceDeclarationHint() !== undefined)
         throw new DisallowedSyntaxError("labeled declaration", firstLabelToken.start);
       const statement = this.parseStatement();
       if (statement.type === "ImportDeclaration" || statement.type === "ExportDefaultDeclaration" || statement.type === "ExportNamedDeclaration")
@@ -1240,7 +1246,7 @@ class Parser {
       this.expectPunctuator("(");
       const test = this.parseExpression({ allowSequence: true }).node;
       this.expectPunctuator(")");
-      const consequent = this.parseStatement();
+      const consequent = this.parseStatement(false);
       if (consequent.type !== "BlockStatement") {
         while (
           this.currentToken().type === "punctuator" &&
@@ -1252,7 +1258,7 @@ class Parser {
         }
       }
       const elseToken = this.consumeKeyword("else");
-      const alternate = elseToken === undefined ? undefined : this.parseStatement();
+      const alternate = elseToken === undefined ? undefined : this.parseStatement(false);
       return {
         type: "IfStatement",
         test,
@@ -1358,11 +1364,12 @@ class Parser {
       }
 
       if (iterationOperator?.value === "in") {
+        if (this.resourceDeclarationHint() !== undefined) throw unexpectedTokenError(this.currentToken());
         const left = this.parseForOfLeft();
         this.expectKeyword("in");
         const right = this.parseExpression().node;
         this.expectPunctuator(")");
-        const body = this.withLoopContext(() => this.parseStatement());
+        const body = this.withLoopContext(() => this.parseStatement(false));
         return {
           type: "ForInStatement",
           left,
@@ -1378,7 +1385,7 @@ class Parser {
         this.expectKeyword("of");
         const right = this.parseExpression().node;
         this.expectPunctuator(")");
-        const body = this.withLoopContext(() => this.parseStatement());
+        const body = this.withLoopContext(() => this.parseStatement(false));
         return {
           type: "ForOfStatement",
           ...(awaitToken === undefined ? {} : { await: true }),
@@ -1392,7 +1399,7 @@ class Parser {
 
       let init: Expression | VariableDeclaration | undefined;
       if (this.consumePunctuator(";") === undefined) {
-        init =
+        init = this.resourceDeclarationHint() !== undefined ? this.parseResourceDeclaration() :
           (this.currentToken().type === "keyword" || this.currentToken().type === "identifier") &&
           (this.currentToken().value === "const" ||
             this.currentToken().value === "let" ||
@@ -1414,7 +1421,7 @@ class Parser {
           : this.parseExpression({ allowSequence: true }).node;
 
       this.expectPunctuator(")");
-      const body = this.withLoopContext(() => this.parseStatement());
+      const body = this.withLoopContext(() => this.parseStatement(false));
       return {
         type: "ForStatement",
         init,
@@ -1428,6 +1435,9 @@ class Parser {
   }
 
   private parseForOfLeft(): PatternTarget | VariableDeclaration {
+    if (this.resourceDeclarationHint() !== undefined && this.peekToken(1).value !== "of") {
+      return this.parseResourceDeclaration(true);
+    }
     if (
       (this.currentToken().type === "keyword" || this.currentToken().type === "identifier") &&
       (this.currentToken().value === "const" ||
@@ -1482,7 +1492,7 @@ class Parser {
     this.expectPunctuator("(");
     const test = this.parseExpression({ allowSequence: true }).node;
     this.expectPunctuator(")");
-    const body = this.withLoopContext(() => this.parseStatement());
+    const body = this.withLoopContext(() => this.parseStatement(false));
     return {
       type: "WhileStatement",
       test,
@@ -1494,7 +1504,7 @@ class Parser {
 
   private parseDoWhileStatement(labels?: string[]): DoWhileStatement {
     const doToken = this.expectKeyword("do");
-    const body = this.withLoopContext(() => this.parseStatement());
+    const body = this.withLoopContext(() => this.parseStatement(false));
     this.expectKeyword("while");
     this.expectPunctuator("(");
     const test = this.parseExpression({ allowSequence: true }).node;
@@ -1734,6 +1744,38 @@ class Parser {
       kind: kindToken.value,
       span: createSpan(kindToken.start, declarations[declarations.length - 1]!.span.end)
     };
+  }
+
+  private resourceDeclarationHint(): "sync" | "async" | undefined {
+    const token = this.currentToken();
+    const offset = token.value === "await" && this.peekToken(1).value === "using" ? 1 : 0;
+    const using = offset === 0 ? token : this.peekToken(1);
+    const binding = this.peekToken(offset + 1);
+    if (using.value !== "using" || hasLineBreakBetween(using, binding) || !isIdentifierLikeToken(binding)) return undefined;
+    if (offset === 1 && hasLineBreakBetween(token, using)) throw unexpectedTokenError(using);
+    return offset === 1 ? "async" : "sync";
+  }
+
+  private parseResourceDeclaration(iteration = false): VariableDeclaration {
+    const start = this.currentToken();
+    const disposal = this.resourceDeclarationHint()!;
+    if (disposal === "async") {
+      if (!this.lexicalContext.await || !["top-level", "async", "async-generator"].includes(this.functionContext)) {
+        throw unexpectedTokenError(start);
+      }
+      this.index++;
+    }
+    this.index++;
+    const declarations: VariableDeclarator[] = [];
+    do {
+      const id = this.parseBindingIdentifier();
+      if (id.name === "let" || (disposal === "async" && id.name === "await") ||
+          (iteration && disposal === "sync" && id.name === "of")) throw new Error(`Invalid resource binding '${id.name}'.`);
+      this.declarePatternBindings(id);
+      const init = iteration ? undefined : (this.expectPunctuator("="), this.parseExpression().node);
+      declarations.push({type: "VariableDeclarator", id, ...(init === undefined ? {} : {init}), span: createSpan(id.span.start, init?.span.end ?? id.span.end)});
+    } while (!iteration && this.consumePunctuator(",") !== undefined);
+    return {type: "VariableDeclaration", kind: "const", disposal, declarations, span: createSpan(start.start, declarations.at(-1)!.span.end)};
   }
 
   private parseFunctionDeclaration(defaultExport = false): FunctionDeclaration {
@@ -3897,6 +3939,7 @@ class Parser {
 
   private shouldParseTopLevelStatement(): boolean {
     const token = this.currentToken();
+    if (this.resourceDeclarationHint() !== undefined) return true;
     if (this.isAsyncFunctionDeclarationStart()) {
       return true;
     }

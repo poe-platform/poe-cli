@@ -1,6 +1,7 @@
 import type { VariableDeclarationKind } from "../parse.js";
 import type { PrivateName } from "./private-state.js";
 import type { InterpreterSnapshot, InterpreterValue } from "./interpreter.js";
+import type { ResourceScopeState } from "./resource-management.js";
 
 type ScopeBinding = {
   kind: VariableDeclarationKind;
@@ -25,6 +26,7 @@ type ScopeOptions = {
 };
 
 export type ScopeFrame = {
+  resourceState?: ResourceScopeState;
   privateNames?: Array<[string, PrivateName]>;
   parent?: Scope;
   importMeta?: InterpreterValue;
@@ -38,6 +40,7 @@ export type ScopeFrame = {
 };
 
 export class Scope {
+  resourceState?: ResourceScopeState;
   privateNames?: Map<string, PrivateName>;
   readonly #bindings = new Map<string, ScopeBinding>();
   readonly #restoredBindings: Map<string, InterpreterValue>;
@@ -144,6 +147,7 @@ export class Scope {
 
   retainedValues(): InterpreterValue[] {
     const values = this.parent?.retainedValues() ?? [];
+    if (this.resourceState !== undefined) values.push(this.resourceState);
     if (this.options.chargeData !== false) {
       if (this.importMeta !== undefined) values.push(this.importMeta);
       if (this.privateNames !== undefined) values.push(...this.privateNames.values());
@@ -300,6 +304,7 @@ export class Scope {
       chargeData: this.options.chargeData !== false,
       bindings,
       cells,
+      ...(this.resourceState === undefined ? {} : {resourceState: this.resourceState}),
       ...(this.privateNames === undefined ? {} : { privateNames: [...this.privateNames] }),
       ...(this.parent === undefined ? { restoredBindings: [...this.#restoredBindings] } : {})
     };
@@ -330,6 +335,7 @@ export class Scope {
     const restored = new Map(frame.restoredBindings ?? []);
     if (restored.size !== (frame.restoredBindings?.length ?? 0)) throw new TypeError("Duplicate restored binding.");
     this.importMeta = frame.importMeta;
+    this.resourceState = frame.resourceState;
     if (frame.privateNames !== undefined) this.privateNames = new Map(frame.privateNames);
     for (const [name, binding] of bindings) this.#bindings.set(name, binding);
     if (this.parent === undefined)

@@ -20,6 +20,8 @@ import { disposableStackStates } from "../interp/disposable-stack.js";
 import { asyncDisposableStackStates, asyncCleanupStates, asyncCleanupHandlers, type AsyncDisposableResource } from "../interp/async-disposable-stack.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
+import { asyncFunctionDrivers, asyncFunctionHandlers } from "../interp/async-function-driver.js";
+import { asyncGeneratorDrivers, asyncGeneratorHandlers, asyncGeneratorRequestOwners } from "../interp/async-generator-driver.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
 import { promiseStates } from "../interp/promise-state.js";
 import { promiseResolvingFunctions, promiseResolverActions } from "../interp/promise-resolvers.js";
@@ -41,11 +43,12 @@ import { mapIteratorSnapshot, type IteratorSnapshot } from "../interp/iteration.
 
 export type GeneratorFinallyCompletion<T> = Omit<CompletionResult, "value" | "node" | "stackFrames"> & { value: T; nodeId?: number; stackFrames?: string[] };
 
-export type AsyncResourceData<T> = {method: T; receiver: T; args: T[]; syncFallback: boolean};
+export type AsyncResourceData<T> = {method: T; receiver: T; args: T[]; syncFallback: boolean; synchronous?: boolean};
 
 function captureAsyncResources<T>(resources: AsyncDisposableResource[], encode: (value: unknown) => T): AsyncResourceData<T>[] {
   return resources.map(resource => ({method: encode(resource.method), receiver: encode(resource.receiver),
-    args: resource.args.map(encode), syncFallback: resource.syncFallback}));
+    args: resource.args.map(encode), syncFallback: resource.syncFallback,
+    ...(resource.synchronous === undefined ? {} : {synchronous: resource.synchronous})}));
 }
 
 export type GuestObjectState<T> = {
@@ -59,6 +62,11 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | {kind: "async-generator-driver"; generator: T; requests: Array<{method:"next"|"return"|"throw";value:T;capability:{promise:T;resolve:T;reject:T}}>;
+      phase:"idle"|"waiting";suspension:"await"|"yield";awaitKind:"body"|"return";generation:number}
+  | {kind: "async-generator-handler"; driver:T;owner:T;action:"fulfilled"|"rejected";generation:number;state:GuestObjectState<T>}
+  | {kind: "async-function-driver"; generator: T; capability: {promise:T;resolve:T;reject:T}; phase:"waiting"|"done";generation:number}
+  | {kind: "async-function-handler"; driver:T;action:"fulfilled"|"rejected";generation:number;state:GuestObjectState<T>}
   | {kind: "async-disposable-stack"; disposed: boolean; resources: AsyncResourceData<T>[]; state: GuestObjectState<T>}
   | {kind: "async-cleanup"; resources: AsyncResourceData<T>[]; capability: {promise: T; resolve: T; reject: T}; phase: "waiting" | "done"; failed: boolean; failure: T; needsAwait: boolean; hasAwaited: boolean; generation: number}
   | {kind: "async-cleanup-handler"; cleanup: T; action: "fulfilled" | "rejected"; generation: number; state: GuestObjectState<T>}
@@ -71,9 +79,9 @@ export type GuestHeapNode<T> =
   | { kind: "aggregate-entry"; aggregate: T; index: number; called: boolean }
   | { kind: "aggregate-handler"; entry: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T> }
   | { kind: "guest-regex"; source: string; flags: string; state: GuestObjectState<T> }
-  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; producers?: T[]; state: GuestObjectState<T> }
+  | { kind: "guest-promise"; status: "fulfilled" | "rejected"; value: T; reactions?: T[]; producers?: T[]; generatorOwner?: T; state: GuestObjectState<T> }
   | { kind: "promise-resolver"; promise: T; action?: "fulfilled" | "rejected"; state: GuestObjectState<T> }
-  | { kind: "pending-promise"; adoption?: T; thenable?: T; reactions: T[]; producers?: T[]; state: GuestObjectState<T> }
+  | { kind: "pending-promise"; adoption?: T; thenable?: T; reactions: T[]; producers?: T[]; generatorOwner?: T; state: GuestObjectState<T> }
   | { kind: "promise-adoption"; owner: T; source: T }
   | { kind: "adoption-resolver"; bridge: T; action: "fulfilled" | "rejected" }
   | { kind: "promise-reaction"; source: T; onFulfilled: T; onRejected: T; reactions: T[]; producers?: T[];
@@ -97,6 +105,9 @@ export type GuestHeapNode<T> =
   | { kind: "set"; values: T[]; propertyState?: PropertyDescriptorData<T>; prototype?: T; privateElements?: PrivateElementData<T>[] }
   | { kind: "raw-json"; text: string }
   | { kind: "guest-generator"; state: "start" | "running" | "suspended" | "done"; astNodeId: number;
+      asyncFunction?: true;
+      driver?: T;
+      awaitPhase?: "await" | "yield" | "return" | "resume-return";
       async: boolean; scope: T; closureScope: T; suspendedScope?: T; yieldNodeId?: number;
       blockScopes?: Record<string, T>;
       finallyCompletions?: Record<string, GeneratorFinallyCompletion<T>>;
@@ -109,6 +120,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-function"; astNodeId: number; scope: T; name?: string; state: GuestObjectState<T>;
       environment?: { homeObject?: T; newTarget?: T; construction?: T } }
   | { kind: "scope-frame"; parent: T; importMeta: T; functionBoundary: boolean; chargeData: boolean;
+      resourceState?: T;
       privateNames?: Array<[string, T]>;
       bindings: Array<[string, number]>;
       cells: Array<{ kind: ScopeFrame["cells"][number]["kind"] } & (
@@ -119,6 +131,26 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const generatorDriver = asyncGeneratorDrivers.get(value);
+  if (generatorDriver === value) {
+    if (generatorDriver.phase === "running") throw new SnapshotNotReadyError("Cannot snapshot an active async generator request.");
+    return {kind: "async-generator-driver", generator: encode(generatorDriver.generator), phase: generatorDriver.phase,
+      suspension: generatorDriver.suspension, awaitKind: generatorDriver.awaitKind, generation: generatorDriver.generation,
+      requests: generatorDriver.requests.map(request => ({method: request.method, value: encode(request.value),
+        capability: {promise: encode(request.capability.promise), resolve: encode(request.capability.resolve), reject: encode(request.capability.reject)}}))};
+  }
+  const generatorHandler = isSandboxClosure(value) ? asyncGeneratorHandlers.get(value) : undefined;
+  if (generatorHandler !== undefined) return {kind: "async-generator-handler", driver: encode(generatorHandler.driver),
+    owner: encode(generatorHandler.owner), action: generatorHandler.action, generation: generatorHandler.generation, state: captureObjectState(value, encode)!};
+  const driver = asyncFunctionDrivers.get(value);
+  if (driver !== undefined) {
+    if (driver.phase === "running" || driver.generator === undefined) throw new SnapshotNotReadyError("Cannot snapshot an active async function.");
+    return {kind: "async-function-driver", generator: encode(driver.generator), phase: driver.phase, generation: driver.generation,
+      capability: {promise: encode(driver.capability.promise), resolve: encode(driver.capability.resolve), reject: encode(driver.capability.reject)}};
+  }
+  const asyncHandler = isSandboxClosure(value) ? asyncFunctionHandlers.get(value) : undefined;
+  if (asyncHandler !== undefined) return {kind: "async-function-handler", driver: encode(asyncHandler.driver),
+    action: asyncHandler.action, generation: asyncHandler.generation, state: captureObjectState(value, encode)!};
   const asyncStack = asyncDisposableStackStates.get(value);
   if (asyncStack !== undefined) return {kind: "async-disposable-stack", disposed: asyncStack.disposed,
     resources: captureAsyncResources(asyncStack.resources, encode), state: captureObjectState(value, encode)!};
@@ -195,26 +227,32 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     return {kind: "promise-resolver", promise: encode(resolver.promise), state: captureObjectState(value, encode)!};
   }
   if (isSandboxPromise(value)) {
+    const generatorOwner = asyncGeneratorRequestOwners.get(value);
+    const ownerState = generatorOwner === undefined ? {} : {generatorOwner: encode(generatorOwner)};
     const producerState = promiseProducers.has(value) ? {producers: [...promiseProducers.get(value)!].map(encode)} : {};
     const settlement = promiseStates.get(value);
     if (settlement !== undefined && settlement.status !== "pending")
       return {kind: "guest-promise", status: settlement.status, value: encode(settlement.value),
+        ...ownerState,
         ...producerState,
         ...(promiseReactionResults.has(value) ? {reactions: [...promiseReactionResults.get(value)!].map(encode)} : {}),
         state: captureObjectState(value, encode)!};
     const continuation = promiseContinuations.get(value);
     if (unrepresentedPromiseContinuations.has(value))
       throw new TypeError("Cannot serialize host reference: unrepresented promise continuation.");
+    if (continuation?.kind === "reaction" && continuation.phase === "running")
+      throw new SnapshotNotReadyError("Cannot snapshot an active promise reaction.");
     if (continuation?.kind === "capability") {
       const thenable = thenableContinuations.get(value);
       if (continuation.state.settled && thenable !== undefined && !thenable.completed && thenable.owner === value)
-        return {kind: "pending-promise", thenable: encode(thenable), ...producerState,
+        return {kind: "pending-promise", thenable: encode(thenable), ...producerState, ...ownerState,
           reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
       const adoption = promiseAdoptions.get(value);
       const bridge = adoption === undefined ? undefined : promiseAdoptionBridges.get(adoption);
       if (continuation.state.settled && (bridge === undefined || bridge.settled || bridge.owner !== value ||
           continuation.resolution?.status !== "fulfilled" || continuation.resolution.value !== bridge.source)) return undefined;
       return {kind: "pending-promise", ...(continuation.state.settled ? {adoption: encode(adoption)} : {}),
+        ...ownerState,
         ...producerState,
         reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
     }
@@ -302,6 +340,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
       kind: "scope-frame", parent: encode(frame.parent), importMeta: encode(frame.importMeta),
       functionBoundary: frame.functionBoundary, chargeData: frame.chargeData,
       bindings: frame.bindings,
+      ...(frame.resourceState === undefined ? {} : {resourceState: encode(frame.resourceState)}),
       ...(frame.privateNames === undefined ? {} : { privateNames: frame.privateNames.map(([name, identity]) => [name, encode(identity)] as [string, T]) }),
       cells: frame.cells.map(cell => cell.initialized ? { ...cell, value: encode(cell.value) } : cell),
       ...(frame.restoredBindings === undefined ? {} : {
@@ -315,6 +354,9 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
     const channel = value.channel.snapshot();
     return {
       kind: "guest-generator", state: value.state, astNodeId: origin.node.nodeId, async: value.async === true,
+      ...(origin.asyncFunction ? {asyncFunction: true as const} : {}),
+      ...(generatorDriver === undefined ? {} : {driver: encode(generatorDriver)}),
+      ...(origin.awaitPhase === undefined ? {} : {awaitPhase: origin.awaitPhase}),
       objectState: captureObjectState(value, encode),
       scope: encode(origin.scope), closureScope: encode(origin.closureScope),
       ...(value.state !== "suspended" || origin.suspendedScope === undefined ? {} : { suspendedScope: encode(origin.suspendedScope) }),
@@ -334,7 +376,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
           expression.kind === "binary" ? { kind: "binary", left: encode(expression.left) }
             : expression.kind === "declaration" ? { ...expression }
             : expression.kind === "switch" ? { ...expression, value: encode(expression.value), scope: encode(expression.scope) }
-            : expression.kind === "yield-delegate" ? { ...expression, value: encode(expression.value), current: encode(expression.current),
+            : expression.kind === "yield-delegate" ? { kind: expression.kind, async: expression.async, value: encode(expression.value), current: encode(expression.current),
+              ...(expression.phase === undefined ? {} : {phase: expression.phase}),
+              ...(expression.awaitState === undefined ? {} : {awaitState: expression.awaitState}),
+              ...(expression.completion === undefined ? {} : {completion: {...expression.completion, value: encode(expression.completion.value)}}),
               iterator: mapIteratorSnapshot("kind" in expression.iterator ? expression.iterator : expression.iterator.snapshot?.() ?? { kind: "unsupported" }, encode) }
             : expression.kind === "pattern-source" ? { kind: "pattern-source", value: encode(expression.value) }
             : expression.kind === "object-pattern" ? { kind: "object-pattern", phase: expression.phase, index: expression.index,
@@ -346,7 +391,10 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
               iterator: mapIteratorSnapshot("kind" in expression.iterator ? expression.iterator : expression.iterator.snapshot?.() ?? { kind: "unsupported" }, encode),
               ...(Object.hasOwn(expression, "referenceObject") ? { referenceObject: encode(expression.referenceObject), referenceKey: encode(expression.referenceKey) } : {}) }
             : expression.kind === "for-of-array" ? { ...expression, values: encode(expression.values), current: encode(expression.current), scope: encode(expression.scope) }
-            : expression.kind === "for-of-iterator" ? { ...expression, value: encode(expression.value), current: encode(expression.current), scope: encode(expression.scope),
+            : expression.kind === "for-of-iterator" ? { kind: expression.kind, phase: expression.phase, async: expression.async, index: expression.index,
+              ...(expression.awaitState === undefined ? {} : {awaitState: expression.awaitState}),
+              value: encode(expression.value), current: encode(expression.current), scope: encode(expression.scope),
+              ...(expression.closeCompletion === undefined ? {} : {closeCompletion: {...expression.closeCompletion, value: encode(expression.closeCompletion.value)}}),
               iterator: mapIteratorSnapshot("kind" in expression.iterator ? expression.iterator : expression.iterator.snapshot?.() ?? { kind: "unsupported" }, encode) }
             : expression.kind === "for-in" ? { ...expression, keys: [...expression.keys], object: encode(expression.object), scope: encode(expression.scope) }
             : expression.kind === "for" ? { kind: "for", phase: expression.phase, loopScope: encode(expression.loopScope), activeScope: encode(expression.activeScope) }

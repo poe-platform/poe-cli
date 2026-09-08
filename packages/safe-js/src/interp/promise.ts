@@ -1,4 +1,6 @@
 import { SandboxError, type Budget } from "./budget.js";
+import { asyncFunctionHandlers } from "./async-function-driver.js";
+import { asyncGeneratorHandlers, rejectGeneratorQueue } from "./async-generator-driver.js";
 import { accessorAdapter, accessorClosure, readPropertyDescriptor } from "./accessors.js";
 import { getSandboxDataProperty, getSandboxPropertyDescriptor, hasExplicitSandboxPrototype, installPromisePrototype, materializeFunctionProperties, registerIntrinsicFunction, setSandboxPrototype } from "./object-model.js";
 import { coerceThrownValue, createSubsetErrorValue } from "./exceptions.js";
@@ -38,6 +40,8 @@ const promiseConstructors = new WeakSet<SandboxClosure>();
 const intrinsicPromiseThenMethods = new WeakSet<SandboxClosure>();
 const intrinsicPromiseConstructors = new WeakMap<Budget, SandboxClosure>();
 const promisePrototypes = new WeakMap<Budget, SandboxObject>();
+export const pendingPromiseRejectors = new WeakMap<SandboxPromise, (reason: unknown) => void>();
+export const pendingPromiseFulfillers = new WeakMap<SandboxPromise, (value: SandboxValue) => void>();
 
 export function isSandboxPromiseConstructor(value: unknown): value is SandboxClosure {
   return isSandboxClosure(value) && promiseConstructors.has(value);
@@ -57,6 +61,8 @@ export function createPendingPromiseCapability(budget: Budget, context?: Sandbox
     fulfill = resolve;
     reject = rejectPromise;
   }), {span: context?.span, synchronousPrefix});
+  pendingPromiseRejectors.set(promise, reject);
+  pendingPromiseFulfillers.set(promise, fulfill);
   const resolverState = {promise, settled: false};
   const continuation: Extract<PromiseContinuation, {kind: "capability"}> = {kind: "capability", state: resolverState};
   trackPromiseContinuation(promise, continuation);
@@ -106,6 +112,11 @@ export function attachPendingPromiseReaction(
     continuation.phase = "running";
     try {
       consumeSettledHostCall(source);
+      const asyncContinuation = isSandboxClosure(handler) ? asyncFunctionHandlers.get(handler) : undefined;
+      if (isSandboxClosure(handler) && asyncContinuation?.driver.generator?.state === "done") {
+        capability.fulfill(handler.call([value], context));
+        return;
+      }
       capability.fulfill(reactionCapability === undefined
         ? runPromiseReaction(handler, value, status, budget, capability.promise, context)
         : runCapabilityReaction(handler, value, status, reactionCapability, budget, context));
@@ -115,6 +126,23 @@ export function attachPendingPromiseReaction(
   };
   source.promise.then(value => react(onFulfilled, value, "fulfilled"), reason => react(onRejected, reason, "rejected"));
   trackPromiseContinuation(capability.promise, continuation);
+  const asyncHandler = isSandboxClosure(onRejected) ? asyncFunctionHandlers.get(onRejected) : undefined;
+  const generatorHandler = isSandboxClosure(onRejected) ? asyncGeneratorHandlers.get(onRejected) : undefined;
+  if (generatorHandler !== undefined) {
+    observeSandboxPromise(capability.promise, true);
+    void capability.promise.promise.catch(error => rejectGeneratorQueue(generatorHandler.driver, error));
+  }
+  if (asyncHandler !== undefined) {
+    // Infrastructure failures can reject the reaction before either guest
+    // handler runs. The enclosing async result must not remain pending.
+    observeSandboxPromise(capability.promise, true);
+    void capability.promise.promise.catch(error => {
+      asyncHandler.driver.phase = "done";
+      const reject = pendingPromiseRejectors.get(asyncHandler.driver.capability.promise);
+      if (reject === undefined) throw new TypeError("Missing async function rejection capability.");
+      reject(error);
+    });
+  }
 }
 
 export function createPromiseGlobals(options: { budget: Budget }): PromiseGlobals {

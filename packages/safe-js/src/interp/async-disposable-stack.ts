@@ -11,6 +11,7 @@ export type AsyncDisposableResource = {
   receiver: SandboxValue;
   args: SandboxValue[];
   syncFallback: boolean;
+  synchronous?: boolean;
 };
 export type AsyncDisposableStackState = {disposed: boolean; resources: AsyncDisposableResource[]};
 export type AsyncCleanupState = {
@@ -50,6 +51,12 @@ export async function advanceAsyncCleanup(cleanup: AsyncCleanupState, budget: Bu
   try {
     while ((current = cleanup.resources.pop()) !== undefined) {
       budget.visitNode();
+      if (current.synchronous && cleanup.needsAwait && !cleanup.hasAwaited) {
+        cleanup.resources.push(current);
+        cleanup.needsAwait = false;
+        await wait(undefined, false);
+        return;
+      }
       if (current.method === undefined) {cleanup.needsAwait = true; continue;}
       let result: SandboxValue;
       try {
@@ -57,10 +64,11 @@ export async function advanceAsyncCleanup(cleanup: AsyncCleanupState, budget: Bu
       } catch (error) {
         if (isFatalSandboxError(error)) throw error;
         const value = createThrowCompletion(error, budget, context?.stack ?? []).value;
-        if (current.syncFallback) {await wait(value, true); return;}
+        if (current.syncFallback && !current.synchronous) {await wait(value, true); return;}
         recordCleanupFailure(cleanup, value, budget, context);
         continue;
       }
+      if (current.synchronous) continue;
       await wait(current.syncFallback ? undefined : result, false);
       return;
     }

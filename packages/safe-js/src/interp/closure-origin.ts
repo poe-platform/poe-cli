@@ -12,6 +12,8 @@ export type ClosureOrigin = {
 const origins = new WeakMap<object, ClosureOrigin>();
 
 export type GeneratorOrigin = ClosureOrigin & {
+  asyncFunction?: boolean;
+  awaitPhase?: "await" | "yield" | "return" | "resume-return";
   closureScope: Scope;
   suspendedScope?: Scope;
   blockScopes?: ReadonlyMap<number, Scope>;

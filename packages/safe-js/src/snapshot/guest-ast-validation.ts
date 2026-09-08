@@ -8,6 +8,12 @@ function privateAssignmentName(value: unknown): string | undefined {
   return property.type === "PrivateIdentifier" ? String(property.name) : undefined;
 }
 
+function asyncResourceDeclaration(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  const node = value as Record<string, unknown>;
+  return node.type === "VariableDeclaration" && node.disposal === "async";
+}
+
 // Schema validation precedes this source-ownership check in both restore paths.
 export function validateGuestFunctionAst(record: Record<string, unknown>, origin: unknown): void {
   if (record.kind === "guest-class") {
@@ -33,7 +39,10 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
     throw new TypeError("Unknown guest function AST identity");
   if (record.kind !== "guest-generator") return;
   const functionNode = origin as Record<string, unknown>;
-  if (functionNode.generator !== true || (functionNode.async === true) !== record.async)
+  const representedAsync = record.asyncFunction === true || (record.async === true && record.driver !== undefined);
+  if (record.asyncFunction === true
+      ? functionNode.async !== true || functionNode.generator === true || record.async !== false
+      : functionNode.generator !== true || (functionNode.async === true) !== record.async)
     throw new TypeError("Invalid generator AST identity");
 
   let yieldBlocks: ReadonlySet<number> | undefined;
@@ -61,12 +70,41 @@ export function validateGuestFunctionAst(record: Record<string, unknown>, origin
     if (["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"].includes(String(node.type))) continue;
     let blocks = frame.blocks;
     if (node.type === "BlockStatement" && typeof node.nodeId === "number") blocks = new Set([...blocks, node.nodeId]);
-    if (node.type === "YieldExpression" && node.nodeId === record.yieldNodeId) {
+    const cases = node.type === "SwitchStatement" ? node.cases as Array<{consequent:unknown[]}> : undefined;
+    const resourceBoundary = representedAsync && (
+      (node.type === "BlockStatement" && Array.isArray(node.body) && node.body.some(asyncResourceDeclaration)) ||
+      (node.type === "ForOfStatement" && asyncResourceDeclaration(node.left)) ||
+      (node.type === "ForStatement" && asyncResourceDeclaration(node.init)) ||
+      (cases !== undefined && cases.some(entry => entry.consequent.some(asyncResourceDeclaration))));
+    const iteratorBoundary = representedAsync && node.type === "ForOfStatement" && node.await === true &&
+      ["next", "close"].includes((record.expressionStates as Record<string, {phase:string}> | undefined)?.[String(node.nodeId)]?.phase ?? "");
+    const delegateBoundary = representedAsync && node.type === "YieldExpression" && node.delegate === true &&
+      ["await", "close"].includes((record.expressionStates as Record<string, {phase:string}> | undefined)?.[String(node.nodeId)]?.phase ?? "");
+    if ((node.type === "YieldExpression" || (representedAsync && node.type === "AwaitExpression") ||
+        (record.awaitPhase === "return" && node.type === "ReturnStatement") || resourceBoundary || iteratorBoundary) && node.nodeId === record.yieldNodeId) {
+      if (record.awaitPhase !== undefined) {
+        const valid = record.awaitPhase === "await" ? node.type === "AwaitExpression" || resourceBoundary || iteratorBoundary || delegateBoundary
+          : record.awaitPhase === "return" ? node.type === "ReturnStatement"
+          : node.type === "YieldExpression" && (record.awaitPhase === "resume-return" || node.delegate !== true);
+        if (!valid) throw new TypeError("Invalid async generator await source position.");
+      }
       yieldBlocks = blocks;
       yieldFinalizers = frame.finalizers;
       yieldExpressions = node.delegate === true && typeof node.nodeId === "number"
         ? new Map([...frame.expressions, [node.nodeId, { kind: "yield-delegate", async: record.async === true }]])
         : frame.expressions;
+      if (resourceBoundary && typeof node.nodeId === "number") {
+        if (node.type === "ForOfStatement") yieldExpressions = new Map([...frame.expressions, [node.nodeId, {kind:"for-of",phase:"body",async:node.await===true}]]);
+        if (node.type === "ForStatement") yieldExpressions = new Map([...frame.expressions, [node.nodeId, {kind:"for",phase:"dispose"}]]);
+        if (cases !== undefined) {
+          const progress = (record.expressionStates as Record<string, {phase:string;index:number;statementIndex:number}> | undefined)?.[String(node.nodeId)];
+          if (progress === undefined || progress.phase !== "body" || progress.index < 0 || progress.index >= cases.length ||
+              progress.statementIndex < 0 || progress.statementIndex >= cases[progress.index]!.consequent.length) throw new TypeError("Invalid switch disposal position.");
+          yieldExpressions = new Map([...frame.expressions, [node.nodeId, {kind:"switch",phase:"body",index:progress.index,statementIndex:progress.statementIndex}]]);
+        }
+      }
+      if (iteratorBoundary && typeof node.nodeId === "number")
+        yieldExpressions = new Map([...frame.expressions, [node.nodeId, {kind:"for-of",phase:(record.expressionStates as Record<string, {phase:string}>)[String(node.nodeId)]!.phase,async:true}]]);
     }
     for (const [key, value] of Object.entries(node)) {
       if (node.type === "SwitchStatement" && key === "cases" && typeof node.nodeId === "number" && Array.isArray(value)) {

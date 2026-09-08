@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -84,10 +84,15 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["async-cleanup-handler", "thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
+    const target = reference(value, ["async-generator-handler", "async-function-handler", "async-cleanup-handler", "thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
+  if ((node.kind === "pending-promise" || node.kind === "guest-promise") && Object.hasOwn(node, "generatorOwner")) {
+    const owner = reference(node.generatorOwner, ["async-generator-driver"]);
+    if (!array(owner.requests).some(value => reference(record(record(value).capability).promise) === node))
+      throw new TypeError("Invalid async generator request ownership.");
+  }
   const privateIdentity = (value: unknown, expected?: string) => {
     const identity = reference(value, ["object"]);
     fields(identity, ["kind", "entries"]);
@@ -259,7 +264,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       throw new TypeError("Invalid promise resolver action.");
     state(node.state);
   } else if (node.kind === "pending-promise" || node.kind === "promise-reaction") {
-    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "thenable", "producers"] : ["capability", "aggregate", "producers"]);
+    fields(node, node.kind === "pending-promise" ? ["kind", "reactions", "state"] : ["kind", "source", "onFulfilled", "onRejected", "reactions", "state"], node.kind === "pending-promise" ? ["adoption", "thenable", "producers", "generatorOwner"] : ["capability", "aggregate", "producers"]);
     if (node.kind === "pending-promise" && Object.hasOwn(node, "thenable")) {
       const continuation = reference(node.thenable, ["thenable-state"]);
       if (Object.hasOwn(node, "adoption") || continuation.completed !== false || reference(continuation.owner) !== node)
@@ -288,6 +293,11 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
             const cleanup = reference(handler.cleanup, ["async-cleanup"]);
             owner = reference(record(cleanup.capability).promise);
           }
+          else if (handler.kind === "async-function-handler") {
+            const driver = reference(handler.driver, ["async-function-driver"]);
+            owner = reference(record(driver.capability).promise);
+          }
+          else if (handler.kind === "async-generator-handler") owner = reference(handler.owner);
           if (owner !== undefined && owner !== aggregate) throw new TypeError("Invalid promise aggregate handler ownership.");
         }
       }
@@ -316,7 +326,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     state(node.state);
   } else if (node.kind === "guest-promise") {
-    fields(node, ["kind", "status", "value", "state"], ["reactions", "producers"]);
+    fields(node, ["kind", "status", "value", "state"], ["reactions", "producers", "generatorOwner"]);
     if (Object.hasOwn(node, "reactions")) {
       if (!Array.isArray(node.reactions)) throw new TypeError("Invalid promise reactions.");
       const reactions = new Set<unknown>();
@@ -394,7 +404,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (resources.length > maxArrayLength) throw new TypeError("Too many async resources.");
     for (const rawResource of resources) {
       const resource = record(rawResource);
-      fields(resource, ["method", "receiver", "args", "syncFallback"]);
+      fields(resource, ["method", "receiver", "args", "syncFallback"], ["synchronous"]);
+      if (resource.synchronous !== undefined && (resource.synchronous !== true || resource.syncFallback || absent(resource.method))) throw new TypeError("Invalid synchronous resource.");
       const args = array(resource.args);
       if (typeof resource.syncFallback !== "boolean" || args.length > 1) throw new TypeError("Invalid async resource.");
       if (absent(resource.method)) {
@@ -420,6 +431,60 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
           throw new TypeError("Invalid async cleanup resolver ownership.");
       }
     }
+  } else if (node.kind === "async-generator-driver") {
+    fields(node, ["kind", "generator", "requests", "phase", "suspension", "awaitKind", "generation"]);
+    const generator = reference(node.generator, ["guest-generator"]);
+    if (generator.async !== true || generator.asyncFunction !== undefined || reference(generator.driver) !== node ||
+        !["idle", "waiting"].includes(String(node.phase)) || !["await", "yield"].includes(String(node.suspension)) ||
+        !["body", "return"].includes(String(node.awaitKind))) throw new TypeError("Invalid async generator driver.");
+    integer(node.generation);
+    if (!Array.isArray(node.requests) || (node.phase === "idle") !== (node.requests.length === 0)) throw new TypeError("Invalid async generator request queue.");
+    if (node.phase === "waiting" && (node.awaitKind === "body"
+      ? generator.state !== "suspended" || generator.awaitPhase === undefined || node.suspension !== "await"
+      : generator.state !== "done")) throw new TypeError("Invalid async generator wait position.");
+    const owners = new Set<object>();
+    for (const value of node.requests) {
+      const request = record(value);
+      fields(request, ["method", "value", "capability"]);
+      if (!["next", "return", "throw"].includes(String(request.method))) throw new TypeError("Invalid async generator request operation.");
+      const capability = record(request.capability);
+      fields(capability, ["promise", "resolve", "reject"]);
+      const owner = reference(capability.promise, ["pending-promise", "guest-promise"]);
+      if (owners.has(owner)) throw new TypeError("Duplicate async generator request owner.");
+      if (reference(owner.generatorOwner, ["async-generator-driver"]) !== node) throw new TypeError("Invalid async generator request ownership.");
+      owners.add(owner);
+      for (const key of ["resolve", "reject"]) {
+        const resolver = reference(capability[key], ["promise-resolver"]);
+        if (reference(resolver.promise) !== owner || (resolver.action !== undefined && resolver.action !== (key === "resolve" ? "fulfilled" : "rejected")))
+          throw new TypeError("Invalid async generator resolver ownership.");
+      }
+    }
+  } else if (node.kind === "async-generator-handler") {
+    fields(node, ["kind", "driver", "owner", "action", "generation", "state"]);
+    const driver = reference(node.driver, ["async-generator-driver"]);
+    const owner = reference(node.owner, ["pending-promise", "guest-promise"]);
+    if (!["fulfilled", "rejected"].includes(String(node.action)) || integer(node.generation) > integer(driver.generation)) throw new TypeError("Invalid async generator handler.");
+    if (driver.phase === "waiting" && node.generation === driver.generation &&
+        reference(record(record((driver.requests as unknown[])[0]).capability).promise) !== owner) throw new TypeError("Invalid async generator active handler owner.");
+    state(node.state);
+  } else if (node.kind === "async-function-driver") {
+    fields(node, ["kind", "generator", "capability", "phase", "generation"]);
+    const generator = reference(node.generator, ["guest-generator"]);
+    if (generator.asyncFunction !== true || !["waiting", "done"].includes(String(node.phase))) throw new TypeError("Invalid async function frame.");
+    integer(node.generation);
+    const capability = record(node.capability);
+    fields(capability, ["promise", "resolve", "reject"]);
+    const owner = reference(capability.promise, ["pending-promise", "guest-promise"]);
+    for (const key of ["resolve", "reject"]) {
+      const resolver = reference(capability[key], ["promise-resolver"]);
+      if (reference(resolver.promise) !== owner || (resolver.action !== undefined && resolver.action !== (key === "resolve" ? "fulfilled" : "rejected")))
+        throw new TypeError("Invalid async function resolver ownership.");
+    }
+  } else if (node.kind === "async-function-handler") {
+    fields(node, ["kind", "driver", "action", "generation", "state"]);
+    const driver = reference(node.driver, ["async-function-driver"]);
+    if ((node.action !== "fulfilled" && node.action !== "rejected") || integer(node.generation) > integer(driver.generation)) throw new TypeError("Invalid async function handler.");
+    state(node.state);
   } else if (node.kind === "async-cleanup-handler") {
     fields(node, ["kind", "cleanup", "action", "generation", "state"]);
     const cleanup = reference(node.cleanup, ["async-cleanup"]);
@@ -565,7 +630,10 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     }
     state(node.state);
   } else if (node.kind === "guest-generator") {
-    fields(node, ["kind", "state", "astNodeId", "async", "scope", "closureScope", "sent"], ["suspendedScope", "yieldNodeId", "environment", "blockScopes", "finallyCompletions", "expressionStates", "objectState"]);
+    fields(node, ["kind", "state", "astNodeId", "async", "scope", "closureScope", "sent"], ["suspendedScope", "yieldNodeId", "environment", "blockScopes", "finallyCompletions", "expressionStates", "objectState", "asyncFunction", "driver", "awaitPhase"]);
+    if (node.asyncFunction !== undefined && (node.asyncFunction !== true || node.async !== false)) throw new TypeError("Invalid async function suspension frame.");
+    if (node.driver !== undefined && (node.async !== true || reference(reference(node.driver, ["async-generator-driver"]).generator) !== node)) throw new TypeError("Invalid async generator frame owner.");
+    if (node.awaitPhase !== undefined && (node.driver === undefined || node.state !== "suspended" || !["await", "yield", "return", "resume-return"].includes(String(node.awaitPhase)))) throw new TypeError("Invalid async generator await phase.");
     if (Object.hasOwn(node, "objectState")) state(node.objectState);
     if (!["start", "running", "suspended", "done"].includes(String(node.state)) || typeof node.async !== "boolean" || integer(node.astNodeId) < 1)
       throw new TypeError("Invalid generator state.");
@@ -601,8 +669,25 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
           if (Object.hasOwn(expression, "referenceKey") && typeof expression.referenceKey !== "string") reference(expression.referenceKey, ["symbol"]);
         } else if (expression.kind === "for-of-array" || expression.kind === "for-of-iterator" || expression.kind === "array-pattern" || expression.kind === "yield-delegate") {
           if (expression.kind === "yield-delegate") {
-            fields(expression, ["kind", "async", "value", "current", "iterator"]);
+            fields(expression, ["kind", "async", "value", "current", "iterator"], ["phase", "awaitState", "completion"]);
             if (typeof expression.async !== "boolean") throw new TypeError("Invalid delegated yield protocol.");
+            if (expression.phase !== undefined) {
+              if (!["await", "close"].includes(String(expression.phase)) || expression.async !== true || node.awaitPhase !== "await" || node.yieldNodeId !== Number(id))
+                throw new TypeError("Invalid delegated iterator wait position.");
+              const completion = record(expression.completion);
+              fields(completion, ["type", "value"]);
+              if (!["normal", "return", "throw"].includes(String(completion.type)) || (expression.phase === "close" && completion.type !== "throw"))
+                throw new TypeError("Invalid delegated iterator completion.");
+              const awaiting = record(expression.awaitState);
+              if (awaiting.kind === "result") fields(awaiting, ["kind"]);
+              else if (awaiting.kind === "value") {
+                fields(awaiting, ["kind", "done", "closeOnReject"]);
+                if (typeof awaiting.done !== "boolean" || typeof awaiting.closeOnReject !== "boolean" ||
+                    awaiting.closeOnReject !== (expression.phase === "await" && completion.type !== "return" && !awaiting.done))
+                  throw new TypeError("Invalid delegated async-from-sync continuation.");
+              } else throw new TypeError("Invalid delegated iterator await kind.");
+            } else if (expression.awaitState !== undefined || expression.completion !== undefined)
+              throw new TypeError("Unexpected delegated iterator continuation fields.");
           } else if (expression.kind === "array-pattern") {
             fields(expression, ["kind", "phase", "index", "done", "current", "iterator"], ["referenceObject", "referenceKey", "privateName"]);
             if (expression.privateName !== undefined && (typeof expression.privateName !== "string" || !Object.hasOwn(expression, "referenceObject"))) throw new TypeError("Invalid private pattern reference.");
@@ -611,8 +696,26 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
             if (Object.hasOwn(expression, "referenceKey") && typeof expression.referenceKey !== "string") reference(expression.referenceKey, ["symbol"]);
           } else {
             fields(expression, ["kind", "phase", "current", "index", "scope",
-            ...(expression.kind === "for-of-array" ? ["values"] : ["value", "iterator", "async"])]);
-            if (!["left", "body"].includes(String(expression.phase))) throw new TypeError("Invalid for-of phase.");
+            ...(expression.kind === "for-of-array" ? ["values"] : ["value", "iterator", "async"])], ["awaitState", "closeCompletion"]);
+            if (!["left", "body", "next", "close"].includes(String(expression.phase))) throw new TypeError("Invalid for-of phase.");
+            if (expression.phase === "next" || expression.phase === "close") {
+              if (expression.kind !== "for-of-iterator" || expression.async !== true) throw new TypeError("Invalid async iterator suspension.");
+              const awaiting = record(expression.awaitState);
+              if (awaiting.kind === "result") fields(awaiting, ["kind"]);
+              else if (awaiting.kind === "value") {
+                fields(awaiting, ["kind", "done", "closeOnReject"]);
+                if (typeof awaiting.done !== "boolean" || typeof awaiting.closeOnReject !== "boolean" || awaiting.closeOnReject !== (expression.phase === "next" && !awaiting.done))
+                  throw new TypeError("Invalid async-from-sync continuation.");
+              } else throw new TypeError("Invalid iterator await kind.");
+            } else if (Object.hasOwn(expression, "awaitState")) throw new TypeError("Unexpected iterator await state.");
+            if (expression.phase === "close") {
+              const completion = record(expression.closeCompletion);
+              fields(completion, ["kind", "hasValue", "value"], ["span", "stackFrames", "label"]);
+              if (!["normal", "return", "throw", "break", "continue"].includes(String(completion.kind)) || typeof completion.hasValue !== "boolean")
+                throw new TypeError("Invalid iterator close completion.");
+              if (completion.label !== undefined && typeof completion.label !== "string") throw new TypeError("Invalid iterator close label.");
+              if (completion.stackFrames !== undefined && array(completion.stackFrames).some(frame => typeof frame !== "string")) throw new TypeError("Invalid iterator close stack.");
+            } else if (Object.hasOwn(expression, "closeCompletion")) throw new TypeError("Unexpected iterator close completion.");
             reference(expression.scope, ["scope-frame"]);
           }
           if (expression.kind !== "yield-delegate") integer(expression.index);
@@ -627,6 +730,10 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
               iterator = record(iterator.inner);
               protocol = true;
             }
+            if (((expression.kind === "for-of-iterator" && (expression.phase === "next" || expression.phase === "close")) ||
+                 (expression.kind === "yield-delegate" && expression.phase !== undefined)) &&
+                record(expression.awaitState).kind !== (depth === 1 ? "value" : "result"))
+              throw new TypeError("Iterator await state does not match its adapter.");
             if (iterator.kind === "guest") {
               fields(iterator, ["kind", "value", "next", "async"]);
               if (typeof iterator.async !== "boolean") throw new TypeError("Invalid iterator protocol.");
@@ -669,7 +776,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
           reference(expression.scope, ["scope-frame"]);
         } else if (expression.kind === "for") {
           fields(expression, ["kind", "phase", "loopScope", "activeScope"]);
-          if (!["init", "test", "body", "update"].includes(String(expression.phase))) throw new TypeError("Invalid for-loop phase.");
+          if (!["init", "test", "body", "update", "dispose"].includes(String(expression.phase))) throw new TypeError("Invalid for-loop phase.");
           reference(expression.loopScope, ["scope-frame"]);
           reference(expression.activeScope, ["scope-frame"]);
         } else if (expression.kind === "identifier-assignment") {
@@ -732,7 +839,8 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       if (Object.hasOwn(environment, "construction")) reference(environment.construction, ["construction-environment"]);
     }
   } else {
-    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames"]);
+    fields(node, ["kind", "parent", "importMeta", "functionBoundary", "chargeData", "bindings", "cells"], ["restoredBindings", "privateNames", "resourceState"]);
+    if (node.resourceState !== undefined) reference(node.resourceState, ["object"]);
     if (node.privateNames !== undefined) {
       const names = new Set<string>();
       for (const raw of array(node.privateNames)) {
