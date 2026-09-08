@@ -3,7 +3,7 @@ import { isNumber, numberValue, type Numeric } from "./numbers.js";
 import { JqParseError, parseJson, stringify } from "./input.js";
 import type { Ast } from "./parser.js";
 import { splitString } from "./split.js";
-import { binary, compare, contains, describe, entries, equal, indexValue, sliceValue, stringCompare, type } from "./values.js";
+import { binary, compare, contains, describe, entries, equal, indexValue, sliceValue, sortedKeys, stableSort, type } from "./values.js";
 
 type Path = (string | number)[];
 interface Frame { readonly name: string; readonly value: Json; readonly parent: Frame | undefined; readonly depth: number }
@@ -126,7 +126,7 @@ export class Interpreter {
         }
         for await (const right of this.run(ast.right, input)) {
           for await (const left of this.run(ast.left, input)) {
-            const result = binary(operator, left, right, this.budget);
+            const result = await binary(operator, left, right, this.budget);
             this.budget.value(result); yield result;
           }
         }
@@ -216,7 +216,7 @@ export class Interpreter {
         for await (const path of this.paths(left, input)) {
           let previous = result;
           for (const key of path) previous = indexValue(previous, key);
-          const assigned = operator === "=" ? value : operator === "//=" ? truth(previous) ? previous : value : binary(operator.slice(0, -1), previous, value, this.budget);
+          const assigned = operator === "=" ? value : operator === "//=" ? truth(previous) ? previous : value : await binary(operator.slice(0, -1), previous, value, this.budget);
           result = this.set(result, path, assigned); this.budget.value(result);
         }
         yield result;
@@ -235,10 +235,10 @@ export class Interpreter {
       if (value === deleted) deletions.push(path);
       else { result = this.set(result, path, value); this.budget.value(result); }
     }
-    deletions.sort((first, second) => -compare(first, second, this.budget));
+    await stableSort(deletions, this.budget, async (first, second) => -await compare(first, second, this.budget));
     let lastDeletion: Path | undefined;
     for (const path of deletions) {
-      if (!lastDeletion || compare(lastDeletion, path, this.budget) !== 0) result = this.set(result, path, deleted);
+      if (!lastDeletion || await compare(lastDeletion, path, this.budget) !== 0) result = this.set(result, path, deleted);
       lastDeletion = path;
     }
     this.budget.value(result); yield result;
@@ -277,7 +277,7 @@ export class Interpreter {
     }
     if (name === "keys" || name === "keys_unsorted") {
       if (Array.isArray(input)) yield input.map((_, index) => index);
-      else if (isObject(input)) yield name === "keys" ? objectKeys(input).sort(stringCompare) : objectKeys(input);
+      else if (isObject(input)) yield name === "keys" ? await sortedKeys(input, budget) : objectKeys(input);
       else throw new JqError("keys requires an object or array");
       return;
     }
@@ -325,12 +325,12 @@ export class Interpreter {
         for (const [, item] of entries(input, budget)) {
           await budget.tick();
           if (!first && separator !== null) {
-            if (typeof separator !== "string") binary("+", result, separator, budget);
+            if (typeof separator !== "string") await binary("+", result, separator, budget);
             if (typeof separator !== "string") throw new JqError("join separator must be a string or null when used");
             append(separator, separatorBytes);
           }
           first = false;
-          if (isObject(item) || Array.isArray(item)) binary("+", result, item, budget);
+          if (isObject(item) || Array.isArray(item)) await binary("+", result, item, budget);
           const text = item === null ? "" : typeof item === "string" ? item : stringify(item, budget);
           append(text, budget.value(text));
         }
@@ -429,7 +429,7 @@ export class Interpreter {
     if (name === "reverse") { yield [...input].reverse(); return; }
     if (name === "add") {
       let result: Json = null;
-      for (const item of input) { await budget.tick(); result = binary("+", result, item, budget); budget.value(result); }
+      for (const item of input) { await budget.tick(); result = await binary("+", result, item, budget); budget.value(result); }
       yield result; return;
     }
     const keyed: { key: Json; value: Json }[] = [];
@@ -440,7 +440,7 @@ export class Interpreter {
       if (keyBytes > budget.limits.maxValueBytes) throw new JqLimitError("maxValueBytes");
       keyed.push({ value, key });
     }
-    keyed.sort((left, right) => compare(left.key, right.key, budget));
+    await stableSort(keyed, budget, (left, right) => compare(left.key, right.key, budget));
     if (name === "min" || name === "min_by" || name === "max" || name === "max_by") { yield keyed[name.startsWith("min") ? 0 : keyed.length - 1]?.value ?? null; return; }
     if (name === "sort" || name === "sort_by") { yield keyed.map(item => item.value); return; }
     if (name === "unique" || name === "unique_by") { yield keyed.filter((item, index) => index === 0 || !equal(item.key, keyed[index - 1]!.key, budget)).map(item => item.value); return; }

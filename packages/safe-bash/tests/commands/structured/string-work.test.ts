@@ -127,32 +127,32 @@ test("string work rejects scalar validation before text measurement or serializa
   assert.equal(serialize.mock.callCount(), 0);
 });
 
-test("string work charges concatenation UTF-16 units plus the structural step", context => {
+test("string work charges concatenation UTF-16 units plus the structural step", async context => {
   for (const [left, right] of [["", ""], ["é", "😀"], ["\n", "\"\\"], ["\ud800", "\udc00"]] as const) {
     const units = left.length + right.length;
     const budget = new Budget(resolveJqLimits({ maxSteps: units + 1 }), new AbortController().signal);
     const step = context.mock.method(budget, "step");
     const text = context.mock.method(budget, "text");
-    assert.equal(binary("+", left, right, budget), left + right);
+    assert.equal(await binary("+", left, right, budget), left + right);
     assert.deepEqual(step.mock.calls.map(call => call.arguments[0] ?? 1), [1, units]);
     assert.equal(text.mock.callCount(), 1);
     assert.equal(text.mock.calls[0]!.arguments[0], left + right);
   }
 });
 
-test("string work rejects concatenation before result validation or byte measurement", context => {
+test("string work rejects concatenation before result validation or byte measurement", async context => {
   const measure = context.mock.method(Buffer, "byteLength");
   for (const maxSteps of [1, 40]) {
     const budget = new Budget(resolveJqLimits({ maxSteps }), new AbortController().signal);
     const text = context.mock.method(budget, "text");
-    assert.throws(() => binary("+", "x".repeat(20), "x".repeat(20), budget),
+    await assert.rejects(binary("+", "x".repeat(20), "x".repeat(20), budget),
       error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded");
     assert.equal(text.mock.callCount(), 0);
   }
   assert.equal(measure.mock.callCount(), 0);
 });
 
-test("string work preserves exact value byte limits when work is admitted", () => {
+test("string work preserves exact value byte limits when work is admitted", async () => {
   for (const text of ["é😀", "\n\"\\", "\u0000"]) {
     const bytes = Buffer.byteLength(JSON.stringify(text));
     const limits = { maxSteps: text.length + 1, maxValueBytes: bytes };
@@ -161,27 +161,27 @@ test("string work preserves exact value byte limits when work is admitted", () =
       error => error instanceof JqLimitError && error.message === "maxValueBytes limit exceeded");
   }
   const budget = new Budget(resolveJqLimits({ maxSteps: 4, maxValueBytes: 5 }), new AbortController().signal);
-  assert.throws(() => binary("+", "é", "😀", budget),
+  await assert.rejects(binary("+", "é", "😀", budget),
     error => error instanceof JqLimitError && error.message === "maxValueBytes limit exceeded");
 });
 
-test("string work does not recalibrate object keys or non-string addition", () => {
+test("string work does not recalibrate object keys or non-string addition", async () => {
   const signal = new AbortController().signal;
   const key = "x".repeat(40);
   assert.equal(new Budget(resolveJqLimits({ maxSteps: 2 }), signal).value({ [key]: null }), 49);
   const merged = Object.assign(Object.create(null) as Record<string, Json>, { key: 2 });
   const cases: [Json, Json, Json][] = [[1, 2, 3], [null, "abc", "abc"], ["abc", null, "abc"], [[1], [2], [1, 2]], [{ key: 1 }, { key: 2 }, merged]];
   for (const [left, right, expected] of cases) {
-    assert.deepEqual(binary("+", left, right, new Budget(resolveJqLimits({ maxSteps: 1 }), signal)), expected);
+    assert.deepEqual(await binary("+", left, right, new Budget(resolveJqLimits({ maxSteps: 1 }), signal)), expected);
   }
 });
 
-test("string work admission precedes size errors when both limits are exhausted", () => {
+test("string work admission precedes size errors when both limits are exhausted", async () => {
   const limits = resolveJqLimits({ maxSteps: 2, maxValueBytes: 1 });
   const signal = new AbortController().signal;
   assert.throws(() => new Budget(limits, signal).value("xx"),
     error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded");
-  assert.throws(() => binary("+", "x", "x", new Budget(limits, signal)),
+  await assert.rejects(binary("+", "x", "x", new Budget(limits, signal)),
     error => error instanceof JqLimitError && error.message === "maxSteps limit exceeded");
 });
 
