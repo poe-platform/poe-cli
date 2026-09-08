@@ -244,6 +244,7 @@ describe("Math.f16round independent review", () => {
         EvalError: { kind: "fn", name: "EvalError" },
         SuppressedError: { kind: "fn", name: "SuppressedError" },
         DisposableStack: { kind: "fn", name: "DisposableStack" },
+        AsyncDisposableStack: { kind: "fn", name: "AsyncDisposableStack" },
         encodeURI: { kind: "fn", name: "encodeURI" },
         encodeURIComponent: { kind: "fn", name: "encodeURIComponent" },
         decodeURI: { kind: "fn", name: "decodeURI" },

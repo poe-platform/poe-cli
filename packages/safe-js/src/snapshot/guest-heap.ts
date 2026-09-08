@@ -17,6 +17,7 @@ import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iter
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { disposableStackStates } from "../interp/disposable-stack.js";
+import { asyncDisposableStackStates, asyncCleanupStates, asyncCleanupHandlers, type AsyncDisposableResource } from "../interp/async-disposable-stack.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
@@ -40,6 +41,13 @@ import { mapIteratorSnapshot, type IteratorSnapshot } from "../interp/iteration.
 
 export type GeneratorFinallyCompletion<T> = Omit<CompletionResult, "value" | "node" | "stackFrames"> & { value: T; nodeId?: number; stackFrames?: string[] };
 
+export type AsyncResourceData<T> = {method: T; receiver: T; args: T[]; syncFallback: boolean};
+
+function captureAsyncResources<T>(resources: AsyncDisposableResource[], encode: (value: unknown) => T): AsyncResourceData<T>[] {
+  return resources.map(resource => ({method: encode(resource.method), receiver: encode(resource.receiver),
+    args: resource.args.map(encode), syncFallback: resource.syncFallback}));
+}
+
 export type GuestObjectState<T> = {
   properties: PropertyDescriptorData<T>;
   prototype?: T;
@@ -51,6 +59,9 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | {kind: "async-disposable-stack"; disposed: boolean; resources: AsyncResourceData<T>[]; state: GuestObjectState<T>}
+  | {kind: "async-cleanup"; resources: AsyncResourceData<T>[]; capability: {promise: T; resolve: T; reject: T}; phase: "waiting" | "done"; failed: boolean; failure: T; needsAwait: boolean; hasAwaited: boolean; generation: number}
+  | {kind: "async-cleanup-handler"; cleanup: T; action: "fulfilled" | "rejected"; generation: number; state: GuestObjectState<T>}
   | { kind: "disposable-stack"; disposed: boolean; resources: Array<{method: T; receiver: T; args: T[]}>; state: GuestObjectState<T> }
   | {kind: "thenable-state"; source: T; owner: T; completed: boolean; settlement?: {state: "fulfilled" | "rejected"; value: T}}
   | {kind: "thenable-resolver"; continuation: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T>}
@@ -108,6 +119,20 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const asyncStack = asyncDisposableStackStates.get(value);
+  if (asyncStack !== undefined) return {kind: "async-disposable-stack", disposed: asyncStack.disposed,
+    resources: captureAsyncResources(asyncStack.resources, encode), state: captureObjectState(value, encode)!};
+  const cleanup = asyncCleanupStates.get(value);
+  if (cleanup !== undefined) {
+    if (cleanup.phase === "running") throw new SnapshotNotReadyError("Cannot snapshot an active async cleanup invocation.");
+    return {kind: "async-cleanup", resources: captureAsyncResources(cleanup.resources, encode),
+      capability: {promise: encode(cleanup.capability.promise), resolve: encode(cleanup.capability.resolve), reject: encode(cleanup.capability.reject)},
+      phase: cleanup.phase, failed: cleanup.failed, failure: encode(cleanup.failure), needsAwait: cleanup.needsAwait,
+      hasAwaited: cleanup.hasAwaited, generation: cleanup.generation};
+  }
+  const cleanupHandler = isSandboxClosure(value) ? asyncCleanupHandlers.get(value) : undefined;
+  if (cleanupHandler !== undefined) return {kind: "async-cleanup-handler", cleanup: encode(cleanupHandler.cleanup),
+    action: cleanupHandler.action, generation: cleanupHandler.generation, state: captureObjectState(value, encode)!};
   const disposable = disposableStackStates.get(value);
   if (disposable !== undefined) {
     if (disposable.active) throw new SnapshotNotReadyError("Cannot snapshot active synchronous resource cleanup.");

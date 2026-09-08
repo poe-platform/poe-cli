@@ -2,6 +2,7 @@ import { numericTypedArrayConstructors } from "../../interp/typed-array-construc
 
 export const KNOWN_RUNTIME_GLOBALS = [
   "AggregateError",
+  "AsyncDisposableStack",
   "Array",
   "ArrayBuffer",
   "DataView",

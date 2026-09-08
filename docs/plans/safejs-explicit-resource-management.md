@@ -51,3 +51,25 @@ Verification: 59 focused checks passed with one existing skip. The full maintain
 The built candidate still returns `undefined` for `typeof AsyncDisposableStack`. A Node 24.14 control confirms that a synchronous fallback disposer returning a permanently pending promise does not hold up async cleanup, while the ordinary async callbacks are awaited sequentially. Calling disposeAsync with an invalid receiver returns a rejected promise rather than throwing synchronously.
 
 Use the existing pending promise capabilities and represented reactions for cleanup continuation ownership. Retain and serialize the remaining resources, current failure, completion capability, and resume handler. Do not implement the async stack solely as a native async closure whose pending execution cannot survive snapshots. Capture nullish registrations because they can require an await turn even without a method. See [GetDisposeMethod](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-getdisposemethod).
+
+## AsyncDisposableStack delivery evidence
+
+Six lifecycle tests initially failed on the missing global. The candidate adds a separate async brand, captured async/sync-fallback resources, sequential promise-based cleanup, suppressed-error chaining, move, nullish registrations, and rejected promises for invalid disposeAsync receivers. Repeated disposal returns a fresh fulfilled promise without waiting for the first pending disposal. Synchronous fallbacks ignore returned promises but translate synchronous throws into an awaited rejection.
+
+Cleanup uses explicit state and generation-checked reaction handlers linked to its completion promise. Idle stacks, pending successful cleanup, and pending rejection after an earlier failure now round-trip through JSON snapshots. These three snapshot tests failed before private-state encoding was implemented. Active invocation phases defer snapshots; waiting phases are serializable.
+
+Separate failing tests reproduced missing private-resource charges and structured-clone ownership erasure. Snapshot tampering tests also showed that redirected producer ownership and foreign promise resolvers were accepted; validation now checks both relationships. The maintained legacy graph tests enumerate the new global explicitly without changing their graph-comparison helper or fixtures.
+
+The fatal-budget control uses an explicit `Budget({maxSteps:1000})` and verifies rejection with SandboxError. Earlier attempts mistakenly passed step limits through the unrelated RealmLimits option, leaving the test loop unbounded; those two test processes were stopped, and the test was corrected to use the maintained Budget API. No execution timeout was increased.
+
+The selected-workspace build passed its 23-workspace closure and four fresh-import checks. Node 18.18 built-runtime checks passed sequential async disposal and the non-awaited synchronous fallback. A direct comparison with Node 24.14 produced identical disposer-prefix/caller/continuation ordering (`1, 2, 3`); that ordering is also covered by a maintained unit test.
+
+Final verification: the full SafeJS package suite passed 19,787 tests with 41 skips across 654 passing files and one skipped file (389.5 seconds). Only the two documented host-promise-property and weak-collection gap files were excluded. Changed-file lint passed. A separate Node 18.18 built-runtime probe restored pending async cleanup from JSON and completed each disposer once in order.
+
+## Resource-declaration integration still required
+
+The parser's VariableDeclarationKind and declaration entry points currently accept only const/let/var. Both ordinary block evaluation and exception-block evaluation return abrupt completions directly, without lexical resource cleanup. Adding constructors does not address either gap.
+
+Implement contextual using/await using grammar without making ordinary identifiers named using illegal. Enforce declaration early errors and immutable bindings, capture each disposer during binding initialization, and attach resource ownership to the lexical environment. Dispose on normal and abrupt exits, but not on a generator suspension. Restore ownership with suspended scopes and preserve the original completion when cleanup succeeds; combine errors when both the body and cleanup throw. Loop heads and iteration-local lifetime require their own tests. See [resource declarations](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-let-and-const-declarations).
+
+An additional built-runtime comparison found both `Iterator.prototype[Symbol.dispose]` and an async generator's inherited `Symbol.asyncDispose` method undefined in SafeJS, while Node 24.14 exposes both as functions. These iterator protocol methods need a separate validated improvement; stack constructors and declaration syntax alone will not provide standard iterator cleanup.

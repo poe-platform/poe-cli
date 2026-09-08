@@ -19,6 +19,7 @@ import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js"
 import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
 import { iteratorWrapperStates } from "./iterator-wrapper.js";
 import { disposableStackStates } from "./disposable-stack.js";
+import { asyncDisposableStackStates } from "./async-disposable-stack.js";
 import { iteratorHelperStates } from "./iterator-helper.js";
 import { privateElements } from "./private-state.js";
 import { regexpIteratorState, isSandboxRegExpIterator, restoreSandboxRegExpIterator, type SandboxRegExpIterator } from "./regexp-iterator.js";
@@ -587,7 +588,7 @@ export function* cloneStructuredGraph(
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
   if (iteratorHelperStates.has(value) || iteratorWrapperStates.has(value))
     throw new DOMException("Iterator objects cannot be structured cloned.", "DataCloneError");
-  if (disposableStackStates.has(value))
+  if (disposableStackStates.has(value) || asyncDisposableStackStates.has(value))
     throw new DOMException("Disposable stacks cannot be structured cloned.", "DataCloneError");
   if (isLiveCapability(value)) throw new DOMException("Capabilities cannot be structured cloned.", "DataCloneError");
   const existing = state.seen.get(value);
@@ -698,6 +699,8 @@ export function measureSandboxData(
     usage += 1;
     const disposableResources = disposableStackStates.get(value)?.resources.map(resource =>
       [resource.method, resource.receiver, ...resource.args]);
+    const asyncDisposableResources = asyncDisposableStackStates.get(value)?.resources.map(resource =>
+      [resource.method, resource.receiver, ...resource.args]);
     const arrayLength = Array.isArray(value) ? value.length : undefined;
     const managedArray = arrayLength !== undefined && hasManagedDescriptors(value);
     let arrayDescriptors: Array<readonly [string, PropertyDescriptor]> | undefined;
@@ -774,6 +777,10 @@ export function measureSandboxData(
     if (disposableResources !== undefined) {
       usage += disposableResources.length;
       for (const resource of disposableResources) for (const retained of resource) visit(retained, depth + 1);
+    }
+    if (asyncDisposableResources !== undefined) {
+      usage += asyncDisposableResources.length;
+      for (const resource of asyncDisposableResources) for (const retained of resource) visit(retained, depth + 1);
     }
     if (wrapperState !== undefined) {
       visit(wrapperState.iterator, depth + 1);

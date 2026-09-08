@@ -40,6 +40,7 @@ import { restoreSandboxArrayIterator } from "../interp/array-iterator.js";
 import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
 import { disposableStackStates } from "../interp/disposable-stack.js";
+import { asyncDisposableStackStates, asyncCleanupStates, createAsyncCleanupHandler, type AsyncCleanupState, type AsyncDisposableResource } from "../interp/async-disposable-stack.js";
 import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
@@ -55,6 +56,16 @@ import { SandboxJobQueue } from "../interp/jobs.js";
 import { symbolRegistryOrigins } from "../interp/symbol-registry.js";
 import { isSandboxPromise, getPromiseProperties } from "../interp/values.js";
 import type { PrivateElementData } from "./guest-heap.js";
+import type { AsyncResourceData } from "./guest-heap.js";
+
+function restoreAsyncResources(resources: AsyncResourceData<SerializedSnapshotValue>[], state: RestoreState): AsyncDisposableResource[] {
+  return resources.map(resource => {
+    const method = deserializeValue(resource.method, state);
+    if (method !== undefined && !isSandboxClosure(method)) throw new TypeError("Invalid async disposer.");
+    return {method, receiver: deserializeValue(resource.receiver, state) as SandboxValue,
+      args: resource.args.map(arg => deserializeValue(arg, state) as SandboxValue), syncFallback: resource.syncFallback};
+  });
+}
 
 function restorePrivateElements<T>(entries: PrivateElementData<T>[], decode: (entry: T) => SandboxValue): Map<PrivateName, PrivateElement> {
   const result = new Map<PrivateName, PrivateElement>();
@@ -958,6 +969,36 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     });
     return generator;
   }
+  if (serialized.kind === "async-cleanup") {
+    const cleanup = {} as AsyncCleanupState;
+    state.heapValueById.set(id, cleanup as unknown as RuntimeSnapshotValue);
+    asyncCleanupStates.set(cleanup, cleanup);
+    state.initializeIterators.push(() => {
+      const promise = deserializeValue(serialized.capability.promise, state);
+      const resolve = deserializeValue(serialized.capability.resolve, state);
+      const reject = deserializeValue(serialized.capability.reject, state);
+      if (!isSandboxPromise(promise) || !isSandboxClosure(resolve) || !isSandboxClosure(reject)) throw new TypeError("Invalid async cleanup capability.");
+      Object.assign(cleanup, {resources: restoreAsyncResources(serialized.resources, state), capability: {promise, resolve, reject},
+        phase: serialized.phase, failed: serialized.failed, failure: deserializeValue(serialized.failure, state),
+        needsAwait: serialized.needsAwait, hasAwaited: serialized.hasAwaited, generation: serialized.generation});
+    });
+    return cleanup as unknown as RuntimeSnapshotValue;
+  }
+  if (serialized.kind === "async-cleanup-handler") {
+    const value = deserializeValue(serialized.cleanup, state);
+    const cleanup = value !== null && typeof value === "object" ? asyncCleanupStates.get(value) : undefined;
+    if (cleanup === undefined) throw new TypeError("Invalid async cleanup handler.");
+    const handler = createAsyncCleanupHandler(cleanup, serialized.action, state.budget, undefined, serialized.generation);
+    state.heapValueById.set(id, handler);
+    state.initializeIterators.push(() => {
+      const objectState = serialized.state;
+      if (objectState.prototype !== undefined) setSandboxPrototype(handler, deserializeValue(objectState.prototype, state) as object | null, state.budget);
+      restorePropertyDescriptors(materializeFunctionProperties(handler), objectState.properties, entry => deserializeValue(entry as SerializedSnapshotValue, state));
+      if (objectState.privateElements !== undefined) privateElements.set(handler,
+        restorePrivateElements(objectState.privateElements, entry => deserializeValue(entry, state) as SandboxValue));
+    });
+    return handler;
+  }
   if (serialized.kind === "promise-aggregate") {
     const aggregate = {} as PromiseAggregateState;
     state.heapValueById.set(id, aggregate as unknown as RuntimeSnapshotValue);
@@ -1021,7 +1062,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1215,6 +1256,9 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
           args: resource.args.map(arg => deserializeValue(arg, state) as SandboxValue)};
       });
       disposableStackStates.set(value as object, {disposed: serialized.disposed, active: false, resources});
+    }
+    if (serialized.kind === "async-disposable-stack") {
+      asyncDisposableStackStates.set(value as object, {disposed: serialized.disposed, resources: restoreAsyncResources(serialized.resources, state)});
     }
     if (serialized.kind === "string-iterator") {
       const input = deserializeValue(serialized.input, state);

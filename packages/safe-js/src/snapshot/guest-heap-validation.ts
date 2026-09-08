@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -84,7 +84,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   };
   const callable = (value: unknown) => {
     if (absent(value)) return;
-    const target = reference(value, ["thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
+    const target = reference(value, ["async-cleanup-handler", "thenable-resolver", "aggregate-handler", "capability-executor", "intrinsic", "bound-function", "promise-resolver", "guest-function", "guest-class"]);
     if (target.kind === "intrinsic" && intrinsicCatalogue().get(String(target.id)) !== true)
       throw new TypeError("Guest accessor reference is not callable.");
   };
@@ -284,6 +284,10 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
             const state = reference(entry.aggregate, ["promise-aggregate"]);
             owner = reference(record(state.capability).promise);
           }
+          else if (handler.kind === "async-cleanup-handler") {
+            const cleanup = reference(handler.cleanup, ["async-cleanup"]);
+            owner = reference(record(cleanup.capability).promise);
+          }
           if (owner !== undefined && owner !== aggregate) throw new TypeError("Invalid promise aggregate handler ownership.");
         }
       }
@@ -382,6 +386,45 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       callable(resource.method);
       if (array(resource.args).length > 1) throw new TypeError("Invalid disposer arguments.");
     }
+    state(node.state);
+  } else if (node.kind === "async-disposable-stack" || node.kind === "async-cleanup") {
+    fields(node, node.kind === "async-disposable-stack" ? ["kind", "disposed", "resources", "state"] :
+      ["kind", "resources", "capability", "phase", "failed", "failure", "needsAwait", "hasAwaited", "generation"]);
+    const resources = array(node.resources);
+    if (resources.length > maxArrayLength) throw new TypeError("Too many async resources.");
+    for (const rawResource of resources) {
+      const resource = record(rawResource);
+      fields(resource, ["method", "receiver", "args", "syncFallback"]);
+      const args = array(resource.args);
+      if (typeof resource.syncFallback !== "boolean" || args.length > 1) throw new TypeError("Invalid async resource.");
+      if (absent(resource.method)) {
+        if (!absent(resource.receiver) || args.length !== 0 || resource.syncFallback) throw new TypeError("Invalid nullish resource.");
+      } else callable(resource.method);
+    }
+    if (node.kind === "async-disposable-stack") {
+      if (typeof node.disposed !== "boolean") throw new TypeError("Invalid async stack state.");
+      state(node.state);
+    } else {
+      if (!["waiting", "done"].includes(String(node.phase)) || typeof node.failed !== "boolean" ||
+          typeof node.needsAwait !== "boolean" || typeof node.hasAwaited !== "boolean" || (!node.failed && !absent(node.failure)))
+        throw new TypeError("Invalid async cleanup state.");
+      integer(node.generation);
+      const capability = record(node.capability);
+      fields(capability, ["promise", "resolve", "reject"]);
+      const owner = reference(capability.promise, ["pending-promise", "guest-promise"]);
+      for (const key of ["resolve", "reject"]) {
+        if (absent(capability[key])) throw new TypeError("Missing cleanup resolver.");
+        const resolver = reference(capability[key], ["promise-resolver"]);
+        if (reference(resolver.promise) !== owner ||
+            (resolver.action !== undefined && resolver.action !== (key === "resolve" ? "fulfilled" : "rejected")))
+          throw new TypeError("Invalid async cleanup resolver ownership.");
+      }
+    }
+  } else if (node.kind === "async-cleanup-handler") {
+    fields(node, ["kind", "cleanup", "action", "generation", "state"]);
+    const cleanup = reference(node.cleanup, ["async-cleanup"]);
+    if ((node.action !== "fulfilled" && node.action !== "rejected") || integer(node.generation) > integer(cleanup.generation))
+      throw new TypeError("Invalid async cleanup handler.");
     state(node.state);
   } else if (node.kind === "intrinsic") {
     fields(node, ["kind", "id"], ["state", "symbolRegistry"]);

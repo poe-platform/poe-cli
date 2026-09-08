@@ -47,7 +47,7 @@ export function isPromiseResolvingFunction(value: unknown): value is SandboxClos
   return isSandboxClosure(value) && promiseResolvingFunctions.has(value);
 }
 
-export function createPendingPromiseCapability(budget: Budget, context?: SandboxCallContext): {
+export function createPendingPromiseCapability(budget: Budget, context?: SandboxCallContext, synchronousPrefix?: Promise<void>): {
   promise: SandboxPromise; resolve: SandboxClosure; reject: SandboxClosure;
   fulfill: (value: SandboxValue | PromiseLike<SandboxValue>) => void; rejectNative: (reason: unknown) => void
 } {
@@ -56,7 +56,7 @@ export function createPendingPromiseCapability(budget: Budget, context?: Sandbox
   const promise = createSandboxPromise(new Promise<SandboxValue>((resolve, rejectPromise) => {
     fulfill = resolve;
     reject = rejectPromise;
-  }), {span: context?.span});
+  }), {span: context?.span, synchronousPrefix});
   const resolverState = {promise, settled: false};
   const continuation: Extract<PromiseContinuation, {kind: "capability"}> = {kind: "capability", state: resolverState};
   trackPromiseContinuation(promise, continuation);
