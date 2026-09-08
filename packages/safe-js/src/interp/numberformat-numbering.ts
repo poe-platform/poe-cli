@@ -4,6 +4,17 @@ type LocaleData = Parameters<typeof NumberFormat.__addLocaleData>[0]["data"];
 const NativeNumberFormat = Intl.NumberFormat;
 
 export function localizeNumberParts<T extends { type: string; value: string }>(parts: T[], locale: string, options: Record<string, string | number | boolean>): T[] {
+  parts = parts.flatMap(part => {
+    if (part.type !== "minusSign" && part.type !== "plusSign") return [part];
+    const separated: T[] = [];
+    for (const char of part.value) {
+      const type = ["\u061c", "\u200e", "\u200f"].includes(char) ? "literal" : part.type;
+      const previous = separated.at(-1);
+      if (previous?.type === type) previous.value += char;
+      else separated.push({ ...part, type, value: char });
+    }
+    return separated;
+  });
   const numberingSystem = options.numberingSystem as string;
   const pluralType = options.style === "unit" ? "unit" : options.style === "currency" && options.currencyDisplay === "name" ? "currency" : undefined;
   const integralPlural = pluralType !== undefined && options.notation === "standard" && !parts.some(part => part.type === "fraction");
