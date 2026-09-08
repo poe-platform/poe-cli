@@ -1128,7 +1128,7 @@ export function copyHostValueToSandbox(
     return sandboxPromise;
   }
 
-  if (Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype) {
+  if (Array.isArray(value)) {
     const existing = state.seen.get(value);
     if (existing !== undefined) {
       return existing;
