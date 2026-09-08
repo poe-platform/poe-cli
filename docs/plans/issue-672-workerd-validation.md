@@ -4,9 +4,16 @@
 
 On September 8, 2026, **29/29 cases passed in actual workerd with compatibility
 flags empty** for the freshly built and offline-installed candidate from
-`891ea4bda33493d296754fc5ac5dec9a8ea4ead3`, version `0.0.0-issue672-final`.
+`343ddf932d83d9e4338032e83aa99a358744b21b`, version `0.0.0-issue672-delivery`.
 This is installed-artifact evidence, not merely a source bundle or VM test.
 Any subsequent artifact change requires fresh admission and execution.
+
+This v3 admission follows the archive undefined-producer repair and fixture
+integration. The earlier `c84a65569126063264eb437b169cdfdd2e7ced95` and
+`891ea4bda33493d296754fc5ac5dec9a8ea4ead3` results remain preserved intermediate
+evidence, not substitutes for this run. The v3 post-run receipt was recorded at
+19:17:53 UTC. The document update waited for
+`/tmp/kamilio-672-delivery-v3-lint.exit` to report zero.
 
 This sidecar owns only this document and uniquely owned temporary QA artifacts.
 Product, maintained tests, public fixtures, manifests, build scripts, and Git
@@ -188,28 +195,46 @@ explain any temporary probe correction separately from product failures.
 
 ## Evidence and handoff
 
-- Consumer: `/tmp/kamilio-672-final-public.9fN5rf/consumer`; matching commit and
-  version are recorded above. The complete normal workspace build passed.
+- Consumer: `/tmp/kamilio-672-delivery-v3-public.IBqcAs/consumer`; its `../head`
+  matches `/tmp/kamilio-672-delivery-v3.head` and the full commit above. Root
+  reports the complete normal workspace build passed and all three fresh
+  tarballs were installed offline with lifecycle scripts disabled.
 - Receipt directory:
-  `/tmp/kamilio-672-workerd-qa.MrAWhd/candidate-WWePiT/run-j2u3rc/`;
+  `/tmp/kamilio-672-workerd-qa.MrAWhd/candidate-hRFehR/run-GnakOn/`;
   `final-report.json`, `runtime.stdout.jsonl`, and `post-run-hashes.json` retain
-  admission, execution, provenance, and cleanup details.
+  execution, provenance, and cleanup details. Admission and the complete
+  metafile are retained in the parent candidate directory. The v3 verifier is
+  `/tmp/kamilio-672-workerd-qa.MrAWhd/verify-v3.mjs`; previous verifier files and
+  candidate directories remain unchanged.
 - Graph: 34 installed inputs, no Node or external edges, no emitted imports.
   All three tarball SHA-512 digests match the installed lockfile. All 49 recorded
   files remain unchanged after execution.
-- Worker bundle SHA-256:
-  `c49021d76dfb07cbd41ca76187749a02da92e8433edd80689bd1fbcb14faa0e5`.
+- Actual selected entry:
+  `/tmp/kamilio-672-delivery-v3-public.IBqcAs/consumer/node_modules/@poe-platform/safe-bash/dist/safe-bash/core.browser.js`;
+  SHA-256 `a4d216e79bd8eb7fcf68ff19f304d5abe03b4126072f5e526b4e3221aaead9e7`.
+- Worker bundle: 2,044,533 bytes; SHA-256
+  `b4ca99af833b26d65165744d55bb186463f2edbcabec71fdc7b5d12a4768c062`.
 - Actual workerd: pinned versions listed above, flags `[]`, network disabled,
   HTTP 200, 29/29 passing cases, exit zero, no internal diagnostics or outbound
   attempts. Miniflare is disposed; zero remaining workerd processes and no owned
   container remain, verified by a successful Docker query.
-- Root separately verifies installed Node/Bun smoke, Node declarations, strict
-  browser declarations without ambient Node types, and the browser smoke fixture.
+- Root separately reports passing installed Node/Bun smoke, Node declarations,
+  strict browser declarations without ambient Node types, and the browser smoke
+  fixture. This sidecar did not duplicate those runs or verify a CI/release result.
 - Visual evidence is explicitly a separate local playground check:
   `/tmp/kamilio-672-playground-retest.8ZgRmu/commands.png` was captured and inspected.
   Startup, anchored regex search, SHA-256, and gzip/zcat output pass. Its owned
   browser session is closed. This screenshot does not claim to depict workerd;
   the raw workerd execution receipt supplies that evidence.
+
+The admitted v3 tarballs have these SHA-256 bindings; their full SHA-512 integrity
+strings and installed lockfile matches are also retained in `final-report.json`:
+
+| Package, version `0.0.0-issue672-delivery` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `@poe-platform/safe-bash` | 2,230,623 | `f388f820852f8cd6c391bc1b21b94a2f5a4b275f46eac580f1ce20a829dbf51a` |
+| `@poe-platform/safe-fs` | 107,565 | `5f5acbc645cc1c3a60ba48ef65ea6fec35b46bef71df394682f41f5d91c2b29a` |
+| `@poe-platform/safe-js` | 4,190,206 | `4b5d6eb8d04313b7b33d2b6f14a39c526f1535dcc0d3c3a74ae2aab2312a4e8f` |
 
 Report preparation failures, actual runtime failures, successful acceptance, and
 remote delivery/release separately. Root retains Node/Bun/type smoke ownership
