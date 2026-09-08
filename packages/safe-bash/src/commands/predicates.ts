@@ -5,6 +5,8 @@ import { predicateRequirements } from "./portable-requirements.js";
 
 type Predicate = () => Promise<boolean>;
 
+const maxExpressionDepth = 256;
+
 async function metadata(context: CommandContext, path: string, link = false): Promise<FileStat | undefined> {
   assertCommandRequirements(context, predicateRequirements, ["metadata"]);
   try {
@@ -35,12 +37,13 @@ export function predicateCommands(): CommandDefinition[] {
       if (!/^[ \t]*[+-]?[0-9]+[ \t]*$/u.test(text)) throw new UsageError(`integer expression expected: '${text}'`);
       return BigInt(text.trim());
     };
-    const primary = (): Predicate => {
+    const primary = (depth: number): Predicate => {
       const token = args[offset++];
       if (token === undefined) throw new UsageError("argument expected");
-      if (token === "!" && !binary.has(args[offset] ?? "")) { const inner = primary(); return async () => !await inner(); }
-      if (token === "(" && !binary.has(args[offset] ?? "")) {
-        const inner = disjunction();
+      if ((token === "!" || token === "(") && !binary.has(args[offset] ?? "")) {
+        if (depth >= maxExpressionDepth) throw new UsageError(`expression nesting exceeds ${maxExpressionDepth}`);
+        if (token === "!") { const inner = primary(depth + 1); return async () => !await inner(); }
+        const inner = disjunction(depth + 1);
         if (args[offset++] !== ")") throw new UsageError("missing ')'");
         return inner;
       }
@@ -98,27 +101,27 @@ export function predicateCommands(): CommandDefinition[] {
       }
       return async () => token !== "";
     };
-    const conjunction = (): Predicate => {
-      let predicate = primary();
+    const conjunction = (depth: number): Predicate => {
+      let predicate = primary(depth);
       while (args[offset] === "-a") {
         offset++;
         const left = predicate;
-        const right = primary();
+        const right = primary(depth);
         predicate = async () => await left() && await right();
       }
       return predicate;
     };
-    const disjunction = (): Predicate => {
-      let predicate = conjunction();
+    const disjunction = (depth: number): Predicate => {
+      let predicate = conjunction(depth);
       while (args[offset] === "-o") {
         offset++;
         const left = predicate;
-        const right = conjunction();
+        const right = conjunction(depth);
         predicate = async () => await left() || await right();
       }
       return predicate;
     };
-    const evaluate = disjunction();
+    const evaluate = disjunction(0);
     if (offset !== args.length) throw new UsageError(`unexpected argument '${args[offset]}'`);
     return { exitCode: await evaluate() ? 0 : 1 };
   })).map(command => ({ ...command, filesystemRequirements: predicateRequirements }));
