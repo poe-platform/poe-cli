@@ -34,6 +34,7 @@ import { createSandboxBox } from "../interp/boxed.js";
 import { createSandboxDate } from "../interp/date.js";
 import { createSandboxLocale } from "../interp/intl-locale.js";
 import { createSandboxCollator, collatorState } from "../interp/intl-collator.js";
+import { createSandboxListFormat } from "../interp/intl-listformat.js";
 import { createSandboxNumberFormat, numberFormatState } from "../interp/intl-numberformat.js";
 import { restoreBoxedProperties } from "./boxed.js";
 import { sandboxErrorNames, sandboxErrorTypes } from "../error/shape.js";
@@ -1152,7 +1153,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-listformat" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1238,6 +1239,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
         if (!isSandboxClosure(format)) throw new TypeError("Invalid cached NumberFormat function.");
         numberFormatState(value).format = format;
       });
+    } else if (serialized.kind === "guest-listformat") {
+      value = createSandboxListFormat(serialized.options.locale, serialized.options);
     } else if (serialized.kind === "guest-collator") {
       value = createSandboxCollator(serialized.options.locale, serialized.options);
       if (serialized.compare !== undefined) state.initializeIterators.push(() => {

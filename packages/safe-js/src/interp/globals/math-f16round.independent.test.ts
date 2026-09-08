@@ -224,6 +224,7 @@ describe("Math.f16round independent review", () => {
         Intl: {
           Collator: { kind: "fn", name: "Collator" },
           NumberFormat: { kind: "fn", name: "NumberFormat" },
+          ListFormat: { kind: "fn", name: "ListFormat" },
           Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },
