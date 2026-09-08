@@ -175,3 +175,26 @@ output rebuilt by the unit route, and its consumer lacked a local package
 manifest. Its browser failure is retained, not counted as final qualification.
 Final packaging must follow the complete normal build and use an explicit isolated
 consumer manifest before installation; do not package concurrently with builds.
+
+## Delivery validation after upstream rebase
+
+Rebased onto upstream c029ad482 without altering its SafeJS changes. The normal
+build and guarded repository lint passed. Fresh isolated 0.0.0-issue649.4 tarballs
+passed maintained Node, Bun, TypeScript and browser consumer checks. SafeBash and
+SafeFS dist trees are byte-identical to the 0.0.0-issue649.3 artifacts that passed
+all 33 real-workerd families, immutable 79-command inventory, binary round trip,
+unsupported modes, full POSIX helpers and root-startup jq control. The portable
+graph excludes filesystem and native-worker imports; the root graph does not.
+
+The rebased full route passed 40,151 shared tests with 42 skipped, but failed one
+unchanged harness recovery test: two in-flight promises cannot snapshot an active
+promise reaction. A focused rerun reproduces it. Upstream-only CI run 34188819065
+also fails that exact test without these portable commits. No unrelated snapshot
+patch or passing full-suite claim is made. A subsequent whole-Bash tool session
+was interrupted with signal 143 after 400 files; it is not a passing suite.
+
+Final affected verification passed 364/364 tests, including the committed S3
+archive, public cleanup consumer, peer tamper controls, path contracts and portable
+preset. The maintained posttest lint-stress route passed both tests. These focused
+passes supplement the earlier full Bash result, whose sole consumer failure is
+now fixed; they are not relabeled as an uninterrupted successful full-root run.
