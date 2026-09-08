@@ -4954,6 +4954,10 @@ function findMalformedTemplateEscape(
       continue;
     }
 
+    if (next === "8" || next === "9") {
+      return { index, message: "Invalid decimal escape sequence in template" };
+    }
+
     if (isOctalDigit(next)) {
       return { index, message: "Legacy octal escape sequences are not supported" };
     }
