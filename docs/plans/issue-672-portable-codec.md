@@ -120,3 +120,22 @@ admitted `next()` or `return()` ignores cancellation cannot be forcibly stopped;
 late rejection is observed, and the existing reader cancellation contract is
 preserved. No full suite, package manifest, build script or Git operation was
 performed by this worker.
+
+### Cross-interface error-identity correction
+
+Root's full suite subsequently exposed an omitted cross-interface case:
+`tests/shell/opaque-errors.test.ts` rejected an archive source with `undefined`,
+but received the default `AbortError` manufactured by `abort(undefined)`.
+The unchanged focused regression reproduced this failure in
+`/tmp/kamilio-672-codec-undefined-red.log`. Archive compression now records the
+first original failure with a separate presence flag before aborting its local
+controller, and rethrows that value after cancellation/retirement propagation.
+This preserves `undefined` and every other falsey value without truthiness
+fallbacks; explicit parent cancellation retains precedence.
+
+Revalidation: `/tmp/kamilio-672-codec-undefined-green.log`, exit 0, **360/360**
+tests (all 239 compression/archive cases plus the complete opaque-errors file),
+zero failed/skipped/cancelled. Existing error-identity assertions are unchanged.
+`/tmp/kamilio-672-codec-undefined-types.log` reports TypeScript 5.9.3, seven scoped
+files, zero scoped diagnostics. Only archive implementation and this handoff
+document changed for the correction. Frozen again for root package admission.

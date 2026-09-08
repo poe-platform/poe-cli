@@ -68,6 +68,24 @@ and successful release evidence separate.
 
 ## Integration findings on September 8
 
+The complete maintained unit run exposed native-regex fixture helpers outside
+the earlier test-file migration. The search stress workers, continuation child,
+stdin/streaming/safety cases and adapter-tool fixtures now explicitly inject the
+public Node provider. Native execution, cancellation and retirement assertions
+remain unchanged; no native fallback is added to the portable default. These
+helpers and the exact pinned dependency metadata assertion pass 214 focused
+tests. The mktemp provenance control now checks the actual Web Crypto source
+and exercises rejection sampling through mktemp itself; its seven controls and
+four portable-random tests pass without weakening the host-I/O exclusions.
+
+The same complete run found an original undefined source error being replaced
+by AbortError inside archive compression. The unchanged error-identity test
+reproduced it before repair; all 360 codec/archive/opaque-error cases now pass.
+This runtime correction requires rebuilding and revalidating installed artifacts;
+the earlier installed/workerd results do not qualify the changed codec. The full
+run remains failed until all remaining isolated archive fixtures are repaired and
+the complete maintained route passes again.
+
 The first installed candidate passed the Node and Bun public smoke suites and
 29 actual workerd cases with compatibility flags empty. Its graph contains 34
 installed inputs, no external or Node edges, and no emitted imports. This is

@@ -8,14 +8,18 @@ export async function* compressed(source: ByteSource, decode: boolean, signal: A
   const controller = new AbortController();
   const combined = AbortSignal.any([signal, controller.signal]);
   const reader = new CodecReader(bounded(source, limits.maxArchiveBytes, combined, limits.chunkSize), combined);
+  let hasFailure = false;
+  let failure: unknown;
   try {
     yield* bounded(codec(reader, {
       mode: decode ? "gunzip" : "gzip", chunkSize: limits.chunkSize,
-      onFailure(error) { controller.abort(error); },
+      onFailure(error) {
+        if (!hasFailure) { hasFailure = true; failure = error; controller.abort(error); }
+      },
     }, combined), limits.maxArchiveBytes, combined, limits.chunkSize);
   } catch (error) {
     signal.throwIfAborted();
-    throw compressionDiagnostic(error);
+    throw compressionDiagnostic(hasFailure ? failure : error);
   } finally {
     controller.abort(new Error("archive compression finished"));
     await reader.close();
