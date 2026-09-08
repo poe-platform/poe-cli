@@ -1,7 +1,27 @@
 import {
   agentCommands, createAgentCommands, portableSearchCommands, EreLedger, compileEre, matchEre, createBoundedRegexProvider,
   type AgentCommandsOptions, type BoundedRegexProvider, type PortableSearchOptions, type BoundedRegexProviderOptions,
+  type SafeJsModule, type SafeJsRuntime,
 } from "@poe-platform/safe-bash";
+import type { FileSystem, FsBridgeOptions } from "@poe-platform/safe-fs/core";
+import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
+import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
+import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
+
+for (const paths of [contractPath, indexedPath, directPath]) {
+  const joined: string = paths.join("/workspace", "file.txt");
+  const absolute: boolean = paths.isAbsolute(joined);
+  void absolute;
+}
+
+export function safeJsFilesystemModule(runtime: SafeJsRuntime<unknown>, adapter: FileSystem): SafeJsModule {
+  const options: Pick<FsBridgeOptions, "cwd" | "signal"> = {
+    cwd: "/workspace", signal: new AbortController().signal,
+  };
+  const moduleOptions: Parameters<typeof runtime.makeFsModule>[0] = { adapter, ...options };
+  runtime.makeFsModule({ adapter });
+  return runtime.makeFsModule(moduleOptions);
+}
 
 const defaultAgentOptions: AgentCommandsOptions = {};
 agentCommands();

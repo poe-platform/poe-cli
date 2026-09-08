@@ -68,8 +68,28 @@
       "import": "./packages/safe-bash/dist/index.js"
     },
     "./safe-bash/contracts": {
-      "types": "./packages/safe-bash/dist/contracts/index.d.ts",
-      "import": "./packages/safe-bash/dist/contracts/index.js"
+      "types": {
+        "browser": "./packages/safe-bash/dist/contracts/index.d.ts",
+        "default": "./packages/safe-bash/dist/contracts/node.d.ts"
+      },
+      "browser": "./packages/safe-bash/dist/contracts/index.js",
+      "import": "./packages/safe-bash/dist/contracts/node.js"
+    },
+    "./safe-bash/contracts/index": {
+      "types": {
+        "browser": "./packages/safe-bash/dist/contracts/index.d.ts",
+        "default": "./packages/safe-bash/dist/contracts/node.d.ts"
+      },
+      "browser": "./packages/safe-bash/dist/contracts/index.js",
+      "import": "./packages/safe-bash/dist/contracts/node.js"
+    },
+    "./safe-bash/contracts/path": {
+      "types": {
+        "browser": "./packages/safe-bash/dist/contracts/path.d.ts",
+        "default": "./packages/safe-bash/dist/contracts/node-path.d.ts"
+      },
+      "browser": "./packages/safe-bash/dist/contracts/path.js",
+      "import": "./packages/safe-bash/dist/contracts/node-path.js"
     },
     "./safe-bash/contracts/*": {
       "types": "./packages/safe-bash/dist/contracts/*.d.ts",

@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Worker as NodeWorker } from "node:worker_threads";
 import { resolveObjectURL } from "node:buffer";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { buildBrowserEngine, safeBashBrowserPlugin } from "./build-plugin.mjs";
@@ -304,6 +305,7 @@ describe("real safe-bash browser kernel", () => {
     expect(watched.some((path) => path.endsWith("/safe-bash/dist/commands/regex-execution/worker.js"))).toBe(true);
     expect(watched.some((path) => path.endsWith("/engine/worker-context.mjs"))).toBe(true);
     expect(watched.some((path) => path.endsWith("/engine/workers.mjs"))).toBe(true);
+    expect(watched.every((path) => existsSync(path))).toBe(true);
     const assets: { fileName: string; source: string }[] = [];
     await plugin.generateBundle.call({
       emitFile: (asset: { fileName: string; source: string }) => assets.push(asset)

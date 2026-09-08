@@ -1,5 +1,5 @@
 export * from "./core.js";
-export { posixPath } from "./contracts/path.js";
+export { posix as posixPath } from "node:path";
 export * from "./commands/network/index.js";
 export * from "./commands/node/index.js";
 export * from "./fs/real/index.js";

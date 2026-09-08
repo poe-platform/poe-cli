@@ -1,4 +1,4 @@
-import { createAgentCommands } from "virtual:safe-bash-kernel";
+import { createAgentCommands, createWorkerRegexProvider } from "virtual:safe-bash-kernel";
 import type { ShellLimits, VirtualShellPlugin } from "virtual-bash";
 
 export {
@@ -32,7 +32,7 @@ export const browserLimits: Readonly<ShellLimits> = Object.freeze({
   pipeHighWaterMark: 16 * 1024
 });
 
-const commands = createAgentCommands();
+const commands = createAgentCommands({ regexExecutor: createWorkerRegexProvider() });
 export const supportedCommands: readonly string[] = Object.freeze(
   commands.map((command) => command.name).sort()
 );

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { posix } from "node:path";
+import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
+import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
+import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
 import { defaultEntry, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
 import * as nodeEntry from "@poe-platform/safe-bash/node";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
@@ -23,7 +27,8 @@ assert.equal(FsError, ShellFsError);
 assert.equal(FsError, CompatibilityFsError);
 assert.equal(FsError, CoreFsError);
 assert.equal(FsError, NodeFsError);
-for (const paths of [posixPath, nodeEntry.posixPath]) {
+for (const paths of [posixPath, nodeEntry.posixPath, contractPath, indexedPath, directPath]) {
+  assert.equal(paths, posix);
   assert.equal(paths.sep, "/");
   assert.equal(paths.delimiter, ":");
   assert.equal(paths.normalize("/a/../b"), "/b");

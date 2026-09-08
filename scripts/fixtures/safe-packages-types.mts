@@ -1,6 +1,10 @@
 import "./safe-packages-portable-search-types.mjs";
 import { agentCommands, createAgentCommands, createBoundedRegexProvider, type AgentCommandsOptions } from "@poe-platform/safe-bash";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
+import { posix } from "node:path";
+import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
+import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
+import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
 import { Budget, run, makeFsModule, type RunClock, type HostObjectIndexedDefinition, type HostObjectNamedDefinition, type CallbackInvocation } from "@poe-platform/safe-js";
 import { createMemoryFileSystem, type FileSystem } from "@poe-platform/safe-fs/core";
 import type { FileSystem as CompatibilityFileSystem } from "@poe-platform/safe-js/fs";
@@ -8,6 +12,11 @@ import { Shell, evaluateCommandSupport, type CommandSupport, type CommandFileSys
 import { createRealm, defineExtension, type HostObject, type GuestReference, type HostObjectIndexedDefinition as CoreIndexed, type HostObjectNamedDefinition as CoreNamed, type CallbackInvocation as CoreInvocation } from "@poe-platform/safe-js/core";
 
 const fs: FileSystem & CompatibilityFileSystem = createMemoryFileSystem();
+const nodePaths: readonly (typeof posix)[] = [contractPath, indexedPath, directPath];
+for (const paths of nodePaths) {
+  const formatted: string = paths.format(paths.parse(paths.resolve("/workspace", "file.txt")));
+  void formatted;
+}
 const agentOptions: AgentCommandsOptions = { regexExecutor: createBoundedRegexProvider(), regex: { maxWorkers: 1 } };
 const commandNames: readonly string[] = createAgentCommands(agentOptions).map(command => command.name);
 void commandNames;

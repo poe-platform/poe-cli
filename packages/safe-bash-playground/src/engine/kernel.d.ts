@@ -8,7 +8,6 @@ declare module "virtual:safe-bash-kernel" {
   } from "virtual-bash";
   import { Shell as NativeShell } from "virtual-bash";
   import type {
-    CommandDefinition,
     ShellExecOptions as NativeShellExecOptions,
     ShellResult
   } from "virtual-bash";
@@ -22,5 +21,6 @@ declare module "virtual:safe-bash-kernel" {
   export class Shell extends NativeShell {
     exec(source: string, options?: ShellExecOptions): Promise<ShellResult>;
   }
-  export function createAgentCommands(): CommandDefinition[];
+  export { createAgentCommands } from "virtual-bash";
+  export { createNodeRegexProvider as createWorkerRegexProvider } from "virtual-bash/node";
 }

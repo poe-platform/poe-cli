@@ -143,7 +143,7 @@ it.each([
     }
     expect(build.mock.calls.filter(([options]) => options.outdir === path.join(root, "packages/safe-bash/dist"))
       .map(([options]) => options.entryPoints)).toEqual([
-      [path.join(root, "packages/safe-bash/src/browser.ts"), path.join(root, "packages/safe-bash/src/portable.ts")],
+      [path.join(root, "packages/safe-bash/src/core.browser.ts")],
     ]);
   }
 );

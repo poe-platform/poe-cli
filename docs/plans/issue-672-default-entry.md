@@ -65,3 +65,39 @@ cross-workspace change. Verify installed public packages under Node and Bun,
 browser type conditions, and real workerd with no compatibility flags. Capture
 and inspect a visual smoke result. Keep local commit, verified remote-main push
 and successful release evidence separate.
+
+## Integration findings on September 8
+
+The first installed candidate passed the Node and Bun public smoke suites and
+29 actual workerd cases with compatibility flags empty. Its graph contains 34
+installed inputs, no external or Node edges, and no emitted imports. This is
+intermediate evidence, not acceptance of a later rebuilt artifact.
+
+Installed browser declaration checking found a Node-only filesystem option type
+in the SafeJS runtime contract. Its required shape is just optional `cwd` and
+`signal`; derive those fields from the portable filesystem bridge options rather
+than exposing the Node bridge in the browser. Also check declarations with no
+ambient Node types, preserving the complete Node path API through explicit Node
+facades instead of silently narrowing existing Node consumers.
+
+The maintained full test route found three root bundle assertions still naming
+the removed entry files and one playground regex regression. Update the former
+to the new internal entry. The playground already owns browser Worker adapters
+and supports native regex modes; explicitly inject its existing adapted worker
+provider rather than reducing its regex functionality to the new bounded default.
+The root packaging checks then pass 39 tests and the full playground suite passes
+166 tests, including worker cleanup and the original regex workflow. No native
+fallback is added to the default public preset.
+
+The visual smoke also reproduced a disabled playground terminal: Vite tried to
+resolve a synthetic esbuild namespace as a watched physical file. A new focused
+regression fails when the watch list includes that nonexistent path. Register
+only physical graph inputs for file watching while retaining the full graph in
+build evidence; keep explicit adapter watches. Repeat the real browser smoke
+after the correction rather than treating the successful bundled kernel test as
+proof that the interactive development server loads.
+
+The initial full test route remains a recorded failure (20,240 passes, four
+failures, one skip in the shared task); it is not a completed full-repository
+pass. Repeat the maintained full route after integration is frozen, then rebuild,
+pack, and re-admit the final installed artifact for browser and workerd checks.

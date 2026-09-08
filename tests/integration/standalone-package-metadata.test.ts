@@ -206,6 +206,8 @@ describe("standalone package publish metadata", () => {
       "./safe-bash/commands/which",
       "./safe-bash/contracts",
       "./safe-bash/contracts/*",
+      "./safe-bash/contracts/index",
+      "./safe-bash/contracts/path",
       "./safe-bash/fs/mount",
       "./safe-bash/fs/overlay",
       "./safe-bash/fs/readonly",
@@ -224,6 +226,30 @@ describe("standalone package publish metadata", () => {
       "./safejs/core",
       "./skills"
     ]);
+  });
+
+  it("keeps browser contracts portable and Node contracts native across declared paths", () => {
+    for (const [manifest, prefix, directory] of [
+      ["package.json", "./safe-bash", "./packages/safe-bash/dist"],
+      ["packages/safe-bash/package.json", ".", "./dist"]
+    ]) {
+      const exportsField = readPackageJson(manifest!).exports ?? {};
+      for (const [suffix, browser, node] of [
+        ["/contracts", "index", "node"],
+        ["/contracts/index", "index", "node"],
+        ["/contracts/path", "path", "node-path"]
+      ]) {
+        expect(Object.keys(exportsField[`${prefix}${suffix}`] as object)).toEqual(["types", "browser", "import"]);
+        expect(exportsField[`${prefix}${suffix}`]).toEqual({
+          types: {
+            browser: `${directory}/contracts/${browser}.d.ts`,
+            default: `${directory}/contracts/${node}.d.ts`
+          },
+          browser: `${directory}/contracts/${browser}.js`,
+          import: `${directory}/contracts/${node}.js`
+        });
+      }
+    }
   });
 
   it("declares portable byte dependencies for the root safe-bash entry", () => {

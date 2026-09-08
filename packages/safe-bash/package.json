@@ -20,8 +20,28 @@
       "import": "./dist/index.js"
     },
     "./contracts": {
-      "types": "./dist/contracts/index.d.ts",
-      "import": "./dist/contracts/index.js"
+      "types": {
+        "browser": "./dist/contracts/index.d.ts",
+        "default": "./dist/contracts/node.d.ts"
+      },
+      "browser": "./dist/contracts/index.js",
+      "import": "./dist/contracts/node.js"
+    },
+    "./contracts/index": {
+      "types": {
+        "browser": "./dist/contracts/index.d.ts",
+        "default": "./dist/contracts/node.d.ts"
+      },
+      "browser": "./dist/contracts/index.js",
+      "import": "./dist/contracts/node.js"
+    },
+    "./contracts/path": {
+      "types": {
+        "browser": "./dist/contracts/path.d.ts",
+        "default": "./dist/contracts/node-path.d.ts"
+      },
+      "browser": "./dist/contracts/path.js",
+      "import": "./dist/contracts/node-path.js"
     },
     "./contracts/*": {
       "types": "./dist/contracts/*.d.ts",
