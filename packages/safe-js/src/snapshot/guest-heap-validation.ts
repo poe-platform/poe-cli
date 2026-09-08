@@ -1,6 +1,7 @@
 import { Budget } from "../interp/budget.js";
 import { sandboxErrorNames, type SandboxErrorName } from "../error/shape.js";
 import { createRawJson } from "../interp/raw-json.js";
+import { createSandboxLocale, localeTag } from "../interp/intl-locale.js";
 import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
 import { releaseObjectPrototype } from "../interp/object-model.js";
@@ -73,7 +74,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -344,6 +345,11 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
   } else if (node.kind === "guest-regex") {
     fields(node, ["kind", "source", "flags", "state"]);
     if (typeof node.source !== "string" || typeof node.flags !== "string") throw new TypeError("Invalid guest RegExp payload.");
+    state(node.state);
+  } else if (node.kind === "guest-locale") {
+    fields(node, ["kind", "tag", "state"]);
+    if (typeof node.tag !== "string" || localeTag(createSandboxLocale(node.tag)) !== node.tag)
+      throw new TypeError("Invalid canonical Locale tag.");
     state(node.state);
   } else if (node.kind === "guest-boxed" || node.kind === "guest-date") {
     fields(node, ["kind", "value", "state"]);

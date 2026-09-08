@@ -222,6 +222,7 @@ describe("Math.f16round independent review", () => {
         Float16Array: { kind: "fn", name: "Float16Array" },
         Iterator: { kind: "fn", name: "Iterator" },
         Intl: {
+          Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },
           [Symbol.toStringTag]: "Intl"

@@ -1,4 +1,5 @@
 import type { Budget } from "./budget.js";
+import { isSandboxLocale, localeTag } from "./intl-locale.js";
 import { createSandboxBox } from "./boxed.js";
 import { isNumericTypedArray } from "./typed-array.js";
 import { getSandboxPropertyDescriptor } from "./object-model.js";
@@ -32,7 +33,7 @@ export async function canonicalizeGuestLocales(input: SandboxValue, budget: Budg
   if (input === null) return Reflect.apply(canonicalLocales, Intl, [input]);
   const release = retainValues(budget, () => [locales]);
   try {
-    const list = typeof input === "string" ? [input] : intlOptionsObject(input, budget);
+    const list = typeof input === "string" || isSandboxLocale(input) ? [input] : intlOptionsObject(input, budget);
     const count = await sandboxNumber(await readIntlProperty(list, "length", budget, context), budget, context);
     const length = Number.isNaN(count) || count <= 0 ? 0 : Math.min(Math.floor(count), Number.MAX_SAFE_INTEGER);
     for (let index = 0; index < length; index++) {
@@ -43,7 +44,7 @@ export async function canonicalizeGuestLocales(input: SandboxValue, budget: Budg
       const value = await readIntlProperty(list, key, budget, context);
       if (typeof value !== "string" && (typeof value !== "object" || value === null))
         return Reflect.apply(canonicalLocales, Intl, [[value]]);
-      const tag = await sandboxString(value, budget, context);
+      const tag = isSandboxLocale(value) ? localeTag(value) : await sandboxString(value, budget, context);
       budget.visitNode(tag.length);
       const canonical = canonicalLocales(tag)[0]!;
       budget.visitNode(locales.length);

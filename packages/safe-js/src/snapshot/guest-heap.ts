@@ -12,6 +12,7 @@ import { templateOrigins, templateCookedArrays } from "../interp/template-object
 import { isSandboxBox, boxedValue } from "../interp/boxed.js";
 import { isRawJson } from "../interp/raw-json.js";
 import { isSandboxDate, dateTime } from "../interp/date.js";
+import { isSandboxLocale, localeTag } from "../interp/intl-locale.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
 import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
@@ -90,6 +91,7 @@ export type GuestHeapNode<T> =
       capability?: {promise: T; resolve: T; reject: T}; state: GuestObjectState<T> }
   | { kind: "guest-boxed"; value: T; state: GuestObjectState<T> }
   | { kind: "guest-date"; value: T; state: GuestObjectState<T> }
+  | { kind: "guest-locale"; tag: string; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
       outer?: { iterator: T; next: T }; inner?: { iterator: T; next: T }; callback: T;
       remaining: number | "Infinity"; index: number; state: GuestObjectState<T> }
@@ -271,6 +273,7 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
         reactions: [...(promiseReactionResults.get(value) ?? [])].map(encode), state: captureObjectState(value, encode)!};
     return undefined;
   }
+  if (isSandboxLocale(value)) return { kind: "guest-locale", tag: localeTag(value), state: captureObjectState(value, encode)! };
   if (hasGuestObjectState(value) || privateElements.has(value)) {
     if (isSandboxRegex(value)) return { kind: "guest-regex", source: value.source, flags: value.flags, state: captureObjectState(value, encode)! };
     if (isSandboxBox(value)) return { kind: "guest-boxed", value: encode(boxedValue(value)), state: captureObjectState(value, encode)! };
