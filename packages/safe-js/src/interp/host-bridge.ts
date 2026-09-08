@@ -1,3 +1,4 @@
+import { types } from "node:util";
 import { normalizeClosureResult } from "./async.js";
 import { copyNativeDate } from "./date.js";
 import { boxedDataProperties, createSandboxBox, nativeBoxedValue } from "./boxed.js";
@@ -620,12 +621,13 @@ function createHostErrorValue(
   state: { seen: WeakMap<object, SandboxValue> } = { seen: new WeakMap() },
   chargeBudget = false
 ): SandboxObject {
-  if (reason instanceof Error) {
+  const nativeError = types.isNativeError(reason) || reason instanceof Error;
+  if (nativeError) {
     const existing = state.seen.get(reason);
     if (existing !== undefined) return existing as SandboxObject;
   }
   const error =
-    reason instanceof Error
+    nativeError
       ? createSubsetErrorValue(reason.name, reason.message, stackFrames, budget, {
           cause: reason,
           chargeBudget,
@@ -636,7 +638,7 @@ function createHostErrorValue(
           transport: true
         });
 
-  if (reason instanceof Error) {
+  if (nativeError) {
     state.seen.set(reason, error);
     copyHostErrorMetadata(error, reason, budget, chargeBudget);
     const errors =
@@ -940,7 +942,7 @@ export function copyHostValueToSandbox(
     return options.budget.allocateString(value);
   }
 
-  if (value instanceof Error) {
+  if (types.isNativeError(value) || value instanceof Error) {
     return createHostErrorValue(value, stackFrames, budget, undefined, state, true);
   }
 
