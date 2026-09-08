@@ -309,10 +309,10 @@ test("actual Shell registry invocation preserves literal argv and child status",
   }
 });
 
-test("public aggregate includes timeout and the other approved public79 additions", () => {
+test("public aggregate includes timeout and the other approved public82 additions", () => {
   const names = createAgentCommands().map(command => command.name);
-  assert.equal(names.length, 79);
-  assert.equal(new Set(names).size, 79);
+  assert.equal(names.length, 82);
+  assert.equal(new Set(names).size, 82);
   for (const name of ["which", "timeout", "apply_patch"]) assert.ok(names.includes(name));
   for (const name of ["curl", "safejs", "node", "npm", "npx"]) assert.equal(names.includes(name), false);
 });

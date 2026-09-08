@@ -96,3 +96,26 @@ Final evidence: `/tmp/kamilio-673-integration-final.log`,
 `/tmp/kamilio-673-root-focused.log`, `/tmp/kamilio-673-lint-repair-test.log`,
 `/tmp/kamilio-673-lint-final.log`, `/tmp/kamilio-673-build.log`, and the candidate's
 `public-smoke.exit`. Keep verified remote delivery and publication separate.
+
+## CLI release inventory correction
+
+Scoped publication run `34280542193` succeeded for `d623ff5fe`, publishing
+SafeBash, SafeFS and SafeJS `0.1.500`. Separate CLI run `34280542482` failed
+because additional current test inventories still expected 79 commands and
+11 byte-family commands. CI logs and focused red runs reproduce the mismatch;
+the initial focused checks did not cover every aggregate consumer.
+
+Update the remaining current inventories to the independently specified 82
+commands and 14 byte-family commands, preserving collision, replacement, order
+and uniqueness assertions. Keep frozen historical inventories byte-exact and
+extend only their current-profile projections. Bind the generated current
+catalog test to the actual factory so two stale expectations cannot agree.
+
+The combined 20-file affected inventory and checksum regression cohort passes
+777/777 tests with no skips or cancellations. The same CI run also exposed two
+stale playground expectations; the corrected playground workspace passes all
+166 tests across eight files. Evidence:
+`/tmp/kamilio-673-release-repair-tests.log` and
+`/tmp/kamilio-673-release-playground-tests.log`. No packaged runtime, workflow gate,
+timeout, or historical source changes are part of this correction. Publication
+of the repaired CLI remains a separate GitHub release verification step.
