@@ -26,8 +26,10 @@ import {
 import { executeRegex, getRegexMember, regexExec, regexFlagProperties, regexSearch, toMatchArray } from "./regex.js";
 import { restoreSandboxRegExpIterator } from "../regexp-iterator.js";
 import { changeStringLocaleCase, compareStringLocale } from "./string-locale.js";
+import { createStringHtml, stringHtmlMethods } from "./string-html.js";
 
 const stringMethodLengths = {
+  ...Object.fromEntries(Object.entries(stringHtmlMethods).map(([name, [, attribute]]) => [name, attribute === "" ? 0 : 1])) as Record<keyof typeof stringHtmlMethods, number>,
   at: 1,
   charAt: 1,
   charCodeAt: 1,
@@ -209,6 +211,9 @@ function callStringMethodBody(
   parent?: CompileScope,
   context?: SandboxCallContext
 ): SandboxValue | Promise<SandboxValue> {
+  if (Object.hasOwn(stringHtmlMethods, methodName)) {
+    return createStringHtml(value, stringHtmlMethods[methodName as keyof typeof stringHtmlMethods], args[0], budget, context);
+  }
   if (methodName === "concat" && args.some(argument => argument !== null && typeof argument === "object")) {
     return callConcat(value, args, budget, context);
   }
