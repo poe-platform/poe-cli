@@ -19,6 +19,7 @@ import { isSandboxMap, isSandboxSet, sandboxMapBrand, sandboxSetBrand } from "./
 import { collectionIteratorState, isSandboxCollectionIterator, restoreSandboxCollectionIterator, snapshotCollectionIterator, type SandboxCollectionIterator } from "./collection-iterator.js";
 import { arrayIteratorState, isSandboxArrayIterator } from "./array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "./string-iterator.js";
+import { isSandboxSegmenter, isSandboxSegments, segmenterState, segmentState } from "./intl-segmenter.js";
 import { iteratorWrapperStates } from "./iterator-wrapper.js";
 import { disposableStackStates } from "./disposable-stack.js";
 import { asyncDisposableStackStates } from "./async-disposable-stack.js";
@@ -588,7 +589,8 @@ export function* cloneStructuredGraph(
   budget.visitNode();
   if (typeof value === "symbol" || isSandboxModuleNamespace(value) || isSandboxClosure(value) || isSandboxPromise(value) ||
       isSandboxGenerator(value) || isSandboxCollectionIterator(value) || isSandboxRegExpIterator(value) ||
-      isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value))
+      isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value) ||
+      isSandboxSegmenter(value) || isSandboxSegments(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
   if (iteratorHelperStates.has(value) || iteratorWrapperStates.has(value))
@@ -882,6 +884,12 @@ export function measureSandboxData(
     }
     if (isSandboxArrayIterator(value)) visit(arrayIteratorState(value).source, depth + 1);
     if (isSandboxStringIterator(value)) visit(stringIteratorState(value).input, depth + 1);
+    if (isSandboxSegmenter(value)) visit(segmenterState(value).options, depth + 1);
+    if (isSandboxSegments(value)) {
+      const state = segmentState(value);
+      visit(state.segmenter, depth + 1);
+      visit(state.input, depth + 1);
+    }
     if (isSandboxRegExpIterator(value)) {
       const state = regexpIteratorState(value);
       visit(state.matcher, depth + 1);

@@ -18,6 +18,7 @@ import { isSandboxListFormat, listFormatState, type ResolvedListFormatOptions } 
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState, type ResolvedRelativeTimeFormatOptions } from "../interp/intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState, type ResolvedDisplayNamesOptions } from "../interp/intl-displaynames.js";
 import { isSandboxPluralRules, pluralRulesState, type ResolvedPluralRulesOptions } from "../interp/intl-pluralrules.js";
+import { isSandboxSegmenter, isSandboxSegments, segmenterState, segmentState, type SegmenterOptions } from "../interp/intl-segmenter.js";
 import { isSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { isSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
 import { isSandboxCollectionIterator, snapshotCollectionIterator, type CollectionIterationMethod } from "../interp/collection-iterator.js";
@@ -106,6 +107,8 @@ export type GuestHeapNode<T> =
   | { kind: "guest-relativetimeformat"; options: ResolvedRelativeTimeFormatOptions; state: GuestObjectState<T> }
   | { kind: "guest-displaynames"; options: ResolvedDisplayNamesOptions; state: GuestObjectState<T> }
   | { kind: "guest-pluralrules"; options: ResolvedPluralRulesOptions; state: GuestObjectState<T> }
+  | { kind: "guest-segmenter"; options: SegmenterOptions; state: GuestObjectState<T> }
+  | { kind: "guest-segments"; segmenter: T; input: string; index?: number; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
       outer?: { iterator: T; next: T }; inner?: { iterator: T; next: T }; callback: T;
       remaining: number | "Infinity"; index: number; state: GuestObjectState<T> }
@@ -289,6 +292,12 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   }
   if (isSandboxLocale(value)) return { kind: "guest-locale", tag: localeTag(value), state: captureObjectState(value, encode)! };
   if (isSandboxListFormat(value)) return { kind: "guest-listformat", options: { ...listFormatState(value).options }, state: captureObjectState(value, encode)! };
+  if (isSandboxSegmenter(value)) return { kind: "guest-segmenter", options: { ...segmenterState(value).options }, state: captureObjectState(value, encode)! };
+  if (isSandboxSegments(value)) {
+    const state = segmentState(value);
+    return { kind: "guest-segments", segmenter: encode(state.segmenter), input: state.input,
+      ...(state.index === undefined ? {} : { index: state.index }), state: captureObjectState(value, encode)! };
+  }
   if (isSandboxRelativeTimeFormat(value)) return { kind: "guest-relativetimeformat", options: { ...relativeTimeFormatState(value).options }, state: captureObjectState(value, encode)! };
   if (isSandboxDisplayNames(value)) return { kind: "guest-displaynames", options: { ...displayNamesState(value).options }, state: captureObjectState(value, encode)! };
   if (isSandboxPluralRules(value)) {

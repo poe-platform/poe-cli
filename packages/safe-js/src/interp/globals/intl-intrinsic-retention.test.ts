@@ -3,11 +3,14 @@ import { Budget } from "../budget.js";
 import { defineOwnDataProperty, isSandboxClosure, measureSandboxData, type SandboxObject } from "../values.js";
 import { createIntlGlobal } from "./intl.js";
 import { createDateGlobal } from "./date.js";
+import { createObjectArrayGlobals } from "./object-array.js";
+import { resolveIntrinsicIdentity } from "../intrinsics.js";
 
-it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat", "PluralRules"])(
+it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat", "PluralRules", "Segmenter"])(
   "accounts for retained mutations on Intl.%s.prototype and its methods",
   name => {
     const budget = new Budget();
+    createObjectArrayGlobals({ budget });
     const date = createDateGlobal({ budget });
     const now = date.properties!.now;
     if (!isSandboxClosure(now)) throw new Error("Expected Date.now");
@@ -28,3 +31,25 @@ it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat
     }
   }
 );
+
+it.each([
+  ["%IntlSegmentsPrototype%", "containing"],
+  ["%IntlSegmentIteratorPrototype%", "next"]
+])("accounts for mutations on %s and its method", (name, methodName) => {
+  const budget = new Budget();
+  createObjectArrayGlobals({ budget });
+  const date = createDateGlobal({ budget });
+  const now = date.properties!.now;
+  if (!isSandboxClosure(now)) throw new Error("Expected Date.now");
+  createIntlGlobal(budget, now);
+  const prototype = resolveIntrinsicIdentity(budget, JSON.stringify([name])) as SandboxObject;
+  const method = prototype[methodName];
+  if (!isSandboxClosure(method)) throw new Error("Expected segment method");
+  for (const target of [prototype, method.properties!]) {
+    const baseline = measureSandboxData(budget.retainedValues());
+    defineOwnDataProperty(target, "payload", "x".repeat(2000));
+    expect(measureSandboxData(budget.retainedValues()) - baseline).toBe(2007);
+    delete target.payload;
+    expect(measureSandboxData(budget.retainedValues())).toBe(baseline);
+  }
+});

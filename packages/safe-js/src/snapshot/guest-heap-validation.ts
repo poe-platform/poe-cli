@@ -7,6 +7,7 @@ import { createSandboxListFormat, listFormatState } from "../interp/intl-listfor
 import { createSandboxRelativeTimeFormat, relativeTimeFormatState } from "../interp/intl-relativetimeformat.js";
 import { createSandboxDisplayNames, displayNamesState } from "../interp/intl-displaynames.js";
 import { createSandboxPluralRules, pluralRulesState, type ResolvedPluralRulesOptions } from "../interp/intl-pluralrules.js";
+import { createSandboxSegmenter, createSandboxSegments, segmenterState, segmentState } from "../interp/intl-segmenter.js";
 import { createSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { createSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
 import { createBuiltinBindings } from "../interp/globals.js";
@@ -81,7 +82,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-pluralrules", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["guest-segmenter", "guest-segments", "module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-pluralrules", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -393,6 +394,28 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (names.some(key => typeof options[key] !== "string")) throw new TypeError("Invalid ListFormat option type.");
     const restored = listFormatState(createSandboxListFormat(options.locale as string, options as Intl.ListFormatOptions)).options;
     if (names.some(key => options[key] !== restored[key])) throw new TypeError("Invalid resolved ListFormat options.");
+    state(node.state);
+  } else if (node.kind === "guest-segmenter") {
+    fields(node, ["kind", "options", "state"]);
+    const options = record(node.options);
+    fields(options, ["locale", "granularity"]);
+    if (typeof options.locale !== "string" || typeof options.granularity !== "string") throw new TypeError("Invalid Segmenter options.");
+    const restored = segmenterState(createSandboxSegmenter(options.locale, options as Intl.SegmenterOptions)).options;
+    if (options.locale !== restored.locale || options.granularity !== restored.granularity) throw new TypeError("Invalid resolved Segmenter options.");
+    state(node.state);
+  } else if (node.kind === "guest-segments") {
+    fields(node, ["kind", "segmenter", "input", "state"], ["index"]);
+    const segmenter = reference(node.segmenter, ["guest-segmenter"]);
+    if (typeof node.input !== "string") throw new TypeError("Invalid segments input.");
+    if (node.index !== undefined) {
+      if (!Number.isSafeInteger(node.index) || (node.index as number) < 0 || (node.index as number) > node.input.length)
+        throw new TypeError("Invalid segment iterator index.");
+      const options = record(segmenter.options);
+      const owner = createSandboxSegmenter(options.locale as string, options as Intl.SegmenterOptions);
+      const value = createSandboxSegments({ segmenter: owner, input: node.input });
+      if ((node.index as number) < node.input.length && segmentState(value).native.containing(node.index as number)?.index !== node.index)
+        throw new TypeError("Invalid segment iterator boundary.");
+    }
     state(node.state);
   } else if (node.kind === "guest-pluralrules") {
     fields(node, ["kind", "options", "state"]);

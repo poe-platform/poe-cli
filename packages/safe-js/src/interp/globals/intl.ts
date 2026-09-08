@@ -7,6 +7,7 @@ import { createRelativeTimeFormatConstructor } from "./intl-relativetimeformat.j
 import { createDisplayNamesConstructor } from "./intl-displaynames.js";
 import { createDateTimeFormatConstructor } from "./intl-datetimeformat.js";
 import { createPluralRulesConstructor } from "./intl-pluralrules.js";
+import { createSegmenterConstructor } from "./intl-segmenter.js";
 import { retainedAccessorClosures } from "../accessors.js";
 import { canonicalizeGuestLocales } from "../intl-options.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
@@ -35,6 +36,7 @@ export function createIntlGlobal(budget: Budget, now: ReturnType<typeof createSa
   const displayNames = createDisplayNamesConstructor(budget);
   const dateTimeFormat = createDateTimeFormatConstructor(budget, now);
   const pluralRules = createPluralRulesConstructor(budget);
+  const segmenter = createSegmenterConstructor(budget);
   Object.defineProperty(intl, "Locale", { value: locale, writable: true, configurable: true });
   Object.defineProperty(intl, "Collator", { value: collator, writable: true, configurable: true });
   Object.defineProperty(intl, "NumberFormat", { value: numberFormat, writable: true, configurable: true });
@@ -43,13 +45,14 @@ export function createIntlGlobal(budget: Budget, now: ReturnType<typeof createSa
   Object.defineProperty(intl, "DisplayNames", { value: displayNames, writable: true, configurable: true });
   Object.defineProperty(intl, "DateTimeFormat", { value: dateTimeFormat, writable: true, configurable: true });
   Object.defineProperty(intl, "PluralRules", { value: pluralRules, writable: true, configurable: true });
+  Object.defineProperty(intl, "Segmenter", { value: segmenter, writable: true, configurable: true });
   for (const [name, call] of Object.entries(methods)) {
     const closure = createSandboxClosure({ guest: true, sandbox: true, name, length: 1, call });
     Object.defineProperty(intl, name, { value: closure, writable: true, configurable: true });
   }
   Object.defineProperty(intl, Symbol.toStringTag, { value: "Intl", configurable: true });
   registerBuiltinIdentities(budget, { Intl: intl });
-  for (const constructor of [locale, collator, numberFormat, listFormat, relativeTimeFormat, displayNames, dateTimeFormat, pluralRules]) {
+  for (const constructor of [locale, collator, numberFormat, listFormat, relativeTimeFormat, displayNames, dateTimeFormat, pluralRules, segmenter]) {
     const prototype = constructor.properties!.prototype as SandboxObject;
     for (const owner of [prototype, constructor.properties!])
       for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(owner)))
