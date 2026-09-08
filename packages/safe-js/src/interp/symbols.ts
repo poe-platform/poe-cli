@@ -1,6 +1,8 @@
 export const wellKnownSymbols: Readonly<Record<string, symbol>> = Object.freeze({
   iterator: Symbol.iterator,
   asyncIterator: Symbol.asyncIterator,
+  dispose: Symbol.dispose ?? Symbol.for("nodejs.dispose"),
+  asyncDispose: Symbol.asyncDispose ?? Symbol.for("nodejs.asyncDispose"),
   hasInstance: Symbol.hasInstance,
   isConcatSpreadable: Symbol.isConcatSpreadable,
   match: Symbol.match,
