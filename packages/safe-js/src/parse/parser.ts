@@ -1014,7 +1014,26 @@ class Parser {
           this.declareBinding(identifier, catchParam.type === "Identifier" ? "catch" : "lexical");
         }
       }
-      return this.parseBlockStatementBody(start);
+      let directiveTokenIndex = this.index;
+      const body = this.parseBlockStatementBody(start);
+      if (params?.some(param => param.type !== "Identifier")) {
+        for (const statement of body.body) {
+          const token = this.tokens[directiveTokenIndex];
+          if (
+            statement.type !== "ExpressionStatement" ||
+            statement.expression.type !== "StringLiteral" ||
+            token?.type !== "string" ||
+            statement.span.start.offset !== token.start.offset ||
+            statement.span.end.offset !== token.end.offset
+          ) break;
+          if (statement.expression.raw === '"use strict"' || statement.expression.raw === "'use strict'")
+            throw new Error(
+              "A function with non-simple parameters cannot contain a use strict directive."
+            );
+          directiveTokenIndex += this.tokens[directiveTokenIndex + 1]?.value === ";" ? 2 : 1;
+        }
+      }
+      return body;
     }, params !== undefined);
   }
 
@@ -1864,26 +1883,7 @@ class Parser {
         throw new Error("A getter cannot have parameters.");
       if (accessor === "set" && (params.length !== 1 || params[0]?.type === "RestElement"))
         throw new Error("A setter must have exactly one non-rest parameter.");
-      const bodyTokenIndex = this.index;
       const body = this.withFunctionContext(generator ? async ? "async-generator" : "generator" : async ? "async" : "normal", () => this.parseBlockStatement(params));
-      if (accessor === "set" && params[0]?.type !== "Identifier") {
-        let directiveTokenIndex = bodyTokenIndex + 1;
-        for (const statement of body.body) {
-          const token = this.tokens[directiveTokenIndex];
-          if (
-            statement.type !== "ExpressionStatement" ||
-            statement.expression.type !== "StringLiteral" ||
-            token?.type !== "string" ||
-            statement.span.start.offset !== token.start.offset ||
-            statement.span.end.offset !== token.end.offset
-          ) break;
-          if (statement.expression.raw === '"use strict"' || statement.expression.raw === "'use strict'")
-            throw new Error(
-              "A setter with a non-simple parameter cannot contain a use strict directive."
-            );
-          directiveTokenIndex += this.tokens[directiveTokenIndex + 1]?.value === ";" ? 2 : 1;
-        }
-      }
       return { params, body };
     });
   }
