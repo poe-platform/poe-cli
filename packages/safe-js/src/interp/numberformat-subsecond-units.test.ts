@@ -5,7 +5,19 @@ import { run } from "../run.js";
 
 const cases = ["en", "fr", "de", "ar", "ru", "ja"].flatMap(locale =>
   ["microsecond", "nanosecond", "meter-per-microsecond", "nanosecond-per-second"].flatMap(unit =>
-    ["long", "short", "narrow"].map(unitDisplay => ({ locale, unit, unitDisplay }))));
+    ["long", "short", "narrow"].map(unitDisplay => ({ locale, unit, unitDisplay })))).filter(
+      ({ locale, unit, unitDisplay }) => !(locale === "de" && unit === "microsecond" && unitDisplay === "narrow"));
+
+it.each([
+  [1, [{ type: "integer", value: "1" }, { type: "unit", value: "μs" }]],
+  [2, [{ type: "integer", value: "2" }, { type: "literal", value: " " }, { type: "unit", value: "μs" }]],
+  [3.5, [{ type: "integer", value: "3" }, { type: "decimal", value: "," }, { type: "fraction", value: "5" }, { type: "literal", value: " " }, { type: "unit", value: "μs" }]],
+  [-4, [{ type: "minusSign", value: "-" }, { type: "integer", value: "4" }, { type: "literal", value: " " }, { type: "unit", value: "μs" }]]
+] as const)("preserves pinned CLDR 48 German narrow microsecond patterns for %s", (value, expected) => {
+  const portable = createPortableNumberFormatter("de", { style: "unit", unit: "microsecond", unitDisplay: "narrow" });
+  expect(numberFormatterResult(portable, "format", [value])).toBe(expected.map(part => part.value).join(""));
+  expect(numberFormatterResult(portable, "formatToParts", [value])).toEqual(expected);
+});
 
 it.each(cases)("formats portable $locale $unit in $unitDisplay style", ({ locale, unit, unitDisplay }) => {
   const options = { style: "unit", unit, unitDisplay };
