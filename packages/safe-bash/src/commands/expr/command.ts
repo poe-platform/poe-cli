@@ -9,7 +9,7 @@ import { evaluateExpression } from "./syntax.js";
 
 export type { ExprCommandsOptions, ExprLimits } from "./internal.js";
 
-const help = "Usage: expr EXPRESSION\nTokens: | & < <= = == != >= > + - * / % :\nPrefixes: + TOKEN, length STRING, index STRING CHARS, substr STRING POS LENGTH, match STRING REGEXP\nGroup with ( EXPRESSION ). Each token is a separate argument.\nMatching uses bounded worker-only BRE in C/POSIX byte or C.UTF-8 scalar profiles.\n";
+const help = "Usage: expr EXPRESSION\nTokens: | & < <= = == != >= > + - * / % :\nPrefixes: + TOKEN, length STRING, index STRING CHARS, substr STRING POS LENGTH, match STRING REGEXP\nGroup with ( EXPRESSION ). Each token is a separate argument.\nMatching uses bounded provider-driven BRE.\nProfiles depend on the provider: built-in portable non-NUL ASCII; Node C/POSIX byte or C.UTF-8 scalar.\n";
 
 export function createExprCommandWithExecutor(executor: RegexExecutor, options: ExprCommandsOptions = {}): CommandDefinition {
   const limits = settings(options);

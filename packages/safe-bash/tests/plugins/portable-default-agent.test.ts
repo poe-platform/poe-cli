@@ -43,12 +43,20 @@ test("invalid supplied providers do not silently select the default", () => {
 test("default provider retains unsupported modes and bounded pattern admission", async () => {
   const shell = new Shell({ fs: new MemoryFileSystem() }).use(portableAgentCommands());
   try {
-    for (const command of ["grep -i a", "rg 'a+'", "expr aa : 'a*'"]) {
+    for (const command of ["grep -i a", "rg 'a+'"]) {
       const result = await shell.exec(command, { stdin: "aa\n" });
       assert.equal(result.exitCode, 2, command);
       assert.equal(result.stdout, "", command);
       assert.match(result.stderr, /bounded regex unsupported/u, command);
     }
+    const expression = await shell.exec("expr aa : 'a*'");
+    assert.equal(expression.exitCode, 0, expression.stderr);
+    assert.equal(expression.stdout, "2\n");
+    assert.equal(expression.stderr, "");
+    const unsupportedExpression = await shell.exec("expr aa : '\\w'");
+    assert.equal(unsupportedExpression.exitCode, 2);
+    assert.equal(unsupportedExpression.stdout, "");
+    assert.match(unsupportedExpression.stderr, /unsupported/u);
     const limited = await shell.exec(`grep -E '${"a".repeat(8193)}'`, { stdin: "aa\n" });
     assert.equal(limited.exitCode, 2);
     assert.equal(limited.stdout, "");

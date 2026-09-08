@@ -55,6 +55,16 @@ for (const provider of [undefined, createNodeRegexProvider()]) {
     const matched = await shell.exec(provider === undefined ? "printf 'abc\\n' | egrep '^abc$'" : "printf 'Abc\\n' | grep -i abc");
     assert.equal(matched.exitCode, 0, matched.stderr);
     assert.equal(matched.stdout, provider === undefined ? "abc\n" : "Abc\n");
+    for (const [script, stdout, exitCode] of [
+      ["expr abc : 'a.*'", "3\n", 0],
+      ["expr abc : 'a\\(.\\)c'", "b\n", 0],
+      ["expr ba : a", "0\n", 1],
+    ]) {
+      const expression = await shell.exec(script);
+      assert.equal(expression.exitCode, exitCode, expression.stderr);
+      assert.equal(expression.stdout, stdout, script);
+      assert.equal(expression.stderr, "", script);
+    }
   } finally { await shell.dispose(); }
 }
 const portableShell = new PortableShell({ fs: createMemoryFileSystem() }).use(

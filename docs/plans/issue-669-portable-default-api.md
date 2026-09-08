@@ -26,7 +26,10 @@ and share the actual module graph rather than introducing an ambient global regi
    Node regex-provider factory. Keep #669 open until the complete acceptance matrix
    passes; these milestones alone are not portable-default completion.
 2. Make the ordinary public entry use the complete environment-neutral preset.
-   Export its factory as `agentCommands`, with optional provider options. Keep
+   Export its factory as `agentCommands`, with optional `regexExecutor` injection.
+   The requested public executor abstraction is not interchangeable with the
+   existing worker-shaped provider; adapt that protocol internally while keeping
+   its bounded execution, cancellation, and borrowed-ownership contracts. Keep
    `/portable` as an alias of that same runtime, not a second bundled identity.
 3. Preserve the former Node-root surface behind an explicit `/node` entry. Existing
    Node consumers needing the previous factories, filesystem adapters, or regex

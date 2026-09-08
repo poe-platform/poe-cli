@@ -190,9 +190,9 @@ test("all regex consumers use the injected provider and retire their workers", a
     }
     requests.length = 0;
     const expression = await shell.exec("expr aa : 'a*'");
-    assert.equal(expression.exitCode, 2, expression.stderr);
-    assert.equal(expression.stdout, "");
-    assert.match(expression.stderr, /bounded regex unsupported/);
+    assert.equal(expression.exitCode, 0, expression.stderr);
+    assert.equal(expression.stdout, "2\n");
+    assert.equal(expression.stderr, "");
     assert.equal(requests[0]!.descriptor.kind, "expr-match");
     const unsupported = await shell.exec("printf 'aa\\n' | rg 'a+'");
     assert.equal(unsupported.exitCode, 2);

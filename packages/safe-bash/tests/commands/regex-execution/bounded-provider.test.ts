@@ -323,11 +323,11 @@ test("executor abort awaits provider retirement and preserves caller cancellatio
   await worker.terminate();
 });
 
-test("unsupported expr requests use the protocol's explicit unsupported reply", async () => {
+test("unsupported expr syntax uses the protocol's explicit unsupported reply", async () => {
   const executor = new RegexExecutor(createBoundedRegexProvider());
   const session = executor.open(new AbortController().signal);
   try {
-    await assert.rejects(session.matchExpr({ kind: "expr-match", pattern: Uint8Array.of(97), profile: "byte", limits: exprMatchCeilings }, Uint8Array.of(97)), { category: "unsupported" });
+    await assert.rejects(session.matchExpr({ kind: "expr-match", pattern: Uint8Array.of(92, 119), profile: "byte", limits: exprMatchCeilings }, Uint8Array.of(97)), { category: "unsupported" });
   } finally { await session.close(); await executor.dispose(); }
 });
 

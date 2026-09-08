@@ -1,11 +1,13 @@
 import { PublicDiagnostic } from "../../diagnostics.js";
+import { yieldTurn } from "../../contracts/yield.js";
+import { matchExprSteps } from "../expr/bre-engine.js";
 import { EreSyntaxError, EreUnsupportedError, EreProfileLimitError, EreUsageUnknownError } from "./ere/errors.js";
 import { EreLedger } from "./ere/limits.js";
 import { compileEre } from "./ere/syntax.js";
 import { matchEre } from "./ere/matcher.js";
 import type { EreProgram } from "./ere/types.js";
 import type { BoundedRegexProvider, RegexWorker, RegexWorkerRequest } from "./provider.js";
-import type { ExprMatchReply, GrepDescriptor, Reply, Row, SearchDescriptor } from "./protocol.js";
+import { ExprMatchError, exprMatchCeilings, type ExprMatchDescriptor, type ExprMatchLimits, type ExprMatchReply, type GrepDescriptor, type Reply, type Row, type SearchDescriptor } from "./protocol.js";
 
 export interface BoundedRegexProviderOptions {
   readonly maxWorkers?: number;
@@ -36,6 +38,12 @@ interface OwnedRequest {
   readonly descriptor: SelectionDescriptor;
   readonly rows: readonly Row[];
   readonly ledger: EreLedger;
+}
+interface OwnedExprRequest {
+  readonly id: number;
+  readonly descriptor: ExprMatchDescriptor;
+  readonly subject: Uint8Array;
+  readonly ownedUnits: number;
 }
 type WorkerEvent = "message" | "error" | "messageerror" | "exit";
 type Listener = ((value: unknown) => void) | ((error: Error) => void) | (() => void) | ((code: number) => void);
@@ -145,6 +153,63 @@ function admit(input: RegexWorkerRequest, limits: Required<BoundedRegexProviderO
     rows.push({ bytes: copy, all: false, terminated: row.terminated });
   }
   return { id: input.id, descriptor: ownedDescriptor, rows, ledger };
+}
+
+function admitExpr(input: RegexWorkerRequest, limits: Required<BoundedRegexProviderOptions>, signal: AbortSignal): OwnedExprRequest {
+  signal.throwIfAborted();
+  record(input, ["id", "descriptor", "rows"]);
+  const selected: unknown = input.descriptor;
+  record(selected, ["kind", "pattern", "profile", "limits"]);
+  if (selected.kind !== "expr-match" || selected.profile !== "byte" && selected.profile !== "utf8-scalar") fail("protocol", "invalid expr descriptor");
+  const keys = Object.keys(exprMatchCeilings) as (keyof ExprMatchLimits)[];
+  record(selected.limits, keys);
+  for (const key of keys) {
+    const value = selected.limits[key];
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > exprMatchCeilings[key]) fail("protocol", "invalid expr limits");
+  }
+  array(input.rows, 1, "expr row");
+  if (input.rows.length !== 1) fail("protocol", "expr requires exactly one subject");
+  const row: unknown = input.rows[0];
+  record(row, ["bytes", "all", "terminated"]);
+  if (!(selected.pattern instanceof Uint8Array) || !(row.bytes instanceof Uint8Array) || row.all !== false || row.terminated !== false) fail("protocol", "invalid expr pattern or subject");
+  const requested = selected.limits as unknown as ExprMatchLimits;
+  const allowance: ExprMatchLimits = {
+    ...requested,
+    maxPatternBytes: Math.min(requested.maxPatternBytes, limits.maxPatternBytes),
+    maxSubjectBytes: Math.min(requested.maxSubjectBytes, limits.maxInputBytes),
+    maxSteps: Math.min(requested.maxSteps, limits.maxWork),
+    maxStates: Math.min(requested.maxStates, limits.maxStates),
+    maxAllocatedUnits: Math.min(requested.maxAllocatedUnits, limits.maxAllocationUnits),
+  };
+  const patternLength = byteLength.call(selected.pattern) as number;
+  const subjectLength = byteLength.call(row.bytes) as number;
+  if (patternLength > allowance.maxPatternBytes) throw new ExprMatchError("limit", "bounded regex pattern byte limit exceeded");
+  if (subjectLength > allowance.maxSubjectBytes) throw new ExprMatchError("limit", "bounded regex input byte limit exceeded");
+  if (limits.maxResultBytes < 32) throw new ExprMatchError("limit", "bounded regex result byte limit exceeded");
+  const ownedUnits = patternLength + subjectLength + 64;
+  if (ownedUnits > allowance.maxSteps) throw new ExprMatchError("limit", "bounded regex work limit exceeded");
+  if (ownedUnits > allowance.maxAllocatedUnits) throw new ExprMatchError("limit", "bounded regex allocation limit exceeded");
+  const copy = (bytes: Uint8Array): Uint8Array => {
+    const source = new Uint8Array(byteBuffer.call(bytes) as ArrayBuffer, byteOffset.call(bytes) as number, byteLength.call(bytes) as number);
+    const owned = new Uint8Array(source.length);
+    owned.set(source);
+    return owned;
+  };
+  return {
+    id: input.id,
+    descriptor: { kind: "expr-match", pattern: copy(selected.pattern), profile: selected.profile, limits: allowance },
+    subject: copy(row.bytes), ownedUnits,
+  };
+}
+
+async function executeExpr(input: OwnedExprRequest, signal: AbortSignal): Promise<ExprMatchReply> {
+  const execution = matchExprSteps(input.descriptor, input.subject, { asciiOnly: true, ownedUnits: input.ownedUnits });
+  while (true) {
+    signal.throwIfAborted();
+    const step = execution.next();
+    if (step.done) return { id: input.id, operation: "expr-match", result: step.value };
+    await yieldTurn(signal);
+  }
 }
 
 async function admitBre(pattern: string, ledger: EreLedger, signal: AbortSignal): Promise<void> {
@@ -361,11 +426,13 @@ class CooperativeWorker implements RegexWorker {
     const id = identity.value as number;
     const submitted = Object.getOwnPropertyDescriptor(input, "descriptor")?.value as unknown;
     const expression = submitted !== null && typeof submitted === "object" && Object.getOwnPropertyDescriptor(submitted, "kind")?.value === "expr-match";
-    let owned: OwnedRequest | undefined;
+    let owned: OwnedRequest | OwnedExprRequest | undefined;
     let failure: string | undefined;
-    try { owned = admit(input, this.limits, this.#controller.signal); }
+    let category: ExprMatchError["category"] = "unsupported";
+    try { owned = expression ? admitExpr(input, this.limits, this.#controller.signal) : admit(input, this.limits, this.#controller.signal); }
     catch (error) {
-      if (!(error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) throw error;
+      if (!(error instanceof ExprMatchError || error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) throw error;
+      if (error instanceof ExprMatchError) category = error.category;
       failure = error.message.slice(0, 512);
     }
     this.#busy = true;
@@ -373,17 +440,18 @@ class CooperativeWorker implements RegexWorker {
       let reply: Reply | ExprMatchReply;
       try {
         this.#controller.signal.throwIfAborted();
-        reply = owned ? await execute(owned, this.#controller.signal) : { id, error: failure! };
+        reply = owned ? "subject" in owned ? await executeExpr(owned, this.#controller.signal) : await execute(owned, this.#controller.signal) : { id, error: failure! };
       } catch (error) {
-        if (!(error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) {
+        if (!(error instanceof ExprMatchError || error instanceof PublicDiagnostic || error instanceof EreSyntaxError || error instanceof EreUnsupportedError || error instanceof EreProfileLimitError || error instanceof EreUsageUnknownError)) {
           owned = undefined;
           this.#busy = false;
           for (const listener of this.#listeners.get("error") ?? []) (listener as (reason: unknown) => void)(error);
           return;
         }
+        if (error instanceof ExprMatchError) category = error.category;
         reply = { id, error: error.message.slice(0, 512) };
       }
-      if (expression && "error" in reply) reply = { id, operation: "expr-match", category: "unsupported", error: reply.error };
+      if (expression && "error" in reply) reply = { id, operation: "expr-match", category, error: reply.error };
       // Clear request-owned payloads before notifying the consumer or allowing reuse.
       owned = undefined;
       this.#busy = false;
@@ -406,7 +474,7 @@ class CooperativeWorker implements RegexWorker {
   }
 }
 
-/** Cooperative ASCII grep regex and non-NUL UTF-8 literal provider; not a native-worker/RSS sandbox. */
+/** Cooperative ASCII grep/expr regex and non-NUL UTF-8 literals; not a native-worker/RSS sandbox. */
 export function createBoundedRegexProvider(input: BoundedRegexProviderOptions = {}): BoundedRegexProvider {
   const limits = options(input);
   let active = 0;

@@ -81,13 +81,15 @@ retain their independently bounded cooperative implementations. The built-in
 `createBoundedRegexProvider` is a restricted cooperative implementation, not a
 native-worker, wall-clock-preemption or RSS-isolation guarantee.
 
-Its supported selection modes include restricted ASCII grep BRE/ERE and fixed
-non-NUL UTF-8 matching. Its unsupported modes include expr matching, rg regex and
+Its supported modes include restricted ASCII grep BRE/ERE, fixed non-NUL UTF-8
+matching, and conservative ASCII BRE expr matching with anchored match lengths
+and bounded captures. Its unsupported modes include non-ASCII/NUL expr inputs, rg regex and
 glob descriptors, case-insensitive/word selection and all-match enumeration.
 Unsupported requests fail at provider admission with explicit diagnostics and
 nonzero status, without executing an unbounded regex or falling back to Node.
-For example `expr aa : 'a*'` exits 2 with a bounded-regex unsupported diagnostic;
-`expr 2 + 3` still works. A different host provider may implement more descriptors
+For example `expr aa : 'a*'` prints `2`, while `expr abc : 'a\(.\)c'` prints `b`;
+unsupported BRE extensions such as `\w` fail explicitly. `expr 2 + 3` still works.
+A different host provider may implement more descriptors
 while respecting the existing bounded request/reply and retirement contracts.
 
 The plugin owns its executor(s) and their endpoints, not an injected provider
@@ -148,6 +150,7 @@ with `nodejs_compat`. Local results are not a workerd acceptance claim.
 
 The separate binary controls expect `Uint8Array.of(0, 255, 65)` through
 `printf '\000\377A' | base64 | base64 -d | gzip -c | gunzip -c` and through
-a tar VFS round trip. Unsupported-mode controls require empty stdout and exit 2
-for `expr aa : 'a*'` and `printf 'aa\n' | rg 'a+'`, with an explicit
+a tar VFS round trip. Expr controls require `expr aa : 'a*'` to print `2` and exit 0.
+Unsupported-mode controls require empty stdout and exit 2
+for `expr aa : '\w'` and `printf 'aa\n' | rg 'a+'`, with an explicit
 unsupported diagnostic rather than native fallback.
