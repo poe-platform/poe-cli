@@ -126,11 +126,11 @@ describe("sandbox integrity at the run boundary", () => {
     const result = await run(`
       const closure = function () {};
       return [
-        ({}).__proto__, ({}).constructor === Object, ({}).prototype,
-        [].__proto__, [].constructor === Array, [].prototype,
-        "value".__proto__, "value".constructor === String, "value".prototype,
-        (1).__proto__, (1).constructor === Number, (1).prototype,
-        closure.__proto__, closure.constructor, closure.prototype.constructor === closure,
+        ({}).__proto__ === Object.prototype, ({}).constructor === Object, ({}).prototype,
+        [].__proto__ === Array.prototype, [].constructor === Array, [].prototype,
+        "value".__proto__ === String.prototype, "value".constructor === String, "value".prototype,
+        (1).__proto__ === Number.prototype, (1).constructor === Number, (1).prototype,
+        closure.__proto__ === Object.getPrototypeOf(Object), closure.constructor, closure.prototype.constructor === closure,
         typeof ([1].toSorted)
       ];
     `);
@@ -138,11 +138,11 @@ describe("sandbox integrity at the run boundary", () => {
     expect(result).toMatchObject({
       ok: true,
       returnValue: [
-        undefined, true, undefined,
-        undefined, true, undefined,
-        undefined, true, undefined,
-        undefined, true, undefined,
-        undefined, undefined, true, "function"
+        true, true, undefined,
+        true, true, undefined,
+        true, true, undefined,
+        true, true, undefined,
+        true, undefined, true, "function"
       ]
     });
   });

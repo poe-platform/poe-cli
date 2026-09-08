@@ -349,6 +349,20 @@ function metadataFixture() {
   return { io, volume, profile, sourceRoot: "/snapshot", historicalPaths: ["src/retired.ts", "tests/kept.ts", "package.json"] };
 }
 
+test("historical metadata input loading remains explicit and fails closed on unavailable records", async () => {
+  const { loadHistoricalInputs } = await import(metadataModule);
+  const missing = Object.assign(new Error("unavailable historical input"), { code: "ENOENT" });
+  for (const failure of [0, 1, 2]) {
+    const reads: string[] = [];
+    assert.throws(() => loadHistoricalInputs({ readFileSync(path: string) {
+      reads.push(path);
+      if (reads.length === failure + 1) throw missing;
+      return Buffer.from("{}");
+    } }), error => error === missing);
+    assert.equal(reads.length, failure + 1);
+  }
+});
+
 test("historical selection retains absent old paths; explicit current profile replaces only committed source inventory", async () => {
   const { selectManifestPaths } = await import(metadataModule);
   const input = metadataFixture();
