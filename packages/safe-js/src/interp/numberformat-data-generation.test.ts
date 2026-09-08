@@ -1,5 +1,32 @@
 import { expect, it } from "vitest";
-import { extractNumberFormatData, numberFormatDataModule, extractPluralRulesData, isolateNumberFormatEngine, isolatePluralRulesEngine } from "../../scripts/numberformat-data.mjs";
+import { runInNewContext } from "node:vm";
+import { BigDecimal } from "@formatjs/bigdecimal";
+import { extractNumberFormatData, numberFormatDataModule, extractPluralRulesData, isolateNumberFormatEngine, isolatePluralRulesEngine, mergeSubsecondUnitData } from "../../scripts/numberformat-data.mjs";
+
+it("merges only required subsecond patterns without mutating existing locale data", () => {
+  const existing = { locale: "en", data: { units: { compound: { keep: true }, simple: { meter: { long: { other: "{0} meters" } } } } } };
+  const units = Object.fromEntries(["long", "short", "narrow"].map(style => [style, Object.fromEntries(["microsecond", "nanosecond"].map(unit => [`duration-${unit}`, { displayName: "unused", "unitPattern-count-other": `{0} ${unit}`, perUnitPattern: `{0} per ${unit}` }]))]));
+  const merged = mergeSubsecondUnitData(existing, { main: { en: { units } } });
+  expect(merged.data.units.simple.microsecond).toEqual({ long: { other: "{0} microsecond" }, short: { other: "{0} microsecond" }, narrow: { other: "{0} microsecond" }, perUnit: { long: "{0} per microsecond", short: "{0} per microsecond", narrow: "{0} per microsecond" } });
+  expect(merged.data.units.simple.meter).toEqual(existing.data.units.simple.meter);
+  expect(merged.data.units.compound).toEqual({ keep: true });
+  expect(Object.keys(existing.data.units.simple)).toEqual(["meter"]);
+});
+
+it("rejects missing supplemental unit data", () => {
+  expect(() => mergeSubsecondUnitData({ locale: "en", data: { units: { simple: {} } } }, { main: { en: { units: {} } } })).toThrow();
+});
+
+it("preserves exact locale-rule comparisons and rejects changed operand initializers", () => {
+  const expression = '{locale:"en",data:{fn:function(num){const numStr=String(num);const parts=numStr.split(".");const integerPart=parts[0];const n=Math.abs(parseFloat(numStr));const i=Math.floor(Math.abs(parseFloat(integerPart)));if(i % 10 === 1 && n > 1)return "one";return "other";}}}';
+  const source = `if(Intl.PluralRules){Intl.PluralRules.__addLocaleData(${expression})}`;
+  const converted = extractPluralRulesData(source, "en.js");
+  const record = runInNewContext(`(${converted.expression})`, { BigDecimal });
+  expect(record.data.fn("10000000000000000001")).toBe("one");
+  expect(record.data.fn("1.0000000000000000001")).toBe("one");
+  expect(record.data.fn("1")).toBe("other");
+  expect(() => extractPluralRulesData(source.replace("Math.abs(parseFloat(numStr))", "parseFloat(numStr)"), "en.js")).toThrow("initializer");
+});
 
 const wrapper = (value: string) => `if (Intl.NumberFormat && typeof Intl.NumberFormat.__addLocaleData === 'function') { Intl.NumberFormat.__addLocaleData(${value}); }`;
 
@@ -72,13 +99,20 @@ it("retains valid legacy locale aliases from the plural dataset", () => {
 });
 
 it("gives the copied number engine a private Intl binding and removes stale source maps", () => {
-  const source = "export const make=()=>new Intl.PluralRules();\n//# sourceMappingURL=index.js.map";
+  const operands = Array.from({ length: 5 }, () => "selectPlural(pl,roundedNumber.toNumber(),rules);").join("");
+  const source = 'const SANCTIONED_UNITS=["duration-millisecond"];const denominator=denominatorPattern.replace("{0}", "");' + operands + 'export const make=()=>new Intl.PluralRules();\n//# sourceMappingURL=index.js.map';
   const generated = isolateNumberFormatEngine(source, "MIT notice");
   expect(generated).toContain('import { numberFormatIntl as Intl }');
   expect(generated).toContain("new Intl.PluralRules()");
   expect(generated).toContain("MIT notice");
   expect(generated).not.toContain("sourceMappingURL");
   expect(generated).not.toContain("globalThis.Intl =");
+  expect(generated).toContain('"duration-microsecond","duration-nanosecond"');
+  expect(() => isolateNumberFormatEngine(source.replace("duration-millisecond", "changed"), "MIT")).toThrow("unit list");
+  expect(generated).toContain('denominatorPattern.replace("{0}", "").trim()');
+  expect(() => isolateNumberFormatEngine(source.replace("denominatorPattern", "different"), "MIT")).toThrow("denominator");
+  expect(generated).toContain("selectPlural(pl,roundedNumber.toString(),rules)");
+  expect(() => isolateNumberFormatEngine(source.replace("roundedNumber.toNumber()", "other.toNumber()"), "MIT")).toThrow("operand");
 });
 
 it("rejects unexpected engine shape instead of silently leaving host plural rules", () => {

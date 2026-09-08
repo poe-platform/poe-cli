@@ -24,7 +24,8 @@ export function createIntlGlobal(budget: Budget, now: ReturnType<typeof createSa
     supportedValuesOf: async ([key], context) => {
       const text = await sandboxString(key, budget, context);
       budget.visitNode(text.length);
-      return allocateProducedSandboxValue(supportedValuesOf(text as Parameters<typeof supportedValuesOf>[0]), budget);
+      const values = supportedValuesOf(text as Parameters<typeof supportedValuesOf>[0]);
+      return allocateProducedSandboxValue(text === "unit" ? [...new Set([...values, "microsecond", "nanosecond"])].sort() : values, budget);
     }
   };
   const intl = createIntrinsicObject();

@@ -2,6 +2,7 @@ import { NumberFormat } from "../intl-data/dist/numberformat-engine.js";
 
 type LocaleData = Parameters<typeof NumberFormat.__addLocaleData>[0]["data"];
 const NativeNumberFormat = Intl.NumberFormat;
+const nativeUnits = new Set(Intl.supportedValuesOf("unit"));
 
 export function localizeNumberParts<T extends { type: string; value: string }>(parts: T[], locale: string, options: Record<string, string | number | boolean>): T[] {
   parts = parts.flatMap(part => {
@@ -17,7 +18,8 @@ export function localizeNumberParts<T extends { type: string; value: string }>(p
   });
   const numberingSystem = options.numberingSystem as string;
   const pluralType = options.style === "unit" ? "unit" : options.style === "currency" && options.currencyDisplay === "name" ? "currency" : undefined;
-  const integralPlural = pluralType !== undefined && options.notation === "standard" && !parts.some(part => part.type === "fraction");
+  const nativePlural = pluralType !== "unit" || typeof options.unit === "string" && options.unit.split("-per-").every(unit => nativeUnits.has(unit));
+  const integralPlural = pluralType !== undefined && nativePlural && options.notation === "standard" && !parts.some(part => part.type === "fraction");
   if (numberingSystem === "latn" && !integralPlural) return parts;
   const digitFormatter = new NativeNumberFormat(locale, { numberingSystem, useGrouping: false });
   const digits = Array.from({ length: 10 }, (_, digit) => digitFormatter.formatToParts(digit).find(part => part.type === "integer")!.value);

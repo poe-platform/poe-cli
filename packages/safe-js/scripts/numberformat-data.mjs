@@ -27,6 +27,33 @@ export function extractNumberFormatData(source, filename) {
   return value;
 }
 
+export function mergeSubsecondUnitData(value, supplemental) {
+  const units = supplemental.main?.[value.locale]?.units;
+  const extra = {};
+  for (const unit of ["microsecond", "nanosecond"]) {
+    const patterns = { perUnit: {} };
+    for (const style of ["long", "short", "narrow"]) {
+      const source = units?.[style]?.[`duration-${unit}`];
+      if (source === undefined || typeof source["unitPattern-count-other"] !== "string")
+        throw new TypeError(`Missing ${value.locale} ${style} ${unit} patterns.`);
+      patterns[style] = {};
+      for (const category of ["zero", "one", "two", "few", "many", "other"]) {
+        const pattern = source[`unitPattern-count-${category}`];
+        if (pattern !== undefined) {
+          if (typeof pattern !== "string") throw new TypeError("Invalid unit pattern.");
+          patterns[style][category] = pattern;
+        }
+      }
+      if (source.perUnitPattern !== undefined) {
+        if (typeof source.perUnitPattern !== "string") throw new TypeError("Invalid per-unit pattern.");
+        patterns.perUnit[style] = source.perUnitPattern;
+      }
+    }
+    extra[unit] = patterns;
+  }
+  return { ...value, data: { ...value.data, units: { ...value.data.units, simple: { ...value.data.units.simple, ...extra } } } };
+}
+
 export function extractPluralRulesData(source, filename) {
   const { parsed, argument } = localeRegistration(source, filename, "PluralRules");
   if (!ts.isObjectLiteralExpression(argument)) throw new TypeError("Invalid plural locale record.");
@@ -67,25 +94,114 @@ export function extractPluralRulesData(source, filename) {
   const start = argument.getStart(parsed);
   for (const replacement of replacements.sort((a, b) => b.start - a.start))
     expression = expression.slice(0, replacement.start - start) + replacement.text + expression.slice(replacement.end - start);
-  return { locale: locale.initializer.text, expression };
+  return { locale: locale.initializer.text, expression: preservePluralOperands(expression) };
+}
+
+function preservePluralOperands(expression) {
+  let source = `(${expression})`;
+  const parsed = ts.createSourceFile("plural-data.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  if (parsed.parseDiagnostics.length) throw new TypeError("Invalid plural expression.");
+  const initializers = {
+    n: ["Math.abs(parseFloat(numStr))", "new BigDecimal(numStr).abs()"],
+    i: ["Math.floor(Math.abs(parseFloat(integerPart)))", "new BigDecimal(integerPart).abs().floor()"],
+    f: ["v > 0 ? parseInt(decimalPart, 10) : 0", 'new BigDecimal(decimalPart || "0")'],
+    t: ['w > 0 ? parseInt(decimalPart.replace(/0+$/, ""), 10) : 0', 'new BigDecimal(decimalPart || "0").div(new BigDecimal(10).pow(decimalPart.length - w))']
+  };
+  const names = new Set();
+  const replacements = [];
+  const gather = node => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && Object.hasOwn(initializers, node.name.text)) {
+      const [expected, text] = initializers[node.name.text];
+      if (node.initializer?.getText(parsed) !== expected) throw new TypeError(`Unexpected plural ${node.name.text} initializer.`);
+      names.add(node.name.text);
+      replacements.push({ start: node.initializer.getStart(parsed), end: node.initializer.end, text });
+    }
+    ts.forEachChild(node, gather);
+  };
+  gather(parsed);
+  if (names.size === 0) return expression;
+  const arithmetic = new Map([[ts.SyntaxKind.PercentToken, "mod"], [ts.SyntaxKind.PlusToken, "plus"], [ts.SyntaxKind.MinusToken, "minus"], [ts.SyntaxKind.AsteriskToken, "times"], [ts.SyntaxKind.SlashToken, "div"]]);
+  const comparisons = new Map([[ts.SyntaxKind.EqualsEqualsEqualsToken, "eq"], [ts.SyntaxKind.EqualsEqualsToken, "eq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "eq"], [ts.SyntaxKind.ExclamationEqualsToken, "eq"], [ts.SyntaxKind.LessThanToken, "lessThan"], [ts.SyntaxKind.GreaterThanToken, "greaterThan"], [ts.SyntaxKind.LessThanEqualsToken, "lessThanOrEqualTo"], [ts.SyntaxKind.GreaterThanEqualsToken, "greaterThanOrEqualTo"]]);
+  const decimal = node => ts.isParenthesizedExpression(node) ? decimal(node.expression)
+    : ts.isIdentifier(node) ? names.has(node.text)
+    : ts.isBinaryExpression(node) && arithmetic.has(node.operatorToken.kind) && (decimal(node.left) || decimal(node.right));
+  const render = node => {
+    if (ts.isParenthesizedExpression(node)) return `(${render(node.expression)})`;
+    if (ts.isCallExpression(node) && node.expression.getText(parsed) === "Number.isInteger" && node.arguments.length === 1 && decimal(node.arguments[0]))
+      return `(${render(node.arguments[0])}).isInteger()`;
+    if (!ts.isBinaryExpression(node)) return node.getText(parsed);
+    const left = render(node.left), right = render(node.right), operator = node.operatorToken.kind;
+    if (decimal(node.left) || decimal(node.right)) {
+      const method = arithmetic.get(operator) ?? comparisons.get(operator);
+      if (method === undefined) throw new TypeError("Unsupported exact plural operator.");
+      const receiver = decimal(node.left) ? `(${left})` : `new BigDecimal(${left})`;
+      const negate = operator === ts.SyntaxKind.ExclamationEqualsEqualsToken || operator === ts.SyntaxKind.ExclamationEqualsToken;
+      return `${negate ? "!" : ""}${receiver}.${method}(${right})`;
+    }
+    return `(${left} ${node.operatorToken.getText(parsed)} ${right})`;
+  };
+  const conditions = node => {
+    if (ts.isIfStatement(node)) replacements.push({ start: node.expression.getStart(parsed), end: node.expression.end, text: render(node.expression) });
+    ts.forEachChild(node, conditions);
+  };
+  conditions(parsed);
+  for (const replacement of replacements.sort((a, b) => b.start - a.start))
+    source = source.slice(0, replacement.start) + replacement.text + source.slice(replacement.end);
+  return source.slice(1, -1);
 }
 
 export function isolateNumberFormatEngine(source, license) {
   const parsed = ts.createSourceFile("numberformat.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   if (parsed.parseDiagnostics.length !== 0 || license.includes("*/")) throw new TypeError("Invalid number engine source.");
   let pluralReferences = 0;
+  let sanctionedUnits;
+  let denominatorReplacement;
+  const pluralOperands = [];
   const inspect = node => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "Intl")
       throw new TypeError("Number engine already declares Intl.");
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Intl" && node.name.text === "PluralRules") pluralReferences++;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "SANCTIONED_UNITS") {
+      if (sanctionedUnits !== undefined || !ts.isArrayLiteralExpression(node.initializer) || !node.initializer.elements.every(ts.isStringLiteral))
+        throw new TypeError("Unexpected sanctioned unit declaration.");
+      sanctionedUnits = node.initializer;
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "denominatorPattern" && node.expression.name.text === "replace") {
+      if (denominatorReplacement !== undefined || node.arguments.length !== 2 ||
+          !node.arguments.every(ts.isStringLiteral) || node.arguments[0].text !== "{0}" || node.arguments[1].text !== "")
+        throw new TypeError("Unexpected denominator pattern replacement.");
+      denominatorReplacement = node;
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "selectPlural") {
+      const operand = node.arguments[1];
+      if (ts.isCallExpression(operand) && ts.isPropertyAccessExpression(operand.expression) && operand.expression.name.text === "toNumber") {
+        if (operand.arguments.length !== 0 || !["roundedNumber", "numberResult.roundedNumber.times(getPowerOf10(exponent))"].includes(operand.expression.expression.getText(parsed)))
+          throw new TypeError("Unexpected plural numeric operand.");
+        pluralOperands.push(operand.expression.name);
+      }
+    }
     ts.forEachChild(node, inspect);
   };
   inspect(parsed);
   if (pluralReferences === 0) throw new TypeError("Missing number engine plural dependency.");
+  if (sanctionedUnits === undefined || !sanctionedUnits.elements.some(node => node.text === "duration-millisecond") ||
+      sanctionedUnits.elements.some(node => ["duration-microsecond", "duration-nanosecond"].includes(node.text)))
+    throw new TypeError("Unexpected sanctioned unit list.");
+  const replacements = [{ start: sanctionedUnits.getStart(parsed), end: sanctionedUnits.end,
+    text: JSON.stringify([...sanctionedUnits.elements.map(node => node.text), "duration-microsecond", "duration-nanosecond"]) }];
+  if (denominatorReplacement === undefined) throw new TypeError("Missing denominator pattern replacement.");
+  replacements.push({ start: denominatorReplacement.getStart(parsed), end: denominatorReplacement.end,
+    text: `${denominatorReplacement.getText(parsed)}.trim()` });
+  if (pluralOperands.length !== 5) throw new TypeError("Unexpected plural operand sites.");
+  for (const operand of pluralOperands)
+    replacements.push({ start: operand.getStart(parsed), end: operand.end, text: "toString" });
   const comments = ts.getLeadingCommentRanges(source, parsed.statements.at(-1)?.end ?? 0) ?? [];
   for (const comment of [...comments].reverse())
     if (comment.kind === ts.SyntaxKind.SingleLineCommentTrivia && source.slice(comment.pos, comment.end).startsWith("//# sourceMappingURL="))
-      source = source.slice(0, comment.pos) + source.slice(comment.end);
+      replacements.push({ start: comment.pos, end: comment.end, text: "" });
+  for (const replacement of replacements.sort((a, b) => b.start - a.start))
+    source = source.slice(0, replacement.start) + replacement.text + source.slice(replacement.end);
   return `/*!\n${license}\n*/\nimport { numberFormatIntl as Intl } from "../../interp/numberformat-pluralrules.js";\n${source}`;
 }
 
@@ -188,13 +304,18 @@ async function generate() {
   }
   const require = createRequire(import.meta.url);
   const dataDirectory = resolve(dirname(require.resolve("@formatjs/intl-numberformat")), "locale-data");
+  const unitDirectory = dirname(require.resolve("cldr-units-full/package.json"));
   const values = [];
-  for (const filename of (await readdir(dataDirectory)).filter(name => name.endsWith(".js")).sort())
-    values.push(extractNumberFormatData(await readFile(resolve(dataDirectory, filename), "utf8"), filename));
+  for (const filename of (await readdir(dataDirectory)).filter(name => name.endsWith(".js")).sort()) {
+    const value = extractNumberFormatData(await readFile(resolve(dataDirectory, filename), "utf8"), filename);
+    const units = JSON.parse(await readFile(resolve(unitDirectory, "main", value.locale, "units.json"), "utf8"));
+    values.push(mergeSubsecondUnitData(value, units));
+  }
   if (values.length === 0) throw new Error("Missing NumberFormat locale data.");
   await mkdir(output, { recursive: true });
   const license = await readFile(resolve(dataDirectory, "../LICENSE.md"), "utf8");
-  const source = numberFormatDataModule(values, license);
+  const unitLicense = await readFile(resolve(unitDirectory, "LICENSE"), "utf8");
+  const source = numberFormatDataModule(values, `${license}\n\nSupplemental unit data:\n${unitLicense}`);
   await writeFile(resolve(output, "numberformat.js"), source);
   await writeFile(resolve(output, "numberformat.d.ts"), 'import type { NumberFormat } from "@formatjs/intl-numberformat";\nexport declare const localeData: Readonly<Record<string, () => Parameters<typeof NumberFormat.__addLocaleData>[0]>>;\n');
   const engine = isolateNumberFormatEngine(await readFile(require.resolve("@formatjs/intl-numberformat"), "utf8"), license);
@@ -210,7 +331,7 @@ async function generate() {
   if (pluralLicense.includes("*/")) throw new TypeError("Invalid plural locale license.");
   await writeFile(resolve(output, "pluralrules-engine.js"), isolatePluralRulesEngine(await readFile(require.resolve("@formatjs/intl-pluralrules"), "utf8"), pluralLicense));
   await writeFile(resolve(output, "pluralrules-engine.d.ts"), 'export { PluralRules } from "@formatjs/intl-pluralrules";\n');
-  const pluralSource = `/*!\n${pluralLicense}\n*/\nexport const pluralData = Object.freeze({\n` +
+  const pluralSource = `/*!\n${pluralLicense}\n*/\nimport { BigDecimal } from "@formatjs/bigdecimal";\nexport const pluralData = Object.freeze({\n` +
     pluralValues.map(value => `${JSON.stringify(value.locale)}: () => (${value.expression})`).join(",\n") + "\n});\n";
   await writeFile(resolve(output, "pluralrules.js"), pluralSource);
   await writeFile(resolve(output, "pluralrules.d.ts"), 'import type { PluralRules } from "@formatjs/intl-pluralrules";\nexport declare const pluralData: Readonly<Record<string, () => Parameters<typeof PluralRules.__addLocaleData>[0]>>;\n');

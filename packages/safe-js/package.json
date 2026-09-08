@@ -50,5 +50,8 @@
   "files": [
     "dist",
     "examples"
-  ]
+  ],
+  "devDependencies": {
+    "cldr-units-full": "48.2.0"
+  }
 }
