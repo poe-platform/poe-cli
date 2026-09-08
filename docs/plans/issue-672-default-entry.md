@@ -49,6 +49,13 @@ package roots, with existing declaration-only reads and physical identity guards
 unchanged. Package metadata is bounded to 64 KiB. No broad node_modules admission
 or compiler timeout increase is introduced.
 
+The conditional export also reproduced a TypeError in the maintained typecheck
+prerequisite checker, which assumed every target was a string. Its in-memory
+regression verifies all nested browser/Node runtime and declaration targets,
+preserves explicit null denials and wildcard routes, and fails if any concrete
+target is missing. The focused regression passes after recursively collecting
+the declared targets. This does not waive the later declaration-origin checks.
+
 ## Validation before delivery
 
 Retain independent full command inventory, argument and filesystem identity,

@@ -2180,6 +2180,29 @@ test("standalone admission retains held evidence accounting without fabricating 
   assert.equal(reads.length, 0);
 });
 
+test("built package prerequisites include nested platform conditions and preserve denials", async () => {
+  const { requireBuiltPackage } = await import("./typecheck-inputs.mjs");
+  const memory = createFsFromVolume(Volume.fromJSON({
+    "/package/package.json": JSON.stringify({ exports: {
+      ".": { types: { browser: "./dist/core.d.ts", default: "./dist/index.d.ts" }, browser: "./dist/core.browser.js", import: "./dist/index.js" },
+      "./node": { types: "./dist/node.d.ts", browser: null, import: "./dist/node.js" },
+      "./contracts/*": { types: "./dist/contracts/*.d.ts", import: "./dist/contracts/*.js" },
+    } }),
+    "/package/dist/core.d.ts": "",
+    "/package/dist/index.d.ts": "",
+    "/package/dist/core.browser.js": "",
+    "/package/dist/index.js": "",
+    "/package/dist/node.d.ts": "",
+    "/package/dist/node.js": "",
+  }));
+  assert.doesNotThrow(() => requireBuiltPackage("/package", memory));
+  for (const path of ["core.d.ts", "index.d.ts", "core.browser.js", "index.js", "node.d.ts", "node.js"]) {
+    memory.unlinkSync(`/package/dist/${path}`);
+    assert.throws(() => requireBuiltPackage("/package", memory), { code: "TYPECHECK_BUILD_REQUIRED" });
+    memory.writeFileSync(`/package/dist/${path}`, "");
+  }
+});
+
 test("alternate typecheck emission guards output before compilation and preserves failures", async () => {
   const { buildForTypecheck } = await import("./typecheck-inputs.mjs");
   const directories = [];

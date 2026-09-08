@@ -88,10 +88,15 @@ export function verifyTypecheckInputs(root, fileSystem = fs) {
   return { capturedData: classification.entries.length, stagedInputs: staged.entries.map(({ path, role, currentGroup }) => ({ path, role, currentGroup })), currentSourceConsumerGroups, standaloneInventory: inventory.counts, standaloneAdmission, integrationTypeEvidence: { capturedPaths: integrationTypes.capturedPaths, standaloneEntries: integrationTypes.standaloneEntries, cohorts: integrationTypes.cohorts } };
 }
 
-export function requireBuiltPackage(root) {
-  const pkg = JSON.parse(readRegularInput(root, "package.json", 300000));
-  const paths = Object.values(pkg.exports).flatMap(entry => [entry.types, entry.import]).filter(path => path && !path.includes("*"));
-  const missing = [...new Set(paths)].filter(path => !fs.existsSync(join(root, path)));
+export function requireBuiltPackage(root, fileSystem = fs) {
+  const pkg = JSON.parse(readRegularInput(root, "package.json", 300000, fileSystem));
+  const targets = entry => {
+    if (entry === null) return [];
+    if (typeof entry === "string") return entry.includes("*") ? [] : [entry];
+    assert.ok(entry && typeof entry === "object" && !Array.isArray(entry), "Invalid export condition");
+    return Object.values(entry).flatMap(targets);
+  };
+  const missing = [...new Set(targets(pkg.exports))].filter(path => !fileSystem.existsSync(join(root, path)));
   if (missing.length) {
     const error = new Error(`Built-package prerequisite missing (${missing.length} files). Run npm run typecheck:all to build once and check source plus current consumers, or npm run build before npm run typecheck. No consumer compilation was attempted.`);
     error.code = "TYPECHECK_BUILD_REQUIRED";
