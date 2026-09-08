@@ -31,18 +31,20 @@ function request(overrides: Partial<ProtectedRequest> = {}): ProtectedRequest {
     signal: new AbortController().signal, denyPrivateNetworks: true, ...overrides };
 }
 
-function mockRequests(context: TestContext) {
+function mockRequests(context: TestContext, redirect?: string) {
   const calls: { url: URL; options: SocketRequestOptions; writes: Uint8Array[]; destroys: number }[] = [];
   const implementation = (url: URL, options: SocketRequestOptions, receive: (response: unknown) => void) => {
     const call = { url, options, writes: [] as Uint8Array[], destroys: 0 };
     calls.push(call);
+    const location = calls.length === 1 ? redirect : undefined;
     const outgoing = new EventEmitter() as EventEmitter & {
       write: (chunk: Uint8Array, done: () => void) => void;
       end: () => void;
       destroy: (error?: Error) => void;
     };
     outgoing.write = (chunk, done) => { call.writes.push(new Uint8Array(chunk)); done(); };
-    outgoing.end = () => queueMicrotask(() => receive({ rawHeaders: [], statusCode: 200,
+    outgoing.end = () => queueMicrotask(() => receive({ rawHeaders: location === undefined ? [] : ["Location", location],
+      statusCode: location === undefined ? 200 : 302,
       statusMessage: "OK", httpVersion: "1.1", destroy() {},
       async *[Symbol.asyncIterator]() { yield new Uint8Array([1]); } }));
     outgoing.destroy = error => {
@@ -109,6 +111,13 @@ for (const candidate of [
   { address: "127.0.0.1", family: 4 }, { address: "10.1.2.3", family: 4 },
   { address: "::1", family: 6 }, { address: "fc00::1", family: 6 },
   { address: "::ffff:127.0.0.1", family: 6 }, { address: "64:ff9b::192.168.0.1", family: 6 },
+  { address: "100.100.100.200", family: 4 }, { address: "198.18.0.1", family: 4 },
+  { address: "224.0.0.1", family: 4 }, { address: "240.0.0.1", family: 4 },
+  { address: "255.255.255.255", family: 4 }, { address: "64:ff9b:1::8.8.8.8", family: 6 },
+  { address: "fec0::1", family: 6 }, { address: "ff02::1", family: 6 },
+  { address: "::127.0.0.1", family: 6 }, { address: "2002:a9fe:a9fe::808:808", family: 6 },
+  { address: "::ffff:100.100.100.200", family: 6 }, { address: "::ffff:0:100.100.100.200", family: 6 },
+  { address: "64:ff9b::100.100.100.200", family: 6 },
   { address: "public.example", family: 4 }, { address: "127.1", family: 4 },
   { address: "93.184.216.34", family: 6 }, { address: "2606:4700::1111", family: 4 },
   { address: "93.184.216.34", family: 0 }, { address: "[2606:4700::1111]", family: 6 },
@@ -125,7 +134,10 @@ for (const candidate of [
   });
 }
 
-for (const hostname of ["127.1", "[::1]", "[::ffff:127.0.0.1]", "localhost", "LOCALHOST."]) {
+for (const hostname of ["127.1", "[::1]", "[::ffff:127.0.0.1]", "localhost", "LOCALHOST.",
+  "100.100.100.200", "198.18.0.1", "224.0.0.1", "240.0.0.1", "255.255.255.255",
+  "[64:ff9b:1::808:808]", "[fec0::1]", "[ff02::1]", "[::127.0.0.1]", "[2002:a9fe:a9fe::1]",
+]) {
   test(`private literal/name ${hostname} never resolves or constructs`, async context => {
     const calls = mockRequests(context);
     let resolutions = 0;
@@ -138,6 +150,9 @@ for (const hostname of ["127.1", "[::1]", "[::ffff:127.0.0.1]", "localhost", "LO
 
 for (const [hostname, address, family] of [
   ["93.184.216.34", "93.184.216.34", 4], ["[2606:4700::1111]", "2606:4700::1111", 6],
+  ["[::8.8.8.8]", "::808:808", 6], ["[::ffff:8.8.8.8]", "::ffff:808:808", 6],
+  ["[::ffff:0:8.8.8.8]", "::ffff:0:808:808", 6], ["[64:ff9b::8.8.8.8]", "64:ff9b::808:808", 6],
+  ["[2002:808:808::7f00:1]", "2002:808:808::7f00:1", 6],
 ] as const) {
   test(`public literal ${hostname} bypasses DNS and keeps its numeric family`, async context => {
     const calls = mockRequests(context);
@@ -152,17 +167,50 @@ for (const [hostname, address, family] of [
 test("unflagged and runtime-false requests preserve legacy DNS admission", async context => {
   const calls = mockRequests(context);
   const options: ResolverOptions = { resolveAddress: async () => { assert.fail("legacy request must not resolve here"); } };
-  for (const flag of [undefined, false]) {
-    const input = request({ url: "http://127.0.0.1/" });
+  const destinations = ["127.0.0.1", "100.100.100.200", "198.18.0.1", "224.0.0.1", "240.0.0.1",
+    "255.255.255.255", "[64:ff9b:1::808:808]", "[fec0::1]", "[ff02::1]", "[::127.0.0.1]", "[2002:a9fe:a9fe::1]"];
+  for (const hostname of destinations) for (const flag of [undefined, false]) {
+    const input = request({ url: `http://${hostname}/` });
     const response = await createNodeHttpTransport(options)({ ...input, denyPrivateNetworks: flag } as HttpRequest);
     await response.dispose();
   }
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, destinations.length * 2);
   for (const call of calls) {
     assert.equal(call.options.lookup, undefined);
     assert.equal(call.options.autoSelectFamily, undefined);
   }
 });
+
+for (const candidate of [
+  { address: "100.100.100.200", family: 4 }, { address: "198.18.0.1", family: 4 },
+  { address: "224.0.0.1", family: 4 }, { address: "240.0.0.1", family: 4 },
+  { address: "255.255.255.255", family: 4 }, { address: "64:ff9b:1::808:808", family: 6 },
+  { address: "fec0::1", family: 6 }, { address: "ff02::1", family: 6 },
+  { address: "::127.0.0.1", family: 6 }, { address: "2002:a9fe:a9fe::808:808", family: 6 },
+] as const) {
+  for (const redirect of [false, true]) {
+    test(`Shell denies resolved ${candidate.address} before ${redirect ? "redirect" : "initial"} Node dispatch`, async context => {
+      const target = "http://target.example/secret";
+      const calls = mockRequests(context, redirect ? target : undefined);
+      const resolutions: string[] = [];
+      const transport = createNodeHttpTransport({ resolveAddress: async hostname => {
+        resolutions.push(hostname);
+        return hostname === "public.example" ? { address: "8.8.8.8", family: 4 } : candidate;
+      } });
+      const shell = new Shell({ fs: new MemoryFileSystem() }).use(networkCommands({ transport,
+        authorize: createOriginAuthorizer("*", { denyPrivateNetworks: true }),
+      }));
+      try {
+        const result = await shell.exec(`curl -L '${redirect ? "http://public.example/start" : target}'`);
+        assert.equal(result.exitCode, 7, result.stderr);
+        assert.equal(result.stdout, "");
+        assert.deepEqual(resolutions, redirect ? ["public.example", "target.example"] : ["target.example"]);
+        assert.deepEqual(calls.map(call => call.url.href), redirect ? ["http://public.example/start"] : []);
+      } finally { await shell.dispose(); }
+      assert.ok(calls.every(call => call.destroys === 1));
+    });
+  }
+}
 
 for (const reason of [null, false, 0, "", new Error("canceled")]) {
   test(`pre-abort preserves ${String(reason)} with zero acquisition`, async context => {

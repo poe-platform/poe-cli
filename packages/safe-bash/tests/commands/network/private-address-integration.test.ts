@@ -61,6 +61,10 @@ const privateDestinations = [
   "http://[64:ff9b::127.0.0.1]/secret",
   "http://[64:ff9b::a9fe:a9fe]/secret",
   "http://[0064:FF9B:0:0:0:0:A9FE:A9FE]/secret",
+  "http://100.100.100.200/secret", "http://198.18.0.1/secret",
+  "http://224.0.0.1/secret", "http://240.0.0.1/secret", "http://255.255.255.255/secret",
+  "http://[64:ff9b:1::808:808]/secret", "http://[fec0::1]/secret", "http://[ff02::1]/secret",
+  "http://[::127.0.0.1]/secret", "http://[2002:a9fe:a9fe::808:808]/secret",
 ] as const;
 
 for (const kind of ["transport", "fetch"] as const) {
@@ -110,6 +114,7 @@ for (const kind of ["transport", "fetch"] as const) {
     "http://[::ffff:8.8.8.8]/ok", "http://[2001:4860:4860::8888]/ok", "http://public.example/ok",
     "http://[::ffff:0:8.8.8.8]/ok", "http://[64:ff9b::8.8.8.8]/ok",
     "http://[::ffff:1:7f00:1]/ok", "http://[64:ff9b:0:0:1:0:7f00:1]/ok",
+    "http://[::8.8.8.8]/ok", "http://[2002:808:808::7f00:1]/ok", "http://[2001:4860::7f00:1]/ok",
   ]) {
     test(`${kind}: ${kind === "fetch" ? "unsupported private policy refuses even public destination" : "public destination remains allowed and identical at each hop"}: ${destination}`, async () => {
       const initial = "http://public.example/start";
@@ -128,8 +133,8 @@ for (const kind of ["transport", "fetch"] as const) {
     });
   }
 
-  for (const destination of ["http://[::ffff:0:127.0.0.1]/secret", "http://[64:ff9b::127.0.0.1]/secret"]) {
-    test(`${kind}: explicit translated-private allowlist cannot bypass opt-in filtering for ${destination}`, async () => {
+  for (const destination of privateDestinations) {
+    test(`${kind}: explicit private allowlist cannot bypass opt-in filtering for ${destination}`, async () => {
       const f = fixture(kind, createOriginAuthorizer([new URL(destination).origin], { denyPrivateNetworks: true }));
       try {
         const result = await f.shell.exec(`curl '${destination}'`);
@@ -141,7 +146,7 @@ for (const kind of ["transport", "fetch"] as const) {
     });
 
     for (const options of [undefined, { denyPrivateNetworks: false }]) {
-      test(`${kind}: translated-private dispatch remains opt-in for ${destination} (${options === undefined ? "omitted" : "false"})`, async () => {
+      test(`${kind}: private dispatch remains opt-in for ${destination} (${options === undefined ? "omitted" : "false"})`, async () => {
         const initial = "http://public.example/start";
         const f = fixture(kind, createOriginAuthorizer([new URL(initial).origin, new URL(destination).origin], options), destination);
         try {

@@ -62,12 +62,12 @@ for (const host of [
   "169.253.255.255", "169.255.0.0", "172.15.255.255", "172.32.0.0", "192.167.255.255", "192.169.0.0",
   "[::ffff:8.8.8.8]", "[::ffff:808:808]", "[0:0:0:0:0:FFFF:0808:0808]",
   "[::ffff:172.15.255.255]", "[::ffff:172.32.0.0]", "[::ffff:169.253.255.255]", "[::ffff:192.169.0.0]",
-  "[2001:4860:4860::8888]", "[2001:db8::1]", "[2001:4860::7f00:1]", "[::7f00:1]",
-  "[65:ff9b::7f00:1]", "[64:ff9c::7f00:1]", "[64:ff9b:1::7f00:1]",
+  "[2001:4860:4860::8888]", "[2001:db8::1]", "[2001:4860::7f00:1]",
+  "[65:ff9b::7f00:1]", "[64:ff9c::7f00:1]",
   "[64:ff9b:0:1::7f00:1]", "[64:ff9b:0:0:1:0:7f00:1]", "[64:ff9b:0:0:0:1:7f00:1]",
   "[1:0:0:0:ffff:0:7f00:1]", "[0:1:0:0:ffff:0:7f00:1]", "[0:0:1:0:ffff:0:7f00:1]",
   "[0:0:0:1:ffff:0:7f00:1]", "[::fffe:0:7f00:1]", "[::ffff:1:7f00:1]",
-  "[fc::1]", "[fd::1]", "[fe8::1]", "[fbff::1]", "[fe00::1]", "[fe7f::1]", "[fec0::1]", "public.example",
+  "[fc::1]", "[fd::1]", "[fe8::1]", "[fbff::1]", "[fe00::1]", "[fe7f::1]", "public.example",
 ]) {
   test(`private-address policy permits ${host}`, async () => {
     assert.equal(await createOriginAuthorizer("*", { denyPrivateNetworks: true })(request(host)), true);
@@ -120,3 +120,65 @@ test("private filtering composes with canonical exact origins and hostname allow
   assert.equal(await hosts(request("public.example:81")), true);
   assert.equal(await hosts(request("sub.public.example")), false);
 });
+
+for (const [address, denied] of [
+  ["0.0.0.0", true], ["0.255.255.255", true], ["10.0.0.0", true], ["10.255.255.255", true],
+  ["127.0.0.0", true], ["127.255.255.255", true], ["169.254.0.0", true], ["169.254.255.255", true],
+  ["172.16.0.0", true], ["172.31.255.255", true], ["192.168.0.0", true], ["192.168.255.255", true],
+  ["100.63.255.255", false], ["100.64.0.0", true], ["100.100.100.200", true],
+  ["100.127.255.255", true], ["100.128.0.0", false],
+  ["198.17.255.255", false], ["198.18.0.0", true], ["198.19.255.255", true], ["198.20.0.0", false],
+  ["223.255.255.255", false], ["224.0.0.0", true], ["239.255.255.255", true],
+  ["240.0.0.0", true], ["255.255.255.255", true],
+  ["8.8.8.8", false], ["169.253.255.255", false], ["169.255.0.0", false],
+  ["172.15.255.255", false], ["172.32.0.0", false], ["192.167.255.255", false], ["192.169.0.0", false],
+  ["192.0.0.9", false], ["192.0.0.10", false], ["192.0.2.1", false],
+  ["198.51.100.1", false], ["203.0.113.1", false],
+] as const) {
+  test(`selected IPv4 policy and opt-out agree across native and embedded forms of ${address}`, async () => {
+    const octets = address.split(".").map(Number);
+    const firstHextet = ((octets[0]! << 8) | octets[1]!).toString(16);
+    const lastHextet = ((octets[2]! << 8) | octets[3]!).toString(16);
+    const hosts = [address, `[2002:${firstHextet}:${lastHextet}::808:808]`,
+      `[2002:${firstHextet}:${lastHextet}:0:0:0:7f00:1]`];
+    for (const prefix of ["::", "::ffff:", "::ffff:0:", "64:ff9b::",
+      "0:0:0:0:0:0:", "0:0:0:0:0:ffff:", "0:0:0:0:ffff:0:", "0064:ff9b:0:0:0:0:"]) {
+      hosts.push(`[${prefix}${address}]`, `[${prefix}${firstHextet}:${lastHextet}]`.toUpperCase());
+    }
+    for (const host of hosts) {
+      const input = request(host);
+      const canonical = new URL(input.url);
+      assert.equal(await createOriginAuthorizer("*", { denyPrivateNetworks: true })(input), !denied, host);
+      assert.equal(await createOriginAuthorizer("*", { denyPrivateNetworks: true })({ ...input, url: canonical.href }), !denied, host);
+      assert.equal(await createOriginAuthorizer()(input), true, host);
+      assert.equal(await createOriginAuthorizer("*", { denyPrivateNetworks: false })(input), true, host);
+      for (const allowlist of [[canonical.origin], [canonical.hostname]]) {
+        assert.equal(await createOriginAuthorizer(allowlist, { denyPrivateNetworks: true })(input), !denied, host);
+      }
+    }
+  });
+}
+
+for (const [host, denied] of [
+  ["[::7f00:1]", true], ["[::1]", true], ["[::808:808]", false], ["[::1:7f00:1]", false],
+  ["[2002:7f00:1::808:808]", true], ["[2002:808:808::7f00:1]", false],
+  ["[2001:7f00:1::]", false], ["[2003:7f00:1::]", false],
+  ["[64:ff9b:1::]", true], ["[64:ff9b:1::7f00:1]", true], ["[64:ff9b:1::808:808]", true],
+  ["[0064:FF9B:0001:1234:5678:90AB:CDEF:1234]", true],
+  ["[64:ff9b:1:ffff:ffff:ffff:ffff:ffff]", true],
+  ["[64:ff9b:0:ffff:ffff:ffff:ffff:ffff]", false], ["[64:ff9b:2::7f00:1]", false],
+  ["[fec0::]", true], ["[fec0::1]", true], ["[feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]", true],
+  ["[febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff]", true], ["[fe7f::1]", false],
+  ["[ff00::]", true], ["[ff02::1]", true], ["[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]", true],
+  ["[2001:4860:4860::8888]", false], ["[2001:db8::1]", false], ["[2001:4860::7f00:1]", false],
+] as const) {
+  test(`selected IPv6 prefix policy and opt-out for ${host}`, async () => {
+    const input = request(host);
+    const canonical = new URL(input.url);
+    for (const allowlist of ["*", [canonical.origin], [canonical.hostname]] as const) {
+      assert.equal(await createOriginAuthorizer(allowlist, { denyPrivateNetworks: true })(input), !denied);
+      assert.equal(await createOriginAuthorizer(allowlist)(input), true);
+      assert.equal(await createOriginAuthorizer(allowlist, { denyPrivateNetworks: false })(input), true);
+    }
+  });
+}

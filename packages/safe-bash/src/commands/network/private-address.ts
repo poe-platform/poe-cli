@@ -1,7 +1,9 @@
 function privateIPv4(first: number, second: number): boolean {
   return first === 10 || first === 127 || first === 0 ||
     first === 169 && second === 254 || first === 192 && second === 168 ||
-    first === 172 && second >= 16 && second <= 31;
+    first === 172 && second >= 16 && second <= 31 ||
+    first === 100 && second >= 64 && second <= 127 ||
+    first === 198 && second >= 18 && second <= 19 || first >= 224;
 }
 
 export function privateHostname(input: string): boolean {
@@ -18,10 +20,14 @@ export function privateHostname(input: string): boolean {
     const mappedIPv4 = hextets.slice(0, 5).every(value => value === 0) && hextets[5] === 0xffff;
     const translatedIPv4 = hextets.slice(0, 4).every(value => value === 0) && hextets[4] === 0xffff && hextets[5] === 0;
     const nat64IPv4 = hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets.slice(2, 6).every(value => value === 0);
-    if (mappedIPv4 || translatedIPv4 || nat64IPv4) {
+    const compatibleIPv4 = hextets.slice(0, 6).every(value => value === 0);
+    if (mappedIPv4 || translatedIPv4 || nat64IPv4 || compatibleIPv4) {
       return privateIPv4(hextets[6]! >>> 8, hextets[6]! & 255);
     }
-    return (hextets[0]! & 0xfe00) === 0xfc00 || (hextets[0]! & 0xffc0) === 0xfe80;
+    if (hextets[0] === 0x2002) return privateIPv4(hextets[1]! >>> 8, hextets[1]! & 255);
+    return (hextets[0]! & 0xfe00) === 0xfc00 || (hextets[0]! & 0xffc0) === 0xfe80 ||
+      (hextets[0]! & 0xffc0) === 0xfec0 || (hextets[0]! & 0xff00) === 0xff00 ||
+      hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 1;
   }
   const parts = hostname.split(".");
   if (parts.length !== 4 || parts.some(part => !part || Array.from(part).some(character => character < "0" || character > "9"))) return false;

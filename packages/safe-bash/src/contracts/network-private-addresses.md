@@ -1,6 +1,6 @@
 # Private-Address Authorization and Connection Specification
 
-Status: Baseline and #619 literal policy; #618 connection enforcement contract
+Status: Baseline, #619 and #656 literal policy; #618 connection enforcement contract
 
 Baseline Implemented Through: `1433543a56f5558f0eb9aa07bfa65da29ffda05c`
 
@@ -25,6 +25,12 @@ published range list. Small injected-transport controls establish dispatch past
 the policy boundary, not an actual connection to a private service.
 
 ## 2. Goals and Non-Goals
+
+The #656 extension adds selected shared, benchmark, multicast, reserved and
+local-use ranges, plus conditional IPv4-compatible and 6to4 checks. Earlier
+tests explicitly permitted `::7f00:1`, `64:ff9b:1::7f00:1` and `fec0::1`;
+their changed expectations are intentional opt-in policy extensions, not a
+claim that the baseline violated its enumerated scope.
 
 The classifier MUST apply the existing private IPv4 policy to the IPv4 value
 embedded in an IPv4-mapped IPv6 literal or either translation prefix selected in
@@ -70,6 +76,11 @@ With private filtering enabled, the classifier MUST reject the existing IPv4
 ranges: `0.0.0.0/8`, `10.0.0.0/8`, `127.0.0.0/8`, `169.254.0.0/16`,
 `172.16.0.0/12` and `192.168.0.0/16`.
 
+The classifier MUST additionally reject shared `100.64.0.0/10`, benchmarking
+`198.18.0.0/15`, multicast `224.0.0.0/4` and reserved `240.0.0.0/4`.
+The last range includes limited broadcast `255.255.255.255`. These are
+selected defensive HTTP egress exclusions, not all RFC-1918 or local addresses.
+
 The classifier MUST recognize the IPv4-mapped IPv6 prefix `::ffff:0:0/96`,
 extract its low 32-bit IPv4 value, and apply those same IPv4 ranges. Equivalent
 URL-accepted dotted and hexadecimal representations MUST yield the same
@@ -91,14 +102,34 @@ that either literal necessarily connects to its low-32-bit IPv4 value. RFC 6052
 section 3.1 prohibits its well-known prefix from representing non-global IPv4
 addresses; actual translation and routing remain host concerns. RFC 2765's
 historical translated-address format is not the mapped IPv4 socket format.
-The classifier MUST NOT generalize this extraction to arbitrary IPv6 suffixes,
-IPv4-compatible `::/96`, network-specific translation prefixes, or neighbors of
-the two selected prefixes. The IPv6 denials below continue to apply independently.
+The classifier MUST also apply the IPv4 policy to the low 32 bits within exact
+IPv4-compatible `::/96`. Within 6to4 `2002::/16`, it MUST instead inspect the
+IPv4 value in zero-based hextets 1 and 2, immediately following `2002`.
+Public embedded IPv4 MUST remain eligible in both forms. In particular,
+`2002:808:808::7f00:1` is eligible while `2002:7f00:1::808:808` is denied.
+It MUST NOT generalize extraction to arbitrary IPv6 suffixes, network-specific
+translation prefixes or neighboring prefixes. RFC 4291 section 2.5.5.1
+deprecates compatible addresses. RFC 3056 section 2 defines the 6to4 IPv4
+tunnel endpoint; neither format establishes an HTTP route to that IPv4 host.
 
 The classifier MUST reject IPv6 unspecified `::`, loopback `::1`, unique-local
 `fc00::/7` and link-local `fe80::/10`, retaining existing localhost and
 subdomain-of-localhost rejection after terminal-dot normalization. Ordinary
 public IPv6 and unrelated hostname prefixes remain eligible for allowlisting.
+
+The classifier MUST additionally reject the whole local-use translation prefix
+`64:ff9b:1::/48`, deprecated site-local `fec0::/10` and multicast `ff00::/8`.
+Local-use translation is denied even with a public-looking suffix: RFC 8215
+does not prescribe one embedded-IPv4 layout for the whole /48. Do not assume
+the low 32 bits identify IPv4 or block the covering `64:ff9b::/47`.
+Site-local deprecation and non-local multicast scope do not change this
+deliberate defensive policy. Classification continues to consume URL-normalized
+hostnames; raw dotted IPv6 strings are not a new helper input contract.
+
+Documentation ranges and registry-wide special-purpose exclusions are not
+added by #656. Preserve existing eligibility for `2001:db8::1` and the IANA
+globally reachable IPv4 protocol-assignment exceptions `192.0.0.9` and
+`192.0.0.10`; no blanket `192.0.0.0/24` exclusion is implied.
 
 Address definitions follow RFC 4291 sections 2.2, 2.5.2 and 2.5.5.2. This list is
 the selected policy, not a claim to reject every special-use or non-routable
@@ -157,6 +188,7 @@ true-option Fetch success intentionally becomes an unsupported-policy refusal.
 | --- | --- |
 | Mapped private addresses | Dotted/hexadecimal and compressed/expanded equivalent forms for each denied IPv4 range, including boundaries. |
 | Selected translation prefixes | Exact-prefix private range boundaries denied; public range neighbors and one-hextet prefix neighbors eligible; equivalent spellings agree. |
+| Selected range extension | Shared/benchmark/multicast/reserved IPv4 boundaries through each embedded format; whole local-use NAT64/site-local/multicast IPv6 prefixes; compatible and 6to4 public payloads retained. |
 | Existing classification | Native IPv4, unspecified/loopback/local IPv6, localhost terminal-dot controls and unrelated/public neighbors. |
 | Opt-in and allowlists | Default/false option behavior, private explicitly allowed yet denied with the option, exact origin and hostname preservation. |
 | Initial/redirect enforcement | Actual Shell/curl with enforcing injected transport, normalized URL identity, zero denied-target dispatches and response disposal; unsupported Fetch refusal. |

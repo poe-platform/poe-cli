@@ -27,7 +27,7 @@ interface OutputState {
   readonly unterminatedFiles: Set<string>;
 }
 
-function parse(source: string, extended: boolean, separator: string): Instruction[] {
+function parse(source: string, extended: boolean, separator: string, maxProgramInstructions: number): Instruction[] {
   if (source.length > 1024 * 1024) throw new ProgramError("sed program exceeds 1 MiB");
   const result: Instruction[] = [];
   const groups: number[] = [];
@@ -109,6 +109,7 @@ function parse(source: string, extended: boolean, separator: string): Instructio
     if (source[offset] === ";" || source[offset] === "\n") { offset++; continue; }
     if (source[offset] === "#") { while (offset < source.length && source[offset] !== "\n") offset++; continue; }
     if (offset === source.length) break;
+    if (result.length >= maxProgramInstructions) throw new ProgramError("program instruction limit exceeded");
     const first = address();
     horizontal();
     let second: Address | undefined;
@@ -417,6 +418,8 @@ async function execute(program: readonly Instruction[], context: CommandContext,
 
 export function sedCommand(options: TextProgramOptions = {}): CommandDefinition {
   const definition = command("sed", async context => {
+    const maxProgramInstructions = options.maxProgramInstructions === undefined ? 1024 : options.maxProgramInstructions;
+    if (!Number.isSafeInteger(maxProgramInstructions) || maxProgramInstructions < 1) throw new ProgramError("maxProgramInstructions must be a positive safe integer");
     const budget = new Budget(context, options);
     const sources: string[] = [];
     const files: string[] = [];
@@ -456,7 +459,7 @@ export function sedCommand(options: TextProgramOptions = {}): CommandDefinition 
       sources.push(byteString(files.shift()!));
     }
     if (sources[0]?.startsWith("#n")) quiet = true;
-    const program = parse(sources.join("\n"), extended, separator);
+    const program = parse(sources.join("\n"), extended, separator, maxProgramInstructions);
     const outputFiles = program.flatMap(instruction => instruction.kind !== "r" && instruction.file !== undefined ? [instruction.file] : []);
     await assertPathRequirements(context, sedRequirements, ["script-output"], outputFiles);
     if (inPlace !== undefined || outputFiles.length) {

@@ -293,7 +293,14 @@ export class AwkRuntime {
         }
         const right = await this.scalarExpression(expression.right);
         if (operator === "&&" || operator === "||") return numeric(truth(right) ? 1 : 0);
-        if (operator === "concat") return string(this.budget.check(this.asText(left) + this.asText(right)));
+        if (operator === "concat") {
+          const leftText = this.asText(left);
+          const rightText = this.asText(right);
+          this.budget.step(0);
+          if (rightText.length > this.budget.maxBufferBytes - leftText.length) throw new ProgramError("text buffer limit exceeded");
+          this.budget.step(leftText.length + rightText.length);
+          return string(leftText + rightText);
+        }
         if (["==", "!=", "<", "<=", ">", ">="].includes(operator)) {
           const order = compare(left, right, this.varText("CONVFMT"), this.budget);
           return numeric((operator === "==" ? order === 0 : operator === "!=" ? order !== 0 : operator === "<" ? order < 0 : operator === "<=" ? order <= 0 : operator === ">" ? order > 0 : order >= 0) ? 1 : 0);
