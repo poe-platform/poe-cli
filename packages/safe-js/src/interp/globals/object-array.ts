@@ -25,6 +25,7 @@ import { createNumericParsers } from "./numeric-parsers.js";
 import { createPrimitiveConstructor } from "./primitives.js";
 import { arrayMethodLengths, arrayMethodNames, callArrayMethod } from "../methods/array.js";
 import {
+  createIntrinsicObject,
   getSandboxDataProperty,
   getSandboxPropertyDescriptor,
   getBoxedPrototype,
@@ -423,8 +424,8 @@ function createArrayGlobal(budget: Budget): SandboxClosure {
     }), "get"), configurable: true
   });
   Object.defineProperty(prototype, "constructor", { value: constructor, writable: true, configurable: true });
-  const iteratorPrototype: SandboxObject = Object.create(null);
-  const iterablePrototype: SandboxObject = Object.create(null);
+  const iteratorPrototype: SandboxObject = createIntrinsicObject();
+  const iterablePrototype: SandboxObject = createIntrinsicObject();
   Object.defineProperty(iterablePrototype, Symbol.iterator, { value: createSandboxClosure({
     guest: true, sandbox: true, name: "[Symbol.iterator]", length: 0,
     call: (_args, context) => context?.thisValue

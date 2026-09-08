@@ -2,7 +2,7 @@ import type { Budget } from "../budget.js";
 import { types } from "node:util";
 import { sandboxErrorTypes } from "../../error/shape.js";
 import { errorPrototypes } from "../error-prototypes.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { sandboxString } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
@@ -78,7 +78,7 @@ function createErrorConstructor(name: ErrorName, budget: Budget, guest: boolean)
 
 export function createErrorPrototypes(budget: Budget, constructors: ErrorGlobals): void {
   const prototypes = new Map<ErrorName, SandboxObject>();
-  for (const name of errorNames) prototypes.set(name, Object.create(null) as SandboxObject);
+  for (const name of errorNames) prototypes.set(name, createIntrinsicObject());
   errorPrototypes.set(budget, prototypes);
   for (const name of errorNames) {
     const constructor = constructors[name];

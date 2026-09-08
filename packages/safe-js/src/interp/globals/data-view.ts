@@ -3,7 +3,7 @@ import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, isSandboxAr
 import { dataViewGetters, dataViewLayouts, dataViewPrototypes, isSandboxDataView } from "../data-view.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { createSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
@@ -37,7 +37,7 @@ methods.setFloat16 = function (this: DataView, ...args: unknown[]) {
 };
 
 export function createDataViewGlobal(budget: Budget): SandboxClosure {
-  const prototype: SandboxObject = Object.create(null);
+  const prototype: SandboxObject = createIntrinsicObject();
   const constructor = createSandboxClosure({
     guest: true, sandbox: true, name: "DataView", length: 1,
     call: () => { throw new TypeError("DataView requires new."); },

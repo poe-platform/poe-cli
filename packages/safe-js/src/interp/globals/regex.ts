@@ -13,7 +13,7 @@ import {
 import { CompileScope } from "../regex/compile-guard.js";
 import { SandboxError, type Budget, type CompileOwner } from "../budget.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
-import { getSandboxPropertyDescriptor, installRegexPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, installRegexPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { callRegexMethod, getRegexMember, regexFlagProperties, regexSearch, type RegexMethodName } from "../methods/regex.js";
 import { regexMatch, regexReplace } from "../methods/string.js";
@@ -27,7 +27,7 @@ import { setSandboxProperty } from "../interpreter.js";
 import { regexSplit } from "../methods/regex-split.js";
 
 export function installRegExpIteratorPrototype(budget: Budget): void {
-  const prototype: SandboxObject = Object.create(null);
+  const prototype: SandboxObject = createIntrinsicObject();
   setSandboxPrototype(prototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
   Object.defineProperties(prototype, {
     next: { value: getRegExpIteratorMember("next", budget), writable: true, configurable: true },
@@ -138,7 +138,7 @@ export function createRegexGlobals(options: { budget: Budget; compileOwner?: Com
       }
     }), writable: true, configurable: true
   });
-  const prototype = Object.create(null) as SandboxObject;
+  const prototype = createIntrinsicObject();
   Object.defineProperty(materializeFunctionProperties(constructor), Symbol.species, {
     get: accessorAdapter(createSandboxClosure({ sandbox: true, name: "get [Symbol.species]", length: 0,
       call: (_args, context) => context?.thisValue }), "get"), configurable: true

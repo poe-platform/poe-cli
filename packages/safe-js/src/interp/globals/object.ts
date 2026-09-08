@@ -11,6 +11,7 @@ import { hasHostObjectMember, isGuestHostObject } from "../host-capabilities.js"
 import { collectionIteratorState, isSandboxCollectionIterator } from "../collection-iterator.js";
 import { isSandboxRegExpIterator } from "../regexp-iterator.js";
 import {
+  createIntrinsicObject,
   getSandboxPrototype,
   getSandboxPropertyDescriptor,
   hasExplicitSandboxPrototype,
@@ -72,7 +73,8 @@ export function createObjectGlobal(methods: SandboxObject, budget: Budget): Sand
     }
   });
   const properties = materializeFunctionProperties(constructor);
-  const prototype = properties.prototype as SandboxObject;
+  const prototype = createIntrinsicObject(properties.prototype as SandboxObject);
+  properties.prototype = prototype;
   Object.defineProperty(properties, "prototype", { writable: false });
   for (const [name, method] of Object.entries(methods)) {
     Object.defineProperty(properties, name, { value: method, writable: true, configurable: true });

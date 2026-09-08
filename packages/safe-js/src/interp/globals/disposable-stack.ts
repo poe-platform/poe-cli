@@ -5,13 +5,13 @@ import { createDataCheckpoint } from "../data-checkpoint.js";
 import { disposableStackStates, type DisposableStackState, type DisposableResource } from "../disposable-stack.js";
 import { createSubsetErrorValue, createThrowCompletion } from "../exceptions.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { retainValues } from "../resources.js";
 import { wellKnownSymbols } from "../symbols.js";
 import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 
 export function createDisposableStackGlobal(budget: Budget): SandboxClosure {
-  const prototype: SandboxObject = Object.create(null);
+  const prototype: SandboxObject = createIntrinsicObject();
   setSandboxPrototype(prototype, getSandboxPrototype(Object.create(null), budget));
   const constructor: SandboxClosure = createSandboxClosure({
     guest: true, sandbox: true, name: "DisposableStack", length: 0,

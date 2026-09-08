@@ -2,7 +2,7 @@ import { SandboxError, type Budget } from "./budget.js";
 import { asyncFunctionHandlers } from "./async-function-driver.js";
 import { asyncGeneratorHandlers, rejectGeneratorQueue } from "./async-generator-driver.js";
 import { accessorAdapter, accessorClosure, readPropertyDescriptor } from "./accessors.js";
-import { getSandboxDataProperty, getSandboxPropertyDescriptor, hasExplicitSandboxPrototype, installPromisePrototype, materializeFunctionProperties, registerIntrinsicFunction, setSandboxPrototype } from "./object-model.js";
+import { createIntrinsicObject, getSandboxDataProperty, getSandboxPropertyDescriptor, hasExplicitSandboxPrototype, installPromisePrototype, materializeFunctionProperties, registerIntrinsicFunction, setSandboxPrototype } from "./object-model.js";
 import { coerceThrownValue, createSubsetErrorValue } from "./exceptions.js";
 import { acquireSandboxIterator, closeIterator, getSandboxIterator, readIteratorResult } from "./iteration.js";
 import { retainValues } from "./resources.js";
@@ -432,7 +432,7 @@ async function callPromiseClosure(
 function getPromisePrototype(budget: Budget): SandboxObject {
   const existing = promisePrototypes.get(budget);
   if (existing !== undefined) return existing;
-  const prototype: SandboxObject = {
+  const prototype = createIntrinsicObject({
     then: createSandboxClosure({
       sandbox: true,
       call: ([onFulfilled, onRejected], context) => {
@@ -587,7 +587,7 @@ function getPromisePrototype(budget: Budget): SandboxObject {
       },
       guest: true, name: "finally", length: 1
     })
-  };
+  });
   intrinsicPromiseThenMethods.add(prototype.then as SandboxClosure);
   for (const name of Object.keys(prototype)) {
     Object.defineProperty(prototype, name, { enumerable: false });

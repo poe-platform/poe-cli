@@ -2,12 +2,12 @@ import type { Budget } from "../budget.js";
 import { generatorPrototypes } from "../generator-prototypes.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { callGeneratorMethod } from "../methods/generator.js";
-import { getSandboxPrototype, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPrototype, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { createSandboxClosure, type SandboxObject } from "../values.js";
 import { installAsyncIteratorDispose } from "./async-iterator-dispose.js";
 
 export function createGeneratorPrototypes(budget: Budget): void {
-  const asyncIteratorPrototype: SandboxObject = Object.create(null);
+  const asyncIteratorPrototype: SandboxObject = createIntrinsicObject();
   const asyncIterator = createSandboxClosure({ guest: true, sandbox: true,
     name: "[Symbol.asyncIterator]", length: 0, call: (_args, context) => context?.thisValue });
   Object.defineProperty(asyncIteratorPrototype, Symbol.asyncIterator, {
@@ -22,8 +22,8 @@ export function createGeneratorPrototypes(budget: Budget): void {
   const state = new Map<boolean, { functionPrototype: SandboxObject; instancePrototype: SandboxObject }>();
   for (const async of [false, true]) {
     const tag = async ? "AsyncGenerator" : "Generator";
-    const functionPrototype: SandboxObject = Object.create(null);
-    const instancePrototype: SandboxObject = Object.create(null);
+    const functionPrototype: SandboxObject = createIntrinsicObject();
+    const instancePrototype: SandboxObject = createIntrinsicObject();
     setSandboxPrototype(functionPrototype, resolveIntrinsicIdentity(budget, JSON.stringify(["%FunctionPrototype%"])));
     setSandboxPrototype(instancePrototype, async ? asyncIteratorPrototype
       : resolveIntrinsicIdentity(budget, JSON.stringify(["%IteratorPrototype%"])));

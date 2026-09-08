@@ -5,12 +5,12 @@ import { createDataCheckpoint } from "../data-checkpoint.js";
 import { ordinaryHasInstance } from "../instanceof.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { iteratorWrapperStates } from "../iterator-wrapper.js";
-import { getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { retainValues } from "../resources.js";
 import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 
 export function installIteratorFrom(constructor: SandboxClosure, budget: Budget): void {
-  const prototype: SandboxObject = Object.create(null);
+  const prototype: SandboxObject = createIntrinsicObject();
   setSandboxPrototype(prototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
   for (const name of ["next", "return"] as const) {
     Object.defineProperty(prototype, name, {writable:true,configurable:true,value:createSandboxClosure({

@@ -6,13 +6,13 @@ import { closeIterator, type SandboxIterator } from "../iteration.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../iterator-helper.js";
 import type { IteratorWrapperState } from "../iterator-wrapper.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
-import { getSandboxPropertyDescriptor, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { retainValues } from "../resources.js";
 import { sandboxNumber } from "../string-coercion.js";
 import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 
 export function installLazyIteratorHelpers(common: SandboxObject,budget: Budget): void {
-  const prototype: SandboxObject=Object.create(null);
+  const prototype: SandboxObject=createIntrinsicObject();
   setSandboxPrototype(prototype,common);
   Object.defineProperty(prototype,Symbol.toStringTag,{value:"Iterator Helper",configurable:true});
   for (const operation of ["next","return"] as const) {

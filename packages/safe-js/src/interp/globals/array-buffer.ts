@@ -2,7 +2,7 @@ import type { Budget } from "../budget.js";
 import { arrayBufferDetached, arrayBufferLength, arrayBufferOptions, arrayBufferPrototypes, isSandboxArrayBuffer } from "../array-buffer.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { createSandboxClosure, isSandboxClosure, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
-import { getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { sandboxNumber } from "../string-coercion.js";
@@ -13,7 +13,7 @@ const resizeBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "res
 const transferBuffer = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "transfer")?.value as ((length?: number) => ArrayBuffer) | undefined;
 
 export function createArrayBufferGlobal(budget: Budget): SandboxClosure {
-  const prototype: SandboxObject = Object.create(null);
+  const prototype: SandboxObject = createIntrinsicObject();
   const constructor = createSandboxClosure({
     guest: true, sandbox: true, name: "ArrayBuffer", length: 1,
     call: () => { throw new TypeError("ArrayBuffer requires new."); },

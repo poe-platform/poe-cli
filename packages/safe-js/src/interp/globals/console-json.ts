@@ -3,7 +3,7 @@ import { retainValues } from "../resources.js";
 import { parseJsonWithReviver } from "./json-parse.js";
 import { createRawJson, isRawJson } from "../raw-json.js";
 import { readPropertyDescriptor } from "../accessors.js";
-import { getBoxedPrototype, getSandboxPropertyDescriptor, registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
+import { createIntrinsicObject, getBoxedPrototype, getSandboxPropertyDescriptor, registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
 import { isSandboxDate } from "../date.js";
 import { dateToJSON } from "./date.js";
@@ -44,7 +44,7 @@ export function createConsoleJsonGlobals(
   const sink = options.sink ?? console;
 
   const globals = {
-    JSON: {
+    JSON: createIntrinsicObject({
       rawJSON: createSandboxClosure({
         sandbox: true,
         guest: true,
@@ -86,7 +86,7 @@ export function createConsoleJsonGlobals(
           stringifyJson(value, replacer, indent, options.budget, context),
         name: "stringify"
       })
-    },
+    }),
     console:
       options.hostCalls === undefined
         ? {
@@ -154,7 +154,7 @@ export function createConsoleJsonGlobals(
   }
   Object.defineProperty(globals.JSON, Symbol.toStringTag, { value: "JSON", configurable: true });
   registerBuiltinIdentities(options.budget, { JSON: globals.JSON });
-  for (const [, method] of jsonMethods) registerIntrinsicFunction(options.budget, method);
+  for (const [, method] of jsonMethods) registerIntrinsicFunction(options.budget, method as SandboxClosure);
   registerIntrinsicObject(options.budget, globals.JSON);
   return globals;
 }

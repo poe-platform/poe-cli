@@ -1,7 +1,7 @@
 import type { Budget } from "../budget.js";
 import { accessorAdapter } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
-import { installCollectionPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, installCollectionPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { collectionIteratorPrototypes, collectionIteratorState, isSandboxCollectionIterator, nextCollectionIterator } from "../collection-iterator.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { callMapMethod, mapMethodNames } from "../methods/map.js";
@@ -48,7 +48,7 @@ export function installCollectionPrototypes(budget: Budget, mapConstructor: Sand
     { name: "Map" as const, constructor: mapConstructor, methods: mapMethods, size: mapSize, iterator: mapMethods.entries },
     { name: "Set" as const, constructor: setConstructor, methods: setMethods, size: setSize, iterator: setMethods.values }
   ]) {
-    const prototype = Object.create(null) as SandboxObject;
+    const prototype = createIntrinsicObject();
     const species = createSandboxClosure({ guest: true, sandbox: true, name: "get [Symbol.species]", length: 0,
       call: (_args, context) => context?.thisValue });
     Object.defineProperty(materializeFunctionProperties(constructor), "prototype", {value:prototype,writable:false});
@@ -66,7 +66,7 @@ export function installCollectionPrototypes(budget: Budget, mapConstructor: Sand
 
 export function installCollectionIteratorPrototypes(budget: Budget): void {
   for (const name of ["Map", "Set"] as const) {
-    const iteratorPrototype: SandboxObject = Object.create(null);
+    const iteratorPrototype: SandboxObject = createIntrinsicObject();
     const kind = name === "Map" ? "map" : "set";
     const next = createSandboxClosure({ guest: true, sandbox: true, name: "next", length: 0,
       call: (_args, context) => {

@@ -5,7 +5,7 @@ import {
   type BoxedKind,
   type BoxedPrimitive
 } from "../boxed.js";
-import { installBoxedPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, installBoxedPrototype, materializeFunctionProperties, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { nextStringIterator, restoreSandboxStringIterator } from "../string-iterator.js";
 import { sandboxString } from "../string-coercion.js";
@@ -105,7 +105,7 @@ export function createPrimitiveConstructor(
   for (const [name, value] of methods)
     Object.defineProperty(prototype, name, { value, writable: true, configurable: true });
   if (kind === "string") {
-    const iteratorPrototype: SandboxObject = Object.create(null);
+    const iteratorPrototype: SandboxObject = createIntrinsicObject();
     setSandboxPrototype(iteratorPrototype, resolveIntrinsicIdentity(budget, '["%IteratorPrototype%"]'));
     Object.defineProperties(iteratorPrototype, {
       next: { value: createSandboxClosure({ guest: true, sandbox: true, name: "next", length: 0,

@@ -4,7 +4,7 @@ import { assertSandboxDataDepth } from "../../graph-depth.js";
 import { accessorClosure, readPropertyDescriptor } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
-import { getSandboxPropertyDescriptor, getSandboxPrototype, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getSandboxPropertyDescriptor, getSandboxPrototype, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { toPropertyKey } from "../property-key.js";
 import { retainValues } from "../resources.js";
 import { allocateProducedSandboxValue, createSandboxClosure, isSandboxClosure, ownSandboxSymbolKeys, type SandboxCallContext, type SandboxObject, type SandboxValue } from "../values.js";
@@ -112,7 +112,7 @@ export function createReflectGlobal(budget: Budget): SandboxObject {
       },context.stack,context);
     } }
   };
-  const reflect: SandboxObject = {};
+  const reflect = createIntrinsicObject({});
   for (const name of nativeReflectPropertyNames) {
     const method = methods[name];
     if (method === undefined) continue;
