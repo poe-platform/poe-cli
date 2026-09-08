@@ -100,13 +100,15 @@ it("retains valid legacy locale aliases from the plural dataset", () => {
 
 it("gives the copied number engine a private Intl binding and removes stale source maps", () => {
   const operands = Array.from({ length: 5 }, () => "selectPlural(pl,roundedNumber.toNumber(),rules);").join("");
-  const source = 'const SANCTIONED_UNITS=["duration-millisecond"];const denominator=denominatorPattern.replace("{0}", "");' + operands + 'export const make=()=>new Intl.PluralRules();\n//# sourceMappingURL=index.js.map';
+  const source = 'function IsWellFormedUnitIdentifier(unit){unit = toLowerCase(unit);return true;}const SANCTIONED_UNITS=["duration-millisecond"];const denominator=denominatorPattern.replace("{0}", "");' + operands + 'export const make=()=>new Intl.PluralRules();\n//# sourceMappingURL=index.js.map';
   const generated = isolateNumberFormatEngine(source, "MIT notice");
   expect(generated).toContain('import { numberFormatIntl as Intl }');
   expect(generated).toContain("new Intl.PluralRules()");
   expect(generated).toContain("MIT notice");
   expect(generated).not.toContain("sourceMappingURL");
   expect(generated).not.toContain("globalThis.Intl =");
+  expect(generated).not.toContain("unit = toLowerCase(unit)");
+  expect(() => isolateNumberFormatEngine(source.replace("unit = toLowerCase(unit);", "unit = unit.trim();"), "MIT")).toThrow("unit case conversion");
   expect(generated).toContain('"duration-microsecond","duration-nanosecond"');
   expect(() => isolateNumberFormatEngine(source.replace("duration-millisecond", "changed"), "MIT")).toThrow("unit list");
   expect(generated).toContain('denominatorPattern.replace("{0}", "").trim()');

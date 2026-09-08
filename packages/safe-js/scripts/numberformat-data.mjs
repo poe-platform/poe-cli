@@ -156,8 +156,15 @@ export function isolateNumberFormatEngine(source, license) {
   let pluralReferences = 0;
   let sanctionedUnits;
   let denominatorReplacement;
+  let unitCaseConversion;
   const pluralOperands = [];
   const inspect = node => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === "IsWellFormedUnitIdentifier") {
+      const first = node.body?.statements[0];
+      if (unitCaseConversion !== undefined || first?.getText(parsed) !== "unit = toLowerCase(unit);")
+        throw new TypeError("Unexpected unit case conversion.");
+      unitCaseConversion = first;
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "Intl")
       throw new TypeError("Number engine already declares Intl.");
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Intl" && node.name.text === "PluralRules") pluralReferences++;
@@ -191,6 +198,8 @@ export function isolateNumberFormatEngine(source, license) {
   const replacements = [{ start: sanctionedUnits.getStart(parsed), end: sanctionedUnits.end,
     text: JSON.stringify([...sanctionedUnits.elements.map(node => node.text), "duration-microsecond", "duration-nanosecond"]) }];
   if (denominatorReplacement === undefined) throw new TypeError("Missing denominator pattern replacement.");
+  if (unitCaseConversion === undefined) throw new TypeError("Missing unit case conversion.");
+  replacements.push({ start: unitCaseConversion.getStart(parsed), end: unitCaseConversion.end, text: "" });
   replacements.push({ start: denominatorReplacement.getStart(parsed), end: denominatorReplacement.end,
     text: `${denominatorReplacement.getText(parsed)}.trim()` });
   if (pluralOperands.length !== 5) throw new TypeError("Unexpected plural operand sites.");
