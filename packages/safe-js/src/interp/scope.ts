@@ -223,6 +223,7 @@ export class Scope {
   assign(name: string, value: InterpreterValue): void {
     const scope = this.resolveScope(name);
     if (scope === undefined) {
+      if (name === "undefined") throw new TypeError("Cannot assign to const binding 'undefined'.");
       throw new ReferenceError(`Cannot assign to undeclared binding '${name}'.`);
     }
 
@@ -261,6 +262,8 @@ export class Scope {
       return this.parent.lookup(name);
     }
 
+    // A virtual default also serves legacy snapshots without adding frame cells.
+    if (name === "undefined") return { found: true, kind: "const", value: undefined };
     return { found: false };
   }
 

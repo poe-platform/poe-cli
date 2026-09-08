@@ -42,5 +42,6 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "SyntaxError",
   "TypeError",
   "URIError",
+  "undefined",
   "console"
 ] as const;

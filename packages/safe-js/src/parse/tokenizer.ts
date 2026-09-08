@@ -64,7 +64,6 @@ const KEYWORDS = new Set([
   "true",
   "false",
   "null",
-  "undefined",
   "typeof",
   "void",
   "delete",
@@ -74,7 +73,7 @@ const KEYWORDS = new Set([
   "of"
 ]);
 
-const EXPRESSION_ENDING_KEYWORDS = new Set(["true", "false", "null", "undefined"]);
+const EXPRESSION_ENDING_KEYWORDS = new Set(["true", "false", "null"]);
 const CONTROL_FLOW_PAREN_KEYWORDS = new Set(["if", "while", "for", "catch"]);
 const MAX_UNICODE_CODE_POINT = 0x10ffff;
 const IDENTIFIER_START_PATTERN = /^\p{ID_Start}$/u;

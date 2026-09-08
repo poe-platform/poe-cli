@@ -30,7 +30,8 @@ export function hashParsedAst(ast: Module | ParseResult, includeFunctionSource =
   function visit(
     value: unknown,
     includeTemplateRaw = false,
-    enclosingSource?: FunctionSource
+    enclosingSource?: FunctionSource,
+    identifierName = false
   ): void {
     if (value === null) {
       write("null");
@@ -64,6 +65,12 @@ export function hashParsedAst(ast: Module | ParseResult, includeFunctionSource =
         return;
       case "object": {
         const record = value as Record<string, unknown>;
+        // Keep persisted hashes stable across the undefined literal-to-identifier
+        // parser repair. Property/import names already used Identifier nodes.
+        if (record.type === "Identifier" && record.name === "undefined" && !identifierName) {
+          visit({ type: "UndefinedLiteral", value: undefined });
+          return;
+        }
         const source = includeFunctionSource
           ? functionSources.get(value as FunctionNode)
           : undefined;
@@ -92,7 +99,11 @@ export function hashParsedAst(ast: Module | ParseResult, includeFunctionSource =
           visit(
             record[key],
             shouldIncludeTemplateRaw(record, key, includeTemplateRaw),
-            source ?? enclosingSource
+            source ?? enclosingSource,
+            (key === "property" && record.type === "MemberExpression" && !record.computed) ||
+              (key === "key" && !record.computed) ||
+              ((key === "imported" || key === "local") && record.type === "ImportSpecifier") ||
+              (key === "exported" && record.type === "ExportSpecifier")
           );
           write(",");
         }

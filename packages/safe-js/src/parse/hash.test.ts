@@ -4,6 +4,21 @@ import { hashParsedAst, hashSource } from "./hash.js";
 import { parse } from "./parser.js";
 
 describe("hashSource", () => {
+  it("preserves the historical undefined-expression hash", () => {
+    expect(hashSource("undefined")).toBe("2d1fcebb");
+    expect(hashSource("undefined", undefined, false)).toBe("2d1fcebb");
+  });
+
+  it.each([
+    ["object.undefined", "298da295"],
+    ["({undefined:1})", "e22dbd06"],
+    ["class Box{undefined(){return 1}}", "7bb6f0fc"],
+    ['import {undefined as value} from "mod";return value', "4b2688bb"],
+    ['import {undefined} from "mod";', "ef8b7d83"]
+  ])("preserves identifier-name hashing for %s", (source, expected) => {
+    expect(hashSource(source)).toBe(expected);
+  });
+
   it("hashes whitespace-equivalent sources the same", () => {
     expectSameHash("[1, user]", "[ 1 , user ]");
   });

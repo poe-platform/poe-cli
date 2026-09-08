@@ -113,9 +113,8 @@ describe("parse", () => {
     });
 
     expect(parse("undefined")).toEqual({
-      type: "UndefinedLiteral",
-      raw: "undefined",
-      value: undefined,
+      type: "Identifier",
+      name: "undefined",
       span: {
         start: { line: 1, column: 1, offset: 0 },
         end: { line: 1, column: 10, offset: 9 }
