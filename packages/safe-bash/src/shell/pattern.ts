@@ -1,6 +1,6 @@
 import { yieldTurn } from "../contracts/yield.js";
 import type { ValueReservation } from "../contracts/value.js";
-import { nextCodePointOffset, stringCheckpoint } from "./string-operations.js";
+import { nextCodePointOffset, previousCodePointOffset, stringCheckpoint } from "./string-operations.js";
 import type { StringWork } from "./string-operations.js";
 type PatternToken = { kind: "star" } | { kind: "any" } | { kind: "literal"; value: string } | { kind: "class"; expression: RegExp };
 
@@ -81,6 +81,56 @@ export async function matchesPattern(pattern: string, value: string, work: Strin
   const { patternTokens, reservation } = await tokens(pattern, work);
   try { return await matchTokens(patternTokens, value, work, 0, value.length); }
   finally { reservation?.release(); }
+}
+
+export async function compilePatternBoundaries(pattern: string, work: StringWork): Promise<(value: string, shortest?: boolean, suffix?: boolean) => Promise<Float64Array>> {
+  work.signal.throwIfAborted();
+  const { patternTokens } = await tokens(pattern, work);
+  return async (value, shortest = false, suffix = false) => {
+    let rowReservation: ValueReservation | undefined;
+    let resultReservation: ValueReservation | undefined;
+    try {
+      const rowSize = patternTokens.length + 1;
+      const resultSize = value.length + 1;
+      const initialized = stringCheckpoint(work, rowSize + resultSize);
+      if (initialized) await initialized;
+      rowReservation = work.allocation?.reserve(64 + rowSize * 8, 0);
+      resultReservation = work.allocation?.reserve(64 + resultSize * 8, 0);
+      const row = new Float64Array(rowSize).fill(-1);
+      const ends = new Float64Array(resultSize).fill(-1);
+      let position = value.length;
+      while (true) {
+        const advanced = stringCheckpoint(work);
+        if (advanced) await advanced;
+        const point = position < value.length ? value.codePointAt(position)! : undefined;
+        let diagonal = row[patternTokens.length]!;
+        row[patternTokens.length] = !suffix || position === value.length ? position : -1;
+        for (let index = patternTokens.length - 1; index >= 0; index--) {
+          const pending = stringCheckpoint(work);
+          if (pending) await pending;
+          const previous = row[index]!;
+          const token = patternTokens[index]!;
+          if (token.kind === "star") {
+            const skip = row[index + 1]!;
+            const consume = point === undefined ? -1 : previous;
+            row[index] = skip < 0 ? consume : consume < 0 ? skip : shortest ? Math.min(skip, consume) : Math.max(skip, consume);
+          } else {
+            const accepts = point !== undefined && (token.kind === "any" || (token.kind === "literal" ? token.value.codePointAt(0) === point : token.expression.test(String.fromCodePoint(point))));
+            row[index] = accepts ? diagonal : -1;
+          }
+          diagonal = previous;
+        }
+        ends[position] = row[0]!;
+        if (position === 0) break;
+        position = previousCodePointOffset(value, position);
+      }
+      work.signal.throwIfAborted();
+      return ends;
+    } catch (error) {
+      resultReservation?.release();
+      throw error;
+    } finally { rowReservation?.release(); }
+  };
 }
 
 async function matchTokens(patternTokens: PatternToken[], value: string, work: StringWork, start: number, end: number): Promise<boolean> {

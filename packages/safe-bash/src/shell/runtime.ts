@@ -23,7 +23,7 @@ import { evaluateArithmetic, prepareArithmetic } from "./arithmetic.js";
 import { defaultMaxParseUnits, ParseBudget } from "./parse-budget.js";
 import { BraceExpansionFailure, expandBraces } from "./brace-expansion.js";
 import { evaluatePositionalArithmetic } from "./arithmetic-parameters.js";
-import { compilePattern, matchesPattern } from "./pattern.js";
+import { compilePattern, compilePatternBoundaries, matchesPattern } from "./pattern.js";
 import { nextCodePointOffset, previousCodePointOffset, scanString, stringCheckpoint } from "./string-operations.js";
 import type { StringWork } from "./string-operations.js";
 import { byteLocale } from "./locale.js";
@@ -4633,19 +4633,17 @@ export class Runtime {
     scratch.reserve(patternUnits * 2, 0);
     const pattern = patternFields.join("");
     const size = (await scanString(text, work)).count;
-    const matches = await compilePattern(pattern, work);
-    const match = async (start: number, end: number, length: number): Promise<boolean> => {
-      const pending = stringCheckpoint(work, length + 1);
-      if (pending) await pending;
-      return matches(text, start, end);
-    };
+    const boundaries = await compilePatternBoundaries(pattern, work);
     const operator = part.operator!;
     if (!operator.startsWith("/")) {
       const longest = operator.length === 2;
       const prefix = operator.startsWith("#");
+      const ends = await boundaries(text, !longest && prefix, !prefix);
       let boundary = longest === prefix ? text.length : 0;
       for (let length = longest ? size : 0; longest ? length >= 0 : length <= size; length += longest ? -1 : 1) {
-        if (await match(prefix ? 0 : boundary, prefix ? boundary : text.length, length)) {
+        const pending = stringCheckpoint(work);
+        if (pending) await pending;
+        if (ends[prefix ? 0 : boundary] === (prefix ? boundary : text.length)) {
           const start = prefix ? boundary : 0;
           const end = prefix ? text.length : boundary;
           scratch.reserve((end - start) * 2, 0);
@@ -4688,46 +4686,46 @@ export class Runtime {
       retained?.release();
       retained = next;
     };
+    const ends = await boundaries(text, false, operator === "/%");
     let position = 0;
-    let positionIndex = 0;
-    while (positionIndex <= size) {
+    while (position <= text.length) {
       let found = false;
-      for (let start = position, startIndex = positionIndex; startIndex <= size; startIndex++, start = nextCodePointOffset(text, start)) {
+      for (let start = position; start <= text.length; start = nextCodePointOffset(text, start)) {
         if (operator === "/#" && start !== 0) break;
-        for (let end = text.length, endIndex = size; endIndex >= startIndex; endIndex--, end = previousCodePointOffset(text, end)) {
-          if (operator === "/%" && end !== text.length) break;
-          if (!await match(start, end, endIndex - startIndex)) continue;
-          await append(text, position, start);
-          for (const replacement of replacements) {
-            if (replacement.quoted) await append(replacement.value);
-            else {
-              let fragment = 0;
-              for (let cursor = 0; cursor < replacement.value.length; cursor++) {
-                const pending = stringCheckpoint(work);
-                if (pending) await pending;
-                if (replacement.value[cursor] !== "&") continue;
-                await append(replacement.value, fragment, cursor);
-                await append(text, start, end);
-                fragment = cursor + 1;
-              }
-              await append(replacement.value, fragment);
-            }
-          }
-          position = end;
-          positionIndex = endIndex;
-          found = true;
-          if (operator !== "//" || end === text.length) { await append(text, end); return result; }
-          if (end === start) {
-            position = nextCodePointOffset(text, end);
-            positionIndex++;
-            await append(text, end, position);
-          }
-          break;
+        const pending = stringCheckpoint(work);
+        if (pending) await pending;
+        const end = ends[start]!;
+        if (end < 0) {
+          if (start === text.length) break;
+          continue;
         }
-        if (found) break;
+        await append(text, position, start);
+        for (const replacement of replacements) {
+          if (replacement.quoted) await append(replacement.value);
+          else {
+            let fragment = 0;
+            for (let cursor = 0; cursor < replacement.value.length; cursor++) {
+              const pending = stringCheckpoint(work);
+              if (pending) await pending;
+              if (replacement.value[cursor] !== "&") continue;
+              await append(replacement.value, fragment, cursor);
+              await append(text, start, end);
+              fragment = cursor + 1;
+            }
+            await append(replacement.value, fragment);
+          }
+        }
+        position = end;
+        found = true;
+        if (operator !== "//" || end === text.length) { await append(text, end); return result; }
+        if (end === start) {
+          position = nextCodePointOffset(text, end);
+          await append(text, end, position);
+        }
+        break;
       }
       if (!found) {
-        if (positionIndex === 0) return text;
+        if (position === 0) return text;
         await append(text, position);
         break;
       }
