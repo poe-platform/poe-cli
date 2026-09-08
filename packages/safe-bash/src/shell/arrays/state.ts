@@ -3,7 +3,8 @@ import type { InvocationScope } from "../cleanup.js";
 import { ArrayFailure, ArrayLedger, ArrayOwner } from "./ledger.js";
 import type { Admission, Tickets } from "./ledger.js";
 import { BindingStore, textToken } from "./bindings.js";
-import { ValueArena, ValueStore } from "../value-state.js";
+import { ValueArena, ValueStore, type ValueScope } from "../value-state.js";
+import type { GetoptsInput } from "../getopts.js";
 
 interface Session {
   readonly values: ValueArena;
@@ -66,6 +67,8 @@ export class StateMonitor {
   #restorations: Restoration | undefined;
   #overlays: OverlayMap | undefined;
   #retireCleanup: (() => void) | undefined;
+  #positionalRevision: object = {};
+  #getoptsInput: { input: GetoptsInput; allocation: ValueScope } | undefined;
 
   constructor(readonly raw: State, readonly session: Session, source?: StateMonitor) {
     this.values = source ? source.values.clone() : new ValueStore(session.values);
@@ -81,18 +84,37 @@ export class StateMonitor {
   closeValues(): void {
     this.values.close();
     this.positionals.close();
+    this.invalidateGetoptsInput();
     this.#retireCleanup?.();
     this.#retireCleanup = undefined;
+  }
+
+  get positionalRevision(): object { return this.#positionalRevision; }
+  get getoptsInput(): GetoptsInput | undefined { return this.#getoptsInput?.input; }
+
+  retainGetoptsInput(revision: object, input: GetoptsInput, allocation: ValueScope): boolean {
+    this.session.scope.assertOpen();
+    if (revision !== this.#positionalRevision) return false;
+    this.#getoptsInput?.allocation.close();
+    this.#getoptsInput = { input, allocation };
+    return true;
+  }
+
+  private invalidateGetoptsInput(): void {
+    this.#getoptsInput?.allocation.close();
+    this.#getoptsInput = undefined;
+    this.#positionalRevision = {};
   }
 
   private changedValue(target: object, field: string, key: PropertyKey): void {
     if (field === "state") {
       if (key === "variables") this.values.invalidate();
-      if (key === "positional") this.positionals.invalidate();
+      if (key === "positional") { this.positionals.invalidate(); this.invalidateGetoptsInput(); }
     } else if (field === "variables" && (this.raw.variables === target || this.raw.variables === this.#wrapped.get(target))) {
       this.values.invalidate(String(key));
     } else if (field === "positional" && (this.raw.positional === target || this.raw.positional === this.#wrapped.get(target))) {
       this.positionals.invalidate();
+      this.invalidateGetoptsInput();
     }
   }
 

@@ -35,7 +35,7 @@ import { outputFailure } from "../contracts/io.js";
 import { executionCommands } from "../commands/execution.js";
 import { formatPrintf, printfCommand } from "../commands/basic.js";
 import { UsageError } from "../commands/internal.js";
-import { cloneGetoptsState, createGetoptsState, GetoptsError, scanGetopts, withGetoptsIndex } from "./getopts.js";
+import { cloneGetoptsState, createGetoptsInput, createGetoptsState, GetoptsError, getoptsInputAllocationSize, scanGetopts, withGetoptsIndex } from "./getopts.js";
 import type { GetoptsState } from "./getopts.js";
 import {
   activateChildCancellation, prepareChildCancellation, selectRuntimeCancellationOutcome, subscribeCancellation,
@@ -3603,27 +3603,48 @@ export class Runtime {
     }
     const optstring = context.args[offset]!;
     const name = context.args[offset + 1]!;
-    const args = context.args.length > offset + 2 ? context.args.slice(offset + 2) : state.positional;
-    if (args.length > fields) this.budget.fail("maxExpansionFields");
-    for (let index = 0; index < args.length; index++) {
-      this.signal.throwIfAborted();
-      admit(args[index]);
-      if ((index + 1) % 128 === 0) await checkpoint();
-    }
-    const maxBytes = saturatedProduct(bytes, saturatedSum(args.length, 1));
-    const maxSteps = saturatedSum(saturatedProduct(maxBytes, 2), saturatedSum(args.length, 2));
-    state.getopts ??= cloneGetoptsBinding(state);
+    const explicit = context.args.length > offset + 2;
+    const monitor = explicit ? undefined : stateMonitor(state);
+    const revision = monitor?.positionalRevision;
+    const supplied = explicit ? context.args.slice(offset + 2) : state.positional;
+    if (supplied.length > fields) this.budget.fail("maxExpansionFields");
+    const maxBytes = saturatedProduct(bytes, saturatedSum(supplied.length, 1));
+    const maxSteps = saturatedSum(saturatedProduct(maxBytes, 2), saturatedSum(supplied.length, 2));
+    const work = { maxArguments: fields, maxBytes, maxSteps, yieldEvery: 128, signal: this.signal, checkpoint };
+    let input = monitor?.getoptsInput;
+    let allocation: ValueScope | undefined;
     let result;
     try {
-      result = await scanGetopts(state.getopts.cursor, optstring, args, {
-        reportErrors: state.variables.OPTERR === undefined || state.variables.OPTERR === "" || decimalIndex(state.variables.OPTERR) !== 0,
-        work: { maxArguments: fields, maxBytes, maxSteps, yieldEvery: 128, signal: this.signal, checkpoint },
-      });
-    } catch (error) {
+      if (!input && monitor) {
+        const size = getoptsInputAllocationSize(supplied.length);
+        const arena = this.budget.values;
+        const usage = arena.usage;
+        if (size.bytes + 64 <= arena.maximumBytes - usage.bytes && size.slots + 1 <= arena.maximumSlots - usage.slots) {
+          allocation = arena.scope();
+          input = await createGetoptsInput(supplied, allocation, work);
+        }
+      }
+      const args = input?.args ?? supplied;
+      if (!input || allocation) for (let index = 0; index < args.length; index++) {
+        this.signal.throwIfAborted();
+        admit(args[index]);
+        if ((index + 1) % 128 === 0) await checkpoint();
+      }
+      state.getopts ??= cloneGetoptsBinding(state);
+      try {
+        result = await scanGetopts(state.getopts.cursor, optstring, input ?? args, {
+          reportErrors: state.variables.OPTERR === undefined || state.variables.OPTERR === "" || decimalIndex(state.variables.OPTERR) !== 0,
+          work,
+        });
+      } catch (error) {
+        this.signal.throwIfAborted();
+        if (error instanceof GetoptsError && (error.code === "NON_ASCII_OPTION" || error.code === "INVALID_INPUT")) throw new CommandFailure(`getopts: ${error.message}`, 2);
+        throw error;
+      }
       this.signal.throwIfAborted();
-      if (error instanceof GetoptsError && (error.code === "NON_ASCII_OPTION" || error.code === "INVALID_INPUT")) throw new CommandFailure(`getopts: ${error.message}`, 2);
-      throw error;
-    }
+      if (monitor && monitor.positionalRevision !== revision) throw new CommandFailure("getopts: positional arguments changed during validation", 2);
+      if (allocation && monitor!.retainGetoptsInput(revision!, input!, allocation)) allocation = undefined;
+    } finally { allocation?.close(); }
     this.signal.throwIfAborted();
     state.getopts.cursor = result.state;
     if (result.diagnostic) {
