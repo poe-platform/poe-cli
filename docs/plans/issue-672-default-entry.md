@@ -58,6 +58,50 @@ the declared targets. This does not waive the later declaration-origin checks.
 
 ## Validation before delivery
 
+### Migration from the retired entry aliases
+
+The revised issue request removes `/browser` and `/portable`, rather than
+retaining aliases. Import `Shell`, the filesystem and `agentCommands` from the
+ordinary package entry; replace `browserCommands` and `portableAgentCommands`
+with `agentCommands`. This is an explicit API and default-regex policy change,
+not a claim that older import specifiers continue working.
+
+```ts
+import { Shell, agentCommands, createMemoryFileSystem } from "@poe-platform/safe-bash";
+
+const shell = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands());
+try {
+  const result = await shell.exec("printf 'hello\\n'");
+  if (result.exitCode !== 0) throw new Error(result.stderr);
+  console.log(result.stdout);
+} finally {
+  await shell.dispose();
+}
+```
+
+Browser/Worker bundlers select `browser` alongside their usual `workerd`,
+`worker` and ESM conditions. No Node compatibility flag is needed for the
+default preset. This does not add the optional host `node` command or enable
+network access. The bounded regex dialect retains explicit unsupported-mode
+errors; it never falls back to synchronous native RegExp. Node callers needing
+the native implementation import `createNodeRegexProvider` from
+`@poe-platform/safe-bash/node` and pass it as `regexExecutor` to `agentCommands`.
+Default executors are owned and retired by the command set; injected providers
+remain caller-owned. Existing cancellation and command-budget rules still apply.
+
+The README's obsolete `/browser` subset section is removed without adding
+README content. The remaining Node quickstart already uses the ordinary entry.
+
+### Integrated gate toolchain
+
+The v4 full run used Node 22.23.2 with an older npm 10.9.4/tar 6.2.1 and failed
+43 archive/fixture cases because that tar exposes `Parse`, not `Parser`.
+The same controls with CI's actual Node 22.23.2/npm 10.9.8/tar 7.5.11 pass:
+187 archive controls, one actual committed export acceptance and 20 native
+cleanup cases. This is a toolchain correction, not a parser-guard relaxation.
+The full maintained route must still be rerun with the matching complete tools;
+those 208 focused passes are not a full-suite pass.
+
 Retain independent full command inventory, argument and filesystem identity,
 pipeline, byte, cancellation and budget checks while migrating consumers to the
 default entry. Run maintained build, lint and full unit routes for the integrated
