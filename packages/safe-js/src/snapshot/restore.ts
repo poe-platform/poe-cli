@@ -39,6 +39,7 @@ import { restoreSandboxCollectionIterator } from "../interp/collection-iterator.
 import { restoreSandboxArrayIterator } from "../interp/array-iterator.js";
 import { restoreSandboxStringIterator } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
+import { disposableStackStates } from "../interp/disposable-stack.js";
 import { iteratorHelperStates } from "../interp/iterator-helper.js";
 import { privateElements, type PrivateName, type PrivateElement } from "../interp/private-state.js";
 import { promiseStates } from "../interp/promise-state.js";
@@ -1020,7 +1021,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1205,6 +1206,15 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       const iterator=deserializeValue(serialized.iterator,state);
       if (iterator === null || typeof iterator !== "object") throw new TypeError("Invalid wrapped iterator.");
       iteratorWrapperStates.set(value as object,{iterator:iterator as SandboxValue,next:deserializeValue(serialized.next,state) as SandboxValue});
+    }
+    if (serialized.kind === "disposable-stack") {
+      const resources = serialized.resources.map(resource => {
+        const method = deserializeValue(resource.method, state);
+        if (!isSandboxClosure(method)) throw new TypeError("Invalid disposer.");
+        return {method, receiver: deserializeValue(resource.receiver, state) as SandboxValue,
+          args: resource.args.map(arg => deserializeValue(arg, state) as SandboxValue)};
+      });
+      disposableStackStates.set(value as object, {disposed: serialized.disposed, active: false, resources});
     }
     if (serialized.kind === "string-iterator") {
       const input = deserializeValue(serialized.input, state);

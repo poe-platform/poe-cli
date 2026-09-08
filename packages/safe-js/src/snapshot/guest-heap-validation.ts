@@ -73,7 +73,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -369,6 +369,19 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     fields(node,["kind","iterator","next","state"]);
     const iterator=reference(node.iterator);
     if (iterator.kind === "symbol" || iterator.kind === "scope-frame") throw new TypeError("Invalid wrapped iterator.");
+    state(node.state);
+  } else if (node.kind === "disposable-stack") {
+    fields(node, ["kind", "disposed", "resources", "state"]);
+    const resources = array(node.resources);
+    if (typeof node.disposed !== "boolean" || resources.length > maxArrayLength)
+      throw new TypeError("Invalid disposable stack state.");
+    for (const rawResource of resources) {
+      const resource = record(rawResource);
+      fields(resource, ["method", "receiver", "args"]);
+      if (absent(resource.method)) throw new TypeError("Missing disposer.");
+      callable(resource.method);
+      if (array(resource.args).length > 1) throw new TypeError("Invalid disposer arguments.");
+    }
     state(node.state);
   } else if (node.kind === "intrinsic") {
     fields(node, ["kind", "id"], ["state", "symbolRegistry"]);

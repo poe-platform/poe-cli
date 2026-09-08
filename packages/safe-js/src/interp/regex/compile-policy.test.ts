@@ -175,6 +175,7 @@ describe("compile checkpoint hash compatibility", () => {
         URIError: { kind: "fn", name: "URIError" },
         EvalError: { kind: "fn", name: "EvalError" },
         SuppressedError: { kind: "fn", name: "SuppressedError" },
+        DisposableStack: { kind: "fn", name: "DisposableStack" },
         encodeURI: { kind: "fn", name: "encodeURI" },
         encodeURIComponent: { kind: "fn", name: "encodeURIComponent" },
         decodeURI: { kind: "fn", name: "decodeURI" },

@@ -16,6 +16,7 @@ import { isSandboxRegExpIterator, regexpIteratorState } from "../interp/regexp-i
 import { arrayIteratorState, isSandboxArrayIterator } from "../interp/array-iterator.js";
 import { isSandboxStringIterator, stringIteratorState } from "../interp/string-iterator.js";
 import { iteratorWrapperStates } from "../interp/iterator-wrapper.js";
+import { disposableStackStates } from "../interp/disposable-stack.js";
 import { iteratorHelperStates, type IteratorHelperState } from "../interp/iterator-helper.js";
 import { Scope, type ScopeFrame } from "../interp/scope.js";
 import { isSandboxClosure, isSandboxRegex, isSandboxMap, isSandboxSet, isSandboxPromise, isSandboxGenerator, isSandboxArguments, getRegexProperties, getPromiseProperties } from "../interp/values.js";
@@ -50,6 +51,7 @@ export type PrivateElementData<T> = { name: T } & (
 );
 
 export type GuestHeapNode<T> =
+  | { kind: "disposable-stack"; disposed: boolean; resources: Array<{method: T; receiver: T; args: T[]}>; state: GuestObjectState<T> }
   | {kind: "thenable-state"; source: T; owner: T; completed: boolean; settlement?: {state: "fulfilled" | "rejected"; value: T}}
   | {kind: "thenable-resolver"; continuation: T; action: "fulfilled" | "rejected"; state: GuestObjectState<T>}
   | { kind: "construction-environment"; constructor: T; newTarget: T; prototype: T; thisValue: T; thisScope: T; initialized: boolean }
@@ -106,6 +108,13 @@ export type GuestHeapNode<T> =
 // The enclosing graph serializer allocates the reference before calling this
 // function, so self-referential properties and captured environments can cycle.
 export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) => T): GuestHeapNode<T> | undefined {
+  const disposable = disposableStackStates.get(value);
+  if (disposable !== undefined) {
+    if (disposable.active) throw new SnapshotNotReadyError("Cannot snapshot active synchronous resource cleanup.");
+    return {kind: "disposable-stack", disposed: disposable.disposed,
+      resources: disposable.resources.map(resource => ({method: encode(resource.method), receiver: encode(resource.receiver), args: resource.args.map(encode)})),
+      state: captureObjectState(value, encode)!};
+  }
   const construction = constructionStates.get(value);
   if (construction !== undefined) {
     if (construction.activeCalls !== 0 || construction.thisScope === undefined)

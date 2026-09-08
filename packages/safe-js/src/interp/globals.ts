@@ -15,6 +15,7 @@ import { createGeneratorPrototypes } from "./globals/generator.js";
 import { createPromiseGlobals } from "./promise.js";
 import { createDateGlobal } from "./globals/date.js";
 import { createIteratorGlobal } from "./globals/iterator.js";
+import { createDisposableStackGlobal } from "./globals/disposable-stack.js";
 import { createSymbolGlobal } from "./globals/symbol.js";
 import { createBigIntGlobal } from "./globals/bigint.js";
 import { createArrayBufferGlobal } from "./globals/array-buffer.js";
@@ -38,6 +39,7 @@ export function createBuiltinBindings(
     ...createMathGlobals({ random: options.random, budget: options.budget }),
     ...createObjectArrayGlobals(options),
     Iterator: createIteratorGlobal(options.budget),
+    DisposableStack: createDisposableStackGlobal(options.budget),
     Reflect: createReflectGlobal(options.budget),
     ArrayBuffer: createArrayBufferGlobal(options.budget),
     DataView: createDataViewGlobal(options.budget),

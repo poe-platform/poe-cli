@@ -8,6 +8,7 @@ export const KNOWN_RUNTIME_GLOBALS = [
   "Boolean",
   "BigInt",
   "Date",
+  "DisposableStack",
   "decodeURI",
   "decodeURIComponent",
   "encodeURI",
