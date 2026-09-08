@@ -19,6 +19,7 @@ export type { ExportDefaultDeclaration, ExportNamedDeclaration } from "./parse-e
 
 const MAX_CONDITIONAL_EXPRESSION_DEPTH = 256;
 const MAX_IF_STATEMENT_DEPTH = 2_048;
+const STRICT_BINDING_NAMES = new Set(["eval", "arguments", "implements", "interface", "let", "package", "private", "protected", "public", "static", "yield"]);
 
 export type SourceSpan = {
   start: Position;
@@ -717,10 +718,48 @@ export function parseExecutableModule(
   }
 }
 
+export type DynamicFunctionKind = "normal" | "generator" | "async" | "async-generator";
+
+export function parseDynamicFunction(
+  kind: DynamicFunctionKind,
+  parameters: string,
+  body: string,
+  owner?: CompileOwner
+): FunctionExpression {
+  const compilation = new CompileScope(owner);
+  const prefix = `${kind === "async" || kind === "async-generator" ? "async " : ""}function${kind === "generator" || kind === "async-generator" ? "*" : ""}`;
+  try {
+    const length = prefix.length + " anonymous(\n) {\n\n}".length + parameters.length + body.length;
+    const limit = owner?.budget.limits.stringLength;
+    if (limit !== undefined && length > limit)
+      throw new SandboxError({budget: "stringLength", current: length, limit});
+    if (owner !== undefined) for (let index = 0; index < length; index++) owner.budget.visitNode();
+    const parameterSource = `(${parameters}\n)`;
+    const bodySource = `{\n${body}\n}`;
+    const source = `${prefix} anonymous(${parameters}\n) ${bodySource}`;
+    const createParser = (text: string) => new Parser(
+      tokenize(text, {allowRegexLiterals: true, compilation}), text, compilation,
+      kind, {...ordinaryFunctionContext, grammar: {
+        await: kind === "async" || kind === "async-generator",
+        yield: kind === "generator" || kind === "async-generator", strict: false
+      }}, false
+    );
+    createParser(parameterSource).parseDynamicParameters();
+    createParser(bodySource).parseDynamicBody();
+    const node = assignIds(createParser(source).parseDynamicExpression());
+    if (source.includes("#")) validatePrivateNames(node);
+    return node;
+  } catch (error) {
+    if (error instanceof SandboxError) throw error;
+    throw new SyntaxError(error instanceof Error ? error.message : String(error));
+  } finally { compilation.dispose(); }
+}
+
 type ParserBindingKind = "lexical" | "function" | "parameter" | "catch";
 type ParserScope = Map<string, ParserBindingKind>;
 type FunctionParseContext = "top-level" | "normal" | "async" | "generator" | "async-generator" | "parameters";
 type LexicalParseContext = {
+  grammar?: {await: boolean; yield: boolean; strict: boolean};
   newTarget: boolean;
   superProperty: boolean;
   superCall: boolean;
@@ -751,7 +790,8 @@ class Parser {
     private readonly source: string,
     private readonly compilation?: CompileScope,
     private functionContext: FunctionParseContext = "top-level",
-    private lexicalContext: LexicalParseContext = { ...ordinaryFunctionContext, newTarget: false }
+    private lexicalContext: LexicalParseContext = { ...ordinaryFunctionContext, newTarget: false },
+    private readonly allowImportMeta = true
   ) {
     this.functionScopes.add(this.scopes[0]!);
   }
@@ -762,6 +802,22 @@ class Parser {
       start: node.span.start.offset,
       end: node.span.end.offset
     });
+    return node;
+  }
+
+  parseDynamicParameters(): void {
+    this.parseArrowParameters();
+    this.expectEof();
+  }
+
+  parseDynamicBody(): void {
+    this.parseBlockStatement([]);
+    this.expectEof();
+  }
+
+  parseDynamicExpression(): FunctionExpression {
+    const node = this.parseFunctionExpression();
+    this.expectEof();
     return node;
   }
 
@@ -905,7 +961,10 @@ class Parser {
     if (this.isAsyncArrowWithParenthesizedParams()) {
       const asyncToken = this.currentToken();
       this.index += 1;
-      const params = this.parseArrowParameters();
+      const params = this.withLexicalContext({
+        ...this.lexicalContext,
+        ...(this.lexicalContext.grammar === undefined ? {} : {grammar: {...this.lexicalContext.grammar, await: true}})
+      }, () => this.parseArrowParameters());
       return this.finishArrowFunctionExpression(asyncToken.start, true, params);
     }
 
@@ -942,7 +1001,8 @@ class Parser {
     });
     this.expectPunctuator("=>");
     const body = this.withLexicalContext({
-      ...this.lexicalContext, return: true, await: isAsync || this.lexicalContext.strictAwait !== true
+      ...this.lexicalContext, return: true, await: isAsync || this.lexicalContext.strictAwait !== true,
+      ...(this.lexicalContext.grammar === undefined ? {} : {grammar: {...this.lexicalContext.grammar, await: isAsync, yield: false}})
     }, () => this.parseArrowFunctionBody(params, isAsync));
     return this.withFunctionSource({
       type: "ArrowFunctionExpression",
@@ -1000,12 +1060,14 @@ class Parser {
 
   private parseBlockStatement(
     params?: ArrowFunctionExpression["params"],
-    catchParam?: CatchClause["param"]
+    catchParam?: CatchClause["param"],
+    allowDuplicateParameters = false
   ): BlockStatement {
     const start = this.expectPunctuator("{");
     return this.withScope(() => {
       for (const param of params ?? []) {
         for (const identifier of boundIdentifiers(param)) {
+          if (allowDuplicateParameters && this.scopes[this.scopes.length - 1]?.has(identifier.name)) continue;
           this.declareBinding(identifier, "parameter");
         }
       }
@@ -1015,7 +1077,15 @@ class Parser {
         }
       }
       let directiveTokenIndex = this.index;
-      const body = this.parseBlockStatementBody(start);
+      const body = this.parseBlockStatementBody(start, params !== undefined);
+      if (params !== undefined && this.lexicalContext.grammar?.strict) {
+        const names = new Set<string>();
+        for (const param of params) for (const identifier of boundIdentifiers(param)) {
+          if (names.has(identifier.name) || STRICT_BINDING_NAMES.has(identifier.name))
+            throw new Error(`Invalid strict function parameter '${identifier.name}'.`);
+          names.add(identifier.name);
+        }
+      }
       if (params?.some(param => param.type !== "Identifier")) {
         for (const statement of body.body) {
           const token = this.tokens[directiveTokenIndex];
@@ -1037,8 +1107,9 @@ class Parser {
     }, params !== undefined);
   }
 
-  private parseBlockStatementBody(start: Token): BlockStatement {
+  private parseBlockStatementBody(start: Token, functionBody = false): BlockStatement {
     const body: Statement[] = [];
+    let directivePrologue = functionBody;
 
     while (this.consumePunctuator("}") === undefined) {
       if (this.currentToken().type === "eof") {
@@ -1047,10 +1118,21 @@ class Parser {
         );
       }
 
+      const firstToken = this.currentToken();
       const statement = this.parseStatement();
       body.push(statement);
+      if (directivePrologue && this.lexicalContext.grammar !== undefined) {
+        directivePrologue = statement.type === "ExpressionStatement" &&
+          statement.expression.type === "StringLiteral" && firstToken.type === "string" &&
+          statement.span.start.offset === firstToken.start.offset && statement.span.end.offset === firstToken.end.offset;
+        if (directivePrologue && statement.type === "ExpressionStatement" &&
+          statement.expression.type === "StringLiteral" &&
+          (statement.expression.raw === '"use strict"' || statement.expression.raw === "'use strict'"))
+          this.lexicalContext.grammar.strict = true;
+      }
+      let semicolons = 0;
       while (statement.type !== "EmptyStatement" && this.consumePunctuator(";") !== undefined) {
-        continue;
+        if (++semicolons > 1) directivePrologue = false;
       }
     }
 
@@ -1062,6 +1144,18 @@ class Parser {
   }
 
   private parseStatement(allowResourceDeclaration = true): Statement {
+    const statement = this.parseStatementBody(allowResourceDeclaration);
+    if (this.lexicalContext.grammar !== undefined &&
+      ["ExpressionStatement", "ReturnStatement", "ThrowStatement", "VariableDeclaration", "BreakStatement", "ContinueStatement"].includes(statement.type)) {
+      const next = this.currentToken();
+      if (next.type !== "eof" && next.value !== ";" && next.value !== "}" &&
+        next.start.line === statement.span.end.line)
+        throw unexpectedTokenError(next);
+    }
+    return statement;
+  }
+
+  private parseStatementBody(allowResourceDeclaration: boolean): Statement {
     const emptyStatement = this.parseEmptyStatement();
     if (emptyStatement !== undefined) {
       return emptyStatement;
@@ -1828,6 +1922,13 @@ class Parser {
   }
 
   private parseClass(declaration: boolean): ClassNode {
+    return this.withLexicalContext({
+      ...this.lexicalContext,
+      ...(this.lexicalContext.grammar === undefined ? {} : {grammar: {...this.lexicalContext.grammar, strict: true}})
+    }, () => this.parseClassBody(declaration));
+  }
+
+  private parseClassBody(declaration: boolean): ClassNode {
     const start = this.expectKeyword("class");
     const id = isIdentifierLikeToken(this.currentToken()) && this.currentToken().value !== "extends"
       ? this.parseBindingIdentifier()
@@ -1872,18 +1973,30 @@ class Parser {
     params: ArrowFunctionExpression["params"];
     body: BlockStatement;
   } {
+    const inheritedGrammar = this.lexicalContext.grammar;
+    if (inheritedGrammar !== undefined) lexicalContext = {
+      ...lexicalContext, grammar: {await: async, yield: generator, strict: inheritedGrammar.strict}
+    };
     return this.withLexicalContext(lexicalContext, () => {
+      let allowDuplicateParameters = false;
       const params = this.withScope(() => {
         const parsed = this.parseArrowParameters();
+        allowDuplicateParameters = lexicalContext.grammar !== undefined && !lexicalContext.grammar.strict &&
+          !lexicalContext.superProperty && parsed.every(param => param.type === "Identifier");
+        const names = new Set<string>();
         for (const param of parsed)
-          for (const identifier of boundIdentifiers(param)) this.declareBinding(identifier);
+          for (const identifier of boundIdentifiers(param)) {
+            if (allowDuplicateParameters && names.has(identifier.name)) continue;
+            this.declareBinding(identifier);
+            names.add(identifier.name);
+          }
         return parsed;
       });
       if (accessor === "get" && params.length !== 0)
         throw new Error("A getter cannot have parameters.");
       if (accessor === "set" && (params.length !== 1 || params[0]?.type === "RestElement"))
         throw new Error("A setter must have exactly one non-rest parameter.");
-      const body = this.withFunctionContext(generator ? async ? "async-generator" : "generator" : async ? "async" : "normal", () => this.parseBlockStatement(params));
+      const body = this.withFunctionContext(generator ? async ? "async-generator" : "generator" : async ? "async" : "normal", () => this.parseBlockStatement(params, undefined, allowDuplicateParameters));
       return { params, body };
     });
   }
@@ -2058,7 +2171,7 @@ class Parser {
   private parseBindingTarget(): ArrayPattern | Identifier | ObjectPattern {
     const token = this.currentToken();
 
-    if (isIdentifierLikeToken(token)) {
+    if (isIdentifierLikeToken(token) || this.isContextualIdentifier(token)) {
       return this.parseBindingIdentifier();
     }
 
@@ -2075,12 +2188,21 @@ class Parser {
 
   private parseBindingIdentifier(): Identifier {
     const token = this.currentToken();
-    if (!isIdentifierLikeToken(token)) {
+    if (this.lexicalContext.grammar?.strict && STRICT_BINDING_NAMES.has(token.value))
+      throw unexpectedTokenError(token);
+    if (!isIdentifierLikeToken(token) && !this.isContextualIdentifier(token)) {
       throw unexpectedTokenError(token);
     }
 
     this.index += 1;
     return createIdentifier(token);
+  }
+
+  private isContextualIdentifier(token: Token): boolean {
+    const grammar = this.lexicalContext.grammar;
+    return grammar !== undefined && token.type === "keyword" &&
+      ((token.value === "await" && !grammar.await) ||
+        (token.value === "yield" && !grammar.yield && !grammar.strict));
   }
 
   private parseArrayPattern(): ArrayPattern {
@@ -2689,7 +2811,7 @@ class Parser {
       };
     }
 
-    if (token.type === "keyword" && token.value === "yield") {
+    if (token.type === "keyword" && token.value === "yield" && !this.isContextualIdentifier(token)) {
       if (this.functionContext !== "generator" && this.functionContext !== "async-generator") {
         throw new Error(
           `yield is only valid inside a generator body at line ${token.start.line}, column ${token.start.column}.`
@@ -2726,7 +2848,7 @@ class Parser {
       };
     }
 
-    if (token.type === "keyword" && token.value === "await") {
+    if (token.type === "keyword" && token.value === "await" && !this.isContextualIdentifier(token)) {
       if (!this.lexicalContext.await) throw new DisallowedSyntaxError("await in a class element", token.start);
       if (this.functionContext === "generator") {
         throw new Error(
@@ -2966,7 +3088,7 @@ class Parser {
       return this.parseNewExpression();
     }
 
-    if (isIdentifierLikeToken(token)) {
+    if (isIdentifierLikeToken(token) || this.isContextualIdentifier(token)) {
       assertAllowedIdentifierReference(token);
       this.index += 1;
       return {
@@ -4048,6 +4170,8 @@ class Parser {
 
   private withLexicalContext<T>(context: LexicalParseContext, callback: () => T): T {
     const previous = this.lexicalContext;
+    if (context.grammar === undefined && previous.grammar !== undefined)
+      context = {...context, grammar: {...previous.grammar}};
     this.lexicalContext = context;
     try { return callback(); } finally { this.lexicalContext = previous; }
   }
@@ -4208,6 +4332,7 @@ class Parser {
 
   private parseImportMeta(): MetaProperty {
     const importToken = this.currentToken();
+    if (!this.allowImportMeta) throw new Error("import.meta is only valid in module source.");
     if (!this.isImportMetaStart()) {
       throw unexpectedTokenError(importToken);
     }
