@@ -7,11 +7,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createFsFromVolume, Volume } from "memfs";
+import ts from "typescript";
 import { loadBoundaries } from "../../../scripts/integration-inputs.mjs";
 import { readRegularInput } from "../../../scripts/typecheck-integration-inputs.mjs";
+import { createPeerBinding } from "../../../scripts/typecheck-consumers.mjs";
 import { assertTypeOrigins, cleanEnvironment, digest, inspectCommittedCandidate, packagePrefix, readArchive, resolveTools } from "./committed-archive.mjs";
 import * as distChecks from "./committed-archive.mjs";
 import { assertSnapshotInputs, verifyCommittedExports } from "./verify.mjs";
+import * as verifier from "./verify.mjs";
 
 const authority = fileURLToPath(new URL("../../../", import.meta.url));
 const boundaries = loadBoundaries(authority);
@@ -594,6 +597,49 @@ function peerSnapshot() {
   const check = () => assertSnapshotInputs("/synthetic-package", committed, { peer, fileSystem: fixture.fileSystem });
   return { ...fixture, committed, peer, check };
 }
+
+for (const route of ["poe-code/safe-fs", "poe-code/safe-fs/core"]) test(`committed peer imports parse only captured source bytes: ${route}`, () => {
+  const bytes = Buffer.from(`export { value } from "${route}"; export type { Value } from "${route}"; import "node:path";`);
+  const committed = new Map([[`${packagePrefix}/src/not-in-live-checkout.ts`, bytes], [`${packagePrefix}/tests/ignored.ts`, Buffer.from('import "poe-code/private";')], ["packages/other/src/ignored.ts", Buffer.from('import "poe-code/other";')]]);
+  assert.deepEqual(verifier.committedPeerImports(committed, ts), [route]);
+  assert.equal(committed.get(`${packagePrefix}/src/not-in-live-checkout.ts`), bytes);
+});
+
+test("explicit committed peer imports extend declaration closure without scanning live source", () => {
+  const manifest = JSON.parse(readRegularInput(authority, "package.json", 300000));
+  const defaults = createPeerBinding(authority, manifest);
+  assert.deepEqual([...defaults.publicEntries.keys()], ["poe-code/safe-fs"]);
+  const binding = createPeerBinding(authority, manifest, new Map(), ["poe-code/safe-fs/core"]);
+  assert.deepEqual([...binding.publicEntries.keys()].sort(), ["poe-code/safe-fs", "poe-code/safe-fs/core"]);
+  assert.equal(binding.publicEntries.get("poe-code/safe-fs/core"), "packages/safe-fs/dist/core.d.ts");
+  assert.equal(binding.declarations.get("packages/safe-fs/dist/core.d.ts"), digest(readRegularInput(resolve(authority, "../.."), "packages/safe-fs/dist/core.d.ts", 300000)));
+});
+
+for (const route of ["poe-code/safe-fs", "poe-code/safe-fs/core", "poe-code/private"]) test(`packed consumer admits only authenticated peer public routes: ${route}`, () => {
+  const files = {
+    "node_modules/virtual-bash/package.json": '{"type":"module"}',
+    "node_modules/virtual-bash/dist/index.js": `export { value } from "${route}";`,
+    "node_modules/virtual-bash/dist/fs/s3/http/index.js": "export {};",
+    "node_modules/poe-code/package.json": '{"type":"module"}',
+    "node_modules/poe-code/packages/safe-js/dist/safe-fs.js": "export const value = 1;",
+    "node_modules/poe-code/packages/safe-js/dist/safe-fs-core.js": 'export { value } from "./shared.js";',
+    "node_modules/poe-code/packages/safe-js/dist/shared.js": "export const value = 1;",
+  };
+  const io = createFsFromVolume(Volume.fromJSON(Object.fromEntries(Object.entries(files).map(([path, bytes]) => [`/consumer/${path}`, bytes]))));
+  const peer = { entries: { "poe-code/safe-fs": "packages/safe-js/dist/safe-fs.js", "poe-code/safe-fs/core": "packages/safe-js/dist/safe-fs-core.js" },
+    files: Object.entries(files).filter(([path]) => path.startsWith("node_modules/poe-code/")).map(([path, bytes]) => ({ path: path.slice("node_modules/poe-code/".length), sha256: digest(bytes) })) };
+  const packed = Object.keys(files).filter(path => path.startsWith("node_modules/virtual-bash/")).map(path => path.slice("node_modules/virtual-bash/".length));
+  const bind = () => verifier.bindPackedConsumer("/consumer", packed, peer, { publicEntries: new Map(), declarations: new Map() }, ts, io);
+  if (route === "poe-code/private") assert.throws(bind, /Unbound runtime dependency/);
+  else {
+    const binding = bind();
+    assert.equal(binding.entries[route], `node_modules/poe-code/${peer.entries[route]}`);
+    assert.equal(binding.edges["node_modules/virtual-bash/dist/index.js"][route], binding.entries[route]);
+    assert.equal(binding.edges[binding.entries["poe-code/safe-fs/core"]]["./shared.js"], "node_modules/poe-code/packages/safe-js/dist/shared.js");
+    io.writeFileSync("/consumer/node_modules/poe-code/packages/safe-js/dist/shared.js", "changed");
+    assert.throws(bind, /Runtime input drift/);
+  }
+});
 
 test("peer snapshot accepts unchanged committed inputs without a peer", () => {
   const committed = new Map([["package.json", Buffer.from("committed")]]);

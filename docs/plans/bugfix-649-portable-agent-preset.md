@@ -155,3 +155,23 @@ POSIX contract, portable preset, canonical peer closure and predicate controls.
 Repository lint also passed with all writers frozen. A local candidate commit is
 required next so the committed-archive gate tests the actual compiler authority;
 the broader unit route and refreshed packed runtime checks remain delivery gates.
+
+The committed-candidate route passed 40,040 shared controls (42 skipped), 29 Python
+controls and 282 runner controls. Bash completed 22,003 controls: 21,939 passed,
+63 skipped and one failed. The sole failure was the S3 committed consumer's
+root-only peer binding, not a product execution assertion. The outer tool session
+reported signal 143; the retained child log contains the final Bash failure
+summary. No successful full-route or posttest result is claimed for that attempt.
+
+The S3 verifier now derives explicit public imports from authenticated committed
+source bytes, never live source payloads, then carries the authenticated public
+routes into its packed runtime closure. Default and historical peer bindings are
+unchanged. Six new memory/closure controls and the exact committed packed-consumer
+case passed together (seven focused controls). The remaining correction changes
+only verification helpers and their tests.
+
+An overlapping packaging attempt consumed the intermediate unbundled workspace
+output rebuilt by the unit route, and its consumer lacked a local package
+manifest. Its browser failure is retained, not counted as final qualification.
+Final packaging must follow the complete normal build and use an explicit isolated
+consumer manifest before installation; do not package concurrently with builds.

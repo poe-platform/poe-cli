@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { isBuiltin } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import typescript from "typescript";
 import { assertAdmittedInputPath, assertLiteralInputPath, readRegularInput } from "../../../scripts/typecheck-integration-inputs.mjs";
 import { assertCanonicalRoot, assertDistContinuity, assertTypeOrigins, authority, captureDistBaseline, contained, copyRegularTree, digest, inspectCommittedCandidate, packagePrefix, readArchive, readDistInventory, resolveTools } from "./committed-archive.mjs";
 
@@ -40,12 +41,23 @@ export function assertSnapshotInputs(snapshotRoot, committedFiles, { peer, fileS
   }
 }
 
-function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts) {
+export function committedPeerImports(committedFiles, compiler) {
+  const imports = new Set();
+  for (const [path, bytes] of committedFiles) {
+    if (!path.startsWith(`${packagePrefix}/src/`)) continue;
+    for (const { fileName } of compiler.preProcessFile(bytes.toString(), true).importedFiles) {
+      if (fileName === "poe-code" || fileName.startsWith("poe-code/")) imports.add(fileName);
+    }
+  }
+  return [...imports].sort();
+}
+
+export function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts, fileSystem) {
   const binding = { files: {}, metadata: ["node_modules/virtual-bash/package.json", "node_modules/poe-code/package.json"], entries: {
     "virtual-bash": "node_modules/virtual-bash/dist/index.js", "virtual-bash/fs/s3/http": "node_modules/virtual-bash/dist/fs/s3/http/index.js",
-    "poe-code/safe-fs": `node_modules/poe-code/${peer.entries["poe-code/safe-fs"]}`,
+    ...Object.fromEntries(Object.entries(peer.entries).map(([specifier, path]) => [specifier, `node_modules/poe-code/${path}`])),
   }, edges: {}, declarations: [], declarationEntries: {} };
-  for (const path of packedFiles) binding.files[`node_modules/virtual-bash/${path}`] = digest(readRegularInput(consumer, `node_modules/virtual-bash/${path}`, 32 * 1024 * 1024));
+  for (const path of packedFiles) binding.files[`node_modules/virtual-bash/${path}`] = digest(readRegularInput(consumer, `node_modules/virtual-bash/${path}`, 32 * 1024 * 1024, fileSystem));
   for (const { path, sha256 } of peer.files) binding.files[`node_modules/poe-code/${path}`] = sha256;
   for (const [specifier, path] of declarations.publicEntries) binding.declarationEntries[specifier] = `node_modules/poe-code/${path}`;
   binding.declarations = [...declarations.declarations.keys()].map(path => `node_modules/poe-code/${path}`);
@@ -55,7 +67,7 @@ function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts) {
     if (Object.hasOwn(binding.edges, local)) continue;
     assert.ok(Object.keys(binding.edges).length < 1024, "Runtime closure exceeds member bound");
     assert.ok(Object.hasOwn(binding.files, local), `Unbound runtime input: ${local}`);
-    const bytes = readRegularInput(consumer, local, 16 * 1024 * 1024);
+    const bytes = readRegularInput(consumer, local, 16 * 1024 * 1024, fileSystem);
     assert.equal(digest(bytes), binding.files[local], `Runtime input drift: ${local}`);
     const source = ts.createSourceFile(local, bytes.toString(), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
     assert.equal(source.parseDiagnostics.length, 0, `Invalid runtime syntax: ${local}`);
@@ -106,7 +118,7 @@ export async function verifyCommittedExports({ repository = actualRepository, re
       assert.deepEqual(candidate.files.get("package-lock.json"), readRegularInput(repository, "package-lock.json", 16 * 1024 * 1024), "Peer binding requires the selected committed workspace lock");
       if (manifest.poeCode?.integration?.peerProfile === "checkout-root") assert.deepEqual(candidate.files.get("package.json"), readRegularInput(repository, "package.json", 300000), "Peer binding requires the selected committed root metadata");
       report.peerPrerequisite = checkout ? "Existing matching root npm run build outputs, including the canonical shared SafeJS bundle; no implicit build, registry fallback or published-version qualification" : "Explicit matching peer artifact and built declaration/runtime tooling";
-      peerDeclarations = createPeerBinding(peerAuthority, manifest);
+      peerDeclarations = createPeerBinding(peerAuthority, manifest, new Map(), committedPeerImports(candidate.files, typescript));
       peer = peerApi.bindPeerArtifact({ root: peerAuthority, artifact: peerArtifact, declarations: { peer: peerDeclarations }, checkout });
       if (peer.profile === "packed-root" || peer.profile === "checkout-root") assert.equal(peer.metadataSha256, digest(candidate.files.get("package.json")), "Peer root metadata differs from the committed root");
       report.peer = peer;
