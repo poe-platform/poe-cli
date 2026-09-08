@@ -13,6 +13,8 @@ import { readPropertyDescriptor } from "../accessors.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { getIntrinsicIdentity } from "../intrinsics.js";
 import { installCollectionPrototypes } from "./collection-prototypes.js";
+import { createGroupBy } from "./group-by.js";
+import { materializeFunctionProperties } from "../object-model.js";
 import {
   createSandboxClosure,
   createSandboxMap,
@@ -118,6 +120,9 @@ export function createCollectionGlobals(options: { budget: Budget }): Collection
   });
 
   mapConstructors.add(mapConstructor);
+  Object.defineProperty(materializeFunctionProperties(mapConstructor), "groupBy", {
+    value: createGroupBy(options.budget, "identity"), writable: true, configurable: true
+  });
   setConstructors.add(setConstructor);
   installCollectionPrototypes(options.budget, mapConstructor, setConstructor);
   return { Map: mapConstructor, Set: setConstructor };

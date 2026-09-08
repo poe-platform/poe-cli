@@ -21,6 +21,7 @@ import { deleteSandboxProperty, setSandboxProperty } from "../interpreter.js";
 import { acquireSandboxIterator, closeIterator, getSandboxAsyncIterator, getSandboxIterator, getSandboxIteratorFromMethod, readIteratorResult, type SandboxIterator } from "../iteration.js";
 import { sandboxNumber, sandboxString } from "../string-coercion.js";
 import { toPropertyKey } from "../property-key.js";
+import { createGroupBy } from "./group-by.js";
 import { createNumericParsers } from "./numeric-parsers.js";
 import { createPrimitiveConstructor } from "./primitives.js";
 import { arrayMethodLengths, arrayMethodNames, callArrayMethod } from "../methods/array.js";
@@ -226,6 +227,7 @@ export function createObjectArrayGlobals(options: {
           call: ([left, right]) => Reflect.apply(Object.is, Object, [left, right]),
           name: "is"
         }),
+        groupBy: createGroupBy(options.budget, "property"),
         fromEntries: createSandboxClosure({
           sandbox: true,
           call: ([value], context) => {
