@@ -693,7 +693,8 @@ export function measureSandboxData(
     const bindingRoot = scopeDataRoots.get(value);
     if (bindingRoot !== undefined) {
       seen.add(value);
-      visit(bindingRoot.value, depth);
+      if ("value" in bindingRoot) visit(bindingRoot.value, depth);
+      else for (const entry of bindingRoot.values) visit(entry, depth);
       return;
     }
     assertSandboxDataDepth(depth);
