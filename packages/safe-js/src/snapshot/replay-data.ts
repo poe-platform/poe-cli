@@ -89,18 +89,30 @@ export type ReplayPathSegment = string | { symbol: number };
 
 export class MissingReplayCapabilityError extends TypeError {}
 
+export function createReplayEncodingContext() {
+  return {
+    nodes: [] as DataNode[],
+    seen: new WeakMap<object, number>(),
+    symbols: new Map<symbol, number>(),
+    float32Buffers: new WeakMap<ArrayBuffer, number>(),
+    failed: false
+  };
+}
+
 export function encodeReplayData(
   value: SandboxValue,
   options: {
     identifyCapability?: (value: SandboxClosure, path: readonly ReplayPathSegment[]) => string | undefined;
     captureCapabilityProperties?: boolean;
     identifyPromise?: (value: SandboxPromise, path: readonly ReplayPathSegment[]) => string | undefined;
+    context?: ReturnType<typeof createReplayEncodingContext>;
+    path?: readonly ReplayPathSegment[];
   } = {}
 ): ReplayData {
-  const nodes: DataNode[] = [];
-  const seen = new WeakMap<object, number>();
-  const symbols = new Map<symbol, number>();
-  const float32Buffers = new WeakMap<ArrayBuffer, number>();
+  const context = options.context ?? createReplayEncodingContext();
+  if (context.failed) throw new TypeError("Cannot extend an incomplete graph.");
+  const { nodes, seen, symbols, float32Buffers } = context;
+  const initialNodeCount = nodes.length;
   const encode = (entry: SandboxValue, depth: number, path: readonly ReplayPathSegment[]): Atom => {
     if (depth > MAX_DATA_DEPTH) throw new TypeError("Replay data exceeds the nesting limit.");
     if (entry === null || typeof entry === "boolean" || typeof entry === "string") return entry;
@@ -284,7 +296,13 @@ export function encodeReplayData(
     }
     return { tag: "ref", id };
   };
-  return { root: encode(value, 0, []), nodes };
+  try {
+    return { root: encode(value, 0, options.path ?? []), nodes };
+  } catch (error) {
+    context.failed = true;
+    nodes.length = initialNodeCount;
+    throw error;
+  }
 }
 
 export function decodeReplayData(
@@ -293,6 +311,7 @@ export function decodeReplayData(
     resolveCapability?: (id: string) => SandboxClosure | undefined;
     resolvePromise?: (id: string) => SandboxPromise | undefined;
     onCapabilityRestored?: (original: SandboxClosure, restored: SandboxClosure) => void;
+    memo?: { nodes: ReplayData["nodes"]; values: Map<number, SandboxValue> };
   } = {},
   parent?: CompileScope
 ): SandboxValue {
@@ -301,7 +320,9 @@ export function decodeReplayData(
     validateSnapshotData(input);
     const graph = record(input);
     const nodes = list(own(graph, "nodes"));
-    const restored = new Map<number, SandboxValue>();
+    if (options.memo !== undefined && options.memo.nodes !== nodes)
+      throw new TypeError("Replay memo belongs to a different graph.");
+    const restored = new Map<number, SandboxValue>(options.memo?.values);
     const initializeValues: Array<() => void> = [];
     const detachBuffers: Array<() => void> = [];
     const decode = (entry: unknown, depth = 0): SandboxValue => {
@@ -583,6 +604,8 @@ export function decodeReplayData(
     for (const initialize of initializeValues) initialize();
     for (const detach of detachBuffers) detach();
     if (parent !== undefined) compilation.forward(compilation.tickets, parent);
+    if (options.memo !== undefined)
+      for (const [id, value] of restored) options.memo.values.set(id, value);
     return result;
   } finally {
     compilation.dispose();
