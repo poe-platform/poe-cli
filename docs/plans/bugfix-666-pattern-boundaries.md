@@ -1,5 +1,24 @@
 # Bugfix 666: parameter-pattern boundary search
 
+## September 8: root delivery qualification
+
+Combined evidence: `/tmp/kamilio-655-666-gate.2t9R06`. Complete maintained
+SafeBash unit route passes: 282 runner assertions and **22,153 passing unit
+cases, 63 skips, zero failures/cancellations**. Selected workspace build,
+exclusive guarded root lint and 166 playground tests/build also pass.
+The full suite ran on `2efcacf01`; root's rebase onto upstream `b49a48946`
+preserves identical SafeBash/SafeFS Git trees, followed by another successful
+selected build and root lint on `29b645404`.
+
+Built public Node exports match native Bash for an 8,192-character global
+no-match replacement. Actual browser preview succeeds at 2,048 characters;
+8,192 characters are refused under its existing 64 KiB expansion profile.
+No limit was increased, and that larger browser refusal is not a pass.
+Screenshot `/tmp/kamilio-655-666-browser-qualified.png` was inspected; browser
+and preview were closed. The shared jq plan records the test-only historical
+evidence corrections, original failures and exact validation qualifications.
+Push and release verification remain separate from these local gates.
+
 ## Authority and status
 
 September 8, 2026: preparation remained limited to this plan and `/tmp` during

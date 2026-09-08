@@ -7,6 +7,36 @@ readiness: ready
 
 # Jq work admission: kamilio #654 and #655
 
+## September 8: root #655/#666 delivery gates
+
+Evidence: `/tmp/kamilio-655-666-gate.2t9R06`. The complete uncached maintained
+`npm run test:unit --workspace=virtual-bash` passes on candidate `2efcacf01`:
+282 runner assertions plus 22,216 unit cases, comprising **22,153 passes,
+63 skips and zero failures/cancellations**. Skipped cases are not passes.
+The earlier interrupted sweep and subsequent 80/81 focused failure remain
+recorded separately; the test-only correction passes 109/109 focused cases
+before this complete successful rerun.
+
+Root rebased onto upstream `b49a48946`, preserving its SafeJS dynamic-import
+feature. Git-tree comparisons verify the entire SafeBash and SafeFS inputs
+are byte-identical before and after that rebase. The selected maintained
+SafeFS/SafeBash build closure was rerun successfully on rebased `29b645404`;
+exclusive guarded root `npm run lint` also passes (ESLint, types, workflows).
+No full root `npm test` or root-release success is implied by this package gate.
+
+Playground: 166/166 tests and maintained build pass. Built public Node exports
+match native Bash for the 8,192-character no-match replacement case and preserve
+jq entries, reverse, Unicode length and JSON-string results. The browser's
+existing 64 KiB expansion profile refuses the 8 KiB case with maxExpansionBytes;
+that refusal is retained, not counted as success. The 2,048-character case and
+jq controls succeed in the actual production preview. Inspected captures:
+`/tmp/kamilio-655-666-browser-qualified.png` and corresponding YAML; the earlier
+running/refusal captures are preserved. Browser and preview were closed.
+
+These checks establish the scoped behavior and admission guarantees documented
+here, not universal unchanged near-limit headroom, RSS or latency guarantees.
+Remote-main delivery and publication are verified separately after pushing.
+
 TDD implementation handoff, September 8, 2026. Active-jq #655 is implemented;
 the latest integration corrections are recorded below.
 Earlier frozen handoffs remain historical records.
