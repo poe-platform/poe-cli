@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { createContext, runInContext } from "node:vm";
-import { build, transform } from "esbuild";
+import { build } from "esbuild";
 
 type BrowserShell = typeof import("../../src/browser.js");
 let browser: BrowserShell;
@@ -17,13 +18,31 @@ before(async () => {
     format: "cjs", target: "es2022",
   });
   const bundle = await build(resolveBrowserShellBuild(root));
-  const compiled = await transform(bundle.outputFiles!.find(output => output.path.endsWith("browser.js"))!.text, { format: "cjs" });
+  const emitted = new Map(bundle.outputFiles!.map(output => [output.path, output.text]));
+  const entry = bundle.outputFiles!.find(output => output.path.endsWith("browser.js"))!;
+  const compiled = await build({
+    entryPoints: [entry.path], bundle: true, platform: "browser", format: "cjs", write: false,
+    plugins: [{
+      name: "emitted-browser-runtime",
+      setup(builder) {
+        builder.onResolve({ filter: /.*/ }, args => {
+          if (args.path === "poe-code/safe-fs/core") return { path: args.path, external: true };
+          const filename = path.resolve(args.resolveDir, args.path);
+          return emitted.has(filename) ? { path: filename, namespace: "emitted-browser" }
+            : { errors: [{ text: `Missing emitted browser module: ${filename}` }] };
+        });
+        builder.onLoad({ filter: /.*/, namespace: "emitted-browser" }, args => ({
+          contents: emitted.get(args.path)!, loader: "js", resolveDir: path.dirname(args.path),
+        }));
+      },
+    }],
+  });
   const sandbox = createContext({
     TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
     AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto,
   });
   sandbox.canonical = runInContext(`(function(){ const module = { exports: {} }; ${filesystem.outputFiles![0]!.text}; return module.exports; })()`, sandbox);
-  browser = runInContext(`(function(){ const module = { exports: {} }; const require = name => { if (name !== "poe-code/safe-fs/core") throw new Error(name); return canonical; }; ${compiled.code}; return module.exports; })()`, sandbox) as BrowserShell;
+  browser = runInContext(`(function(){ const module = { exports: {} }; const require = name => { if (name !== "poe-code/safe-fs/core") throw new Error(name); return canonical; }; ${compiled.outputFiles![0]!.text}; return module.exports; })()`, sandbox) as BrowserShell;
   assert.equal(runInContext("typeof Buffer + ':' + typeof process", sandbox), "undefined:undefined");
   assert.ok(Object.keys(bundle.metafile!.inputs).some(input => input.endsWith("node_modules/buffer/index.js")));
 });
