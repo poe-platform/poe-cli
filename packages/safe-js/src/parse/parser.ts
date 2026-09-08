@@ -738,7 +738,7 @@ export function parseDynamicFunction(
     const bodySource = `{\n${body}\n}`;
     const source = `${prefix} anonymous(${parameters}\n) ${bodySource}`;
     const createParser = (text: string) => new Parser(
-      tokenize(text, {allowRegexLiterals: true, compilation}), text, compilation,
+      tokenize(text, {allowRegexLiterals: true, allowLegacyNumbers: true, compilation}), text, compilation,
       kind, {...ordinaryFunctionContext, grammar: {
         await: kind === "async" || kind === "async-generator",
         yield: kind === "generator" || kind === "async-generator", strict: false
@@ -4315,7 +4315,11 @@ class Parser {
   }
 
   private currentToken(): Token {
-    return this.tokens[this.index] ?? this.tokens[this.tokens.length - 1];
+    const token = this.tokens[this.index] ?? this.tokens[this.tokens.length - 1];
+    if (this.lexicalContext.grammar?.strict !== false && token.type === "numeric" &&
+      token.value[0] === "0" && isDecimalDigit(token.value[1] ?? ""))
+      throw new Error("Legacy numeric literals are not supported in strict mode.");
+    return token;
   }
 
   private peekToken(offset: number): Token {
@@ -4637,7 +4641,8 @@ function createNumericLiteral(token: Token): NumericLiteral | BigIntLiteral {
   return {
     type: "NumericLiteral",
     raw: token.value,
-    value: Number(token.value.replaceAll("_", "")),
+    value: token.value.length > 1 && token.value[0] === "0" && [...token.value].every(isOctalDigit)
+      ? Number.parseInt(token.value, 8) : Number(token.value.replaceAll("_", "")),
     span: createTokenSpan(token)
   };
 }
@@ -5247,7 +5252,9 @@ function parseEmbeddedExpression(
   fullSource: string,
   compilation?: CompileScope
 ): Expression {
-  const tokens = tokenize(source, { allowRegexLiterals: true, compilation }).map((token) => ({
+  const tokens = tokenize(source, {
+    allowRegexLiterals: true, allowLegacyNumbers: lexicalContext.grammar?.strict === false, compilation
+  }).map((token) => ({
     ...token,
     start: rebasePosition(token.start, base),
     end: rebasePosition(token.end, base)

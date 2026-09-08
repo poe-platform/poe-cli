@@ -33,6 +33,7 @@ export type Comment = {
 
 export type TokenizeOptions = {
   allowRegexLiterals?: boolean;
+  allowLegacyNumbers?: boolean;
   comments?: Comment[];
   compilation?: CompileScope;
 };
@@ -644,6 +645,23 @@ class Lexer {
       }
 
       if (isDecimalDigit(prefix)) {
+        if (this.options.allowLegacyNumbers) {
+          let octal = true;
+          while (isDecimalDigit(this.currentChar())) {
+            if (!isOctalDigit(this.currentChar())) octal = false;
+            this.advance();
+          }
+          if (!octal) {
+            if (this.currentChar() === ".") {
+              this.advance();
+              this.consumeOptionalDecimalDigits();
+            }
+            this.consumeExponent();
+          }
+          this.rejectBigIntSuffix();
+          this.rejectInvalidNumericLiteralContinuation();
+          return this.source.slice(start.offset, this.index);
+        }
         // Agent Script uses strict-mode JavaScript numeric grammar, so legacy octal
         // and non-octal leading-zero decimal literals are not accepted.
         this.advance();
