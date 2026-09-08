@@ -44,3 +44,20 @@ Other workers own issues 663 and 665 in disjoint SafeBash source files.
 - Evidence lives under `/tmp/kamilio-658-gate.Q2Z496` and the
   `/tmp/kamilio-658-{dev,production}-*` browser captures. Push, Pages deployment
   and broader integration results are separate delivery gates.
+
+## Final integration
+
+- The maintained root lint chain passed: guarded ESLint, root TypeScript and
+  workflow lint. An interrupted foreground attempt is retained separately;
+  the detached run recorded exit 0.
+- The complete uncached `npm test` route passed with exit 0 against committed
+  candidate `6a2f1f16f0e734261ced167a3b93bba9c35ae0a7`, including all declared
+  unit tasks, dependency builds and native lifecycle hooks. The shared stage
+  passed 40,193 tests with 42 explicit skips; the posttest lint stress stage
+  passed both tests. Skips are not counted as passes.
+- The complete focused shell selection passed 3,592 tests and the rebuilt
+  playground passed all 166 tests. The first shell invocation used the wrong
+  repository-root working directory and failed three package-relative fixture
+  loaders; the corrected package-working-directory run passed unchanged tests.
+- Source and test files remained frozen during the full route. Work on later
+  issues was restricted to separate temporary evidence and planning documents.
