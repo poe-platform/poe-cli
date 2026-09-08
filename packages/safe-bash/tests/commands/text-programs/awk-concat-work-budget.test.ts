@@ -114,12 +114,12 @@ for (const reason of [new Error("concat admission cancelled"), null]) {
       if (count === 256) controller.abort(reason);
       return step.call(this, count);
     });
-    await assert.rejects(awkCommand({ maxSteps: 512, maxBufferBytes: 512 }).execute({
+    await assert.rejects(Promise.resolve(awkCommand({ maxSteps: 512, maxBufferBytes: 512 }).execute({
       command: "awk", args: [`BEGIN { value="${"a".repeat(128)}" "${"b".repeat(128)}" }`],
       cwd: "/", env: {}, fs: new MemoryFileSystem(), signal: controller.signal, stdin: toByteSource(""),
       stdout: { async write() { assert.fail("cancelled concat must not write stdout"); } },
       stderr: { async write() { assert.fail("cancelled concat must not write diagnostics"); } },
-    }), error => Object.is(error, reason));
+    })), (error: unknown) => Object.is(error, reason));
     assert.equal(controller.signal.aborted, true);
   });
 }

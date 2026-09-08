@@ -152,3 +152,13 @@ optional skipped profiles are not counted as passes.
 The final maintained `npm run lint` completed with exit 0, including guarded
 ESLint, root type checking and workflow lint. Build, unit and lint validation
 therefore all passed for the isolated issue 648 candidate before delivery.
+
+## September 8 strict-type follow-up
+
+The maintained SafeBash typecheck during issue 657 integration reported TS7006
+on the path/options parameters of this issue's mocked stat callback. Explicit
+types from the existing FileSystem.stat contract preserve its runtime behavior,
+cache-generation race, cancellation and identity assertions. The original
+failing typecheck is retained in
+`/tmp/kamilio-657-final-gate.LSENd8/typecheck.log`; no product code changes.
+All 34 focused runtime tests passed after the typing correction.

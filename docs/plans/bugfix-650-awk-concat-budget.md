@@ -94,3 +94,13 @@ operations, or delivery steps were performed here. Concat-heavy programs now
 consume the existing work budget according to bytes, intentionally refusing
 sooner. This bounds concat work, not every other possible AWK copy or host CPU
 time; no rope redesign or broad runtime audit is claimed.
+
+## September 8 strict-type follow-up
+
+The maintained SafeBash typecheck during issue 657 integration reported TS2769
+and TS7006 in this issue's cancellation witness: CommandDefinition.execute may
+return synchronously, whereas assert.rejects requires a promise or async thunk.
+The follow-up normalizes the result into a promise without changing cancellation identity,
+output prohibitions or runtime implementation. The original failing typecheck is
+retained in `/tmp/kamilio-657-final-gate.LSENd8/typecheck.log`.
+All 16 focused runtime tests passed after the typing correction.

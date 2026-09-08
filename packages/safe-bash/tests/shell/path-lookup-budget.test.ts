@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
-import { CommandRegistry, FsError } from "../../src/contracts/index.js";
+import { CommandRegistry, FsError, type FsOptions } from "../../src/contracts/index.js";
 import { createWhichCommand } from "../../src/commands/which/index.js";
 import { MemoryFileSystem } from "../../src/fs/memory/index.js";
 import { Shell, ShellLimitError } from "../../src/shell/index.js";
@@ -282,7 +282,7 @@ test("PATH cache does not publish an older probe across a mutation generation", 
   const finish = deferred();
   const stat = fs.stat.bind(fs);
   let first = true;
-  context.mock.method(fs, "stat", async (path, options) => {
+  context.mock.method(fs, "stat", async (path: string, options?: FsOptions) => {
     if (!first) return stat(path, options);
     first = false;
     try { return await stat(path, options); }
