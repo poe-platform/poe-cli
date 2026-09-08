@@ -2,11 +2,11 @@
 
 The playground's `help` command describes its upload, workspace, output, source,
 command, and loop budgets. These are application-level limits, not a browser
-process memory quota. The engine remains pinned to `poe-code@14.0.4`.
+process memory quota. The engine is built from the current SafeBash workspace.
 
 ## Regex and ERE workers
 
-Regex searches and `[[ =~ ]]` execute in Web Workers. The pinned engine's
+Regex searches and `[[ =~ ]]` execute in Web Workers. The workspace engine's
 protocol enforces work and byte budgets and request/startup/idle timeouts. Its
 Node `resourceLimits` options are not enforced by the browser adapter in
 `src/engine/workers.mjs`; that adapter forwards worker data and gives the native

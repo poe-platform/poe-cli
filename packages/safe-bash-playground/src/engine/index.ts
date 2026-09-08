@@ -1,5 +1,5 @@
 import { createAgentCommands } from "virtual:safe-bash-kernel";
-import type { ShellLimits, VirtualShellPlugin } from "safe-bash-engine/safe-bash";
+import type { ShellLimits, VirtualShellPlugin } from "virtual-bash";
 
 export {
   Shell,
@@ -15,7 +15,7 @@ export type {
   ShellOptions,
   CommandDefinition,
   VirtualShellPlugin
-} from "safe-bash-engine/safe-bash";
+} from "virtual-bash";
 export type { ShellExecOptions, RootShellState } from "virtual:safe-bash-kernel";
 
 export const browserLimits: Readonly<ShellLimits> = Object.freeze({

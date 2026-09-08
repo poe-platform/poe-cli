@@ -1,11 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Worker as NodeWorker } from "node:worker_threads";
 import { resolveObjectURL } from "node:buffer";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { buildBrowserEngine, safeBashBrowserPlugin } from "./build-plugin.mjs";
 
 describe("real safe-bash browser kernel", () => {
   let kernel: typeof import("./index.js");
   let inputs: string[];
+  let engine: { bash: string; filesystem: string };
   const activeWorkers = new Set<{ terminate(): void }>();
 
   beforeAll(async () => {
@@ -56,6 +59,7 @@ describe("real safe-bash browser kernel", () => {
       }
     );
     const built = await buildBrowserEngine();
+    engine = built;
     inputs = built.inputs;
     kernel = await import(
       /* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(`${built.code}\n//# sourceURL=safe-bash-browser-kernel.mjs`).toString("base64")}`
@@ -72,6 +76,25 @@ describe("real safe-bash browser kernel", () => {
     );
     return { fs, shell };
   }
+
+  it("builds the current workspace engine rather than a pinned registry copy", () => {
+    const root = fileURLToPath(new URL("../../../../", import.meta.url));
+    expect(engine.bash).toBe(resolve(root, "packages/safe-bash/dist"));
+    expect(engine.filesystem).toBe(resolve(root, "packages/safe-fs/dist/core.js"));
+    expect(inputs.some(input => input.includes("safe-bash-engine"))).toBe(false);
+  });
+
+  it("includes the current predicate nesting refusal in the browser engine", async () => {
+    const { shell } = await fixture();
+    try {
+      const source = `test ${"\\( ".repeat(257)}value ${"\\) ".repeat(257)}`;
+      const result = await shell.exec(source);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("test: expression nesting exceeds 256\n");
+    } finally {
+      await shell.dispose();
+    }
+  });
 
   it("executes actual shell scripts, pipelines, expansions, and virtual file changes", async () => {
     const { fs, shell } = await fixture();
@@ -277,7 +300,8 @@ describe("real safe-bash browser kernel", () => {
     const entry = await plugin.load.call({ addWatchFile: (path: string) => watched.push(path) }, id);
     expect(entry.length).toBeLessThan(4096);
     expect(watched.some((path) => path.endsWith("/engine/platform.ts"))).toBe(true);
-    expect(watched.some((path) => path.endsWith("/engine/path.ts"))).toBe(true);
+    expect(watched.some((path) => path.endsWith("/safe-fs/dist/core.js"))).toBe(true);
+    expect(watched.some((path) => path.endsWith("/safe-bash/dist/commands/regex-execution/worker.js"))).toBe(true);
     expect(watched.some((path) => path.endsWith("/engine/worker-context.mjs"))).toBe(true);
     expect(watched.some((path) => path.endsWith("/engine/workers.mjs"))).toBe(true);
     const assets: { fileName: string; source: string }[] = [];

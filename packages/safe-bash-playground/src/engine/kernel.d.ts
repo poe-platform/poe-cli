@@ -5,13 +5,13 @@ declare module "virtual:safe-bash-kernel" {
     normalizePath,
     readBytes,
     FsError
-  } from "safe-bash-engine/safe-bash";
-  import { Shell as NativeShell } from "safe-bash-engine/safe-bash";
+  } from "virtual-bash";
+  import { Shell as NativeShell } from "virtual-bash";
   import type {
     CommandDefinition,
     ShellExecOptions as NativeShellExecOptions,
     ShellResult
-  } from "safe-bash-engine/safe-bash";
+  } from "virtual-bash";
   export interface RootShellState {
     readonly cwd: string;
   }
