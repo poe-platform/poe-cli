@@ -202,7 +202,7 @@ export function inspectCommittedCandidate(repository, revision, directory, execu
       assert.ok(rootManifest.workspaces.includes("packages/*"), "workspace package prefix missing");
       for (const [path, conditions] of Object.entries(manifest.exports)) {
         const name = path === "." ? "./safe-bash" : `./safe-bash${path.slice(1)}`;
-        assert.deepEqual(rootManifest.exports[name], Object.fromEntries(Object.entries(conditions).map(([condition, target]) => [condition, `./${packagePrefix}/${target.slice(2)}`])), `root export mismatch: ${name}`);
+        assert.deepEqual(rootManifest.exports[name], Object.fromEntries(Object.entries(conditions).map(([condition, target]) => [condition, target === null ? null : `./${packagePrefix}/${target.slice(2)}`])), `root export mismatch: ${name}`);
       }
       assert.equal(lock.lockfileVersion, 3, "workspace lock version");
       for (const [key, expected] of [["", rootManifest], [packagePrefix, manifest]]) {
