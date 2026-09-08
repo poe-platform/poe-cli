@@ -4,6 +4,7 @@ import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsi
 import { callGeneratorMethod } from "../methods/generator.js";
 import { getSandboxPrototype, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { createSandboxClosure, type SandboxObject } from "../values.js";
+import { installAsyncIteratorDispose } from "./async-iterator-dispose.js";
 
 export function createGeneratorPrototypes(budget: Budget): void {
   const asyncIteratorPrototype: SandboxObject = Object.create(null);
@@ -13,6 +14,7 @@ export function createGeneratorPrototypes(budget: Budget): void {
     value: asyncIterator, writable: true, configurable: true
   });
   setSandboxPrototype(asyncIteratorPrototype, getSandboxPrototype(Object.create(null), budget));
+  installAsyncIteratorDispose(asyncIteratorPrototype, budget);
   registerBuiltinIdentities(budget, { "%AsyncIteratorPrototype%": asyncIteratorPrototype });
   registerIntrinsicObject(budget, asyncIteratorPrototype);
   registerIntrinsicFunction(budget, asyncIterator);
