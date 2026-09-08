@@ -3,6 +3,7 @@ import type { FileSystem } from "../contracts/index.js";
 import { isFsError, resolvePath } from "../contracts/index.js";
 import type { Word } from "./parser.js";
 import { matchesPattern } from "./pattern.js";
+import type { StringWork } from "./string-operations.js";
 
 export type ConditionalExpression =
   | { kind: "nonempty"; operand: Word }
@@ -22,7 +23,7 @@ interface ConditionalContext {
   readonly cwd: string;
   readonly signal: AbortSignal;
   readonly locale: string;
-  readonly work: { remaining: number; signal: AbortSignal; exhausted: () => never };
+  readonly work: StringWork;
   expand(word: Word, pattern?: boolean): Promise<string>;
   regex?(subject: string, pattern: Word): Promise<number>;
   present(name: string): boolean;

@@ -1,4 +1,5 @@
 import { yieldTurn } from "../contracts/yield.js";
+import type { ValueReservation } from "../contracts/value.js";
 import { nextCodePointOffset, stringCheckpoint } from "./string-operations.js";
 import type { StringWork } from "./string-operations.js";
 type PatternToken = { kind: "star" } | { kind: "any" } | { kind: "literal"; value: string } | { kind: "class"; expression: RegExp };
@@ -10,10 +11,10 @@ const characterClasses: Readonly<Record<string, string>> = {
   space: " \\t\\r\\n\\v\\f", upper: "A-Z", word: "a-zA-Z0-9_", xdigit: "a-fA-F0-9",
 };
 
-async function tokens(pattern: string, work: StringWork): Promise<PatternToken[]> {
+async function tokens(pattern: string, work: StringWork): Promise<{ patternTokens: PatternToken[]; reservation: ValueReservation | undefined }> {
   const admission = stringCheckpoint(work, pattern.length);
   if (admission) await admission;
-  work.allocation?.reserve(128 + pattern.length * 64, 0);
+  const reservation = work.allocation?.reserve(128 + pattern.length * 64, 0);
   const result: PatternToken[] = [];
   const characters = Array.from(pattern);
   const lastClosingBracket = characters.lastIndexOf("]");
@@ -67,17 +68,19 @@ async function tokens(pattern: string, work: StringWork): Promise<PatternToken[]
       } else result.push({ kind: "literal", value: character });
     } else result.push({ kind: "literal", value: character });
   }
-  return result;
+  return { patternTokens: result, reservation };
 }
 
 export async function compilePattern(pattern: string, work: StringWork): Promise<(value: string, start?: number, end?: number) => Promise<boolean>> {
   work.signal.throwIfAborted();
-  const patternTokens = await tokens(pattern, work);
+  const { patternTokens } = await tokens(pattern, work);
   return (value, start = 0, end = value.length) => matchTokens(patternTokens, value, work, start, end);
 }
 
 export async function matchesPattern(pattern: string, value: string, work: StringWork): Promise<boolean> {
-  return (await compilePattern(pattern, work))(value);
+  const { patternTokens, reservation } = await tokens(pattern, work);
+  try { return await matchTokens(patternTokens, value, work, 0, value.length); }
+  finally { reservation?.release(); }
 }
 
 async function matchTokens(patternTokens: PatternToken[], value: string, work: StringWork, start: number, end: number): Promise<boolean> {

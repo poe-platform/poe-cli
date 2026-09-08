@@ -398,6 +398,9 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/shell/redirect-limits.test.ts"));
   assert.ok(files.includes("tests/shell/filesystem-budget.test.ts"));
   assert.ok(files.includes("tests/shell/path-lookup-budget.test.ts"));
+  assert.ok(files.includes("tests/shell/pattern-admission.test.ts"));
+  assert.ok(files.includes("tests/shell/brace-reservations.test.ts"));
+  assert.ok(files.includes("tests/shell/value-scope-reservations.test.ts"));
   assert.ok(files.includes("tests/commands/predicate-depth.test.ts"));
   assert.ok(files.includes("tests/plugins/portable-agent.test.ts"));
   assert.ok(files.includes("tests/commands/text-programs/awk-concat-work-budget.test.ts"));

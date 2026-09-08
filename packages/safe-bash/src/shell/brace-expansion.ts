@@ -40,7 +40,7 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
   };
   const admit = (bytes = 64): void => {
     budget.parsing.admit();
-    allocation.reserve(bytes, 0);
+    allocation.reserveBytes(bytes);
   };
   const sum = (left: number, right: number, limit: "maxExpansionFields" | "maxExpansionBytes"): number => {
     if (right > budget.limits[limit] - left) budget.fail(limit);
@@ -173,7 +173,7 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
       await checkpoint();
       const materialized = budget.values.scope();
       try {
-        materialized.reserve(64, 0);
+        materialized.reserveBytes(64);
         const parts: WordPart[] = [];
         const generatedSyntax = new WeakSet<WordPart>();
         const pending = [{ node: root, rank }];
@@ -182,7 +182,7 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
           const current = pending.pop()!;
           const node = current.node;
           if (node.kind === "product") {
-            materialized.reserve(node.children.length * 32, 0);
+            materialized.reserveBytes(node.children.length * 32);
             let divisor = 1;
             for (let index = node.children.length - 1; index >= 0; index--) {
               await checkpoint();
@@ -194,24 +194,24 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
             let choice = current.rank;
             for (const child of node.children) {
               await checkpoint();
-              if (choice < child.count) { materialized.reserve(32, 0); pending.push({ node: child, rank: choice }); break; }
+              if (choice < child.count) { materialized.reserveBytes(32); pending.push({ node: child, rank: choice }); break; }
               choice -= child.count;
             }
           } else {
-            materialized.reserve(64, 0);
+            materialized.reserveBytes(64);
             let part: WordPart;
             if (node.kind === "part") part = node.part;
             else {
               const value = node.start + BigInt(current.rank) * node.step;
-              materialized.reserve(Math.max(node.width, 32) * 2, 0);
+              materialized.reserveBytes(Math.max(node.width, 32) * 2);
               const digits = node.numeric ? (value < 0n ? -value : value).toString() : String.fromCharCode(Number(value));
               const text = node.numeric ? (value < 0n ? "-" : "") + digits.padStart(node.width - Number(value < 0n), "0") : digits;
               part = { kind: "text", value: text, quoted: false };
-              if (!node.numeric && (text === "\\" || text === "`")) { materialized.reserve(32, 0); generatedSyntax.add(part); }
+              if (!node.numeric && (text === "\\" || text === "`")) { materialized.reserveBytes(32); generatedSyntax.add(part); }
             }
             const previous = parts.at(-1);
             if (part.kind === "text" && !part.quoted && !part.byteValue && !generatedSyntax.has(part) && previous?.kind === "text" && !previous.quoted && !previous.byteValue && !generatedSyntax.has(previous)) {
-              materialized.reserve((previous.value.length + part.value.length) * 2, 0);
+              materialized.reserveBytes((previous.value.length + part.value.length) * 2);
               parts[parts.length - 1] = { kind: "text", value: previous.value + part.value, quoted: false };
             } else parts.push(part);
           }
@@ -220,7 +220,7 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
           await checkpoint();
           const part = parts[index]!;
           if (!generatedSyntax.has(part) || part.kind !== "text") continue;
-          materialized.reserve(128, 0);
+          materialized.reserveBytes(128);
           const fragments: string[] = [];
           const opaque = new Map<number, ShellValue>();
           let length = 0;
@@ -228,31 +228,31 @@ export async function* expandBraces(word: Word, budget: Budget, signal: AbortSig
             await checkpoint();
             const current = parts[position]!;
             const spelling = expansionSpellings.get(current);
-            materialized.reserve(32, 0);
+            materialized.reserveBytes(32);
             let fragment: string;
             if (current.kind === "text" && current.byteValue) {
-              materialized.reserve(64, 0);
+              materialized.reserveBytes(64);
               opaque.set(length + 1, current.byteValue);
               fragment = "'\0'";
             } else if (current.kind === "text" && spelling?.ansi) {
-              materialized.reserve(current.value.length * 8 + 4, 0);
+              materialized.reserveBytes(current.value.length * 8 + 4);
               fragment = "'" + current.value.replaceAll("'", "'\\''") + "'";
             } else if (spelling && (current.kind !== "text" || current.quoted)) {
-              materialized.reserve((spelling.end - spelling.start) * 2, 0);
+              materialized.reserveBytes((spelling.end - spelling.start) * 2);
               fragment = spelling.source.slice(spelling.start, spelling.end);
             } else if (current.kind === "text") fragment = current.value;
             else throw new BraceExpansionFailure("Missing lexical provenance in brace expansion");
             length = sum(length, fragment.length, "maxExpansionBytes");
             fragments.push(fragment);
           }
-          materialized.reserve(length * 2, 0);
+          materialized.reserveBytes(length * 2);
           let replayed: Word;
           try { replayed = parseBraceWord(fragments.join(""), opaque, budget.parsing); }
           catch (error) {
             if (!(error instanceof ShellSyntaxError)) throw error;
             throw new BraceExpansionFailure(error.reason);
           }
-          materialized.reserve(replayed.parts.length * 32, 0);
+          materialized.reserveBytes(replayed.parts.length * 32);
           parts.length = index;
           for (const replayedPart of replayed.parts) parts.push(replayedPart);
           break;

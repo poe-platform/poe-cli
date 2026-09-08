@@ -25,6 +25,7 @@ import { BraceExpansionFailure, expandBraces } from "./brace-expansion.js";
 import { evaluatePositionalArithmetic } from "./arithmetic-parameters.js";
 import { compilePattern, matchesPattern } from "./pattern.js";
 import { nextCodePointOffset, previousCodePointOffset, scanString, stringCheckpoint } from "./string-operations.js";
+import type { StringWork } from "./string-operations.js";
 import { byteLocale } from "./locale.js";
 import { functionDisplay } from "./display.js";
 import { ConditionalUnsupported, evaluateConditional } from "./conditional.js";
@@ -1944,7 +1945,7 @@ export class Runtime {
           return await evaluateConditional(command.expression, {
             fs: this.fs, cwd: state.cwd, signal: this.signal,
             locale: state.variables.LC_ALL || state.variables.LC_COLLATE || state.variables.LANG || "C",
-            work: { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") },
+            work: { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes"), allocation },
             expand: async (word, pattern = false) => (await this.word(word, state, io, false, pattern, false, pattern)).join(""),
             regex: (subject, pattern) => this.ere(subject, pattern, state, io),
             option: name => name === "braceexpand" ? state.braceexpand !== false : name === "errexit" ? !!state.errexit : name === "nounset" ? !!state.nounset : name === "pipefail" ? state.pipefail : false,
@@ -2006,7 +2007,7 @@ export class Runtime {
       }
       if (command.kind === "case") {
         const subject = (await this.word(command.subject, state, io, false)).join("");
-        const work = { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+        const work = { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes"), allocation };
         let status = 0;
         let fallthrough = false;
         let patterns = 0;
@@ -4985,7 +4986,7 @@ export class Runtime {
   async glob(value: string, pattern: string, state: State): Promise<string[]> {
     if (!/(?:^|[^\\])[*?[]/u.test(pattern)) return [value];
     const absolute = pattern.startsWith("/");
-    const work = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+    const work: StringWork = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
     let candidates = [absolute ? "/" : ""];
     for (const segment of pattern.split("/").filter((segment) => segment.length > 0)) {
       const next: string[] = [];
@@ -5001,20 +5002,24 @@ export class Runtime {
         const literal = segment.replace(/\\(.)/gu, "$1");
         for (const candidate of candidates) addCandidate(`${candidate}${candidate && candidate !== "/" ? "/" : ""}${literal}`);
       } else {
-        const matches = await compilePattern(segment, work);
-        for (const candidate of candidates) {
-          let entries;
-          try {
-            const pending = this.fs.readdir(resolvePath(state.cwd, candidate || "."), { signal: this.signal });
-            entries = arrayStore(state) ? await interruptible(pending, this.signal) : await pending;
-          }
-          catch (error) { if (["ENOENT", "ENOTDIR", "EACCES"].includes(errorCode(error) ?? "")) continue; throw error; }
-          for (const entry of entries) {
-            if (entry.name !== "." && entry.name !== ".." && (state.dotglob || !entry.name.startsWith(".") || segment.startsWith(".")) && await matches(entry.name)) {
-              addCandidate(`${candidate}${candidate && candidate !== "/" ? "/" : ""}${entry.name}`);
+        const scratch = this.budget.values.scope();
+        work.allocation = scratch;
+        try {
+          const matches = await compilePattern(segment, work);
+          for (const candidate of candidates) {
+            let entries;
+            try {
+              const pending = this.fs.readdir(resolvePath(state.cwd, candidate || "."), { signal: this.signal });
+              entries = arrayStore(state) ? await interruptible(pending, this.signal) : await pending;
+            }
+            catch (error) { if (["ENOENT", "ENOTDIR", "EACCES"].includes(errorCode(error) ?? "")) continue; throw error; }
+            for (const entry of entries) {
+              if (entry.name !== "." && entry.name !== ".." && (state.dotglob || !entry.name.startsWith(".") || segment.startsWith(".")) && await matches(entry.name)) {
+                addCandidate(`${candidate}${candidate && candidate !== "/" ? "/" : ""}${entry.name}`);
+              }
             }
           }
-        }
+        } finally { scratch.close(); }
       }
       candidates = next;
     }
