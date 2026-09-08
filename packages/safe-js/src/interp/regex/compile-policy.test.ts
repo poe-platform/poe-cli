@@ -158,6 +158,7 @@ describe("compile checkpoint hash compatibility", () => {
           NumberFormat: { kind: "fn", name: "NumberFormat" },
           ListFormat: { kind: "fn", name: "ListFormat" },
           RelativeTimeFormat: { kind: "fn", name: "RelativeTimeFormat" },
+          DisplayNames: { kind: "fn", name: "DisplayNames" },
           Locale: { kind: "fn", name: "Locale" },
           getCanonicalLocales: { kind: "fn", name: "getCanonicalLocales" },
           supportedValuesOf: { kind: "fn", name: "supportedValuesOf" },

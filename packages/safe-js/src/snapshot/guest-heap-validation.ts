@@ -5,6 +5,7 @@ import { createSandboxLocale, localeTag } from "../interp/intl-locale.js";
 import { createSandboxCollator, collatorState } from "../interp/intl-collator.js";
 import { createSandboxListFormat, listFormatState } from "../interp/intl-listformat.js";
 import { createSandboxRelativeTimeFormat, relativeTimeFormatState } from "../interp/intl-relativetimeformat.js";
+import { createSandboxDisplayNames, displayNamesState } from "../interp/intl-displaynames.js";
 import { createSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { createBuiltinBindings } from "../interp/globals.js";
 import { getIntrinsicIdentity, listIntrinsicIdentities, resolveIntrinsicIdentity } from "../interp/intrinsics.js";
@@ -78,7 +79,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-relativetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-displaynames", "guest-relativetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -374,6 +375,16 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     if (names.some(key => typeof options[key] !== "string")) throw new TypeError("Invalid ListFormat option type.");
     const restored = listFormatState(createSandboxListFormat(options.locale as string, options as Intl.ListFormatOptions)).options;
     if (names.some(key => options[key] !== restored[key])) throw new TypeError("Invalid resolved ListFormat options.");
+    state(node.state);
+  } else if (node.kind === "guest-displaynames") {
+    fields(node, ["kind", "options", "state"]);
+    const options = record(node.options);
+    fields(options, ["locale", "style", "type", "fallback"], ["languageDisplay"]);
+    if (Object.values(options).some(value => typeof value !== "string")) throw new TypeError("Invalid DisplayNames option type.");
+    const restored = displayNamesState(createSandboxDisplayNames(options.locale as string, options as unknown as Intl.DisplayNamesOptions)).options;
+    if (Object.keys(options).length !== Object.keys(restored).length ||
+        Object.keys(restored).some(key => options[key] !== restored[key as keyof typeof restored]))
+      throw new TypeError("Invalid resolved DisplayNames options.");
     state(node.state);
   } else if (node.kind === "guest-relativetimeformat") {
     fields(node, ["kind", "options", "state"]);
