@@ -120,6 +120,11 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     },
   });
   const portable = runInContext(`(function(){ const module = { exports: {} }; ${compiled}; return module.exports; })()`, sandbox) as typeof import("../packages/safe-bash/src/portable.js");
+  expect(portable.posixPath.sep).toBe("/");
+  expect(portable.posixPath.delimiter).toBe(":");
+  expect(portable.posixPath.normalize("/a/../b")).toBe("/b");
+  expect(portable.posixPath.format(portable.posixPath.parse("/a/file.txt"))).toBe("/a/file.txt");
+  expect(portable.posixPath).toBe(path.posix);
   expect(portable.portableAgentCommandNames).toHaveLength(79);
   expect([...portable.portableAgentCommandNames].sort()).toEqual([
     "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",

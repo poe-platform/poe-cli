@@ -93,3 +93,54 @@ are outside this worker's ownership; the required changes have been handed off.
 The focused packaging/publisher tests are GREEN but do not replace root's real
 build/pack acceptance. No staging, commit, push, release, or issue closure was
 performed by this worker.
+
+## Packed POSIX regression follow-up (2026-09-08)
+
+Root integrated the joint build in `79db48ff8`, followed by export coverage in
+`7322b78b9`. The initial focused tests did not cover the public POSIX path object.
+Root's actual packed consumer exposed a regression at
+`/tmp/kamilio-669-packed.IMlXxW/consumer/safe-packages-smoke.mjs:27`:
+`portablePosixPath.sep` was undefined instead of `/`. The root Node entry passed.
+The retained evidence is `/tmp/kamilio-669-packed.IMlXxW/node.log`.
+
+The shared path shim exports safe-fs's five-method subset, whereas the previous
+portable bundle exposed the complete native `node:path.posix` object. Constants,
+normalize, parse, format, and the remaining native surface cannot be preserved by
+silently replacing it with that subset. A partial polyfill would also change
+resolve/relative working-directory behavior and the posix/win32 references.
+
+After root explicitly released the edit freeze, the maintained built-public test
+was extended with the unchanged packed smoke expectations and native object
+identity. Before the fix:
+
+```sh
+npm run test:unit -- scripts/bundle-safe-bash.test.ts -t 'bundles the complete portable preset'
+```
+
+RED: one failed, seven skipped; `expected undefined to be '/'` at
+`scripts/bundle-safe-bash.test.ts:123` on Node v22.22.0.
+
+The minimal fix supplements only the exact `src/portable.ts` build input with an
+explicit `export { posix as posixPath } from "node:path"`. It overrides the star
+re-export for that one public name. Entry selection uses exact path equality;
+there is no regex source rewrite. The esbuild onLoad registration uses its
+required catch-all filter. Source entries and declarations stay untouched.
+
+Portable retains the entire native public POSIX object and its existing host
+semantics. Browser retains its existing Node-free adapter. Shell, carrier and
+other contract identities remain shared, and no Node import becomes reachable
+from browser.js. Making the whole portable entry host-free is later work, not a
+promise of this additive compatibility fix. No pure-path implementation, README,
+manifest, packed smoke assertion, or packaging implementation was changed.
+
+```sh
+npm run test:unit -- scripts/bundle-safe-bash.test.ts scripts/bundle.test.ts scripts/package-safe.test.ts scripts/publish-bundle.test.ts
+```
+
+GREEN: four files / 30 tests passed. The real public-built API is checked against
+native `path.posix` by object identity, not just a short list of method names.
+The browser-reachable zero-Node-import assertion remains unchanged and passes.
+Root owns the subsequent rebuild, new packed consumer, Git and full gates; the
+old packed failure remains intact. Issue 671 installed-output/workerd validation
+must use that new candidate rather than infer browser reachability from the
+unbundled `dist/contracts/io.js` and `dist/contracts/path.js` files.

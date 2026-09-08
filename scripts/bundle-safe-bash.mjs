@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 
 export function resolveBrowserShellBuild(rootDir) {
   const directory = path.join(rootDir, "packages/safe-bash");
@@ -25,6 +26,13 @@ export function resolveBrowserShellBuild(rootDir) {
     plugins: [{
       name: "portable-shell-capabilities",
       setup(builder) {
+        builder.onLoad({ filter: /.*/, namespace: "file" }, async args =>
+          args.path === path.join(directory, "src/portable.ts")
+            ? {
+              contents: `${await readFile(args.path, "utf8")}\nexport { posix as posixPath } from "node:path";\n`,
+              loader: "ts",
+            }
+            : undefined);
         builder.onResolve({ filter: /regex-execution\/ere\/transport\/root\.js$/ }, args =>
           path.resolve(args.resolveDir, args.path) === transport
             ? { path: path.join(directory, "browser/regex.mjs") }
