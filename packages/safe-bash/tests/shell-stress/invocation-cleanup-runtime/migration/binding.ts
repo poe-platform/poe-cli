@@ -20,6 +20,13 @@ export interface RequiredPeer {
   name: "poe-code"; version: string; integrity: string | null; profile: string; metadataPath: string; metadataSha256: string;
   entries: Record<string, string>; files: Hashes; edges: Record<string, Record<string, string>>;
 }
+interface CapturedDependency {
+  name: string;
+  version: string;
+  integrity: string;
+  entries: Record<string, string>;
+  files: { path: string; sha256: string }[];
+}
 
 export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashes, tools: Hashes, checkoutBinding?: { profile: string; metadataSha256: string; entries: Record<string, string> }): Promise<RequiredPeer> {
   const root = JSON.parse(await readFile(join(snapshot, "package.json"), "utf8"));
@@ -119,7 +126,7 @@ export async function captureInputs(repository: string): Promise<CapturedInputs>
     bytes.set(path, await readFile(absolute));
   }
   const configs = await configurationPaths(async path => (await readFile(join(repository, path))).toString());
-  for (const path of ["package.json", "package-lock.json", "scripts/build.mjs", "scripts/typecheck-consumers.mjs", "tests/plugins/qualified-current-release/peer.mjs", "tests/plugins/qualified-current-release/consumers.mjs", "tests/plugins/qualified-current-release/runtime-coverage.mjs", ...configs, fixturePath, probePath, helperPath]) await add(path);
+  for (const path of ["package.json", "package-lock.json", "scripts/build.mjs", "scripts/typecheck-consumers.mjs", "tests/plugins/qualified-current-release/peer.mjs", "tests/plugins/qualified-current-release/consumers.mjs", "tests/plugins/qualified-current-release/runtime-coverage.mjs", "tests/integration/s3-http-exports/committed-archive.mjs", ...configs, fixturePath, probePath, helperPath]) await add(path);
   return { files: Object.fromEntries([...bytes].sort(([left], [right]) => left.localeCompare(right)).map(([path, value]) => [path, digest(value)])), bytes };
 }
 
@@ -194,6 +201,7 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
   try {
     const { createPeerBinding } = await import(new URL("../../../../scripts/typecheck-consumers.mjs", import.meta.url).href);
     const { bindPeerArtifact, stagePeerArtifact, assertPeerArtifact, resolvePeerProfile } = await import(new URL("../../../plugins/qualified-current-release/peer.mjs", import.meta.url).href);
+    const { prepareArchiveDependencies, stageArchiveDependencies, assertArchiveDependencies, resolveTools } = await import(new URL("../../../integration/s3-http-exports/committed-archive.mjs", import.meta.url).href);
     const manifest = JSON.parse(captured.bytes.get("package.json")!.toString());
     const profile = resolvePeerProfile(repository);
     const sourceInputs = new Map(Object.entries(captured.files).filter(([path]) => path.startsWith("src/")));
@@ -206,6 +214,7 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
       assert.equal(await realpath(filename), filename);
       rootInputs.set(path, await readFile(filename));
     }
+    const dependencies: CapturedDependency[] = await prepareArchiveDependencies({ manifest, lock: JSON.parse(rootInputs.get("package-lock.json")!.toString()) }, resolveTools(), outer);
     for (const [path, bytes] of rootInputs) {
       await mkdir(dirname(join(outer, path)), { recursive: true });
       await writeFile(join(outer, path), bytes, { flag: "wx" });
@@ -217,6 +226,8 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
     assert.deepEqual((await captureInputs(snapshot)).files, captured.files, "Copied candidate differs from captured input bytes");
     await assertInputsUnchanged(repository, captured.files);
     stagePeerArtifact(peerBinding, snapshot);
+    stageArchiveDependencies(dependencies, snapshot);
+    if (profile.profile === "checkout-root") stageArchiveDependencies(dependencies, outer);
     for (const { path, sha256 } of peerBinding.files) {
       const bytes = await readFile(join(snapshot, "node_modules/poe-code", path));
       assert.equal(digest(bytes), sha256);
@@ -256,7 +267,11 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
       },
       snapshot, node: process.version, peerQualification: peerBinding, rootInputs: Object.fromEntries([...rootInputs].map(([path, bytes]) => [path, digest(bytes)])),
       sourceHashes: Object.fromEntries(Object.entries(captured.files).filter(([path]) => path.startsWith("src/"))),
-      emittedHashes: emitted, requiredPeer, probeHash: captured.files[probePath], packageHash: captured.files["package.json"],
+      emittedHashes: emitted, requiredPeer, runtimeDependencies: dependencies.map(dependency => ({
+        name: dependency.name, version: dependency.version, integrity: dependency.integrity,
+        entries: Object.fromEntries(Object.entries(dependency.entries).map(([specifier, path]) => [specifier, `node_modules/${dependency.name}/${path}`])),
+        files: Object.fromEntries(dependency.files.map(({ path, sha256 }) => [`node_modules/${dependency.name}/${path}`, sha256])),
+      })), probeHash: captured.files[probePath], packageHash: captured.files["package.json"],
       compilerVersion: (JSON.parse(await readFile(join(snapshot, "node_modules/typescript/package.json"), "utf8")) as { version: string }).version,
       compilerInputs: tools,
       build: { status: build.status, stdout: build.stdout, stderr: build.stderr },
@@ -270,6 +285,8 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
       assert.deepEqual(await census(join(snapshot, "dist"), snapshot), emitted, "Built public artifacts changed after compilation");
       assert.equal(await readFile(manifestPath, "utf8"), manifestBytes, "Public source manifest changed after capture");
       assertPeerArtifact(peerBinding, snapshot);
+      assertArchiveDependencies(dependencies, snapshot);
+      if (profile.profile === "checkout-root") assertArchiveDependencies(dependencies, outer);
       for (const [path, bytes] of rootInputs) {
         assert.deepEqual(await readFile(join(integrationRoot, path)), bytes, "Integrated root input changed after capture");
         assert.deepEqual(await readFile(join(outer, path)), bytes, "Copied integrated root input changed after capture");

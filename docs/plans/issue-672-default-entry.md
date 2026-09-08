@@ -86,6 +86,18 @@ the earlier installed/workerd results do not qualify the changed codec. The full
 run remains failed until all remaining isolated archive fixtures are repaired and
 the complete maintained route passes again.
 
+The remaining isolated-fixture failures were reproduced individually: recursive
+export mirroring rejected the existing filename wildcard, and copied native
+cleanup/writer fixtures omitted the two newly declared runtime dependencies.
+Mirroring now permits only the declared single `*.js`/`*.d.ts` filename forms;
+path globs, traversal and other metacharacters remain rejected. Copied fixtures
+stage exact lock/SRI-authenticated artifacts, check their bytes and routes, and
+continue refusing missing dependencies instead of falling back to the checkout.
+Native cleanup explicitly selects the public Node provider. Focused results:
+20 cleanup cases, six writer cases, two export controls and one actual committed
+export acceptance pass, with zero scoped TypeScript diagnostics. These results
+do not substitute for the subsequent full maintained unit run.
+
 The first installed candidate passed the Node and Bun public smoke suites and
 29 actual workerd cases with compatibility flags empty. Its graph contains 34
 installed inputs, no external or Node edges, and no emitted imports. This is

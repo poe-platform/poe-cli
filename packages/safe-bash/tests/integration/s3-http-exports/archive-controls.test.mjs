@@ -226,6 +226,15 @@ test("committed export mirroring preserves nested type/browser condition keys an
   }
 });
 
+test("committed export mirroring preserves single filename patterns without admitting path globs", () => {
+  assert.deepEqual(distChecks.mirrorArchiveExportTargets({ types: { default: "./dist/contracts/*.d.ts" }, import: "./dist/contracts/*.js" }), {
+    types: { default: "./packages/safe-bash/dist/contracts/*.d.ts" }, import: "./packages/safe-bash/dist/contracts/*.js",
+  });
+  for (const target of ["./dist/**.js", "./dist/*/*.js", "./dist/*/index.js", "./dist/../*.js", "./dist/[abc]*.js", "./dist/{a,b}*.js", "./dist/*?.js", "./dist/\\*.js", "./dist/*.js\n"]) {
+    assert.throws(() => distChecks.mirrorArchiveExportTargets(target), /export|path/);
+  }
+});
+
 test("private archive dependency artifacts stage exact authenticated bytes and reject installed drift", async () => {
   const fixture = dependencyFixture();
   const bindings = await distChecks.prepareArchiveDependencies(fixture, fixture.tools, "/owned", fixture);

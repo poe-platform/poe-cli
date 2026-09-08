@@ -68,7 +68,12 @@ export function mirrorArchiveExportTargets(target) {
   if (target === null) return null;
   if (typeof target === "string") {
     assert.ok(target.startsWith("./"), "archive export must be package-relative");
-    assertLiteralInputPath(target.slice(2));
+    const local = target.slice(2);
+    if (local.includes("*")) {
+      const parts = local.split("/");
+      assert.ok(["*.js", "*.d.ts"].includes(parts.pop()), "archive export requires a single filename pattern");
+      assertLiteralInputPath([...parts, "export-pattern"].join("/"));
+    } else assertLiteralInputPath(local);
     return `./${packagePrefix}/${target.slice(2)}`;
   }
   assert.ok(target && typeof target === "object" && !Array.isArray(target), "invalid archive export conditions");
