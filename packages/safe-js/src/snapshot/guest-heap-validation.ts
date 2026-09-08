@@ -7,6 +7,7 @@ import { createSandboxListFormat, listFormatState } from "../interp/intl-listfor
 import { createSandboxRelativeTimeFormat, relativeTimeFormatState } from "../interp/intl-relativetimeformat.js";
 import { createSandboxDisplayNames, displayNamesState } from "../interp/intl-displaynames.js";
 import { createSandboxPluralRules, pluralRulesState, type ResolvedPluralRulesOptions } from "../interp/intl-pluralrules.js";
+import { resolveDurationLocale } from "../interp/intl-duration-locale.js";
 import { createSandboxSegmenter, createSandboxSegments, segmenterState, segmentState } from "../interp/intl-segmenter.js";
 import { createSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { createSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
@@ -82,7 +83,7 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
     createRawJson(node.text);
     return true;
   }
-  if (!["guest-segmenter", "guest-segments", "module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-pluralrules", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
+  if (!["guest-durationformat", "guest-segmenter", "guest-segments", "module-function", "async-generator-driver", "async-generator-handler", "async-function-driver", "async-function-handler", "thenable-state", "thenable-resolver", "construction-environment", "capability-executor", "promise-aggregate", "aggregate-entry", "aggregate-handler", "intrinsic", "bound-function", "promise-resolver", "pending-promise", "promise-reaction", "promise-adoption", "adoption-resolver", "guest-function", "guest-class", "guest-generator", "scope-frame", "guest-object", "guest-array", "guest-boxed", "guest-date", "guest-locale", "guest-listformat", "guest-pluralrules", "guest-displaynames", "guest-relativetimeformat", "guest-datetimeformat", "guest-numberformat", "guest-collator", "guest-regex", "guest-promise", "array-iterator", "string-iterator", "async-disposable-stack", "async-cleanup", "async-cleanup-handler", "disposable-stack", "iterator-wrapper", "iterator-helper", "guest-collection-iterator", "guest-regexp-iterator", "map", "set"].includes(String(node.kind))) return false;
   const reference = (value: unknown, kinds?: string[]) => {
     const ref = record(value);
     fields(ref, ["kind", "id"]);
@@ -415,6 +416,36 @@ export function validateGuestHeapNode(raw: unknown, heap: Record<string, unknown
       const value = createSandboxSegments({ segmenter: owner, input: node.input });
       if ((node.index as number) < node.input.length && segmentState(value).native.containing(node.index as number)?.index !== node.index)
         throw new TypeError("Invalid segment iterator boundary.");
+    }
+    state(node.state);
+  } else if (node.kind === "guest-durationformat") {
+    fields(node, ["kind", "settings", "state"]);
+    const settings = record(node.settings);
+    fields(settings, ["locale", "numberingSystem", "separator", "style", "units"], ["fractionalDigits"]);
+    if (typeof settings.locale !== "string" || typeof settings.numberingSystem !== "string" ||
+        !["long", "short", "narrow", "digital"].includes(settings.style as string) ||
+        settings.fractionalDigits !== undefined && (!Number.isInteger(settings.fractionalDigits) || (settings.fractionalDigits as number) < 0 || (settings.fractionalDigits as number) > 9))
+      throw new TypeError("Invalid duration settings.");
+    const locale = resolveDurationLocale([settings.locale], { numberingSystem: settings.numberingSystem });
+    if (locale.locale !== settings.locale || locale.numberingSystem !== settings.numberingSystem || locale.separator !== settings.separator)
+      throw new TypeError("Invalid resolved duration locale.");
+    const units = record(settings.units);
+    const names = ["years", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds", "microseconds", "nanoseconds"];
+    fields(units, names);
+    let previous = "";
+    for (const name of names) {
+      const unit = record(units[name]);
+      fields(unit, ["style", "display"]);
+      const clock = ["hours", "minutes", "seconds"].includes(name);
+      const subsecond = ["milliseconds", "microseconds", "nanoseconds"].includes(name);
+      const allowed = ["long", "short", "narrow", ...(clock ? ["numeric", "2-digit"] : []), ...(subsecond ? ["fractional"] : [])];
+      if (typeof unit.style !== "string" || !allowed.includes(unit.style) || !["always", "auto"].includes(unit.display as string) ||
+          unit.style === "fractional" && unit.display !== "auto" ||
+          previous === "fractional" && unit.style !== "fractional" ||
+          ["numeric", "2-digit"].includes(previous) && !["numeric", "2-digit", "fractional"].includes(unit.style) ||
+          ["minutes", "seconds"].includes(name) && ["numeric", "2-digit"].includes(previous) && unit.style !== "2-digit")
+        throw new TypeError("Invalid duration unit options.");
+      if (clock || name === "milliseconds" || name === "microseconds") previous = unit.style;
     }
     state(node.state);
   } else if (node.kind === "guest-pluralrules") {

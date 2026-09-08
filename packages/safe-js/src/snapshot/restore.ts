@@ -38,6 +38,7 @@ import { createSandboxListFormat } from "../interp/intl-listformat.js";
 import { createSandboxRelativeTimeFormat } from "../interp/intl-relativetimeformat.js";
 import { createSandboxDisplayNames } from "../interp/intl-displaynames.js";
 import { createSandboxPluralRules } from "../interp/intl-pluralrules.js";
+import { createSandboxDurationFormat } from "../interp/intl-durationformat.js";
 import { createSandboxSegmenter, createSandboxSegments, isSandboxSegmenter } from "../interp/intl-segmenter.js";
 import { createSandboxNumberFormat, numberFormatState } from "../interp/intl-numberformat.js";
 import { createSandboxDateTimeFormat, dateTimeFormatState } from "../interp/intl-datetimeformat.js";
@@ -1158,7 +1159,7 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
     state.heapValueById.set(id, resolver);
     return resolver;
   }
-  if (serialized.kind === "guest-segmenter" || serialized.kind === "guest-segments" || serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-pluralrules" || serialized.kind === "guest-displaynames" || serialized.kind === "guest-relativetimeformat" || serialized.kind === "guest-listformat" || serialized.kind === "guest-datetimeformat" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
+  if (serialized.kind === "guest-durationformat" || serialized.kind === "guest-segmenter" || serialized.kind === "guest-segments" || serialized.kind === "module-function" || serialized.kind === "thenable-resolver" || serialized.kind === "capability-executor" || serialized.kind === "intrinsic" || serialized.kind === "bound-function" || serialized.kind === "promise-resolver" || serialized.kind === "pending-promise" || serialized.kind === "promise-reaction" || serialized.kind === "guest-function" || serialized.kind === "guest-class" || serialized.kind === "guest-object" || serialized.kind === "guest-array" || serialized.kind === "guest-boxed" || serialized.kind === "guest-pluralrules" || serialized.kind === "guest-displaynames" || serialized.kind === "guest-relativetimeformat" || serialized.kind === "guest-listformat" || serialized.kind === "guest-datetimeformat" || serialized.kind === "guest-numberformat" || serialized.kind === "guest-collator" || serialized.kind === "guest-locale" || serialized.kind === "guest-date" || serialized.kind === "guest-regex" || serialized.kind === "guest-promise" || serialized.kind === "array-iterator" || serialized.kind === "string-iterator" || serialized.kind === "async-disposable-stack" || serialized.kind === "disposable-stack" || serialized.kind === "iterator-wrapper" || serialized.kind === "iterator-helper") {
     let value: RuntimeSnapshotValue;
     if (serialized.kind === "thenable-resolver") {
       const bridge = restoreThenableBridge(serialized.continuation, state);
@@ -1253,6 +1254,8 @@ function restoreHeapValue(id: number, state: RestoreState): RuntimeSnapshotValue
       });
     } else if (serialized.kind === "guest-pluralrules") {
       value = createSandboxPluralRules(serialized.options.locale as string, serialized.options);
+    } else if (serialized.kind === "guest-durationformat") {
+      value = createSandboxDurationFormat(serialized.settings);
     } else if (serialized.kind === "guest-segmenter") {
       value = createSandboxSegmenter(serialized.options.locale, serialized.options);
     } else if (serialized.kind === "guest-segments") {

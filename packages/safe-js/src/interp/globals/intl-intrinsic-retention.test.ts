@@ -6,7 +6,7 @@ import { createDateGlobal } from "./date.js";
 import { createObjectArrayGlobals } from "./object-array.js";
 import { resolveIntrinsicIdentity } from "../intrinsics.js";
 
-it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat", "PluralRules", "Segmenter"])(
+it.each(["Locale", "Collator", "NumberFormat", "ListFormat", "RelativeTimeFormat", "DisplayNames", "DateTimeFormat", "PluralRules", "Segmenter", "DurationFormat"])(
   "accounts for retained mutations on Intl.%s.prototype and its methods",
   name => {
     const budget = new Budget();

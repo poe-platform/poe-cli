@@ -18,6 +18,7 @@ import { isSandboxListFormat, listFormatState, type ResolvedListFormatOptions } 
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState, type ResolvedRelativeTimeFormatOptions } from "../interp/intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState, type ResolvedDisplayNamesOptions } from "../interp/intl-displaynames.js";
 import { isSandboxPluralRules, pluralRulesState, type ResolvedPluralRulesOptions } from "../interp/intl-pluralrules.js";
+import { isSandboxDurationFormat, durationFormatState, type DurationSettings } from "../interp/intl-durationformat.js";
 import { isSandboxSegmenter, isSandboxSegments, segmenterState, segmentState, type SegmenterOptions } from "../interp/intl-segmenter.js";
 import { isSandboxNumberFormat, numberFormatState, type NumberFormatOptions } from "../interp/intl-numberformat.js";
 import { isSandboxDateTimeFormat, dateTimeFormatState, type DateTimeFormatOptions } from "../interp/intl-datetimeformat.js";
@@ -107,6 +108,7 @@ export type GuestHeapNode<T> =
   | { kind: "guest-relativetimeformat"; options: ResolvedRelativeTimeFormatOptions; state: GuestObjectState<T> }
   | { kind: "guest-displaynames"; options: ResolvedDisplayNamesOptions; state: GuestObjectState<T> }
   | { kind: "guest-pluralrules"; options: ResolvedPluralRulesOptions; state: GuestObjectState<T> }
+  | { kind: "guest-durationformat"; settings: DurationSettings; state: GuestObjectState<T> }
   | { kind: "guest-segmenter"; options: SegmenterOptions; state: GuestObjectState<T> }
   | { kind: "guest-segments"; segmenter: T; input: string; index?: number; state: GuestObjectState<T> }
   | { kind: "iterator-helper"; method: IteratorHelperState["method"]; status: "start" | "yield" | "done";
@@ -303,6 +305,11 @@ export function captureGuestHeapNode<T>(value: object, encode: (value: unknown) 
   if (isSandboxPluralRules(value)) {
     const options = pluralRulesState(value).options;
     return { kind: "guest-pluralrules", options: { ...options, pluralCategories: [...options.pluralCategories as string[]] }, state: captureObjectState(value, encode)! };
+  }
+  if (isSandboxDurationFormat(value)) {
+    const { fractionalDigits, ...settings } = durationFormatState(value).settings;
+    return { kind: "guest-durationformat", settings: { ...settings, ...(fractionalDigits === undefined ? {} : { fractionalDigits }),
+      units: Object.fromEntries(Object.entries(settings.units).map(([unit, options]) => [unit, { ...options }])) }, state: captureObjectState(value, encode)! };
   }
   if (isSandboxDateTimeFormat(value)) {
     const { options, format } = dateTimeFormatState(value);

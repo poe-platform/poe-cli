@@ -35,6 +35,7 @@ import { isSandboxListFormat, listFormatState } from "./intl-listformat.js";
 import { isSandboxRelativeTimeFormat, relativeTimeFormatState } from "./intl-relativetimeformat.js";
 import { isSandboxDisplayNames, displayNamesState } from "./intl-displaynames.js";
 import { isSandboxPluralRules, pluralRulesState } from "./intl-pluralrules.js";
+import { isSandboxDurationFormat, durationFormatState } from "./intl-durationformat.js";
 import { createRawJson, isRawJson } from "./raw-json.js";
 import { boxedDataProperties, boxedValue, createSandboxBox, isSandboxBox, nativeBoxedValue } from "./boxed.js";
 import { getHostObjectKeys, getHostObjectMember, hasHostObjectMember, measureHostObjectData, isGuestHostObject, isLiveCapability } from "./host-capabilities.js";
@@ -592,7 +593,7 @@ export function* cloneStructuredGraph(
       isSandboxArrayIterator(value) || isSandboxStringIterator(value) || isSandboxArguments(value) ||
       isSandboxSegmenter(value) || isSandboxSegments(value) || isSandboxLocale(value) ||
       isSandboxCollator(value) || isSandboxDateTimeFormat(value) || isSandboxDisplayNames(value) ||
-      isSandboxListFormat(value) || isSandboxNumberFormat(value) || isSandboxPluralRules(value) || isSandboxRelativeTimeFormat(value))
+      isSandboxDurationFormat(value) || isSandboxListFormat(value) || isSandboxNumberFormat(value) || isSandboxPluralRules(value) || isSandboxRelativeTimeFormat(value))
     throw new DOMException("Value cannot be structured cloned.", "DataCloneError");
   if (typeof value !== "object" || value === null) return allocateProducedSandboxValue(value, budget);
   if (iteratorHelperStates.has(value) || iteratorWrapperStates.has(value))
@@ -818,6 +819,11 @@ export function measureSandboxData(
     if (isSandboxRelativeTimeFormat(value)) visit(relativeTimeFormatState(value).options, depth + 1);
     if (isSandboxDisplayNames(value)) visit(displayNamesState(value).options, depth + 1);
     if (isSandboxPluralRules(value)) visit(pluralRulesState(value).options, depth + 1);
+    if (isSandboxDurationFormat(value)) {
+      const state = durationFormatState(value);
+      visit(state.settings, depth + 1);
+      visit(state.options, depth + 1);
+    }
     if (isSandboxNumberFormat(value)) {
       const state = numberFormatState(value);
       visit(state.options, depth + 1);
