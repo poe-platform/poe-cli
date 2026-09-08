@@ -49,7 +49,7 @@ import {
 import { parseRegex, type RegexPattern } from "./regex/parse.js";
 import { assertSandboxDataDepth } from "../graph-depth.js";
 import { sandboxErrorTypes } from "../error/shape.js";
-import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, intrinsicFunctionDataDescriptors, isGuestClosure, isIntrinsicFunction, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
+import { getGuestFunctionProperties, getSandboxPropertyDescriptor, getSandboxPrototype, hasExplicitSandboxPrototype, hasGuestObjectState, hasManagedDescriptors, hasNullObjectPrototype, intrinsicFunctionDataDescriptors, isGuestClosure, isIntrinsicFunction, isTrackedIntrinsicObject, registerGuestClosure, setSandboxPrototype } from "./object-model.js";
 import type { FunctionSource } from "../parse/function-source.js";
 import {
   copySandboxArgumentProperties,
@@ -1407,7 +1407,7 @@ function copyFromSandbox(
     return options.unwrapHostObject(value);
   }
 
-  if (nodeTypes.isProxy(value) && !isNumericTypedArray(value)) throw new TypeError("Unsupported proxy sandbox value.");
+  if (nodeTypes.isProxy(value) && !isNumericTypedArray(value) && !isTrackedIntrinsicObject(value)) throw new TypeError("Unsupported proxy sandbox value.");
   if (sandboxErrorTypes.has(value) && hasExplicitSandboxPrototype(value)) {
     const prototype = getSandboxPrototype(value);
     let nativePrototype: object | null = null;

@@ -3,7 +3,7 @@ import { Budget } from "../budget.js";
 import { sandboxNumber } from "../string-coercion.js";
 import { retainValues } from "../resources.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
-import { registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
+import { createIntrinsicObject, registerIntrinsicFunction, registerIntrinsicObject } from "../object-model.js";
 import { sumPrecise } from "./math-sum-precise.js";
 
 const mathMethods = {
@@ -90,7 +90,7 @@ export type MathGlobals = {
 export function createMathGlobals(options: MathGlobalsOptions = {}): MathGlobals {
   const random = options.random ?? Math.random;
   const budget = options.budget ?? new Budget();
-  const mathObject: SandboxObject = {
+  const mathObject = createIntrinsicObject({
     E: Math.E,
     LN2: Math.LN2,
     LN10: Math.LN10,
@@ -104,7 +104,7 @@ export function createMathGlobals(options: MathGlobalsOptions = {}): MathGlobals
       sandbox: true, guest: true, name: "sumPrecise", length: 1,
       call: ([source], context) => sumPrecise(source, budget, context)
     })
-  };
+  });
 
   for (const [name, method] of Object.entries(mathMethods)) {
     const variadic = method === Math.max || method === Math.min || method === Math.hypot;

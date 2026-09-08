@@ -13,7 +13,7 @@ import {
 import { createSandboxClosure, isSandboxClosure, measureSandboxData, type SandboxCallContext, type SandboxClosure, type SandboxObject, type SandboxValue } from "../values.js";
 import { accessorAdapter, readPropertyDescriptor } from "../accessors.js";
 import { typedArrayPrototypes } from "../typed-array-prototypes.js";
-import { getBoxedPrototype, getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { createIntrinsicObject, getBoxedPrototype, getSandboxDataProperty, getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities, resolveIntrinsicIdentity } from "../intrinsics.js";
 import { invokeBuiltinClosure } from "../builtin-call.js";
 import { retainValues } from "../resources.js";
@@ -207,7 +207,7 @@ function allocateTypedArray(source: SandboxValue, budget: Budget, Native: Numeri
 }
 
 export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Record<keyof typeof numericTypedArrayConstructors, SandboxClosure>): void {
-  const shared = Object.create(null) as SandboxObject;
+  const shared = createIntrinsicObject();
   const abstractCall = () => { throw new TypeError("Abstract TypedArray constructor cannot be called."); };
   const typedArray = createSandboxClosure({ guest: true, sandbox: true, name: "TypedArray", length: 0,
     call: abstractCall, construct: abstractCall });
@@ -305,7 +305,7 @@ export function createNumericTypedArrayPrototypes(budget: Budget, bindings: Reco
   const prototypes = new Map<NumericTypedArrayConstructor, SandboxObject>();
   for (const [name, Native] of Object.entries(numericTypedArrayConstructors)) {
     const constructor = bindings[name as keyof typeof bindings];
-    const prototype = Object.create(null) as SandboxObject;
+    const prototype = createIntrinsicObject();
     Object.defineProperties(materializeFunctionProperties(constructor), {
       prototype: { value: prototype, writable: false },
       BYTES_PER_ELEMENT: { value: Native.BYTES_PER_ELEMENT, writable: false, enumerable: false, configurable: false }

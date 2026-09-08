@@ -37,6 +37,7 @@ const functionPropertyRevisions = new WeakMap<object, {
   measuredRevision?: number;
   measuredDescriptors?: Array<[string, PropertyDescriptor]>;
 }>();
+const trackedIntrinsicObjects = new WeakSet<object>();
 const prototypes = new WeakMap<object, object | null>();
 const trackedPrototypes = new WeakMap<object, { current: object | null }>();
 
@@ -105,6 +106,24 @@ export function materializeFunctionProperties(closure: SandboxClosure): SandboxO
     descriptorObjects.add(prototype);
     Object.defineProperty(properties, "prototype", { value: prototype, writable: true });
   }
+  const tracked = trackPropertyTable(properties);
+  descriptorObjects.add(tracked);
+  functionProperties.set(closure, tracked);
+  return tracked;
+}
+
+export function createIntrinsicObject(initial: SandboxObject = Object.create(null)): SandboxObject {
+  // Copy first so no caller retains an untracked alias to the backing table.
+  const tracked = trackPropertyTable(Object.create(Object.getPrototypeOf(initial), Object.getOwnPropertyDescriptors(initial)));
+  trackedIntrinsicObjects.add(tracked);
+  return tracked;
+}
+
+export function isTrackedIntrinsicObject(value: object): boolean {
+  return trackedIntrinsicObjects.has(value);
+}
+
+function trackPropertyTable(properties: SandboxObject): SandboxObject {
   // Never expose the raw table: native callers must invalidate captures too.
   const state = { revision: 0 };
   const tracked = new Proxy(properties, {
@@ -120,8 +139,6 @@ export function materializeFunctionProperties(closure: SandboxClosure): SandboxO
     }
   });
   functionPropertyRevisions.set(tracked, state);
-  descriptorObjects.add(tracked);
-  functionProperties.set(closure, tracked);
   return tracked;
 }
 
