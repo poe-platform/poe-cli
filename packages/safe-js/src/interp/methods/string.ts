@@ -27,76 +27,44 @@ import { executeRegex, getRegexMember, regexExec, regexFlagProperties, regexSear
 import { restoreSandboxRegExpIterator } from "../regexp-iterator.js";
 import { changeStringLocaleCase, compareStringLocale } from "./string-locale.js";
 
-type StringMethodName =
-  | "at"
-  | "charAt"
-  | "charCodeAt"
-  | "codePointAt"
-  | "concat"
-  | "endsWith"
-  | "includes"
-  | "indexOf"
-  | "isWellFormed"
-  | "lastIndexOf"
-  | "localeCompare"
-  | "match"
-  | "matchAll"
-  | "normalize"
-  | "padEnd"
-  | "padStart"
-  | "repeat"
-  | "replace"
-  | "replaceAll"
-  | "slice"
-  | "search"
-  | "split"
-  | "startsWith"
-  | "substr"
-  | "substring"
-  | "toLowerCase"
-  | "toUpperCase"
-  | "toLocaleLowerCase"
-  | "toLocaleUpperCase"
-  | "toWellFormed"
-  | "trim"
-  | "trimEnd"
-  | "trimStart";
+const stringMethodLengths = {
+  at: 1,
+  charAt: 1,
+  charCodeAt: 1,
+  codePointAt: 1,
+  concat: 1,
+  endsWith: 1,
+  includes: 1,
+  indexOf: 1,
+  isWellFormed: 0,
+  lastIndexOf: 1,
+  localeCompare: 1,
+  match: 1,
+  matchAll: 1,
+  normalize: 0,
+  padEnd: 1,
+  padStart: 1,
+  repeat: 1,
+  replace: 2,
+  replaceAll: 2,
+  slice: 2,
+  search: 1,
+  split: 2,
+  startsWith: 1,
+  substr: 2,
+  substring: 2,
+  toLowerCase: 0,
+  toUpperCase: 0,
+  toLocaleLowerCase: 0,
+  toLocaleUpperCase: 0,
+  toWellFormed: 0,
+  trim: 0,
+  trimEnd: 0,
+  trimStart: 0
+} as const;
 
-export const stringMethodNames = new Set<StringMethodName>([
-  "at",
-  "charAt",
-  "charCodeAt",
-  "codePointAt",
-  "concat",
-  "endsWith",
-  "includes",
-  "indexOf",
-  "isWellFormed",
-  "lastIndexOf",
-  "localeCompare",
-  "match",
-  "matchAll",
-  "normalize",
-  "padEnd",
-  "padStart",
-  "repeat",
-  "replace",
-  "replaceAll",
-  "slice",
-  "search",
-  "split",
-  "startsWith",
-  "substr",
-  "substring",
-  "toLowerCase",
-  "toUpperCase",
-  "toLocaleLowerCase",
-  "toLocaleUpperCase",
-  "toWellFormed",
-  "trim",
-  "trimEnd",
-  "trimStart"
-]);
+type StringMethodName = keyof typeof stringMethodLengths;
+export const stringMethodNames = new Set<StringMethodName>(Object.keys(stringMethodLengths) as StringMethodName[]);
 
 export function getStringMember(
   value: string,
@@ -118,12 +86,9 @@ export function getStringMember(
 
   return createSandboxClosure({
     sandbox: true,
-    name: `String#${property}`,
-    ...(property === "trimStart" || property === "trimEnd" ? { guest: true, name: property, length: 0 } : {}),
-    ...(property === "toLocaleLowerCase" || property === "toLocaleUpperCase"
-      ? { guest: true, name: property, length: 0 } : {}),
-    ...(property === "localeCompare" ? { length: 1 } : {}),
-    ...(property === "isWellFormed" || property === "toWellFormed" ? { length: 0 } : {}),
+    guest: true,
+    name: property,
+    length: stringMethodLengths[property],
     call: async (args, context) => {
       const receiver = context?.thisValue;
       if (receiver === null || receiver === undefined) {
