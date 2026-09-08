@@ -134,12 +134,18 @@ it.each([
     for (const [options] of build.mock.calls) {
       if (options.splitting) continue;
       if (options.platform === "browser") {
-        expect(options.alias!["poe-code/safe-fs"]).toBe("poe-code/safe-fs/core");
+        expect(options.alias).not.toHaveProperty("poe-code/safe-fs");
+        expect(options.external).toContain("poe-code/safe-fs/core");
       } else {
         expect(options.alias!["@poe-code/safe-fs"]).toBe("poe-code/safe-fs");
       }
       expect(options.metafile).toBe(true);
     }
+    expect(build.mock.calls.filter(([options]) => options.platform === "browser" && !options.splitting)
+      .map(([options]) => options.entryPoints)).toEqual([
+      [path.join(root, "packages/safe-bash/src/browser.ts")],
+      [path.join(root, "packages/safe-bash/src/portable.ts")],
+    ]);
   }
 );
 

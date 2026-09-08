@@ -162,7 +162,12 @@ export function bindPeerArtifact({ root, artifact, declarations, checkout = fals
     const target = conditionalTarget(peer.exports?.[`.${specifier.slice("poe-code".length)}`], ["types", "node", "import", "default"]);
     assert.equal(target, `./${path}`, `Peer public declaration export changed: ${specifier}`);
     assert.ok(declarationPaths.has(path), "Public declaration is missing from the bound closure");
-    pending.push(publicRuntime(specifier));
+    const runtime = publicRuntime(specifier);
+    if (profile.profile === "checkout-root" && specifier === "poe-code/safe-fs/core") {
+      assert.equal(path, "packages/safe-fs/dist/core.d.ts", "Public SafeFS core must select the portable declaration entry");
+      assert.equal(runtime, "packages/safe-js/dist/safe-fs-core.js", "Public SafeFS core must preserve shared SafeJS runtime identity");
+    }
+    pending.push(runtime);
   }
   const edges = {};
   while (pending.length) {

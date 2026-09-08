@@ -39,4 +39,9 @@ test("POSIX helpers remain available without platform-specific separators", () =
   assert.equal(relativePath("/a", "/b/file"), "../b/file");
   assert.ok(isAbsolutePath("/a"));
   assert.equal(posixPath.sep, "/");
+  assert.equal(posixPath.delimiter, ":");
+  assert.equal(posixPath.normalize("/a/../b"), "/b");
+  assert.equal(posixPath.resolve("/a", "../b"), "/b");
+  assert.equal(posixPath.relative("/a", "/b"), "../b");
+  assert.equal(posixPath.format(posixPath.parse("/a/file.txt")), "/a/file.txt");
 });

@@ -221,14 +221,16 @@ for (const [profile, options] of Object.entries(fsBuildOptions)) {
 }
 await setBinExecutable(path.join(rootDir, "packages/safe-js"));
 
-const browserShellOptions = resolveBrowserShellBuild(rootDir);
-const browserShell = await esbuild.build(browserShellOptions);
-await publishBundleOutputs(browserShell, {
-  outdir: path.dirname(browserShellOptions.outfile),
-  entryPoints: browserShellOptions.entryPoints,
-  workingDirectory: rootDir
-});
-consumerBuilds.push(browserShell);
+for (const entry of ["browser", "portable"]) {
+  const shellOptions = resolveBrowserShellBuild(rootDir, entry);
+  const shellBundle = await esbuild.build(shellOptions);
+  await publishBundleOutputs(shellBundle, {
+    outdir: path.dirname(shellOptions.outfile),
+    entryPoints: shellOptions.entryPoints,
+    workingDirectory: rootDir
+  });
+  consumerBuilds.push(shellBundle);
+}
 
 // Bundle memory into a single esm file so consumers of poe-code/memory
 // don't need @poe-code/* workspace deps at runtime.

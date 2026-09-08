@@ -212,6 +212,13 @@ function compilerInputs(root, tools, fileSystem) {
         if (checkout) assert.equal(exported.import, "./packages/safe-js/dist/safe-fs.js", "canonical public SafeFS must use the shared SafeJS runtime");
         toolRoots.push(join(peerRoot, "packages/safe-fs/dist"));
         peerPaths = { "poe-code/safe-fs": [resolve(peerRoot, target)] };
+        const core = peer.exports?.["./safe-fs/core"];
+        if (core !== undefined) {
+          const coreTarget = typeof core.types === "string" ? core.types : core.types?.default;
+          assert.equal(coreTarget, "./packages/safe-fs/dist/core.d.ts", "canonical public SafeFS core declaration entry");
+          if (checkout) assert.equal(core.import, "./packages/safe-js/dist/safe-fs-core.js", "canonical public SafeFS core must use the shared SafeJS runtime");
+          peerPaths["poe-code/safe-fs/core"] = [resolve(peerRoot, coreTarget)];
+        }
       }
       return peerPaths;
     },

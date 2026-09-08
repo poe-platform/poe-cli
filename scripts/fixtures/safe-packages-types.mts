@@ -1,4 +1,5 @@
 import "./safe-packages-portable-search-types.mjs";
+import { portableAgentCommands, portableAgentCommandNames, createBoundedRegexProvider, type PortableAgentCommandsOptions } from "@poe-platform/safe-bash/portable";
 import { Budget, run, makeFsModule, type RunClock, type HostObjectIndexedDefinition, type HostObjectNamedDefinition, type CallbackInvocation } from "@poe-platform/safe-js";
 import { createMemoryFileSystem, type FileSystem } from "@poe-platform/safe-fs/core";
 import type { FileSystem as CompatibilityFileSystem } from "@poe-platform/safe-js/fs";
@@ -7,6 +8,11 @@ import { evaluateCommandSupport as evaluateBrowserCommandSupport, type CommandSu
 import { createRealm, defineExtension, type HostObject, type GuestReference, type HostObjectIndexedDefinition as CoreIndexed, type HostObjectNamedDefinition as CoreNamed, type CallbackInvocation as CoreInvocation } from "@poe-platform/safe-js/core";
 
 const fs: FileSystem & CompatibilityFileSystem = createMemoryFileSystem();
+const portableOptions: PortableAgentCommandsOptions = { provider: createBoundedRegexProvider(), regex: { maxWorkers: 1 } };
+const portableNames: readonly string[] = portableAgentCommandNames;
+void portableNames;
+const portable = new Shell({ fs }).use(portableAgentCommands(portableOptions));
+await portable.dispose();
 const requirements: readonly CommandFileSystemRequirement[] = [{ id: "append", description: "Append file content", capabilities: ["append"], mutates: true }];
 const support: CommandSupport & BrowserCommandSupport = evaluateCommandSupport({ filesystemRequirements: requirements }, fs.capabilities);
 void support;

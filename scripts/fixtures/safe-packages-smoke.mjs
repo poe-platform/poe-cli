@@ -14,12 +14,30 @@ import { FsError, createMemoryFileSystem, createReadOnlyFileSystem } from "@poe-
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs";
 import { FsError as CoreFsError } from "@poe-platform/safe-js/fs/core";
 import { FsError as NodeFsError } from "@poe-platform/safe-js/fs/node";
-import { Shell, standardCommands, FsError as ShellFsError, createMountFileSystem } from "@poe-platform/safe-bash";
+import { Shell, standardCommands, FsError as ShellFsError, createMountFileSystem, posixPath } from "@poe-platform/safe-bash";
+import { Shell as PortableShell, portableAgentCommands, createBoundedRegexProvider, posixPath as portablePosixPath } from "@poe-platform/safe-bash/portable";
 
 assert.equal(FsError, ShellFsError);
 assert.equal(FsError, CompatibilityFsError);
 assert.equal(FsError, CoreFsError);
 assert.equal(FsError, NodeFsError);
+for (const paths of [posixPath, portablePosixPath]) {
+  assert.equal(paths.sep, "/");
+  assert.equal(paths.delimiter, ":");
+  assert.equal(paths.normalize("/a/../b"), "/b");
+  assert.equal(paths.format(paths.parse("/a/file.txt")), "/a/file.txt");
+}
+const portableShell = new PortableShell({ fs: createMemoryFileSystem() }).use(
+  portableAgentCommands({ provider: createBoundedRegexProvider() }),
+);
+try {
+  for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc"]) {
+    const result = await portableShell.exec(script);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, "2\n");
+    assert.equal(result.stderr, "");
+  }
+} finally { await portableShell.dispose(); }
 for (const entry of ["@poe-platform/safe-bash", "@poe-platform/safe-bash/browser"]) {
   const { Shell: EntryShell, standardCommands: standard, browserCommands: browser } = await import(entry);
   for (const boxed of [false, true]) {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createContext, runInContext } from "node:vm";
+import { createRequire } from "node:module";
 import { build, transform } from "esbuild";
 import { beforeAll, expect, it } from "vitest";
 import { resolveBrowserShellBuild } from "./bundle-safe-bash.mjs";
@@ -18,6 +19,41 @@ it("builds the portable shell without Node workers, adapters, or duplicate files
   const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
   expect([...new Set(imports.filter(item => item.external).map(item => item.path))]).toEqual(["poe-code/safe-fs/core"]);
   expect(result.outputFiles!.some(output => output.path.endsWith("browser.js"))).toBe(true);
+});
+
+it("bundles the complete portable preset with one owned-argument identity", async () => {
+  const options = resolveBrowserShellBuild(root, "portable");
+  expect(options.entryPoints).toEqual([path.join(root, "packages/safe-bash/src/portable.ts")]);
+  const result = await build(options);
+  const allowed = ["node:crypto", "node:stream", "node:stream/promises", "node:zlib", "node:perf_hooks", "node:timers", "node:path"];
+  const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
+  for (const imported of imports.filter(item => item.external)) {
+    expect(["poe-code/safe-fs/core", ...allowed]).toContain(imported.path);
+  }
+  const compiled = await transform(result.outputFiles!.find(output => output.path.endsWith("portable.js"))!.text, { format: "cjs" });
+  const require = createRequire(import.meta.url);
+  const sandbox = createContext({
+    TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto,
+    require(name: string) {
+      if (name === "poe-code/safe-fs/core") return filesystem;
+      expect(allowed).toContain(name);
+      return require(name);
+    },
+  });
+  const portable = runInContext(`(function(){ const module = { exports: {} }; ${compiled.code}; return module.exports; })()`, sandbox) as typeof import("../packages/safe-bash/src/portable.js");
+  expect(portable.portableAgentCommandNames).toHaveLength(79);
+  const shell = new portable.Shell({ fs: new filesystem.MemoryFileSystem() }).use(
+    portable.portableAgentCommands({ provider: portable.createBoundedRegexProvider() }),
+  );
+  try {
+    for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc"]) {
+      const result = await shell.exec(script);
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toBe("2\n");
+      expect(result.stderr).toBe("");
+    }
+  } finally { await shell.dispose(); }
 });
 
 type BrowserShell = typeof import("../packages/safe-bash/src/browser.js");

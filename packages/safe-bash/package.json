@@ -126,6 +126,10 @@
     "./browser": {
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
+    },
+    "./portable": {
+      "types": "./dist/portable.d.ts",
+      "import": "./dist/portable.js"
     }
   },
   "files": [

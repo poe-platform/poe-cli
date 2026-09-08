@@ -72,11 +72,16 @@ for (const command of ["grep", "rg"]) {
         assert.equal(peer.profile, "registry-release");
         assert.equal(peer.version, packageManifest.devDependencies["poe-code"]);
       }
-      assert.deepEqual(Object.keys(peer.entries), ["poe-code/safe-fs"]);
+      assert.deepEqual(Object.keys(peer.entries).sort(), peer.profile === "checkout-root" ? ["poe-code/safe-fs", "poe-code/safe-fs/core"] : ["poe-code/safe-fs"]);
       const detailed = JSON.parse(result.stdout.trim()) as { imports: Record<string, string>; requiredPeer: { version: string; metadataSha256: string } };
       assert.equal(detailed.requiredPeer.version, peer.version);
       assert.equal(detailed.requiredPeer.metadataSha256, peer.metadataSha256);
       assert.equal(detailed.imports[peer.entries["poe-code/safe-fs"]!], peer.files[peer.entries["poe-code/safe-fs"]!]);
+      if (peer.profile === "checkout-root") {
+        assert.equal(peer.entries["poe-code/safe-fs/core"], "node_modules/poe-code/packages/safe-js/dist/safe-fs-core.js");
+        assert.equal(detailed.imports[peer.entries["poe-code/safe-fs/core"]!], peer.files[peer.entries["poe-code/safe-fs/core"]!]);
+        assert.ok(binding.manifest.peerQualification.files.some(({ path }: { path: string }) => path === "packages/safe-fs/dist/core.d.ts"));
+      }
     });
   }
 }

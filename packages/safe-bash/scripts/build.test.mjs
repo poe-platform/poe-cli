@@ -60,6 +60,31 @@ function afterInputRead(owned, path, action) {
   };
 }
 
+for (const defect of ["none", "declaration", "runtime"]) test(`build portable SafeFS declaration admission: ${defect}`, async () => {
+  const owned = fixture({
+    "package.json": JSON.stringify({ name: "virtual-bash", type: "module", peerDependencies: { "poe-code": ">=13.0.0" }, devDependencies: { "poe-code": "file:../.." }, poeCode: { integration: { peerProfile: "checkout-root" } } }),
+    "src/index.ts": 'import type { FileSystem } from "poe-code/safe-fs/core"; export const filesystem: FileSystem = { portable: true };',
+    "../../package.json": JSON.stringify({ name: "poe-code", type: "module", exports: {
+      "./safe-fs": { types: "./packages/safe-fs/dist/index.d.ts", import: "./packages/safe-js/dist/safe-fs.js" },
+      "./safe-fs/core": { types: { default: "./packages/safe-fs/dist/core.d.ts" }, import: "./packages/safe-js/dist/safe-fs-core.js" },
+    } }),
+    "../../packages/safe-fs/dist/index.d.ts": "export interface FileSystem { portable: boolean; }",
+    "../../packages/safe-fs/dist/core.d.ts": "export interface FileSystem { portable: boolean; }",
+  });
+  if (defect === "none") {
+    assert.equal((await owned.run()).status, 0, owned.output.join(""));
+    assert.ok(owned.reads.includes("/packages/safe-fs/dist/core.d.ts"));
+  } else {
+    const peer = JSON.parse(owned.memory.readFileSync("/package.json", "utf8"));
+    if (defect === "declaration") peer.exports["./safe-fs/core"].types.default = "./private/core.d.ts";
+    else peer.exports["./safe-fs/core"].import = "./packages/safe-fs/dist/core.js";
+    owned.memory.writeFileSync("/package.json", JSON.stringify(peer));
+    await assert.rejects(owned.run(), /canonical public SafeFS core/);
+    assert.ok(!owned.reads.includes("/packages/safe-fs/dist/core.d.ts"));
+  }
+  noHeldReads(owned);
+});
+
 test("build directory index reuses large stable listings with fresh metadata", async () => {
   const owned = fixture();
   const listing = owned.fileSystem.readdirSync;

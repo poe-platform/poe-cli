@@ -21,7 +21,7 @@ export interface RequiredPeer {
   entries: Record<string, string>; files: Hashes; edges: Record<string, Record<string, string>>;
 }
 
-export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashes, tools: Hashes, checkoutBinding?: { profile: string; metadataSha256: string }): Promise<RequiredPeer> {
+export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashes, tools: Hashes, checkoutBinding?: { profile: string; metadataSha256: string; entries: Record<string, string> }): Promise<RequiredPeer> {
   const root = JSON.parse(await readFile(join(snapshot, "package.json"), "utf8"));
   assert.equal(typeof root.peerDependencies?.["poe-code"], "string", "Canonical runtime must be a declared peer");
   assert.notEqual(root.peerDependenciesMeta?.["poe-code"]?.optional, true, "Canonical runtime peer must be required");
@@ -52,19 +52,21 @@ export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashe
     assert.match(locked.integrity, /^sha512-[A-Za-z0-9+/]+={0,2}$/u, "Runtime peer must have registry integrity");
   }
   const entries: Record<string, string> = {};
+  const publicEntries = checkoutBinding ? ["poe-code/safe-fs", "poe-code/safe-fs/core"] : ["poe-code/safe-fs"];
   for (const path of Object.keys(emittedHashes).filter(path => path.endsWith(".js"))) {
     const bytes = await readFile(join(snapshot, path));
     assert.equal(digest(bytes), emittedHashes[path], `Emitted bytes changed before peer capture: ${path}`);
     for (const { fileName } of ts.preProcessFile(bytes.toString(), true).importedFiles) {
       if (fileName !== "poe-code" && !fileName.startsWith("poe-code/")) continue;
-      assert.equal(fileName, "poe-code/safe-fs", `Unreviewed canonical runtime entry: ${fileName}`);
-      const target = peer.exports["./safe-fs"]?.import;
+      assert.ok(publicEntries.includes(fileName), `Unreviewed canonical runtime entry: ${fileName}`);
+      const target = peer.exports[`.${fileName.slice("poe-code".length)}`]?.import;
       assert.equal(typeof target, "string", "Canonical runtime requires an explicit public import target");
       assert.ok(target!.startsWith("./packages/") && target!.includes("/dist/") && !target!.split("/").includes(".."), "Canonical public target is not a built package entry");
+      if (checkoutBinding) assert.equal(target, `./${checkoutBinding.entries[fileName]}`, `Canonical runtime differs from authenticated public binding: ${fileName}`);
       entries[fileName] = posix.join("node_modules/poe-code", target!);
     }
   }
-  assert.deepEqual(Object.keys(entries), ["poe-code/safe-fs"], "Canonical public runtime entry is missing");
+  assert.deepEqual(Object.keys(entries).sort(), publicEntries, "Canonical public runtime entry is missing");
   const files: Hashes = {}, edges: Record<string, Record<string, string>> = {};
   const pending = Object.values(entries);
   while (pending.length) {
@@ -194,7 +196,8 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
     const { bindPeerArtifact, stagePeerArtifact, assertPeerArtifact, resolvePeerProfile } = await import(new URL("../../../plugins/qualified-current-release/peer.mjs", import.meta.url).href);
     const manifest = JSON.parse(captured.bytes.get("package.json")!.toString());
     const profile = resolvePeerProfile(repository);
-    const peerBinding = bindPeerArtifact({ root: repository, declarations: { peer: createPeerBinding(repository, manifest) }, checkout: profile.profile === "checkout-root", ...(profile.profile === "checkout-root" ? {} : { artifact: process.env.SAFE_BASH_PEER_ARTIFACT }) });
+    const sourceInputs = new Map(Object.entries(captured.files).filter(([path]) => path.startsWith("src/")));
+    const peerBinding = bindPeerArtifact({ root: repository, declarations: { peer: createPeerBinding(repository, manifest, sourceInputs) }, checkout: profile.profile === "checkout-root", ...(profile.profile === "checkout-root" ? {} : { artifact: process.env.SAFE_BASH_PEER_ARTIFACT }) });
     const rootInputs = new Map<string, Buffer>();
     const integrationRoot = resolve(repository, "../..");
     for (const path of ["package.json", "package-lock.json", "scripts/guard-package-dist.mjs"]) {

@@ -17,7 +17,7 @@ import { compoundEntryWords, HereDocumentSyntaxError, hereDocumentWords, parseSh
 import { SourceLineIndex } from "./source-line-index.js";
 import { ShellLimitError, ShellSyntaxError } from "./types.js";
 import type { ShellCommandContext, ShellInvokeOptions, ShellLimits } from "./types.js";
-import { scopeFileSystem } from "poe-code/safe-fs";
+import { scopeFileSystem } from "poe-code/safe-fs/core";
 import { fileInput, ShellInput } from "./input.js";
 import { evaluateArithmetic, prepareArithmetic } from "./arithmetic.js";
 import { defaultMaxParseUnits, ParseBudget } from "./parse-budget.js";

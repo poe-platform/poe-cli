@@ -222,6 +222,10 @@
     "./safe-bash/browser": {
       "types": "./packages/safe-bash/dist/browser.d.ts",
       "import": "./packages/safe-bash/dist/browser.js"
+    },
+    "./safe-bash/portable": {
+      "types": "./packages/safe-bash/dist/portable.d.ts",
+      "import": "./packages/safe-bash/dist/portable.js"
     }
   },
   "workspaces": [

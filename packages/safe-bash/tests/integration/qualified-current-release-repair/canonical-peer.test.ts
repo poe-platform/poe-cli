@@ -183,6 +183,82 @@ test("authenticated peer staging contains exactly the public runtime/declaration
   assert.throws(() => stagePeerArtifact({ ...binding }, "/other"), /binding/u);
 });
 
+function currentCoreFixture() {
+  const root = "/checkout/packages/safe-bash";
+  const manifest = { name: "virtual-bash", private: true, peerDependencies: { "poe-code": ">=13.0.0" }, devDependencies: { "poe-code": "file:../.." }, poeCode: { integration: { peerProfile: "checkout-root" } } };
+  const peer = { name: "poe-code", version: "0.0.0-dev", type: "module", devDependencies: { "poe-code": "file:." }, exports: {
+    "./safe-fs": { types: { default: `./${declarationPath}` }, import: "./packages/safe-js/dist/safe-fs.js" },
+    "./safe-fs/core": { types: { default: "./packages/safe-fs/dist/core.d.ts" }, import: "./packages/safe-js/dist/safe-fs-core.js" },
+  } };
+  const files = {
+    "package.json": JSON.stringify(peer),
+    [declarationPath]: "export declare const value: number;\n",
+    "packages/safe-fs/dist/core.d.ts": 'export { value } from "./core-types.js";\n',
+    "packages/safe-fs/dist/core-types.d.ts": "export declare const value: number;\n",
+    "packages/safe-js/dist/safe-fs.js": 'export { value } from "./shared.js";\n',
+    "packages/safe-js/dist/safe-fs-core.js": 'export { value } from "./shared.js";\n',
+    "packages/safe-js/dist/shared.js": "export const value = 42;\n",
+  };
+  const lock = { packages: { "packages/safe-bash": { devDependencies: manifest.devDependencies }, "node_modules/poe-code": { resolved: "", link: true } } };
+  const io = createFsFromVolume(Volume.fromJSON({
+    ...Object.fromEntries(Object.entries(files).map(([path, bytes]) => [`/checkout/${path}`, bytes])),
+    [`${root}/package.json`]: JSON.stringify(manifest),
+    "/checkout/package-lock.json": JSON.stringify(lock),
+    "/consumer/package.json": '{"type":"module"}',
+  }));
+  io.writeFileSync("/peer.tgz", archive(Object.fromEntries(Object.entries(files).map(([path, bytes]) => [`package/${path}`, bytes]))));
+  const declarations = { peer: { version: peer.version, integrity: null, metadataSha256: digest(files["package.json"]),
+    publicEntries: new Map([["poe-code/safe-fs", declarationPath], ["poe-code/safe-fs/core", "packages/safe-fs/dist/core.d.ts"]]),
+    declarations: new Map(Object.entries(files).filter(([path]) => path.endsWith(".d.ts")).map(([path, bytes]) => [path, digest(bytes)])),
+  } };
+  return { root, io, peer, files, declarations };
+}
+
+for (const checkout of [true, false]) {
+  test(`current core public route stages its exact authenticated closure (${checkout ? "checkout" : "packed"})`, async () => {
+    const { bindPeerArtifact, stagePeerArtifact, assertPeerArtifact, assertPeerDeclarationFiles } = await import(peerModule);
+    const input = currentCoreFixture();
+    const binding = bindPeerArtifact({ ...input, checkout, ...(checkout ? {} : { artifact: "/peer.tgz" }) });
+    assert.deepEqual(binding.entries, { "poe-code/safe-fs": "packages/safe-js/dist/safe-fs.js", "poe-code/safe-fs/core": "packages/safe-js/dist/safe-fs-core.js" });
+    assert.deepEqual(binding.files.map(({ path }: { path: string }) => path).sort(), Object.keys(input.files).sort());
+    assert.equal(binding.declarationFiles, 3);
+    assert.equal(binding.runtimeFiles, 3);
+    stagePeerArtifact(binding, "/consumer");
+    input.io.renameSync("/consumer", "/moved");
+    assertPeerDeclarationFiles(binding, ["/moved/node_modules/poe-code/packages/safe-fs/dist/core.d.ts", "/moved/node_modules/poe-code/packages/safe-fs/dist/core-types.d.ts"], "/moved");
+    assertPeerArtifact(binding, "/moved");
+    input.io.writeFileSync("/moved/node_modules/poe-code/packages/safe-js/dist/shared.js", "changed");
+    assert.throws(() => assertPeerArtifact(binding, "/moved"), /changed/u);
+  });
+}
+
+for (const route of ["runtime", "declaration"] as const) {
+  test(`current core rejects a substituted public ${route} target even with matching metadata`, async () => {
+    const { bindPeerArtifact } = await import(peerModule);
+    const input = currentCoreFixture();
+    if (route === "runtime") input.peer.exports["./safe-fs/core"].import = "./packages/safe-js/dist/safe-fs.js";
+    else {
+      input.peer.exports["./safe-fs/core"].types.default = `./${declarationPath}`;
+      input.declarations.peer.publicEntries.set("poe-code/safe-fs/core", declarationPath);
+    }
+    const metadata = JSON.stringify(input.peer);
+    input.io.writeFileSync("/checkout/package.json", metadata);
+    input.declarations.peer.metadataSha256 = digest(metadata);
+    assert.throws(() => bindPeerArtifact({ ...input, checkout: true }), /core/u);
+  });
+}
+
+for (const path of ["packages/safe-fs/dist/core.d.ts", "packages/safe-fs/dist/core-types.d.ts", "packages/safe-js/dist/safe-fs-core.js", "packages/safe-js/dist/shared.js"]) {
+  test(`current core closure authenticates ${path} before staging`, async () => {
+    const { bindPeerArtifact, stagePeerArtifact } = await import(peerModule);
+    const input = currentCoreFixture();
+    const binding = bindPeerArtifact({ ...input, checkout: true });
+    input.io.writeFileSync(`/checkout/${path}`, "changed");
+    assert.throws(() => stagePeerArtifact(binding, "/consumer"), /changed/u);
+    assert.equal(input.io.existsSync("/consumer/node_modules"), false);
+  });
+}
+
 for (const mutation of ["missing", "wrong-bytes", "symlink", "optional", "wrong-pin", "wrong-registry", "unrelated-peer", "missing-locked-root"] as const) {
   test(`peer admission refuses ${mutation} before consumer writes`, async () => {
     const { bindPeerArtifact } = await import(peerModule);
