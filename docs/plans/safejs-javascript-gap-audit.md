@@ -3,23 +3,23 @@
 ## Current built-runtime evidence
 
 This inventory was rechecked after remote-main commit
-713e15dc94dd892a723aeac2ca115d588ad10069. The local build also contains
-uncommitted weak collections. Presence in this
+04b1bbd258fcd90d0b7611df55eb1e5b3e78cf1d. The local build also contains
+uncommitted dynamic Function constructors and weak collections. Presence in this
 build is not proof of remote delivery or full conformance.
 
 A clean Node 24.14.0 VM global-name comparison reports these absent guest names:
-Function, Atomics, Proxy, FinalizationRegistry, WeakRef, eval, SharedArrayBuffer,
+Atomics, Proxy, FinalizationRegistry, WeakRef, eval, SharedArrayBuffer,
 and WebAssembly. WebAssembly is a separate platform API. This is an omission
 inventory, not an exhaustive list of semantic gaps.
 
 | Area | Current evidence | Remaining work |
 | --- | --- | --- |
-| Function / eval | Missing bindings; earlier concrete calls failed | Guest-only dynamic compilation, direct/indirect scope rules, budgets and snapshots |
+| Function / eval | Function-family constructors work in the local uncommitted runtime; eval remains absent | Finish broad runtime verification and delivery; implement direct/indirect eval scope rules, budgets and snapshots |
 | Proxy | Missing binding | Traps, invariants, receiver behavior, metering and continuations |
 | SharedArrayBuffer / Atomics | Missing bindings | Shared-memory ownership and scheduling semantics |
 | WeakRef / FinalizationRegistry | Missing bindings | Reachability and cleanup scheduling with sandbox resource control |
 | WeakMap / WeakSet | Local tests pass on Node 22; built Node 18 rejects valid symbol keys at WeakRef construction | Portable symbol lifetime semantics; feature remains uncommitted |
-| RegExp.compile | Delivered in 713e15dc9; 415 regressions and Node 18/24 comparisons and replay pass | Publication pending; continue semantic auditing |
+| RegExp.compile | Delivered in 713e15dc9 and published in SafeJS 0.1.475; 415 regressions and Node 18/24 comparisons and replay pass | Continue semantic auditing |
 | RegExp legacy statics | Native constructor names absent in built guest | Validate matching-state behavior before implementation |
 | Error diagnostic APIs | Native captureStackTrace, prepareStackTrace, stackTraceLimit absent | These are V8-specific APIs, not proof of a core-language omission |
 
@@ -48,12 +48,18 @@ Other verified remote-main changes include:
 - Four legacy Object accessor methods, delivered in 108c3a6fd.
 - Guest __proto__ accessors, delivered in 314bb3455. The cumulative SafeJS
   0.1.473 publication includes the preceding Object accessor methods.
-- Object property-key conversion order, delivered in 52df4a2ad; publication
-  is still monitored separately.
+- Object property-key conversion order, delivered in 52df4a2ad and published
+  in SafeJS 0.1.474.
+- Dynamic Function source grammar, delivered in db72de23d; strict identifier
+  deletion in 5fb116b1c and static-import rejection in 0be58fe27 are also delivered.
+  These parser changes do not deliver the uncommitted runtime constructors.
+- Value-expression deletion, delivered in b400fda35 and published in SafeJS
+  0.1.485. Primitive-property deletion is verified on remote main in 04b1bbd25;
+  its scoped release run 34258998616 is still in progress.
 
 A new native prototype-name comparison no longer reports the String HTML,
 Object legacy accessor, __proto__, or RegExp.compile omissions. RegExp.compile
-is verified on remote main but is not yet a verified publication.
+is verified on remote main and published as noted above.
 
 ## Open semantic and operational investigations
 
@@ -67,6 +73,11 @@ is verified on remote main but is not yet a verified publication.
   and exact fixture/budget constraints remain in safejs-camera-ci-performance.md.
   Do not relax timeouts or shrink fixtures to claim success.
 - Dynamic Function/eval design constraints remain in safejs-dynamic-functions.md.
+- The earlier full runtime suite reported 68 failures. Focused fixes address
+  intrinsic initialization accounting, implicit async prototypes, circular
+  source-metadata imports and outdated constructor-absence assertions. Snapshot
+  and accounting coverage passes 1,491 tests, but the maintained full rerun is
+  still active; focused passes do not certify the complete runtime changes.
 - Older Intl investigations include Node 18 offset-timezone support and draft
   PluralRules notation options; revalidate concrete behavior before changing code.
 
