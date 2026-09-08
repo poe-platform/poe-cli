@@ -1,4 +1,6 @@
 import type { Budget } from "../budget.js";
+import { types } from "node:util";
+import { sandboxErrorTypes } from "../../error/shape.js";
 import { errorPrototypes } from "../error-prototypes.js";
 import { getSandboxPropertyDescriptor, getSandboxPrototype, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { registerBuiltinIdentities } from "../intrinsics.js";
@@ -107,7 +109,16 @@ export function createErrorPrototypes(budget: Budget, constructors: ErrorGlobals
       }
     })
   });
+  const isError = createSandboxClosure({
+    guest: true, sandbox: true, name: "isError", length: 1,
+    call: ([value]) => typeof value === "object" && value !== null &&
+      (sandboxErrorTypes.has(value) || types.isNativeError(value))
+  });
+  Object.defineProperty(materializeFunctionProperties(constructors.Error), "isError", {
+    value: isError, writable: true, configurable: true
+  });
   registerBuiltinIdentities(budget, Object.fromEntries(errorNames.map(name => [name, constructors[name]])));
+  registerIntrinsicFunction(budget, isError);
   for (const name of errorNames) {
     registerIntrinsicFunction(budget, constructors[name]);
     registerIntrinsicObject(budget, prototypes.get(name)!);
