@@ -14,6 +14,10 @@ callers. Do not touch `src/shell/runtime.ts`, the shell glob engine, regex-worke
 engines, other leaves' files, or historical sealed copies. Root owns inventory,
 integration, Git, and release gates.
 
+Follow-up grant on September 8, 2026 additionally owns only
+`src/commands/stream-format/nl.ts`, its existing `nl.test.ts`, and this plan.
+Issue 666 preparation is paused; other workers' canonical files remain frozen.
+
 ## Concrete evidence, not heap claims
 
 - One synchronous `Pattern.find` exhausted 257 work units under a 256-step cap
@@ -127,6 +131,7 @@ API changes are needed.
 | `awk-runtime.ts`, `evaluate`, `case "regex"` | Await before converting presence to numeric truth. |
 | `awk-runtime.ts`, binary `~` / `!~` | Resolve the pattern, await the find, then test presence/negate. |
 | `awk-runtime.ts`, builtin `match` | Await before updating `RSTART` and `RLENGTH`; preserve 1-based success and 0/-1 failure. |
+| `stream-format/nl.ts`, pattern numbering style | Await before deciding whether to number a record; keep matcher charges on the invocation's existing `PatternBudget`/`Session`. |
 
 `sub`/`gsub` already await `substitute`; FS and builtin `split` already await the
 shared split method. Update both `find` mocks in
@@ -153,7 +158,7 @@ failures and two passing compatibility controls; no skips/cancellations.
 - Assert exact captures, optional/unmatched groups, repeated-group preference,
   BRE backreferences, case-insensitive backreferences, anchors with nonzero
   `from`, zero-width results, NUL and 0xff bytes.
-- Promise-returning bounded `find` stubs exercise all six production call sites;
+- Promise-returning bounded `find` stubs exercise the six sed/awk call sites;
   cover both builtin split and FS splitting. These prove await propagation, not
   native-regex semantics by themselves.
 
@@ -210,3 +215,43 @@ only file-level counts in this environment; do not present those as individual
 assertion counts. Root owns admission of the new test into the exact maintained
 inventory, broader gates, Git, integration and release. A focused GREEN is not
 remote-main delivery or a release claim.
+
+## Integration follow-up: nl asynchronous caller
+
+Root reports candidate commit `a784e3da9` and current HEAD `b60a6a7c5`; the full
+SafeBash unit gate found the omitted `nl` consumer. The original six-site audit
+was incomplete: `nl` also imports this exact `Pattern`, not a separate matcher.
+`current.find(...) !== undefined` numbered nonmatches and detached rejection
+from the command's error/cancellation handling after `find` became async.
+
+Fresh maintained RED on current source: the existing two-test `nl.test.ts`
+had one failure (escaped shared-step-limit error) and one pass. Seven additional
+bounded regressions produced eight failures and one pass before the fix:
+actual matching/nonmatching records, BRE captures/backreferences, header/body/
+footer numbering, NUL/non-UTF-8 bytes, exact shared budget, and queued falsey/
+object cancellation with no output. No source changes preceded that RED.
+
+The production fix is one awaited call in `nl.ts`. `PatternBudget.step` still
+charges the existing session; no budget or diagnostic/status mapping changed.
+Dedicated GREEN is 9/9. Actual shared work is 39 units for three short records:
+39 passes with exact expected output; 38 fails with the existing step diagnostic.
+Cancellation returns the exact `false`/object reason and writes zero bytes.
+
+The fresh production-source import audit found four importers of this exact
+module: `sed.ts`, `awk-runtime.ts`, `awk-syntax.ts`, and `stream-format/nl.ts`.
+`awk-syntax.ts` only constructs patterns. Counting the internal `substitute`
+consumer gives seven production `find` calls: four awk, one sed, one substitute,
+one nl; all are now awaited. Unrelated shell/tree/SafeJS pattern engines are
+not consumers of this API.
+
+Final maintained focused command from `packages/safe-bash`:
+
+```sh
+node scripts/test-reporting.mjs --import tsx --experimental-test-isolation=none --test-concurrency=1 tests/commands/stream-format/*.test.ts tests/commands/text-programs/*.test.ts
+```
+
+Result: 440/440 assertions across 18 selected files, zero failures, skips,
+cancellations or todos. Node 22.22.0, `TSX_DISABLE_CACHE=1`, unset `NO_COLOR`,
+assigned validation `TMPDIR`. Follow-up edits are exactly the nl source, existing
+nl test, and this plan; frozen with no test processes remaining. No new inventory
+member, Git operation, build, lint or full suite was performed by this leaf.
