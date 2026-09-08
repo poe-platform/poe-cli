@@ -213,6 +213,7 @@ describe("standalone package publish metadata", () => {
       "./safe-bash/fs/s3",
       "./safe-bash/fs/s3/http",
       "./safe-bash/fs/webdav",
+      "./safe-bash/node",
       "./safe-bash/portable",
       "./safe-fs",
       "./safe-fs/core",
