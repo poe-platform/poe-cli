@@ -39,7 +39,7 @@ jobs:
       - name: Archive fresh build outputs
         id: archive
         run: |
-          tar -cf "$RUNNER_TEMP/build.tar" dist packages/*/dist
+          tar -cf "$RUNNER_TEMP/build.tar" dist packages/*/dist packages/safe-js/src/intl-data/dist
           echo "sha256=$(sha256sum "$RUNNER_TEMP/build.tar" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7.0.1
         with:
