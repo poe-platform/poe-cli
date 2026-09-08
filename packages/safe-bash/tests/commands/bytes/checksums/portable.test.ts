@@ -28,20 +28,27 @@ test("checksum browser graph has no Node crypto dependency", async () => {
   for (const algorithm of ["md5", "sha1", "sha224", "sha256", "sha384", "sha512"]) {
     for (const size of [0, 3, data.length]) {
       const bytes = data.subarray(0, size);
-      const stdout: Uint8Array[] = [];
-      const stderr: Uint8Array[] = [];
-      const stdin: ByteSource = (async function* () {
-        for (let offset = 0; offset < bytes.length; offset += 65537) yield bytes.subarray(offset, offset + 65537);
-      })();
-      const command = checksums.createChecksumCommands().find(command => command.name === "cksum")!;
-      const executed = await command.execute({
-        command: "cksum", args: ["-a", algorithm], stdin, cwd: "/", env: {},
-        fs: new filesystem.MemoryFileSystem(), signal: new AbortController().signal,
-        stdout: { async write(chunk) { stdout.push(chunk.slice()); } },
-        stderr: { async write(chunk) { stderr.push(chunk.slice()); } },
-      });
-      assert.equal(executed.exitCode, 0, Buffer.concat(stderr).toString());
-      assert.equal(Buffer.concat(stdout).toString(), `${algorithm.toUpperCase()} (-) = ${createHash(algorithm).update(bytes).digest("hex")}\n`);
+      const digest = createHash(algorithm).update(bytes).digest("hex");
+      for (const [name, args, expected] of [
+        ["cksum", ["-a", algorithm], `${algorithm.toUpperCase()} (-) = ${digest}\n`],
+        [`${algorithm}sum`, [], `${digest}  -\n`],
+        [`${algorithm}sum`, ["--tag"], `${algorithm.toUpperCase()} (-) = ${digest}\n`],
+      ] as const) {
+        const stdout: Uint8Array[] = [];
+        const stderr: Uint8Array[] = [];
+        const stdin: ByteSource = (async function* () {
+          for (let offset = 0; offset < bytes.length; offset += 65537) yield bytes.subarray(offset, offset + 65537);
+        })();
+        const command = checksums.createChecksumCommands().find(command => command.name === name)!;
+        const executed = await command.execute({
+          command: name, args, stdin, cwd: "/", env: {},
+          fs: new filesystem.MemoryFileSystem(), signal: new AbortController().signal,
+          stdout: { async write(chunk) { stdout.push(chunk.slice()); } },
+          stderr: { async write(chunk) { stderr.push(chunk.slice()); } },
+        });
+        assert.equal(executed.exitCode, 0, Buffer.concat(stderr).toString());
+        assert.equal(Buffer.concat(stdout).toString(), expected);
+      }
     }
   }
 });

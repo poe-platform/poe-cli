@@ -1,5 +1,5 @@
 import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
-import { expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
 import { FsError as CoreFsError } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
@@ -32,6 +32,7 @@ try {
   const result = await shell.exec("printf 'b\\na\\n' | sort");
   if (result.exitCode !== 0 || result.stdout !== "a\nb\n") throw new Error("Browser shell smoke failed");
   for (const [script, expected] of [
+    ...checksumWorkflows,
     ["printf 'a,b\\nc,d\\n' | cut -d , -f 2", "b\nd\n"],
     ["printf 'a\\tb\\tc\\n' | cut -f 1,3", "a\tc\n"],
     ["printf 'a,,c\\n,b,\\n' > /fields; cut -d , -f 2,3 /fields", ",c\nb,\n"],

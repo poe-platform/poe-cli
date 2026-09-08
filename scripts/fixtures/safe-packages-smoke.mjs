@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
 import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
-import { defaultEntry, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, defaultEntry, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
 import * as nodeEntry from "@poe-platform/safe-bash/node";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import "./safe-packages-realms.mjs";
@@ -88,6 +88,12 @@ const boundedShell = new Shell({ fs: createMemoryFileSystem() }).use(
   agentCommands({ regexExecutor: createBoundedRegexProvider() }),
 );
 try {
+  for (const [script, expected] of checksumWorkflows) {
+    const result = await boundedShell.exec(script);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, expected, script);
+    assert.equal(result.stderr, "", script);
+  }
   for (const script of ["env jq -nc '1+1'", "printf '\"1+1\"' | xargs jq -nc"]) {
     const result = await boundedShell.exec(script);
     assert.equal(result.exitCode, 0, result.stderr);

@@ -21,6 +21,7 @@ interface Settings {
   binary: boolean;
   check: boolean;
   zero: boolean;
+  tag: boolean;
   strict: boolean;
   ignoreMissing: boolean;
   report: ReportMode;
@@ -35,11 +36,11 @@ function parseCksum(args: readonly string[]): { algorithm: Algorithm; settings: 
   const parsed = options(args, "a:z", { algorithm: "a", zero: "z" });
   const algorithm = value(parsed, "a") ?? "crc";
   if (!["crc", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"].includes(algorithm)) throw new UsageError(`unsupported checksum algorithm '${algorithm}'`);
-  return { algorithm: algorithm as Algorithm, settings: { operands: parsed.operands, binary: false, check: false, zero: parsed.flags.has("z"), strict: false, ignoreMissing: false, report: "normal" } };
+  return { algorithm: algorithm as Algorithm, settings: { operands: parsed.operands, binary: false, check: false, zero: parsed.flags.has("z"), tag: true, strict: false, ignoreMissing: false, report: "normal" } };
 }
 
 function parse(args: readonly string[], algorithm: Algorithm): Settings {
-  const settings: Settings = { operands: [], binary: false, check: false, zero: false, strict: false, ignoreMissing: false, report: "normal" };
+  const settings: Settings = { operands: [], binary: false, check: false, zero: false, tag: false, strict: false, ignoreMissing: false, report: "normal" };
   if (algorithm === "crc") {
     const parsed = options(args, "z", { zero: "z" });
     settings.operands = parsed.operands;
@@ -47,7 +48,7 @@ function parse(args: readonly string[], algorithm: Algorithm): Settings {
     return settings;
   }
   const aliases: Readonly<Record<string, string>> = {
-    binary: "b", text: "t", check: "c", zero: "z", warn: "w",
+    binary: "b", text: "t", check: "c", zero: "z", warn: "w", tag: "tag",
     quiet: "quiet", status: "status", strict: "strict", "ignore-missing": "ignore-missing",
   };
   let ended = false;
@@ -63,6 +64,7 @@ function parse(args: readonly string[], algorithm: Algorithm): Settings {
         case "t": settings.binary = false; explicitMode = true; break;
         case "c": settings.check = true; break;
         case "z": settings.zero = true; break;
+        case "tag": settings.tag = true; settings.binary = true; break;
         case "w": settings.report = "warn"; checkOnly = true; break;
         case "quiet": case "status": settings.report = key; checkOnly = true; break;
         case "strict": settings.strict = true; checkOnly = true; break;
@@ -72,6 +74,8 @@ function parse(args: readonly string[], algorithm: Algorithm): Settings {
     }
   }
   if (!settings.check && checkOnly) throw new UsageError("verification options require --check");
+  if (settings.tag && settings.check) throw new UsageError("the --tag option is meaningless when verifying checksums");
+  if (settings.tag && !settings.binary) throw new UsageError("--tag does not support --text mode");
   if (settings.check && (settings.zero || explicitMode)) throw new UsageError("--zero, --binary and --text are not supported with --check");
   return settings;
 }
@@ -178,10 +182,11 @@ function parseEntry(bytes: Uint8Array, algorithm: Algorithm): Entry | "skip" | u
   if (line.endsWith("\r")) line = line.slice(0, -1);
   if (line === "" || line.startsWith("#")) return "skip";
   const digits = { sha512: 128, sha384: 96, sha256: 64, sha224: 56, sha1: 40, md5: 32, crc: 0 }[algorithm];
-  const match = new RegExp(`^[ \\t]*(\\\\?)([a-fA-F0-9]{${digits}})[ \\t][ *](.+)$`, "su").exec(line);
-  if (!match) return undefined;
-  let filename = match[3]!;
-  if (match[1]) {
+  const tagged = new RegExp(`^[ \\t]*(\\\\?)${algorithm.toUpperCase()} ?\\((.*)\\)[ \\t]*=[ \\t]*([a-fA-F0-9]{${digits}})$`, "su").exec(line);
+  const match = tagged ? null : new RegExp(`^[ \\t]*(\\\\?)([a-fA-F0-9]{${digits}})[ \\t][ *](.+)$`, "su").exec(line);
+  if (!tagged && !match) return undefined;
+  let filename = tagged ? tagged[2]! : match![3]!;
+  if (tagged ? tagged[1] : match![1]) {
     let invalid = false;
     filename = filename.replace(/\\([\s\S]?)/gu, (_, character: string) => {
       if (character === "n") return "\n";
@@ -193,7 +198,7 @@ function parseEntry(bytes: Uint8Array, algorithm: Algorithm): Entry | "skip" | u
     if (invalid) return undefined;
   }
   try { validateFilename(filename); } catch { return undefined; }
-  return { digest: match[2]!.toLowerCase(), filename };
+  return { digest: (tagged ? tagged[3]! : match![2]!).toLowerCase(), filename };
 }
 
 async function report(context: CommandContext, filename: string, status: string): Promise<void> {
@@ -265,7 +270,7 @@ function command(name: string, algorithm: Algorithm, maxInputBytes: number): Com
       if (selectedAlgorithm === "crc") await output(context, `${result.hex} ${result.length}${settings.operands.length ? ` ${filename}` : ""}${delimiter}`);
       else {
         const display = settings.zero ? { prefix: "", name: filename } : escaped(filename);
-        await output(context, name === "cksum"
+        await output(context, settings.tag
           ? `${display.prefix}${selectedAlgorithm.toUpperCase()} (${display.name}) = ${result.hex}${delimiter}`
           : `${display.prefix}${result.hex} ${settings.binary ? "*" : " "}${display.name}${delimiter}`);
       }
@@ -276,5 +281,5 @@ function command(name: string, algorithm: Algorithm, maxInputBytes: number): Com
 
 export function createChecksumCommands(options: ByteInputOptions = {}): readonly CommandDefinition[] {
   const maxInputBytes = resolveInputLimit(options);
-  return [command("sha256sum", "sha256", maxInputBytes), command("sha1sum", "sha1", maxInputBytes), command("md5sum", "md5", maxInputBytes), command("cksum", "crc", maxInputBytes)];
+  return [command("sha512sum", "sha512", maxInputBytes), command("sha384sum", "sha384", maxInputBytes), command("sha256sum", "sha256", maxInputBytes), command("sha224sum", "sha224", maxInputBytes), command("sha1sum", "sha1", maxInputBytes), command("md5sum", "md5", maxInputBytes), command("cksum", "crc", maxInputBytes)];
 }
