@@ -5,7 +5,7 @@ import { invokeBuiltinClosure } from "../builtin-call.js";
 import { wellKnownSymbols } from "../symbols.js";
 import { resolveIntrinsicIdentity } from "../intrinsics.js";
 import { setSandboxProperty } from "../interpreter.js";
-import { getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
+import { completeIntrinsicObjectInitialization, getSandboxPropertyDescriptor, materializeFunctionProperties, registerIntrinsicFunction, registerIntrinsicObject, setSandboxPrototype } from "../object-model.js";
 import { createSandboxClosure, defineOwnDataProperty, isSandboxClosure, type SandboxClosure, type SandboxObject } from "../values.js";
 import { objectProperties } from "./object-array.js";
 import { installIteratorFrom } from "./iterator-from.js";
@@ -64,6 +64,7 @@ export function createIteratorGlobal(budget: Budget): SandboxClosure {
   installIteratorConsumers(prototype,budget);
   installLazyIteratorHelpers(prototype,budget);
   registerIntrinsicFunction(budget,constructor);
+  completeIntrinsicObjectInitialization(budget, prototype);
   registerIntrinsicObject(budget,prototype);
   return constructor;
 }

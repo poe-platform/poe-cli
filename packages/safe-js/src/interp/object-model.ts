@@ -58,6 +58,8 @@ const functionPrototypes = new WeakMap<Budget, SandboxClosure>();
 const initialArrayMethods = new WeakMap<object, Map<string, SandboxValue>>();
 const initialRegexDescriptors = new WeakMap<Budget, PropertyDescriptorMap>();
 const intrinsicPrototypeRoots = new WeakMap<Budget, Set<object>>();
+const intrinsicRetentionTargets = new WeakMap<Budget, WeakSet<object>>();
+const intrinsicRetentionGroups = new WeakMap<Budget, Map<object, ReturnType<typeof captureIntrinsicRecords>>>();
 const intrinsicConstructors = new WeakMap<object, () => boolean>();
 const intrinsicFunctions = new WeakSet<object>();
 const initialBoxedMethods = new WeakMap<object, Map<string, SandboxValue>>();
@@ -283,16 +285,19 @@ export function registerIntrinsicObject(budget: Budget, value: SandboxObject, tr
   trackIntrinsicState(budget, value, value, [value, ...methods]);
 }
 
-function trackIntrinsicState(
-  budget: Budget,
-  root: object,
-  owner: object,
-  targets: Array<SandboxObject | SandboxClosure>
-): void {
-  let roots = intrinsicPrototypeRoots.get(budget);
-  if (roots === undefined) intrinsicPrototypeRoots.set(budget, (roots = new Set()));
-  roots.add(root);
-  const records = [...new Set(targets)]
+// Only builtin installation may replace a partially initialized baseline.
+// Ordinary repeated registration must keep charging earlier guest mutations.
+export function completeIntrinsicObjectInitialization(budget: Budget, value: SandboxObject): void {
+  for (const records of intrinsicRetentionGroups.get(budget)?.values() ?? []) {
+    const record = records.find(record => record.target === value);
+    if (record === undefined) continue;
+    Object.assign(record, captureIntrinsicRecords([value])[0]);
+    return;
+  }
+}
+
+function captureIntrinsicRecords(targets: Array<SandboxObject | SandboxClosure>) {
+  return [...new Set(targets)]
     .map((target) => {
       let tracked = trackedPrototypes.get(target);
       if (tracked === undefined) {
@@ -315,6 +320,18 @@ function trackIntrinsicState(
       extensible: Object.isExtensible(record.value),
       descriptors: new Map(Reflect.ownKeys(record.value).map(key => [key, Object.getOwnPropertyDescriptor(record.value, key)!]))
     }));
+}
+
+function trackIntrinsicState(
+  budget: Budget,
+  root: object,
+  owner: object,
+  targets: Array<SandboxObject | SandboxClosure>
+): void {
+  let roots = intrinsicPrototypeRoots.get(budget);
+  if (roots === undefined) intrinsicPrototypeRoots.set(budget, (roots = new Set()));
+  roots.add(root);
+  const records = captureIntrinsicRecords(targets);
   for (const { target } of records)
     if (isGuestClosure(target)) intrinsicFunctions.add(target);
   const unchanged = (
@@ -341,10 +358,22 @@ function trackIntrinsicState(
       );
     })
   );
+  let retainedTargets = intrinsicRetentionTargets.get(budget);
+  if (retainedTargets === undefined) intrinsicRetentionTargets.set(budget, retainedTargets = new WeakSet());
+  let groups = intrinsicRetentionGroups.get(budget);
+  if (groups === undefined) intrinsicRetentionGroups.set(budget, groups = new Map());
+  let retainedRecords = groups.get(root);
+  if (retainedRecords === undefined) groups.set(root, retainedRecords = []);
+  for (const record of records) {
+    if (retainedTargets.has(record.target)) continue;
+    retainedTargets.add(record.target);
+    retainedRecords.push(record);
+  }
+  if (retainedRecords.length === 0) return;
   budget.setRetainedValues(root, () => {
     // Capture every change before measurement invokes retained-value callbacks.
     const retained: unknown[] = [];
-    for (const record of records) {
+    for (const record of retainedRecords) {
       const { value, descriptors, prototype: parent, revision } = record;
       const currentPrototype = record.tracked.current;
       if (currentPrototype !== parent) retained.push(currentPrototype);
@@ -369,6 +398,8 @@ export function releaseObjectPrototype(budget: Budget): void {
   releaseIntrinsicIdentities(budget);
   for (const prototype of intrinsicPrototypeRoots.get(budget) ?? []) budget.setRetainedValues(prototype, undefined);
   intrinsicPrototypeRoots.delete(budget);
+  intrinsicRetentionTargets.delete(budget);
+  intrinsicRetentionGroups.delete(budget);
   boxedPrototypes.delete(budget);
   regexPrototypes.delete(budget);
   collectionPrototypes.delete(budget);
