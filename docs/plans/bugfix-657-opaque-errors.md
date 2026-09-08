@@ -76,6 +76,20 @@ plus this plan). Final focused checks are GREEN; tools are frozen for root gates
 
 ## Evidence
 
+- Rebased the two product commits onto upstream `9664c440a` (intrinsic prototype
+  tracking), producing `2e011832e` and `9b20027cd`. Normal `npm run build` passed
+  on that frozen candidate; built public API smoke and the final browser check
+  passed. Viewed screenshot `/tmp/kamilio-657-final-browser.png` shows public DU,
+  gzip and checksum diagnostics and continued execution. Browser and preview closed.
+- The added maintained SafeBash typecheck exposed 12 strict-typing errors in the
+  new opaque-error tests, plus earlier goal-owned #648/#650 test typing defects.
+  Source/build behavior was not changed to hide them. The opaque-error test now
+  uses actual runtime types and presence/class assertions: scoped strict check
+  has zero errors and all 121 runtime cases pass. Original full-typecheck failure
+  remains in `/tmp/kamilio-657-final-gate.LSENd8/typecheck.log`; a passing later
+  maintained check is still required. The initial gate did not start npm test
+  after its typecheck failure.
+
 - Follow-up classification fixes retain authored checksum summaries, DU errors,
   command-not-found fallback and stale-argument identity diagnostics. The latter
   uses a dedicated TypeError subclass rather than trusting arbitrary TypeErrors.

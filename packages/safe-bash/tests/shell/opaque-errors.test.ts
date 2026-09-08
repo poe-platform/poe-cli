@@ -16,8 +16,8 @@ import { createHtmlToMarkdownCommand } from "../../src/commands/html-to-markdown
 import { createDiffPatchCommands } from "../../src/commands/diff-patch/index.js";
 import { diagnostic as searchDiagnostic } from "../../src/commands/search/shared.js";
 import { networkError } from "../../src/commands/network/shared.js";
-import { createSafeJsCommands } from "../../src/commands/safejs/index.js";
-import { RegexExecutor } from "../../src/commands/regex-execution/portable.js";
+import { createSafeJsCommands, type SafeJsRuntime } from "../../src/commands/safejs/index.js";
+import { RegexExecutionError, RegexExecutor } from "../../src/commands/regex-execution/portable.js";
 import { createByteCommands } from "../../src/commands/bytes/index.js";
 import { createBoundedRegexProvider } from "../../src/commands/regex-execution/bounded-provider.js";
 import { createExprCommandWithExecutor } from "../../src/commands/expr/command.js";
@@ -237,6 +237,7 @@ for (const reason of [null, false, 0, ""] as const) {
 for (const reason of [new TypeError(secret), null, false, 0, "", undefined] as const) {
   test(`CONTROL cleanup rejects with original ${typeof reason} identity`, async context => {
     const { shell } = fixture(context, [{ name: "clean", async execute(command) {
+      assert.ok(command.registerCleanup);
       command.registerCleanup(async () => { throw reason; });
       return { exitCode: 0 };
     } }]);
@@ -295,7 +296,7 @@ for (const stage of ["createBudget", "makeFsModule", "run"] as const) {
       makeFsModule() { return {}; },
       declareHostOperation(operation) { return operation; },
       async run() { return { ok: true }; },
-    };
+    } satisfies SafeJsRuntime<object>;
     runtime[stage] = () => { throw new TypeError(secret); };
     const { shell } = fixture(context, createSafeJsCommands({ runtime }));
     const result = await shell.exec("safejs -e '1'");
@@ -364,7 +365,7 @@ for (const [command, input, message] of [
 }
 
 test("CONTROL optional SafeJS explicit guest error result remains guest-visible", async context => {
-  const runtime = {
+  const runtime: SafeJsRuntime<object> = {
     createBudget() { return {}; }, makeFsModule() { return {}; },
     declareHostOperation(operation) { return operation; },
     async run() { return { ok: false, error: { name: "ParseError", message: "guest parse diagnostic" } }; },
@@ -388,6 +389,7 @@ test("RED regex worker error event must not launder host text into a trusted err
   try {
     await assert.rejects(session.run({ kind: "grep", patterns: ["x"], fixed: true, extended: false, insensitive: false, whole: false, word: false },
       [{ bytes: encoder.encode("x"), all: false, terminated: true }]), error => {
+      assert.ok(error instanceof RegexExecutionError);
       assert.equal(error.code, "WORKER_ERROR");
       assert.equal(error.message, "regex WORKER_ERROR: internal error");
       return true;
@@ -401,6 +403,7 @@ test("CONTROL bounded regex syntax errors remain public MATCH errors", async () 
   try {
     await assert.rejects(session.run({ kind: "grep", patterns: ["["], fixed: false, extended: true, insensitive: false, whole: false, word: false },
       [{ bytes: encoder.encode("x"), all: false, terminated: true }]), error => {
+      assert.ok(error instanceof RegexExecutionError);
       assert.equal(error.code, "MATCH");
       assert.equal(error.message.startsWith("invalid ERE"), true);
       return true;
@@ -486,7 +489,10 @@ test("HOST per-exec hook overrides constructor hook and follows nested dispatch"
   const failure = new TypeError(secret);
   const { shell } = fixture(context, [
     { name: "boom", async execute() { throw failure; } },
-    { name: "nested", async execute(command) { return command.invoke("boom", []); } },
+    { name: "nested", async execute(command) {
+      assert.ok(command.invoke);
+      return command.invoke("boom", []);
+    } },
   ], { onInternalError(reason) { inherited.push(reason); } });
   await shell.exec("nested 2>&1 | copy", { onInternalError(reason) { selected.push(reason); } });
   assert.deepEqual(selected, [failure]);
@@ -532,7 +538,11 @@ test("HOST caller cancellation and cleanup remain direct host failures, not obse
   const controller = new AbortController();
   const { shell } = fixture(context, [
     { name: "cancel", async execute() { controller.abort(false); throw new TypeError(secret); } },
-    { name: "clean", async execute(command) { command.registerCleanup(async () => { throw null; }); return { exitCode: 0 }; } },
+    { name: "clean", async execute(command) {
+      assert.ok(command.registerCleanup);
+      command.registerCleanup(async () => { throw null; });
+      return { exitCode: 0 };
+    } },
   ], { onInternalError(reason) { seen.push(reason); } });
   await assert.rejects(shell.exec("cancel", { signal: controller.signal }), reason => reason === false);
   await assert.rejects(shell.exec("clean"), reason => reason === null);
@@ -553,7 +563,7 @@ for (const stage of ["createBudget", "makeFsModule", "run"] as const) {
   test(`HOST SafeJS ${stage} keeps original falsey or error identity`, async context => {
     const seen: unknown[] = [];
     const failure = stage === "run" ? null : new TypeError(secret);
-    const runtime = { createBudget() { return {}; }, makeFsModule() { return {}; }, declareHostOperation(operation) { return operation; }, async run() { return { ok: true }; } };
+    const runtime = { createBudget() { return {}; }, makeFsModule() { return {}; }, declareHostOperation(operation) { return operation; }, async run() { return { ok: true }; } } satisfies SafeJsRuntime<object>;
     runtime[stage] = () => { throw failure; };
     const { shell } = fixture(context, createSafeJsCommands({ runtime }), { onInternalError(reason) { seen.push(reason); } });
     const result = await shell.exec("safejs -e '1'");
