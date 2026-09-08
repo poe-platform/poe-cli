@@ -106,7 +106,7 @@ for (const [name, [empty, abc]] of Object.entries(vectors)) {
   test(`${name}: invalid tag/check/text combinations fail before input acquisition`, async () => {
     const fs = await fixture();
     fs.readStream = () => { assert.fail("invalid flags acquired a file"); };
-    const stdin = (async function* () { assert.fail("invalid flags acquired stdin"); })();
+    const stdin = { [Symbol.asyncIterator]() { assert.fail("invalid flags acquired stdin"); } };
     for (const flags of [["--tag", "-c"], ["-c", "--tag"], ["--tag", "-t"], ["--tag", "--text", "-z"]]) {
       const result = await run(name, [...flags, "missing"], { fs, stdin });
       assert.equal(result.exitCode, 2);

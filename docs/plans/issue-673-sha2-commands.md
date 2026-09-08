@@ -72,3 +72,27 @@ Local evidence: `/tmp/kamilio-673-checksums-red.log`,
 - No build, full-root lint, Git operations, staging, or publication occurs in
   this worker scope. Root owns inventory integration and final maintained
   build, typecheck, lint, installed-consumer checks, and release delivery.
+
+## Integrated delivery validation
+
+The independent default inventories now list all 82 commands; collision tests
+still preserve the unrelated 83rd registration. The maintained nine-file
+checksum/budget/preset cohort passes 246 cases with no skips, and the root
+bundle/packaging selection passes 11 cases. The first lint run caught an empty
+async-generator test trap; replace it with a direct iterator-acquisition trap.
+All 44 checksum cases then pass, and maintained repository lint, types and
+workflow lint complete with exit zero.
+
+The normal full build passes. Fresh artifacts at
+`/tmp/kamilio-673-public.VgaYjv`, version `0.0.0-issue673-local`, pass installed
+Node/Bun smoke, Node declarations, strict browser declarations without ambient
+Node types, browser bundling and execution. Both installed smoke routes exercise
+the three new names against independent fixed SHA-2 vectors, tagged generation,
+tagged verification and NUL output. This is an installed local candidate, not
+proof of npm publication. Its `head` records the implementation commit; the
+subsequent iterator-test and documentation changes do not alter packaged runtime.
+
+Final evidence: `/tmp/kamilio-673-integration-final.log`,
+`/tmp/kamilio-673-root-focused.log`, `/tmp/kamilio-673-lint-repair-test.log`,
+`/tmp/kamilio-673-lint-final.log`, `/tmp/kamilio-673-build.log`, and the candidate's
+`public-smoke.exit`. Keep verified remote delivery and publication separate.
