@@ -185,3 +185,35 @@ fixture passes against the unchanged final package tarballs. Installed Node and
 Bun smoke and strict browser declarations without ambient Node types also pass.
 Actual workerd acceptance for the final artifact passes all 29 cases; see the
 separate installed-artifact validation document for hashes and cleanup evidence.
+
+## September 8 delivery gate update
+
+The maintained `npm test` route completed with exit zero using CI's exact
+Node 22.23.2/npm 10.9.8 toolchain. Evidence is
+`/tmp/kamilio-delivery-v6.K4UWR1/unit.log` and `unit.exit`, with its starting
+revision recorded in `head`. This includes the normal pre/event/post scripts:
+20,245 shared tests; 291 SafeBash runner controls; 22,385 SafeBash cases;
+21,631 SafeJS cases; 288 terminal-pilot cases; 29 Python cases; and two root
+lint stress cases passed. Explicit skips remain skips, not passes. Focused
+upstream Unicode-whitespace and snapshot regressions also pass after rebasing.
+
+The v5 public artifact is rejected, not accepted: packaging after the unit
+route's workspace build captured an unbundled 67-byte browser entry. Changing
+resolver conditions cannot fix that artifact. The normal `npm run build`
+subsequently completed with exit zero, including its maintained browser
+bundling suffix (`/tmp/kamilio-672-delivery-v7-build.log`). No later workspace
+build runs before packaging the v7 candidate.
+
+The freshly packed and offline-installed v7 candidate is
+`/tmp/kamilio-672-delivery-v7-public.8OvgFK`, source
+`6355de7e74737f4c382e891140a936bc847240f1`, version
+`0.0.0-issue672-delivery3`. Node and Bun public smoke, Node declarations,
+strict browser declarations with no ambient Node types, browser bundling and
+browser execution pass; `public-smoke.exit` is zero. This does not reuse the
+v3/v5 tarballs. Fresh actual-workerd admission and execution are recorded
+separately in the workerd validation document before final push.
+
+Maintained repository lint is also clean:
+`/tmp/kamilio-snapshot-repair-lint.exit` is zero. The intervening release-only
+repairs alter tests, documentation and queue policy, not the portable product
+runtime. Preserve separate local, remote-main and published-release statuses.
