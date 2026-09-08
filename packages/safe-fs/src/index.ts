@@ -1,5 +1,6 @@
 export * from "./contracts/index.js";
 export * from "./fs/memory/index.js";
+export * from "./fs/devices/index.js";
 export * from "./fs/real/index.js";
 export * from "./fs/s3/index.js";
 export type { S3StreamGetInput, S3StreamGetOutput, S3StreamPutInput } from "./fs/s3/transport.js";

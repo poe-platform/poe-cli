@@ -1,18 +1,19 @@
 import { escapeText } from "../../escaping.js";
+import { pathOf } from "../internal.js";
 import {
   createOutputOperation,
   FsError,
   readBytes,
-  resolvePath,
   type ByteSource,
   type CommandContext,
   type CommandDefinition,
+  type FileSystemCapabilities,
   type InvocationCleanup,
   type OutputOperation,
   type VirtualShellPlugin,
 } from "../../contracts/index.js";
 import { createYqQuerySession, YqValueFailure, type YqQuerySession } from "../structured/query-core.js";
-import { JqError, JqLimitError, wellFormed, type Json } from "../structured/limits.js";
+import { interruptible, JqError, JqLimitError, wellFormed, type Json } from "../structured/limits.js";
 import { YqLedger, yqCaps } from "./accounting.js";
 import { encodeJson, encodeRaw, encodeYaml } from "./encoder.js";
 import { fromJqLimit, YqError, type YqCode } from "./errors.js";
@@ -358,8 +359,21 @@ async function sourceFrames(
   sourceName: string,
 ): Promise<InputFrame[]> {
   if (sourceName === "-") return collectSource(context, owner, session, "<stdin>", context.stdin, false);
-  const path = resolvePath(context.cwd, sourceName);
-  if (context.fs.readStream) {
+  const path = pathOf(context, sourceName);
+  await session.ownedWork.charge();
+  owner.assertOpen(context.signal);
+  let capabilities: FileSystemCapabilities;
+  try {
+    capabilities = context.fs.capabilitiesFor
+      ? await interruptible(() => context.fs.capabilitiesFor!(path, { signal: context.signal }), context.signal)
+      : context.fs.capabilities;
+  } catch (failure) {
+    if (context.signal.aborted) throw context.signal.reason;
+    if (failure instanceof FsError) throw new YqError("vfs", "VFS_INPUT_OPEN", 2, sourceName);
+    throw failure;
+  }
+  owner.assertOpen(context.signal);
+  if (context.fs.readStream && capabilities.streamingRead !== false) {
     let source: ByteSource;
     try { source = context.fs.readStream(path, { signal: context.signal }); }
     catch (failure) {

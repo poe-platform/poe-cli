@@ -273,7 +273,7 @@ for (const source of ["test -e /", "cd /", "printf x > /out", "echo /*"]) {
   });
 }
 
-test("frozen host descriptors, method receivers, capabilities and optional absence are transparent", async context => {
+test("frozen host descriptors, method receivers, capabilities and optional absence are transparent", async () => {
   const capabilities = Object.freeze({ read: true, descriptorWriteStream: true });
   const specific = Object.freeze({ readOnly: true, descriptorWriteStream: false });
   const memory = new MemoryFileSystem();
@@ -282,19 +282,43 @@ test("frozen host descriptors, method receivers, capabilities and optional absen
     async stat(path: string) { assert.equal(this, filesystem); return memory.stat(path); },
     async capabilitiesFor(path: string) { assert.equal(this, filesystem); assert.equal(path, "/selected"); return specific; },
   }) as unknown as FileSystem;
-  const { shell, commands } = fixture(context, 2, filesystem);
-  commands.register({ name: "transparent", async execute({ fs }) {
-    assert.equal(fs.capabilities, capabilities);
+  let operations = 0;
+  const fs = scopeFileSystem(filesystem, () => { operations++; }, new AbortController().signal);
+  assert.equal(fs.capabilities, capabilities);
+  assert.equal(await fs.capabilitiesFor!("/selected"), specific);
+  assert.equal(fs.readStream, undefined);
+  assert.equal(fs.writeStream, undefined);
+  assert.equal(fs.openReadFile, undefined);
+  assert.equal("openReadFile" in fs, false);
+  assert.equal(fs.stat, fs.stat);
+  await fs.stat("/");
+  assert.equal(operations, 2);
+});
+
+test("Shell adds device methods while retaining ordinary per-path capability identity", async context => {
+  const capabilities = Object.freeze({ read: true, descriptorWriteStream: true });
+  const specific = Object.freeze({ readOnly: true, descriptorWriteStream: false });
+  const memory = new MemoryFileSystem();
+  const filesystem = Object.freeze({
+    capabilities,
+    async stat(path: string) { assert.equal(this, filesystem); return memory.stat(path); },
+    async capabilitiesFor(path: string) { assert.equal(this, filesystem); assert.equal(path, "/selected"); return specific; },
+  }) as unknown as FileSystem;
+  const { shell, commands } = fixture(context, 3, filesystem);
+  commands.register({ name: "device-view", async execute({ fs }) {
+    assert.notEqual(fs.capabilities, capabilities);
+    assert.equal(fs.capabilities.readOnly, false);
     assert.equal(await fs.capabilitiesFor!("/selected"), specific);
-    assert.equal(fs.readStream, undefined);
-    assert.equal(fs.writeStream, undefined);
-    assert.equal(fs.openReadFile, undefined);
-    assert.equal("openReadFile" in fs, false);
-    assert.equal(fs.stat, fs.stat);
-    await fs.stat("/");
+    assert.equal(typeof fs.readStream, "function");
+    assert.equal(typeof fs.writeStream, "function");
+    assert.equal(typeof fs.openReadFile, "function");
+    assert.equal((await fs.stat("/dev/null")).type, "character");
+    const device = await fs.capabilitiesFor!("/dev/null");
+    assert.equal(device.streamingWrite, true);
+    assert.equal(device.readOnly, false);
     return { exitCode: 0 };
   } });
-  const result = await shell.exec("transparent");
+  const result = await shell.exec("device-view");
   assert.equal(result.stderr, "");
   assert.equal(result.exitCode, 0);
 });

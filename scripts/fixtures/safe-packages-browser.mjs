@@ -1,10 +1,11 @@
 import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
-import { checksumWorkflows, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
-import { FsError as CoreFsError } from "@poe-platform/safe-fs/core";
+import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
+import { FsError as CoreFsError, createDeviceFileSystem } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
 if (FsError !== CoreFsError) throw new Error("Browser filesystem identity diverged");
 if (FsError !== CompatibilityFsError) throw new Error("Compatibility filesystem identity diverged");
+await verifyNullDeviceView({ createMemoryFileSystem, createDeviceFileSystem });
 const definitions = createAgentCommands();
 const commandNames = definitions.map(command => command.name).sort();
 if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
@@ -33,6 +34,7 @@ try {
   if (result.exitCode !== 0 || result.stdout !== "a\nb\n") throw new Error("Browser shell smoke failed");
   for (const [script, expected] of [
     ...checksumWorkflows,
+    ...nullDeviceWorkflows,
     ["printf 'a,b\\nc,d\\n' | cut -d , -f 2", "b\nd\n"],
     ["printf 'a\\tb\\tc\\n' | cut -f 1,3", "a\tc\n"],
     ["printf 'a,,c\\n,b,\\n' > /fields; cut -d , -f 2,3 /fields", ",c\nb,\n"],

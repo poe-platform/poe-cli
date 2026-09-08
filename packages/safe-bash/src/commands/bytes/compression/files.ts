@@ -58,10 +58,11 @@ export async function planOperands(context: CommandContext, options: Compression
     context.signal.throwIfAborted();
     if (name === "-") { plans.push({ source: "-" }); continue; }
     if (!name) throw new FsError("ENOENT", { path: name });
-    if (!context.fs.readStream || context.fs.capabilities.streamingRead === false) {
+    const source = pathOf(context, name);
+    const sourceCapabilities = await context.fs.capabilitiesFor?.(source, { signal: context.signal }) ?? context.fs.capabilities;
+    if (!context.fs.readStream || sourceCapabilities.streamingRead === false) {
       throw new FsError("ENOTSUP", { message: "named input requires VFS streaming reads; no readFile fallback" });
     }
-    const source = pathOf(context, name);
     const sourceStat = await context.fs.lstat(source, { signal: context.signal });
     if (sourceStat.type !== "file") throw new FsError("EINVAL", { path: source, message: "input must be a regular, non-symlink file" });
     const realSource = await context.fs.realpath(source, { signal: context.signal });
@@ -69,13 +70,15 @@ export async function planOperands(context: CommandContext, options: Compression
     if (context.fs.capabilities.readOnly === true) {
       throw new FsError("EROFS", { syscall: context.command, path: realSource });
     }
-    if (!context.fs.writeStream || context.fs.capabilities.streamingWrite === false) {
-      throw new FsError("ENOTSUP", { message: "file output requires VFS streaming writes (use -c for stdout)" });
-    }
     if (!options.keep && !options.force && (sourceStat.nlink ?? 1) > 1) {
       throw new FsError("EINVAL", { path: source, message: "input has multiple links (use -k or -f)" });
     }
     const destination = outputPath(realSource, options);
+    const capabilities = await context.fs.capabilitiesFor?.(destination, { signal: context.signal }) ?? context.fs.capabilities;
+    if (capabilities.readOnly === true) throw new FsError("EROFS", { syscall: context.command, path: destination });
+    if (!context.fs.writeStream || capabilities.streamingWrite === false) {
+      throw new FsError("ENOTSUP", { message: "file output requires VFS streaming writes (use -c for stdout)" });
+    }
     const destinationStat = await existing(context, destination);
     if (destinationStat) {
       if (destinationStat.type !== "file" || sameIdentity(sourceStat, destinationStat)
@@ -83,7 +86,7 @@ export async function planOperands(context: CommandContext, options: Compression
         throw new FsError("EINVAL", { path: destination, message: "destination is not a distinct regular file" });
       }
       if (!options.force) throw new FsError("EEXIST", { path: destination });
-      if (context.fs.capabilities.atomicRename !== true) {
+      if (capabilities.atomicRename !== true) {
         throw new FsError("ENOTSUP", { path: destination, message: "forced replacement requires VFS atomicRename" });
       }
     }

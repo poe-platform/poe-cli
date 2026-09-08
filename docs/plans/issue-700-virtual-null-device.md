@@ -1,0 +1,107 @@
+# Issue 700: virtual null device for injected filesystems
+
+## Validated problem
+
+Issue 700 is authored by kamilio. Its current requirements cover direct command
+filesystem access as well as redirects. The installed public-artifact probe in
+`/tmp/kamilio-700-null-device-red.json` reproduced persisted diagnostics, stale
+reads, canonical-path writes, deletion of historical rows, and absent-device
+ENOENT. The subsequent SHA-2 changes did not add a device boundary. This evidence
+does not establish persistent-service or workerd acceptance.
+
+## Required behavior
+
+- Install a public SafeFS device view at the Shell execution filesystem boundary,
+  including execution overrides, before invocation operation accounting. Nested
+  execution must preserve the same view and existing cleanup/budget semantics.
+- Reserve `/dev/null`: EOF reads, discarded normal/append writes, EEXIST exclusive
+  creation, ENOTDIR traversal through the device, and protected replacement,
+  removal and ancestor mutations. Canonical paths and supported symlink aliases
+  must not bypass the device. Ordinary backing files retain their behavior.
+- Expose the device as an explicit character-device FileType with zero size and
+  allocation, fixed readable/writable permissions and stable view-owned identity.
+  Extend supported metadata/bridge consumers rather than claiming a regular file
+  is a character device. `/dev` is a visible directory; listings merge siblings,
+  mask duplicate historical null entries and honor entry admission limits.
+- Do not write, delete or allocate quota for a backing null row. Existing rows
+  remain untouched and are masked only through the view. Listings that bypass
+  the view remain the application's responsibility until explicit cleanup.
+- Streaming must drain in bounded space, yield cooperatively, observe aborts,
+  and await producer cleanup while preserving the primary error, including falsey
+  abort reasons. Copying to the device must not delegate storage publication or
+  collect the whole source; unsupported streaming backends fail explicitly.
+- Keep normal-file capability and entry-identity behavior. Reject unsupported
+  device mutations explicitly instead of silently forwarding them to storage.
+
+## Implementation boundaries
+
+The public entrypoint is `createDeviceFileSystem(filesystem)` returning an
+idempotent device view; `DeviceFileSystem` is its named implementation. SafeFS
+owns path routing, metadata, capabilities, bounded streams and backing protection.
+SafeBash installs it once at the root execution boundary, and recognizes the new
+character-device metadata in relevant commands. No provider-specific branch,
+ambient host device, native fallback or new runtime dependency is required.
+
+## Validation and delivery
+
+Use TDD for SafeFS and actual Shell workflows with in-memory backing mutation
+spies. Cover fresh and historical rows, aliases, retained reads, write modes,
+copy, tee, metadata, directory limits, reserved ancestors, falsey cancellation,
+producer finalization, overrides and nested invocation. Preserve existing
+ordinary-file capability, identity and cleanup regression cohorts.
+
+Then run maintained workspace/full tests and lint, normal build, packed installed
+public consumers, and actual workerd with no Node compatibility flags. Exercise
+an injected persistent adapter, a large canceled stream, and a backing-store spy;
+memory-only tests are not acceptance for those requirements. Verify public
+metadata output visually when command rendering changes. Push only validated
+changes after pulling/rebasing; close the issue after verified remote delivery,
+and monitor both releases until successful publication. No fix is claimed yet.
+
+## Development evidence
+
+- The six installed public Shell smoke workflows fail against the untouched
+  SHA-2 candidate, recorded through `/tmp/kamilio-700-public-red.path`. This is
+  pre-fix candidate evidence, not a freshly fetched npm-version claim.
+- Actual workerd reproduction uses three fresh containers with the same owned
+  persisted R2 storage. A 32-byte historical row survives recreation, is replaced
+  by a 45-byte diagnostic by the unfixed Shell, and remains corrupted after a
+  further recreation. Ordinary persistence is a separate positive control.
+  The report at
+  `/tmp/kamilio-700-workerd-qa.vtgWif/candidate-aDRgZj/continuity-DsNK0C/baseline-report.json`
+  explicitly records feature acceptance as false. Its isolated-runtime graph,
+  pinned tools, storage continuity, artifact hashes and cleanup were inspected.
+- A selected workspace build does not restore the root shared runtime bundles.
+  The subsequent normal `npm run build` completed and its canonical
+  `poe-code/safe-fs/core` device-factory import was verified. Browser bundle and
+  package checks then passed 11 tests; the playground workspace passed 166 tests.
+  These are intermediate build results, not final-candidate acceptance.
+- Post-installation Shell regressions exposed force-copy admission, append
+  admission over read-only backing, raw traversal normalization, host-method
+  assignment, and zero-consumption stream cleanup. Preserve those failures and
+  their negative tests while correcting the implementation. Newly visible
+  `/dev` entries require explicit current-listing expectations, not hiding the
+  device or dropping ordinary-file assertions.
+- Device views intentionally add bounded stream methods and mixed path-specific
+  capabilities. Keep the original transparent-scoping assertions against
+  `scopeFileSystem` itself, and separately assert the effective Shell device view;
+  raw optional-method absence cannot describe the newly provided device methods.
+- An intermediate real-playground visual check shows discarded writes, EOF,
+  `crw-rw-rw-`, character-device metadata, zero size and a ready prompt. The image
+  `/tmp/kamilio-700-playground-visual.K6tnmg/device-output.png` was inspected;
+  its browser session was closed afterward. This validates rendering, not the
+  final packed candidate or publication.
+- The mixed view exposed ordinary-file regressions where callers used global
+  permission flags or optional-method presence instead of actual-path
+  capabilities. Reproduced failures cover capped stream fallbacks, strict
+  permission refusal, and cross-device move timestamps. The fixes preserve
+  existing bounds and refusal semantics; they do not add unbounded fallbacks.
+- Final source-focused SafeFS checks pass 53 device tests and 249 related tests.
+  SafeBash's device cohort passes 37 tests and its main affected cohort passes
+  802 tests. A separate 26-case family regression suite covers absent methods,
+  explicitly disabled streams, bounded fallbacks, cancellation, read-only
+  backing files, and masked historical rows.
+- The third normal build succeeds. Its rebuilt public bundle, packaging, and
+  playground checks pass 177 tests. Full repository tests, final installed
+  consumers, persistent workerd acceptance, and publication remain pending;
+  these focused results do not substitute for those gates.

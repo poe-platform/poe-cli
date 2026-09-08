@@ -75,6 +75,8 @@ function needCapability(context: CommandContext, capability: "symlink" | "link" 
 }
 
 async function admitEmptyDirectory(context: CommandContext, path: string, readDirectory: DirectoryReader): Promise<void> {
+  const stat = await maybeStat(context, path, false);
+  if (stat && stat.type !== "directory") throw new FsError("ENOTDIR", { syscall: "rmdir", path });
   try { await admitFilesystemModes(context, "rmdir", ["directory"], [path]); }
   catch (error) {
     context.signal.throwIfAborted();
@@ -162,13 +164,14 @@ async function copy(
     }
     if (!preflight) await context.fs.symlink!(linkTarget, target, { signal: context.signal });
   } else {
-    await admitFilesystemModes(context, "cp", ["file", ...flags.has("f") && targetStat ? ["replace", "exclusive"] : []], [target]);
+    const replace = flags.has("f") && targetStat !== undefined && targetStat.type !== "character";
+    await admitFilesystemModes(context, "cp", ["file", ...replace ? ["replace", "exclusive"] : []], [target]);
     if (targetStat?.type === "directory") throw new FsError("EISDIR", { path: target });
     if (preflight) return;
     try { await context.fs.copyFile(source, target, { signal: context.signal }); }
     catch (error) {
       context.signal.throwIfAborted();
-      if (!flags.has("f") || !targetStat || codeOf(error) !== "EACCES") throw error;
+      if (!replace || codeOf(error) !== "EACCES") throw error;
       const existing = await maybeStat(context, target, false);
       if (existing) {
         const sourceEntry = await context.fs.lstat(source, { signal: context.signal });
@@ -188,7 +191,7 @@ async function copy(
 }
 
 function modeText(stat: FileStat): string {
-  let text = stat.type === "directory" ? "d" : stat.type === "symlink" ? "l" : "-";
+  let text = stat.type === "directory" ? "d" : stat.type === "symlink" ? "l" : stat.type === "character" ? "c" : "-";
   for (const shift of [6, 3, 0]) {
     const mode = stat.mode >> shift;
     text += (mode & 4 ? "r" : "-") + (mode & 2 ? "w" : "-") + (mode & 1 ? "x" : "-");
@@ -207,12 +210,22 @@ export function filesystemCommands(maxDirectoryEntries?: number): CommandDefinit
       requireOperands(parsed.operands);
       const mode = value(parsed, "m");
       if (mode !== undefined && !/^[0-7]{1,4}$/u.test(mode)) throw new UsageError(`invalid mode '${mode}' (octal required)`);
-      await preflightOperands(context, parsed.operands, operand => admitFilesystemModes(context, "mkdir",
-        [parsed.flags.has("p") ? "parents" : "directory"], [pathOf(context, operand)]));
-      return eachOperand(context, parsed.operands, async operand => {
-        await context.fs.mkdir(pathOf(context, operand), { recursive: parsed.flags.has("p"), ...(mode === undefined ? {} : { mode: parseInt(mode, 8) }), signal: context.signal });
-        if (parsed.flags.has("v")) await output(context, `mkdir: created directory '${escapeText(operand, "display")}'\n`);
-      });
+      const createDirectory = async (operand: string, preflight: boolean): Promise<void> => {
+        const path = pathOf(context, operand);
+        const recursive = parsed.flags.has("p");
+        const stat = await maybeStat(context, path, recursive);
+        if (stat) {
+          if (recursive && stat.type === "directory") return;
+          throw new FsError("EEXIST", { syscall: "mkdir", path });
+        }
+        await admitFilesystemModes(context, "mkdir", [recursive ? "parents" : "directory"], [path]);
+        if (!preflight) {
+          await context.fs.mkdir(path, { recursive, ...(mode === undefined ? {} : { mode: parseInt(mode, 8) }), signal: context.signal });
+          if (parsed.flags.has("v")) await output(context, `mkdir: created directory '${escapeText(operand, "display")}'\n`);
+        }
+      };
+      await preflightOperands(context, parsed.operands, operand => createDirectory(operand, true));
+      return eachOperand(context, parsed.operands, operand => createDirectory(operand, false));
     }),
     define("touch", async context => {
       const parsed = options(context.args, "camr:", { "no-create": "c", reference: "r" });

@@ -1,4 +1,5 @@
 import { writeDiagnostic } from "../escaping.js";
+import { createDeviceFileSystem } from "poe-code/safe-fs/core";
 import { CommandRegistry, resolvePath, toByteSource } from "../contracts/index.js";
 import type {
   ByteSink, CommandDefinition, FileSystemFactory, Middleware, PluginHost,
@@ -258,7 +259,7 @@ export class Shell implements PluginHost {
         };
         const admission = Runtime.rootCancellationAdmission(budget);
         const runtime = new Runtime(
-          options.fs ?? this.#options.fs,
+          createDeviceFileSystem(options.fs ?? this.#options.fs),
           this.commands,
           [...this.#middleware],
           budget,

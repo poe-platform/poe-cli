@@ -80,7 +80,7 @@ export function findCommands(execute: CommandHandler, maxDirectoryEntries?: numb
           };
         }
         if (token === "-type") {
-          const types: Record<string, string> = { f: "file", d: "directory", l: "symlink" };
+          const types: Record<string, string> = { f: "file", d: "directory", l: "symlink", c: "character" };
           if (!types[operand]) throw new UsageError(`unsupported file type '${operand}'`);
           return async entry => entry.stat.type === types[operand];
         }

@@ -3,10 +3,15 @@ import {
   type AgentCommandsOptions, type BoundedRegexProvider, type PortableSearchOptions, type BoundedRegexProviderOptions,
   type SafeJsModule, type SafeJsRuntime,
 } from "@poe-platform/safe-bash";
-import type { FileSystem, FsBridgeOptions } from "@poe-platform/safe-fs/core";
+import { createDeviceFileSystem, createMemoryFileSystem, type DeviceFileSystem, type FileSystem, type FileType, type FsBridgeOptions } from "@poe-platform/safe-fs/core";
 import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
 import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
+
+const devices: DeviceFileSystem & FileSystem = createDeviceFileSystem(createMemoryFileSystem());
+const characterType: FileType = "character";
+const nullStat = await devices.stat("/dev/null");
+if (nullStat.type !== characterType) throw new Error("Public device type contract failed");
 
 for (const paths of [contractPath, indexedPath, directPath]) {
   const joined: string = paths.join("/workspace", "file.txt");

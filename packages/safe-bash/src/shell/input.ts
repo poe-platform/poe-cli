@@ -14,7 +14,8 @@ export async function fileInput(fs: FileSystem, path: string, maxBytes: number, 
     return toByteSource(bytes);
   }
   const readStream = fs.readStream;
-  if (!readStream || fs.capabilities.streamingRead === false) return bufferedInput();
+  const capabilities = await interruptible(Promise.resolve(fs.capabilitiesFor?.(path, { signal }) ?? fs.capabilities), signal);
+  if (!readStream || capabilities.streamingRead === false) return bufferedInput();
   let iterator: AsyncIterator<Uint8Array>;
   try { iterator = readStream.call(fs, path, { signal })[Symbol.asyncIterator](); }
   catch (error) {

@@ -87,7 +87,7 @@ export function requireOperands(operands: readonly string[], minimum = 1, maximu
   if (operands.length > maximum) throw new UsageError(`extra operand '${operands[maximum]}'`);
 }
 
-export function pathOf(context: CommandContext, path: string): string {
+export function pathOf(context: Pick<CommandContext, "cwd">, path: string): string {
   if (!path) throw new FsError("ENOENT", { path });
   validatePath(path);
   validatePath(context.cwd);
@@ -143,7 +143,8 @@ export async function* input(context: CommandContext, name = "-"): ByteSource {
   } else {
     await assertInputRequirements(context, [name]);
     const path = pathOf(context, name);
-    if (context.fs.readStream && context.fs.capabilities.streamingRead !== false) {
+    const capabilities = await context.fs.capabilitiesFor?.(path, { signal: context.signal }) ?? context.fs.capabilities;
+    if (context.fs.readStream && capabilities.streamingRead !== false) {
       let emitted = false;
       let reading = true;
       try {
@@ -159,7 +160,7 @@ export async function* input(context: CommandContext, name = "-"): ByteSource {
         if (!reading || emitted || !(error instanceof FsError) || error.code !== "ENOTSUP") throw error;
       }
     }
-    if (context.fs.capabilities.read === false) throw new FsError("ENOTSUP", { syscall: "readFile", path });
+    if (capabilities.read === false) throw new FsError("ENOTSUP", { syscall: "readFile", path });
     yield* readBytes({
       async *[Symbol.asyncIterator]() {
         const bytes = await context.fs.readFile(path, { signal: context.signal, maxBytes: bufferLimit });

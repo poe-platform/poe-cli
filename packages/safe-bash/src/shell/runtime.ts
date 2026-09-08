@@ -36,7 +36,7 @@ import { bindFileOutputBudget, openFileOutput } from "../contracts/filesystem-ou
 import { outputFailure } from "../contracts/io.js";
 import { executionCommands } from "../commands/execution.js";
 import { formatPrintf, printfCommand } from "../commands/basic.js";
-import { UsageError } from "../commands/internal.js";
+import { pathOf, UsageError } from "../commands/internal.js";
 import { cloneGetoptsState, createGetoptsInput, createGetoptsState, GetoptsError, getoptsInputAllocationSize, scanGetopts, withGetoptsIndex } from "./getopts.js";
 import type { GetoptsState } from "./getopts.js";
 import {
@@ -709,17 +709,18 @@ class CdLookup {
       const raw = absolute ? target : component.startsWith("/") ? `${component}/${target}`
         : component ? `${cwd}/${component}/${target}` : `${cwd}/${target}`;
       const path = resolvePath(cwd, raw);
+      const operand = pathOf({ cwd }, raw);
       await this.scan(path);
       this.signal.throwIfAborted();
       if (++this.probes > 4097) throw new PublicDiagnostic("cd: probe limit exceeded");
       await this.charge(1);
       this.signal.throwIfAborted();
-      const stat = await fs.stat(path, { signal: this.signal });
+      const stat = await fs.stat(operand, { signal: this.signal });
       this.signal.throwIfAborted();
       if (stat.type !== "directory") throw new FsError("ENOTDIR", { path });
       await this.charge(1);
       this.signal.throwIfAborted();
-      await fs.access(path, ACCESS_MODES.X_OK, { signal: this.signal });
+      await fs.access(operand, ACCESS_MODES.X_OK, { signal: this.signal });
       this.signal.throwIfAborted();
       return path;
     };
@@ -2239,7 +2240,7 @@ export class Runtime {
           }
         }
       } else {
-        const path = resolvePath(state.cwd, target);
+        const path = pathOf(state, target);
         const options = { signal: this.signal };
         if (redirect.operator === "<") {
           await interruptible(this.fs.access(path, 4, options), this.signal);
@@ -2254,24 +2255,25 @@ export class Runtime {
           const append = redirect.operator === ">>";
           const capabilities = await this.fs.capabilitiesFor?.(path, options) ?? this.fs.capabilities;
           const random = capabilities.randomAccessWrite === true;
+          const key = resolvePath(state.cwd, path);
           let file!: OutputFile;
-          await this.fileOperation(path, async () => {
-            file = this.outputFiles.get(path) ?? { data: undefined, references: 0 };
+          await this.fileOperation(key, async () => {
+            file = this.outputFiles.get(key) ?? { data: undefined, references: 0 };
             if (!random && file.references) throw new FsError("ENOTSUP", { path, message: "Conflicting sequential output descriptors" });
             file.references++;
-            this.outputFiles.set(path, file);
+            this.outputFiles.set(key, file);
           });
           let closed = false;
           let offset = 0;
           const incremental = async (): Promise<ByteSink> => {
-            await this.fileOperation(path, async () => {
+            await this.fileOperation(key, async () => {
               if (append) await this.fs.appendFile(path, new Uint8Array(), options);
               else await this.fs.writeFile(path, new Uint8Array(), { ...options, flag: "w" });
               if (!append) file.data = new Uint8Array();
             });
             return { write: (chunk) => {
               const copy = new Uint8Array(chunk);
-              return this.fileOperation(path, async () => {
+              return this.fileOperation(key, async () => {
                 if (closed) throw new Error("Output descriptor is closed");
                 const current = file.data;
                 let atEOF = false;
@@ -2305,7 +2307,7 @@ export class Runtime {
             if (closed) return;
             closed = true;
             resumePathCache();
-            if (--file.references === 0 && this.outputFiles.get(path) === file) this.outputFiles.delete(path);
+            if (--file.references === 0 && this.outputFiles.get(key) === file) this.outputFiles.delete(key);
           };
           let target;
           let outputScope: InvocationScope | undefined;
@@ -2856,11 +2858,13 @@ export class Runtime {
     let denied: CommandFailure | undefined;
     const matches: string[] = [];
     for (const target of pathTargets(name, state.variables.PATH, this.budget.limits, this.signal, limit => this.budget.fail(limit))) {
-      const resolved = resolvePath(state.cwd, target);
+      const resolved = pathOf(state, target);
       try {
         const options = { signal: this.signal };
         if (!await interruptible(this.budget.pathLookup.isFile(this.fs, resolved, this.signal), this.signal)) continue;
-        if (this.fs.capabilities.permissions !== true) throw new CommandFailure(`${target}: execution permissions are not supported by this filesystem`, 126);
+        const capabilities = this.fs.capabilitiesFor
+          ? await interruptible(this.fs.capabilitiesFor(resolved, options), this.signal) : this.fs.capabilities;
+        if (capabilities.permissions !== true) throw new CommandFailure(`${target}: execution permissions are not supported by this filesystem`, 126);
         await interruptible(this.fs.access(resolved, ACCESS_MODES.X_OK, options), this.signal);
         matches.push(target);
         if (!all) return matches;
@@ -3214,7 +3218,7 @@ export class Runtime {
   async scriptFile(context: CommandContext, state: State, io: IO, target: string, args: readonly string[], direct: boolean, errexit = false, loadedSource?: { path: string; source: string }, braceexpand = true): Promise<number> {
     if (target === "") throw new CommandFailure(`${context.command}: : No such file or directory`, 127);
     if (state.depth >= this.budget.limits.maxSubstitutionDepth) this.budget.fail("maxSubstitutionDepth");
-    const path = resolvePath(state.cwd, target);
+    const path = pathOf(state, target);
     let source: string;
     let environmentInterpreter: RegExpExecArray | null = null;
     let interpreterProfile: "bash" | "sh" | undefined;
@@ -3224,7 +3228,11 @@ export class Runtime {
         const options = { signal: this.signal };
         const stat = await interruptible(this.fs.stat(path, options), this.signal);
         if (stat.type !== "file") throw new CommandFailure(`${target}: ${stat.type === "directory" ? "Is a directory" : "not a regular file"}`, 126);
-        if (direct && this.fs.capabilities.permissions !== true) throw new CommandFailure(`${target}: execution permissions are not supported by this filesystem`, 126);
+        if (direct) {
+          const capabilities = this.fs.capabilitiesFor
+            ? await interruptible(this.fs.capabilitiesFor(path, options), this.signal) : this.fs.capabilities;
+          if (capabilities.permissions !== true) throw new CommandFailure(`${target}: execution permissions are not supported by this filesystem`, 126);
+        }
         await interruptible(this.fs.access(path, ACCESS_MODES.R_OK | (direct ? ACCESS_MODES.X_OK : 0), options), this.signal);
         const maxBytes = this.budget.limits.maxSourceBytes - this.budget.sourceBytes;
         if (stat.size > maxBytes) this.budget.fail("maxSourceBytes");
@@ -3355,7 +3363,7 @@ export class Runtime {
       if (filename && !filename.includes("/") && state.variables.PATH) {
         let found = false;
         for (const candidate of pathTargets(filename, state.variables.PATH, this.budget.limits, this.signal, limit => this.budget.fail(limit))) {
-          const path = resolvePath(state.cwd, candidate);
+          const path = pathOf(state, candidate);
           try {
             if (!await interruptible(this.budget.pathLookup.isFile(this.fs, path, this.signal), this.signal)) continue;
             await interruptible(this.fs.access(path, ACCESS_MODES.R_OK, options), this.signal);
@@ -3370,7 +3378,7 @@ export class Runtime {
         if (!found && state.profile === "sh") throw new CommandFailure(`${context.command}: ${filename}: file not found`, 1);
       }
       if (!filename) throw new CommandFailure(": No such file or directory", 1);
-      const path = resolvePath(state.cwd, target);
+      const path = pathOf(state, target);
       const stat = await interruptible(this.fs.stat(path, options), this.signal);
       if (stat.type === "directory") throw new CommandFailure(`${context.command}: ${target}: is a directory`, 1);
       if (stat.type !== "file") throw new CommandFailure(`${target}: not a regular file`, 1);
@@ -5052,7 +5060,7 @@ export class Runtime {
           for (const candidate of candidates) {
             let entries;
             try {
-              const pending = this.fs.readdir(resolvePath(state.cwd, candidate || "."), { signal: this.signal });
+              const pending = this.fs.readdir(pathOf(state, candidate || "."), { signal: this.signal });
               entries = arrayStore(state) ? await interruptible(pending, this.signal) : await pending;
             }
             catch (error) { if (["ENOENT", "ENOTDIR", "EACCES"].includes(errorCode(error) ?? "")) continue; throw error; }
@@ -5069,7 +5077,7 @@ export class Runtime {
     const found: string[] = [];
     for (const candidate of candidates) {
       try {
-        const pending = this.fs.stat(resolvePath(state.cwd, candidate), { signal: this.signal });
+        const pending = this.fs.stat(pathOf(state, candidate), { signal: this.signal });
         const stat = arrayStore(state) ? await interruptible(pending, this.signal) : await pending;
         if (!value.endsWith("/") || stat.type === "directory") found.push(candidate + (value.endsWith("/") ? "/" : ""));
       } catch (error) { if (!["ENOENT", "ENOTDIR", "EACCES"].includes(errorCode(error) ?? "")) throw error; }

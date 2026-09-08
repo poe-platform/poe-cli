@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
 import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
-import { checksumWorkflows, defaultEntry, expectedAgentCommandNames, runNestedCommands } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, defaultEntry, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
 import * as nodeEntry from "@poe-platform/safe-bash/node";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import "./safe-packages-realms.mjs";
@@ -17,7 +17,7 @@ import "./safe-packages-console-override.mjs";
 import "./safe-packages-callback-phases.mjs";
 import "./safe-packages-curl-output.mjs";
 import { Budget, run } from "@poe-platform/safe-js";
-import { FsError, createMemoryFileSystem, createReadOnlyFileSystem } from "@poe-platform/safe-fs";
+import { FsError, createDeviceFileSystem, createMemoryFileSystem, createReadOnlyFileSystem } from "@poe-platform/safe-fs";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs";
 import { FsError as CoreFsError } from "@poe-platform/safe-js/fs/core";
 import { FsError as NodeFsError } from "@poe-platform/safe-js/fs/node";
@@ -27,6 +27,7 @@ assert.equal(FsError, ShellFsError);
 assert.equal(FsError, CompatibilityFsError);
 assert.equal(FsError, CoreFsError);
 assert.equal(FsError, NodeFsError);
+await verifyNullDeviceView({ createMemoryFileSystem, createDeviceFileSystem });
 for (const paths of [posixPath, nodeEntry.posixPath, contractPath, indexedPath, directPath]) {
   assert.equal(paths, posix);
   assert.equal(paths.sep, "/");
@@ -88,7 +89,7 @@ const boundedShell = new Shell({ fs: createMemoryFileSystem() }).use(
   agentCommands({ regexExecutor: createBoundedRegexProvider() }),
 );
 try {
-  for (const [script, expected] of checksumWorkflows) {
+  for (const [script, expected] of [...checksumWorkflows, ...nullDeviceWorkflows]) {
     const result = await boundedShell.exec(script);
     assert.equal(result.exitCode, 0, result.stderr);
     assert.equal(result.stdout, expected, script);

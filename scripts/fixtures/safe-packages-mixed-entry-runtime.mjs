@@ -21,6 +21,45 @@ export const checksumWorkflows = Object.freeze([
   [`printf abc > /sha-data; ${name} -z /sha-data`, `${digest}  /sha-data\0`],
 ]));
 
+export const nullDeviceWorkflows = Object.freeze([
+  ["cat /dev/null", ""],
+  ["printf discarded > /dev/null; printf appended >> /dev/null; cat /dev/null", ""],
+  ["printf copied | tee /dev/null; cat /dev/null", "copied"],
+  ["printf source > /device-input; cp /device-input /dev/null; cp /dev/null /device-output; cat /device-output", ""],
+  ["test -c /dev/null && test ! -f /dev/null && stat -c '%F %s' /dev/null", "character special file 0\n"],
+  ["cd /dev; printf relative > ./null; cat null", ""],
+]);
+
+export async function verifyNullDeviceView(filesystem) {
+  const backing = filesystem.createMemoryFileSystem();
+  await backing.mkdir("/dev");
+  await backing.writeFile("/dev/null", new TextEncoder().encode("historical"));
+  await backing.writeFile("/dev/sibling", new TextEncoder().encode("sibling"));
+  const device = filesystem.createDeviceFileSystem(backing);
+  if (device === backing || filesystem.createDeviceFileSystem(device) !== device) {
+    throw new Error("Public device view is not an idempotent wrapper");
+  }
+  const stat = await device.stat("/dev/null");
+  if (stat.type !== "character" || stat.size !== 0 || stat.allocatedBytes !== 0) {
+    throw new Error("Public null-device metadata is incorrect");
+  }
+  await device.writeFile("/dev/./null", new TextEncoder().encode("discarded"));
+  await device.appendFile("/dev/null", new TextEncoder().encode("discarded"));
+  if ((await device.readFile("/dev/null")).length !== 0) throw new Error("Public null-device read is not EOF");
+  if (new TextDecoder().decode(await backing.readFile("/dev/null")) !== "historical") {
+    throw new Error("Public device view changed the historical backing row");
+  }
+  const entries = await device.readdir("/dev");
+  if (entries.filter(entry => entry.name === "null" && entry.type === "character").length !== 1
+    || !entries.some(entry => entry.name === "sibling" && entry.type === "file")) {
+    throw new Error("Public device directory did not merge and mask entries");
+  }
+  let exclusiveError;
+  try { await device.writeFile("/dev/null", new Uint8Array(), { flag: "wx" }); }
+  catch (error) { exclusiveError = error; }
+  if (exclusiveError?.code !== "EEXIST") throw new Error("Public null-device exclusive creation did not reject");
+}
+
 export async function runNestedCommands(entry = defaultEntry, options = {}) {
   const failures = [];
   const shell = new entry.Shell({
