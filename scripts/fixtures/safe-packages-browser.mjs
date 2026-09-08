@@ -10,8 +10,16 @@ const commandNames = definitions.map(command => command.name).sort();
 if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
   throw new Error(`Default browser command inventory differs: ${JSON.stringify(commandNames)}`);
 }
-for (const definition of definitions) {
-  if (!Object.hasOwn(definition, "filesystemRequirements")) throw new Error(`Missing browser filesystem requirements: ${definition.name}`);
+const declaredCommands = [
+  "[", "basename", "cat", "cp", "cut", "dirname", "echo", "false", "grep", "head", "ln", "ls",
+  "mkdir", "mv", "printf", "pwd", "readlink", "realpath", "rg", "rm", "rmdir", "sed", "sort",
+  "tail", "tee", "test", "touch", "tr", "true", "uniq", "wc",
+];
+const declaredNames = definitions.filter(definition => Object.hasOwn(definition, "filesystemRequirements")).map(definition => definition.name).sort();
+if (JSON.stringify(declaredNames) !== JSON.stringify(declaredCommands)) throw new Error("Default browser filesystem requirement declarations changed");
+for (const definition of definitions.filter(definition => !Object.hasOwn(definition, "filesystemRequirements"))) {
+  const support = evaluateCommandSupport(definition, { readOnly: true });
+  if (support.declared || support.status !== "partial" || support.modes.length) throw new Error(`Undeclared browser command support became optimistic: ${definition.name}`);
 }
 for (const [name, expected] of [["printf", "supported"], ["mkdir", "unsupported"], ["tee", "partial"]]) {
   const definition = definitions.find(command => command.name === name);

@@ -1,22 +1,12 @@
 # Issue 672: installed-artifact workerd acceptance
 
-## Status — prepared, not executed
+## Status — installed-artifact acceptance passed
 
-As of September 8, 2026, **29 cases are planned; none is claimed passed in
-workerd**. Temporary probes have received syntax checks only. No candidate has
-been bundled or run for this acceptance pass. The earlier workerd investigation
-is tooling evidence, not validation of the current package.
-
-Root reports the fresh rebased build is awaiting correction of upstream SafeJS
-`TS2304` (`target` in `interpreter.ts`). Root's earlier successful build, focused
-VM tests, strict source/consumer checks, and ESLint results do not establish
-installed-artifact workerd compatibility. Do not use an incomplete or stale build.
-
-The last announced rebased HEAD was
-`f7e5a42acaa2122d924f19b06d40cb3bf6ad32df`; this is context, **not an admitted
-artifact revision**. Root must supply the final fresh consumer directory and
-matching full commit after the corrected build and pack. Any subsequent artifact
-change requires a new admission and evidence directory.
+On September 8, 2026, **29/29 cases passed in actual workerd with compatibility
+flags empty** for the freshly built and offline-installed candidate from
+`891ea4bda33493d296754fc5ac5dec9a8ea4ead3`, version `0.0.0-issue672-final`.
+This is installed-artifact evidence, not merely a source bundle or VM test.
+Any subsequent artifact change requires fresh admission and execution.
 
 This sidecar owns only this document and uniquely owned temporary QA artifacts.
 Product, maintained tests, public fixtures, manifests, build scripts, and Git
@@ -84,7 +74,7 @@ Only after root explicitly releases a fresh consumer and full commit:
    directory. Preserve any failed preparation evidence. Preparation success is
    explicitly `prepared-not-runtime-validated`, not runtime acceptance.
 
-Admission commands, **not yet executed**:
+Admission procedure, executed for the final candidate:
 
 ```sh
 export PATH="$(cat /tmp/kamilio-toolchain.path)/bin:$PATH"
@@ -98,7 +88,7 @@ Use the newly printed candidate directory for the next step, not a previously
 discovered candidate. Both root authorization and provenance checks are required;
 setting an environment variable alone is not authorization.
 
-## Planned acceptance cases — 29, not passed
+## Acceptance cases — 29 passed
 
 All commands execute inside actual workerd with `compatibilityFlags: []`. The
 worker imports only public installed entry points. Filesystem fixtures live in
@@ -157,7 +147,7 @@ termination grace. Container limits are two CPUs, 1 GiB memory, 128 processes, a
 128 MiB temporary storage. The custom outbound service rejects any attempted
 network use and must report zero attempts.
 
-Runtime commands, **not yet executed**:
+Runtime procedure, executed for the final candidate:
 
 ```sh
 : "${CANDIDATE:?Use the newly admitted candidate directory}"
@@ -196,21 +186,30 @@ Retain a post-run hash-verification receipt. Any drift invalidates the candidate
 and requires a new directory and fresh run. Preserve all failed attempts and
 explain any temporary probe correction separately from product failures.
 
-## Evidence and handoff — pending
+## Evidence and handoff
 
-- Root-released consumer directory and final full commit: **pending**.
-- Package versions, tarball hashes, installed graph/metafile and input hashes:
-  **pending**.
-- Actual pinned-image metadata, runtime versions, flags, and bundle hash:
-  **pending**.
-- Actual workerd result: **not run; 29 planned, none claimed passed**.
-- Post-run hash verification, Miniflare disposal, and owned-container cleanup:
-  **pending**.
-- Screen capture: **pending until the final worker run completes**. Root may
-  capture the terminal showing artifact identity, flags `[]`, result summary,
-  exit code, and cleanup receipt. A Chrome capture is optional; no browser UI is
-  being changed. Record the capture path and tie it to the same run. A screenshot
-  supplements, rather than replaces, raw runtime evidence.
+- Consumer: `/tmp/kamilio-672-final-public.9fN5rf/consumer`; matching commit and
+  version are recorded above. The complete normal workspace build passed.
+- Receipt directory:
+  `/tmp/kamilio-672-workerd-qa.MrAWhd/candidate-WWePiT/run-j2u3rc/`;
+  `final-report.json`, `runtime.stdout.jsonl`, and `post-run-hashes.json` retain
+  admission, execution, provenance, and cleanup details.
+- Graph: 34 installed inputs, no Node or external edges, no emitted imports.
+  All three tarball SHA-512 digests match the installed lockfile. All 49 recorded
+  files remain unchanged after execution.
+- Worker bundle SHA-256:
+  `c49021d76dfb07cbd41ca76187749a02da92e8433edd80689bd1fbcb14faa0e5`.
+- Actual workerd: pinned versions listed above, flags `[]`, network disabled,
+  HTTP 200, 29/29 passing cases, exit zero, no internal diagnostics or outbound
+  attempts. Miniflare is disposed; zero remaining workerd processes and no owned
+  container remain, verified by a successful Docker query.
+- Root separately verifies installed Node/Bun smoke, Node declarations, strict
+  browser declarations without ambient Node types, and the browser smoke fixture.
+- Visual evidence is explicitly a separate local playground check:
+  `/tmp/kamilio-672-playground-retest.8ZgRmu/commands.png` was captured and inspected.
+  Startup, anchored regex search, SHA-256, and gzip/zcat output pass. Its owned
+  browser session is closed. This screenshot does not claim to depict workerd;
+  the raw workerd execution receipt supplies that evidence.
 
 Report preparation failures, actual runtime failures, successful acceptance, and
 remote delivery/release separately. Root retains Node/Bun/type smoke ownership

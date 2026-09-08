@@ -101,3 +101,13 @@ The initial full test route remains a recorded failure (20,240 passes, four
 failures, one skip in the shared task); it is not a completed full-repository
 pass. Repeat the maintained full route after integration is frozen, then rebuild,
 pack, and re-admit the final installed artifact for browser and workerd checks.
+
+The final installed browser smoke exposed one additional stale subset assertion:
+it required all 79 commands to declare filesystem modes. The previous installed
+full preset independently has exactly 31 declarations and 48 undeclared commands.
+Preserve that exact declaration inventory and require undeclared support to stay
+partial rather than inventing optimistic capabilities. The corrected browser
+fixture passes against the unchanged final package tarballs. Installed Node and
+Bun smoke and strict browser declarations without ambient Node types also pass.
+Actual workerd acceptance for the final artifact passes all 29 cases; see the
+separate installed-artifact validation document for hashes and cleanup evidence.
