@@ -21,7 +21,7 @@ import { ShellLimitError, ShellSyntaxError } from "./types.js";
 import type { ShellCommandContext, ShellInvokeOptions, ShellLimits } from "./types.js";
 import { scopeFileSystem } from "poe-code/safe-fs/core";
 import { fileInput, ShellInput } from "./input.js";
-import { evaluateArithmetic, prepareArithmetic } from "./arithmetic.js";
+import { evaluateArithmetic, prepareArithmetic, type ArithmeticProgram } from "./arithmetic.js";
 import { defaultMaxParseUnits, ParseBudget } from "./parse-budget.js";
 import { BraceExpansionFailure, expandBraces } from "./brace-expansion.js";
 import { evaluatePositionalArithmetic } from "./arithmetic-parameters.js";
@@ -1434,6 +1434,17 @@ export class Runtime {
     if (error instanceof NounsetFailure || error instanceof Flow || error instanceof ShellLimitError || error instanceof ShellSyntaxError) throw error;
   }
 
+  private arithmeticValue(program: ArithmeticProgram, state: State, io: IO): bigint {
+    return evaluatePositionalArithmetic(program, {
+      parseBudget: this.budget.parsing,
+      positional: state.positional, arg0: state.arg0 ?? "virtual-bash", owner: arrayStore(state)?.owner,
+      maximumBytes: this.budget.limits.maxExpansionBytes,
+      checkpoint: () => this.signal.throwIfAborted(),
+      requireParameter: (name, value) => this.requireParameter(value, name, state, io),
+      limit: () => this.budget.fail("maxExpansionBytes"),
+    }, prepared => evaluateArithmetic(prepared, this.arithmeticVariables(state, io.diagnosticLine), this.budget.parsing));
+  }
+
   arithmeticVariables(state: State, line?: number): Record<string, string> {
     return new Proxy(state.variables, {
       get: (target, key) => {
@@ -2042,14 +2053,7 @@ export class Runtime {
       }
       if (command.kind === "arithmetic") {
         try {
-          return Number(evaluatePositionalArithmetic(command.expression, {
-            parseBudget: this.budget.parsing,
-            positional: state.positional, arg0: state.arg0 ?? "virtual-bash", owner: arrayStore(state)?.owner,
-            maximumBytes: this.budget.limits.maxExpansionBytes,
-            checkpoint: () => this.signal.throwIfAborted(),
-            requireParameter: (name, value) => this.requireParameter(value, name, state, io),
-            limit: () => this.budget.fail("maxExpansionBytes"),
-          }, (prepared) => evaluateArithmetic(prepared, this.arithmeticVariables(state, io.diagnosticLine), this.budget.parsing)) === 0n);
+          return Number(this.arithmeticValue(command.expression, state, io) === 0n);
         }
         catch (error) { this.rethrowArithmeticControl(error); throw new PublicDiagnostic(`((: ${message(error, this.budget.onInternalError)}`); }
       }
@@ -2099,6 +2103,28 @@ export class Runtime {
             const result = await this.loopBody(command.body, state, io);
             status = result.status;
             if (result.stop) break;
+          }
+        } else if (command.kind === "arithmetic-for") {
+          const evaluate = async (program: ArithmeticProgram | undefined): Promise<bigint | undefined> => {
+            if (!program) return 1n;
+            try { return this.arithmeticValue(program, state, io); }
+            catch (error) {
+              this.rethrowArithmeticControl(error);
+              await this.diagnostic(io, `((: ${message(error, this.budget.onInternalError)}`);
+              return undefined;
+            }
+          };
+          if (await evaluate(command.expressions[0]) === undefined) return 1;
+          while (true) {
+            this.budget.loop();
+            await yieldTurn(this.signal);
+            const condition = await evaluate(command.expressions[1]);
+            if (condition === undefined) return 1;
+            if (condition === 0n) break;
+            const result = await this.loopBody(command.body, state, io);
+            status = result.status;
+            if (result.stop) break;
+            if (await evaluate(command.expressions[2]) === undefined) return 1;
           }
         } else if (command.kind === "select") {
           const values = command.words ? await this.valueWords(command.words, state, io) : this.positionalValues(state);

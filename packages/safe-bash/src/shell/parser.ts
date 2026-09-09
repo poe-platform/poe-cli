@@ -80,6 +80,7 @@ export type Command = (
   | { kind: "until"; condition: Script; body: Script }
   | { kind: "for"; name: string; words?: Word[]; body: Script }
   | { kind: "select"; name: string; words?: Word[]; body: Script }
+  | { kind: "arithmetic-for"; expressions: readonly [ArithmeticProgram | undefined, ArithmeticProgram | undefined, ArithmeticProgram | undefined]; body: Script }
   | { kind: "function"; name: string; body: Command }
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string }
   | { kind: "conditional"; expression: ConditionalExpression; source: string }
@@ -893,6 +894,40 @@ class Parser {
       const body = this.nonemptyScript(new Set(["done"]));
       this.expect("done", true);
       command = { kind, condition, body, redirects: [] };
+    } else if (this.is("for") && this.peek().value === "(" && this.lexer.source.startsWith("((", this.peek().offset)) {
+      this.advance();
+      const start = this.current.offset + 2;
+      let partStart = start;
+      let depth = 0;
+      let end = start;
+      this.budget.admit(4);
+      const sources: string[] = [];
+      for (; end < this.lexer.source.length; end++) {
+        this.budget.admit();
+        const character = this.lexer.source[end];
+        if (character === "(") depth++;
+        else if (character === ")") {
+          if (!depth && this.lexer.source[end + 1] === ")") break;
+          if (--depth < 0) this.error("Unterminated arithmetic for", true);
+        } else if (character === ";" && !depth) {
+          if (sources.length === 2) this.error("Arithmetic for requires three expressions");
+          sources.push(this.lexer.source.slice(partStart, end));
+          partStart = end + 1;
+        }
+      }
+      if (end === this.lexer.source.length) this.error("Unterminated arithmetic for", true);
+      if (sources.length !== 2) this.error("Arithmetic for requires three expressions");
+      sources.push(this.lexer.source.slice(partStart, end));
+      const expressions = sources.map(source => source.trim() ? prepareArithmetic(source, this.budget) : undefined) as [ArithmeticProgram | undefined, ArithmeticProgram | undefined, ArithmeticProgram | undefined];
+      this.lexer.position = end + 2;
+      this.lookahead = undefined;
+      this.current = this.lexer.next();
+      if (this.is(";")) this.advance();
+      this.newlines();
+      this.expect("do", true);
+      const body = this.nonemptyScript(new Set(["done"]));
+      this.expect("done", true);
+      command = { kind: "arithmetic-for", expressions, body, redirects: [] };
     } else if (this.is("for") || this.is("select")) {
       const kind = this.advance().value as "for" | "select";
       const name = this.advance().value;

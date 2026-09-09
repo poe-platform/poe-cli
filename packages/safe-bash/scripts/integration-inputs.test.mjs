@@ -393,6 +393,7 @@ function assertSource7Discovery(files) {
     "tests/shell/prefix-names.test.ts",
     "tests/shell/parameter-transforms.test.ts",
     "tests/shell/select.test.ts",
+    "tests/shell/arithmetic-for.test.ts",
     "tests/shell/network-execution-deadline.test.ts",
   ]) assert.ok(files.includes(path), "retained byte-value test is missing: " + path);
   assert.equal(new Set(files).size, files.length);
