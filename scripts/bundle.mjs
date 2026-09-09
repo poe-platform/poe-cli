@@ -6,7 +6,7 @@ import { versionGateSnippet } from "./node-version-gate.mjs";
 import { resolveGithubWorkflowAssetCopies } from "./bundle-assets.mjs";
 import { assertSafeBundleOutputs, assertSafeOutputDirectory } from "./guard-package-dist.mjs";
 import { resolveBundleGraph, resolveConsumerGraph } from "./bundle-graph.mjs";
-import { resolveCanonicalFsBuilds } from "./bundle-fs.mjs";
+import { mergeRuntimeBundleOutputs, resolveCanonicalFsBuilds, resolveWorkerdRuntimeBuild } from "./bundle-fs.mjs";
 import { resolveBrowserShellBuild } from "./bundle-safe-bash.mjs";
 import {
   canonicalFs,
@@ -210,11 +210,17 @@ const fsBuildOptions = resolveCanonicalFsBuilds(
   safejsEntryPoints
 );
 const fsBuilds = {};
+const workerdOptions = resolveWorkerdRuntimeBuild(rootDir, consumerBuildOptions);
+const workerdBundle = await esbuild.build(workerdOptions);
+consumerBuilds.push(workerdBundle);
 for (const [profile, options] of Object.entries(fsBuildOptions)) {
   const result = await esbuild.build(options);
-  await publishBundleOutputs(result, {
+  const publication = profile === "node" ? mergeRuntimeBundleOutputs(result, workerdBundle) : result;
+  const entryPoints = Object.values(options.entryPoints);
+  if (profile === "node") entryPoints.push(...Object.values(workerdOptions.entryPoints));
+  await publishBundleOutputs(publication, {
     outdir: options.outdir,
-    entryPoints: Object.values(options.entryPoints),
+    entryPoints,
     workingDirectory: rootDir
   });
   fsBuilds[profile] = result;

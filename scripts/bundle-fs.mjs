@@ -4,6 +4,35 @@ import {
   canonicalFsRoutes
 } from "../packages/package-lint/dist/bundle-policy.js";
 
+export function mergeRuntimeBundleOutputs(node, workerd) {
+  return {
+    outputFiles: [...node.outputFiles, ...workerd.outputFiles],
+    metafile: {
+      inputs: { ...node.metafile.inputs, ...workerd.metafile.inputs },
+      outputs: { ...node.metafile.outputs, ...workerd.metafile.outputs }
+    }
+  };
+}
+
+export function resolveWorkerdRuntimeBuild(rootDir, graph) {
+  return {
+    absWorkingDir: rootDir,
+    entryPoints: { workerd: path.join(rootDir, "packages/safe-js/src/workerd.ts") },
+    alias: graph.alias,
+    external: graph.external,
+    bundle: true,
+    splitting: false,
+    platform: "node",
+    conditions: ["workerd"],
+    target: "es2022",
+    format: "esm",
+    outdir: path.join(rootDir, "packages/safe-js/dist"),
+    sourcemap: true,
+    metafile: true,
+    write: false
+  };
+}
+
 export function resolveCanonicalFsBuilds(rootDir, graph, nodeEntries = {}) {
   return Object.fromEntries(
     Object.entries(canonicalFsProfiles).map(([profile, settings]) => {

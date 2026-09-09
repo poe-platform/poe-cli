@@ -13,9 +13,11 @@
   "exports": {
     ".": {
       "types": {
+        "workerd": "./dist/core.d.ts",
         "browser": "./dist/core.d.ts",
         "default": "./dist/index.d.ts"
       },
+      "workerd": "./dist/core.browser.js",
       "browser": "./dist/core.browser.js",
       "import": "./dist/index.js"
     },
@@ -151,6 +153,18 @@
       "types": "./dist/node.d.ts",
       "browser": null,
       "import": "./dist/node.js"
+    },
+    "./commands/node/host": {
+      "types": {
+        "workerd": "./dist/node-unavailable.d.ts",
+        "worker": "./dist/node-unavailable.d.ts",
+        "browser": "./dist/node-unavailable.d.ts",
+        "default": "./dist/commands/node/worker-provider.d.ts"
+      },
+      "workerd": null,
+      "worker": null,
+      "browser": null,
+      "import": "./dist/commands/node/worker-provider.js"
     }
   },
   "files": [

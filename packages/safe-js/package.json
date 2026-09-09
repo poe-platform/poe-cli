@@ -21,6 +21,16 @@
     "./cli": {
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
+    },
+    "./workerd": {
+      "types": {
+        "workerd": "./dist/workerd.d.ts",
+        "browser": "./dist/node-unavailable.d.ts",
+        "default": "./dist/workerd.d.ts"
+      },
+      "workerd": "./dist/workerd.js",
+      "browser": null,
+      "import": "./dist/workerd.js"
     }
   },
   "dependencies": {
@@ -54,5 +64,11 @@
   ],
   "devDependencies": {
     "cldr-units-full": "48.2.0"
+  },
+  "imports": {
+    "#safe-js-platform": {
+      "workerd": "./dist/platform/workerd.js",
+      "default": "./dist/platform/node.js"
+    }
   }
 }

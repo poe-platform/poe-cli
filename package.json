@@ -61,9 +61,11 @@
     },
     "./safe-bash": {
       "types": {
+        "workerd": "./packages/safe-bash/dist/core.d.ts",
         "browser": "./packages/safe-bash/dist/core.d.ts",
         "default": "./packages/safe-bash/dist/index.d.ts"
       },
+      "workerd": "./packages/safe-bash/dist/core.browser.js",
       "browser": "./packages/safe-bash/dist/core.browser.js",
       "import": "./packages/safe-bash/dist/index.js"
     },
@@ -247,6 +249,38 @@
       "types": "./packages/safe-bash/dist/node.d.ts",
       "browser": null,
       "import": "./packages/safe-bash/dist/node.js"
+    },
+    "./safe-js/workerd": {
+      "types": {
+        "workerd": "./packages/safe-js/dist/workerd.d.ts",
+        "browser": "./packages/safe-js/dist/node-unavailable.d.ts",
+        "default": "./packages/safe-js/dist/workerd.d.ts"
+      },
+      "workerd": "./packages/safe-js/dist/workerd.js",
+      "browser": null,
+      "import": "./packages/safe-js/dist/workerd.js"
+    },
+    "./safe-bash/commands/node/host": {
+      "types": {
+        "workerd": "./packages/safe-bash/dist/node-unavailable.d.ts",
+        "worker": "./packages/safe-bash/dist/node-unavailable.d.ts",
+        "browser": "./packages/safe-bash/dist/node-unavailable.d.ts",
+        "default": "./packages/safe-bash/dist/commands/node/worker-provider.d.ts"
+      },
+      "workerd": null,
+      "worker": null,
+      "browser": null,
+      "import": "./packages/safe-bash/dist/commands/node/worker-provider.js"
+    },
+    "./safejs/workerd": {
+      "types": {
+        "workerd": "./packages/safe-js/dist/workerd.d.ts",
+        "browser": "./packages/safe-js/dist/node-unavailable.d.ts",
+        "default": "./packages/safe-js/dist/workerd.d.ts"
+      },
+      "workerd": "./packages/safe-js/dist/workerd.js",
+      "browser": null,
+      "import": "./packages/safe-js/dist/workerd.js"
     }
   },
   "workspaces": [
