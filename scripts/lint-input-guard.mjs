@@ -154,7 +154,11 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
     budget(Array.isArray(values) && values.length <= limits.directoryEntries, 'directory entry cap');
     const previous = decodedDirectories.get(absolute);
     // Reread every time: only decoding is reused, never filesystem observations.
-    if (previous && values.length === previous.bytes.length && previous.bytes.every((expected, index) => Buffer.isBuffer(values[index]) && values[index].equals(expected))) return [...previous.strings];
+    if (previous && values.length === previous.bytes.length && previous.bytes.every((expected, index) => Buffer.isBuffer(values[index]) && values[index].equals(expected))) {
+      decodedDirectories.delete(absolute);
+      decodedDirectories.set(absolute, previous);
+      return [...previous.strings];
+    }
     let byteLength = 0;
     const strings = Array.from(values, value => {
       assert.ok(Buffer.isBuffer(value), 'byte-exact directory names required');
@@ -172,10 +176,12 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
     }
     // Bound both copied byte storage and per-entry overhead, including empty names.
     if (byteLength <= 1048576 && values.length <= 32768) {
-      if (decodedDirectories.size >= 32 || decodedDirectoryBytes + byteLength > 1048576 || decodedDirectoryEntries + values.length > 32768) {
-        decodedDirectories.clear();
-        decodedDirectoryBytes = 0;
-        decodedDirectoryEntries = 0;
+      while (decodedDirectories.size >= 32 || decodedDirectoryBytes + byteLength > 1048576 || decodedDirectoryEntries + values.length > 32768) {
+        const oldest = decodedDirectories.keys().next().value;
+        const removed = decodedDirectories.get(oldest);
+        decodedDirectories.delete(oldest);
+        decodedDirectoryBytes -= removed.byteLength;
+        decodedDirectoryEntries -= removed.bytes.length;
       }
       decodedDirectories.set(absolute, { bytes: values.map(value => Buffer.from(value)), strings: [...strings], byteLength });
       decodedDirectoryBytes += byteLength;

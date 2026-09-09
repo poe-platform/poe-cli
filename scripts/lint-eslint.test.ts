@@ -132,6 +132,59 @@ describe("fixture operation observation retention", () => {
     expect(() => guard.directory("src")).toThrow("invalid directory entry encoding");
   });
 
+  it("retains hot decoded listings when cold directories exceed cache capacity", () => {
+    const entries = Object.fromEntries(Array.from({ length: 64 }, (_, index) => [`cold-${index}/file.js`, "export {};"]));
+    const state = model({ ...entries, "hot/hot-π.js": "export {};" });
+    const original = Buffer.prototype.toString;
+    let hotDecodings = 0;
+    let coldDecodings = 0;
+    const decode = vi.spyOn(Buffer.prototype, "toString").mockImplementation(function(this: Buffer, ...args: Parameters<Buffer["toString"]>) {
+      const result = original.apply(this, args);
+      if (args[0] === "utf8" && result === "hot-π.js") hotDecodings++;
+      if (args[0] === "utf8" && result === "file.js") coldDecodings++;
+      return result;
+    });
+    try {
+      state.guard.directory("hot");
+      for (let index = 0; index < 64; index++) {
+        state.guard.directory(`cold-${index}`);
+        expect(state.guard.directory("hot").entries).toEqual(["hot-π.js"]);
+      }
+      expect(state.guard.snapshot().metadataOperations).toBe(1161);
+      expect(coldDecodings).toBe(64);
+      state.guard.directory("cold-0");
+      expect(coldDecodings).toBe(65);
+    } finally { decode.mockRestore(); }
+    const reads = state.operations.filter(operation => operation.method === "readdirSync" && operation.path === root + "/hot").length;
+    expect(reads).toBe(65);
+    expect(hotDecodings).toBe(1);
+  });
+
+  it.each([["bytes", 3000, 200], ["entries", 17000, 8]] as const)("evicts decoded listings under aggregate %s pressure", (_label, count, width) => {
+    const state = model({ "first/file.js": "", "second/file.js": "" });
+    const listing = Array.from({ length: count }, (_, index) => Buffer.from(String(index).padStart(width, "x")));
+    const marker = listing[0]!.toString("utf8");
+    const reads: string[] = [];
+    const guard = createLintInputGuard({ root, boundaries, fileSystem: { ...state.fileSystem, readdirSync(absolute: string, options: unknown) {
+      if (absolute === root + "/first" || absolute === root + "/second") { reads.push(absolute); return listing; }
+      return state.fileSystem.readdirSync(absolute, options as any);
+    } } });
+    const original = Buffer.prototype.toString;
+    let decodings = 0;
+    const decode = vi.spyOn(Buffer.prototype, "toString").mockImplementation(function(this: Buffer, ...args: Parameters<Buffer["toString"]>) {
+      const result = original.apply(this, args);
+      if (args[0] === "utf8" && result === marker) decodings++;
+      return result;
+    });
+    try {
+      guard.directory("first");
+      guard.directory("second");
+      guard.directory("first");
+    } finally { decode.mockRestore(); }
+    expect(reads).toEqual([root + "/first", root + "/second", root + "/first"]);
+    expect(decodings).toBe(3);
+  });
+
   it.each([false, true])("rejects sparse directory byte listings, warmed=%s", (warmed) => {
     const state = model({ "src/one.js": "export {};" });
     let entries = [Buffer.from("one.js")];
