@@ -7,7 +7,7 @@ import { EreLedger } from "./ere/limits.js";
 import { compileEre } from "./ere/syntax.js";
 import { prepareUtf8EreSubject } from "./ere/matcher.js";
 import { validateUtf8 } from "./utf8.js";
-import type { EreProgram } from "./ere/types.js";
+import type { EreFragment, EreProgram } from "./ere/types.js";
 import type { BoundedRegexProvider, RegexWorker, RegexWorkerRequest } from "./provider.js";
 import { ExprMatchError, exprMatchCeilings, type ExprMatchDescriptor, type ExprMatchLimits, type ExprMatchReply, type GrepDescriptor, type Reply, type Row, type SearchDescriptor } from "./protocol.js";
 
@@ -217,29 +217,41 @@ async function executeExpr(input: OwnedExprRequest, signal: AbortSignal): Promis
   }
 }
 
-async function admitBre(pattern: string, ledger: EreLedger, signal: AbortSignal): Promise<void> {
+async function breFragments(pattern: string, ledger: EreLedger, signal: AbortSignal): Promise<EreFragment[]> {
+  ledger.charge("allocationUnits", 1, signal);
+  const fragments: EreFragment[] = [];
   let bracket = -1;
   let member = false;
   let namedClass = false;
   for (let index = 0; index < pattern.length; index++) {
     ledger.charge("work", 1, signal);
     await ledger.checkpoint(signal);
-    const character = pattern[index]!;
-    if ("\\()+?{}|".includes(character)) fail("unsupported", "BRE escapes, groups and interval/operator extensions are unsupported; use grep -E");
+    let character = pattern[index]!;
+    let literal = false;
     if (bracket >= 0) {
-      if (index === bracket + 1 && character === "^") continue;
-      if (namedClass) {
+      if (index === bracket + 1 && character === "^") {
+        // The initial complement marker is not a bracket member.
+      } else if (namedClass) {
         if (character === "]" && pattern[index - 1] === ":") namedClass = false;
       } else if (character === "]" && member) bracket = -1;
       else if (character === "[" && pattern[index + 1] === ":") namedClass = true;
-      member = true;
-    } else if (character === "[") { bracket = index; member = false; }
+      if (!(index === bracket + 1 && character === "^")) member = true;
+    } else if (character === "\\") {
+      character = pattern[++index]!;
+      ledger.charge("work", 1, signal);
+      if (character === undefined || !"\\.^$[]*".includes(character)) fail("unsupported", "BRE groups, intervals, backreferences and escape extensions are unsupported; use grep -E where applicable");
+      literal = true;
+    } else if ("()+?{}|".includes(character)) literal = true;
+    else if (character === "[") { bracket = index; member = false; }
     else if (character === "^" && index !== 0 || character === "$" && index !== pattern.length - 1) {
       fail("unsupported", "BRE anchors are supported only at record boundaries");
     } else if (character === "*" && (index === 0 || index === 1 && pattern[0] === "^")) {
       fail("unsupported", "BRE leading literal star is unsupported; use fixed matching");
     }
+    ledger.charge("allocationUnits", 4, signal);
+    fragments.push({ text: character, literal });
   }
+  return fragments;
 }
 
 
@@ -408,12 +420,17 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
   if (selected.fixed) return executeLiteral(input, signal);
   const programs: EreProgram[] = [];
   for (const pattern of selected.patterns) {
-    if (selected.kind === "grep" && !selected.fixed && !selected.extended) await admitBre(pattern, ledger, signal);
     if (selected.kind === "rg" && !selected.nullData && pattern.includes("\n")) fail("unsupported", "rg multiline matching is unsupported");
     ledger.charge("allocationUnits", (selected.whole ? 3 : 1) * 3 + 2, signal);
-    const fragments = selected.whole
-      ? [{ text: "^(", literal: false }, { text: pattern, literal: selected.fixed }, { text: ")$", literal: false }]
-      : [{ text: pattern, literal: selected.fixed }];
+    const fragments: EreFragment[] = selected.kind === "grep" && !selected.extended
+      ? await breFragments(pattern, ledger, signal)
+      : [{ text: pattern, literal: false }];
+    if (selected.whole) {
+      ledger.charge("work", fragments.length, signal);
+      await ledger.checkpoint(signal);
+      fragments.unshift({ text: "^(", literal: false });
+      fragments.push({ text: ")$", literal: false });
+    }
     programs.push(await compileEre(fragments, ledger, signal, selected.kind === "grep" && selected.insensitive));
   }
   ledger.charge("allocationUnits", 3, signal);

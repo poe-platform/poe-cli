@@ -100,6 +100,10 @@ Grep `-i` supports ASCII A–Z/a–z equivalence for fixed, BRE and ERE patterns
 with or without `-o`, while preserving original output bytes and case. Bracket
 classes include both ASCII cases before complementing. Non-ASCII fixed literals
 still compare exactly; for example, `é` and `É` are distinct.
+Plain grep also accepts escaped basic metacharacters such as `\.` and `\*`,
+and treats unescaped `+?(){}|` as literals. Bracket members retain bracket
+semantics. Escaped BRE groups, intervals, extended operators and backreferences
+remain unsupported; `grep -E` retains its separate extended grammar.
 A different host provider may implement more descriptors
 while respecting the existing bounded request/reply and retirement contracts.
 

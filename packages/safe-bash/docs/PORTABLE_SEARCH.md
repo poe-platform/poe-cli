@@ -52,7 +52,7 @@ provider rejection. No command-level binary policy is overridden by this profile
 | --- | --- |
 | `grep -E` | Restricted ASCII ERE patterns over UTF-8 scalars, leftmost-longest matching; optional ASCII `-i` |
 | `grep -F` | Valid UTF-8 literal matching; optional ASCII `-i` |
-| plain `grep` | Conservative BRE subset: ordinary literals, `.`, bracket classes, repetition `*`, leading `^`, and trailing `$`; escapes, interior anchors, leading `*`, and extended operator syntax are rejected |
+| plain `grep` | Conservative BRE subset: literals, `.`, bracket classes, repetition `*`, leading `^`, trailing `$`, and escaped basic metacharacters; unescaped `+?(){}|` are literal |
 | `rg -F` | Case-sensitive valid UTF-8 fixed-string matching |
 | plain regex `rg` | Rejected; POSIX ERE spans are not advertised as rg regex semantics |
 | `grep -o` | Bounded non-overlapping extraction for the supported fixed/BRE/ERE profiles |
@@ -69,6 +69,16 @@ grammar has a 4,096-node and 64-level ceiling. Descriptor and pattern validation
 run even when a batch has no subject rows. Sed continues to use its existing
 separate instruction interpreter and limits; this provider does not redefine
 sed's dialect.
+
+In plain grep BRE, a backslash can quote `\\`, `.`, `^`, `$`, `[`, `]`, or `*`
+outside bracket expressions. For example, `upload\.wikimedia\.org` matches
+literal dots, and unescaped `a+b` matches a literal plus. Bracket expressions
+interpret their own members, so `[+]` and `[()]` select those literal symbols;
+backslash inside a bracket expression remains a literal member. Escaped groups
+`\(...\)`, intervals `\{...\}`, escaped extended operators `\+`, `\?`, `\|`,
+backreferences and word extensions remain explicitly unsupported. Interior
+anchors and leading `*` also remain unsupported. Selecting `grep -E` still gives
+extended operators their ERE meaning; this does not change BRE into ERE.
 
 Grep BRE/ERE matching treats each Unicode scalar as one subject character:
 `.` matches one scalar, including an emoji; ASCII bracket ranges and named

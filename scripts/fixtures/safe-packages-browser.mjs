@@ -68,6 +68,9 @@ for (const regexExecutor of [undefined, createBoundedRegexProvider()]) {
       ["printf 'GiRaFfE é🦊\\nother\\n' | grep -in giraffe", "1:GiRaFfE é🦊\n"],
       ["printf 'éA+b😀a+B\\n' | grep -Fio 'a+b'", "A+b\na+B\n"],
       ["printf 'AbCDEé😀abc\\n' | grep -Eio '[^a-c]+'", "DEé😀\n"],
+      ["printf 'éA+b😀a+B\\n' | grep -io 'a+b'", "A+b\na+B\n"],
+      ["printf 'axb a.b\\n' | grep -o 'a\\.b'", "a.b\n"],
+      ["printf 'a (a) +\\n' | grep -o '[()+]'", "(\n)\n+\n"],
     ]) {
       const extracted = await search.exec(script);
       if (extracted.exitCode !== 0 || extracted.stderr !== "" || extracted.stdout !== expected) {

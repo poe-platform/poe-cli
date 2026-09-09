@@ -539,3 +539,63 @@ test("ASCII-insensitive enumeration preserves live abort identity and worker reu
   try { assert.deepEqual(await recovered.run(descriptor, [row("aA", true)]), [[{ start: 0, end: 1 }, { start: 1, end: 2 }]]); }
   finally { await recovered.close(); await executor.dispose(); }
 });
+
+test("BRE escaped metacharacters and ordinary operators retain literal byte spans", async () => {
+  for (const [pattern, subject, expected] of [
+    ["upload\\.wikimedia\\.org", "é upload.wikimedia.org", [3, 23]],
+    ["a+b?(x){2}|y", "a+b?(x){2}|y", [0, 12]],
+    ["[+()?{}|]", "x+y", [1, 2]],
+    ["\\[x\\]\\*\\^\\$\\\\", "[x]*^$\\", [0, 7]],
+  ] as const) {
+    const descriptor = grep([pattern], { extended: false });
+    assert.deepEqual(spans(await run(request(descriptor, [subject]))), [expected]);
+    assert.deepEqual(spans(await run({ id: 1, descriptor, rows: [row(subject, true)] })), [expected]);
+  }
+});
+
+test("BRE bracket boundaries and escaped atoms do not leak ERE operator semantics", async () => {
+  for (const [pattern, subject, expected] of [
+    ["[[:alpha:]+]", "+", [0, 1]],
+    ["]+", "]+", [0, 2]],
+    ["[]+]", "]", [0, 1]],
+    ["[^]+]", "a", [0, 1]],
+    ["\\^*", "^^", [0, 2]],
+    ["[\\]", "\\", [0, 1]],
+    ["\\[a+\\]", "[a+]", [0, 4]],
+  ] as const) assert.deepEqual(spans(await run(request(grep([pattern], { extended: false }), [subject]))), [expected]);
+  assert.deepEqual(spans(await run(request(grep(["a+"], { extended: true }), ["aa"]))), [[0, 2]]);
+  assert.deepEqual(spans(await run(request(grep(["a+"], { extended: false }), ["aa"]))), [[]]);
+  assert.deepEqual(spans(await run(request(grep(["a+b"], { extended: false, insensitive: true, whole: true }), ["A+B"]))), [[0, 3]]);
+  for (const pattern of ["a\\+", "a\\?", "\\(a\\)", "a\\{2\\}", "a\\|b", "\\1", "\\w", "a\\"]) {
+    const result = await run(request(grep([pattern], { extended: false }), []));
+    assert.ok("error" in result);
+    assert.match(result.error, /unsupported/);
+  }
+});
+
+test("BRE translation charges original source, work, and retained fragments", async () => {
+  for (const [pattern, options, expected] of [
+    ["\\.", { maxPatternBytes: 1 }, /pattern/],
+    ["a+".repeat(1024), { maxWork: 128 }, /work/],
+    ["a+".repeat(1024), { maxAllocationUnits: 128 }, /allocation/],
+  ] as const) {
+    const result = await run(request(grep([pattern], { extended: false }), []), options);
+    assert.ok("error" in result);
+    assert.match(result.error, expected);
+  }
+});
+
+test("BRE translation preserves live cancellation and a subsequent worker session", async () => {
+  const executor = new RegexExecutor(createBoundedRegexProvider({ maxWorkers: 1 }));
+  const controller = new AbortController();
+  const session = executor.open(controller.signal);
+  const pending = session.run(grep(["a+".repeat(4096)], { extended: false }), [row("x")]);
+  const rejected = assert.rejects(pending, reason => reason === false);
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  controller.abort(false);
+  await rejected;
+  await session.close();
+  const recovered = executor.open(new AbortController().signal);
+  try { assert.deepEqual(await recovered.run(grep(["a+b"], { extended: false }), [row("a+b", true)]), [[{ start: 0, end: 3 }]]); }
+  finally { await recovered.close(); await executor.dispose(); }
+});
