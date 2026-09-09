@@ -83,3 +83,19 @@ The first full run found a current allocation-order assertion still matching the
 old YAML-only function calls. Updating its markers preserves the original
 ordering/mutation checks and adds TOML admission-before-copy coverage; all nine
 allocation repair tests pass. No product change is needed for this assertion.
+
+The same full run exposed a five-second shared child deadline in the nested
+inline-input fixture. All six nested cases rethrew that one startup/execution
+failure; their isolated behavioral checks passed. Bundle the current TypeScript
+fixture in memory before launching its timed child, without caching it or writing
+artifacts. Keep source evidence around bundle creation and execution. Preserve
+original module URLs for native regex workers through an AST transform.
+
+Pass bundled code on stdin and JSON requests through an explicit extra pipe;
+retain legacy stdin requests for direct fixture invocation. Both pipes share
+existing process-group termination and error handling. Keep the five-second
+parent deadline, four-second cooperative watchdog, 4.5-second independent
+watchdog, and output cap. The independent watchdog explicitly uses its original
+CommonJS mode and confirms timer installation before a case starts. Validate
+large requests, early pipe closure, overflow cleanup, native grep, and all
+inline-input cases before rerunning the full maintained gate.
