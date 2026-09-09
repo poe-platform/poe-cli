@@ -184,3 +184,23 @@ and monitor both releases until successful publication. No fix is claimed yet.
   `/tmp/kamilio-700-full-gate-v5.1kgJYn/log` and rerun the complete maintained
   uncached route with its supported workspace concurrency and reviewed shell
   parallelism; do not substitute focused passes for the full gate.
+- The cross-workspace parallel attempt exits 134 when the native terminal
+  test process aborts. Its isolated maintained suite passes all 288 tests;
+  no product change or test exclusion is made. The subsequent complete
+  `npm test` run uses serial workspace scheduling and the supported reviewed
+  shell scheduler. It exits zero, including native lifecycle scripts and root
+  posttest lint-stress checks:
+  `/tmp/kamilio-700-full-gate-v7.mEJhzb/log` and its `exit` receipt.
+  The orchestrator reports 71 workspaces, 40 declared unit tasks, uncached
+  execution, and no exclusions. Shared tests pass 20,317 cases, shell tests
+  pass 22,516 cases, SafeJS passes 21,651 cases, and native terminal tests pass
+  288 cases. Existing skips remain explicitly reported, not counted as passes.
+  Final repository lint also exits zero at `/tmp/kamilio-700-lint-v6.log`.
+  Product code is unchanged from the 43-case workerd candidate; subsequent
+  commits contain only validated test corrections and this evidence record.
+- The final normal `npm run build` and packed CLI `npm run smoke -- --prebuilt`
+  both exit zero. The latter verifies CLI commands, SDK imports, canonical
+  SafeFS public identity, and portable declarations from an installed tarball.
+  Receipts are `/tmp/kamilio-700-build-final.exit` and
+  `/tmp/kamilio-700-smoke-final.exit`. These complete local release validation;
+  remote-main delivery and GitHub publication must still be verified separately.
