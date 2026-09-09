@@ -1,4 +1,4 @@
-import { parseXml as parseDocument, type XmlLimits as DocumentLimits } from "../../xml.js";
+import { parseXml as parseDocument, XmlLimitError, type XmlLimits as DocumentLimits } from "../../xml.js";
 import type { XmlElement } from "../../xml.js";
 export type { XmlElement } from "../../xml.js";
 export interface XmlLimits extends Omit<DocumentLimits, "onElement"> { readonly maxResponses?: number; }
@@ -21,6 +21,7 @@ export function parseXml(input: string, limits: XmlLimits = {}): XmlElement {
       }
     });
   } catch (error) {
+    if (error instanceof XmlLimitError) invalid(error.message);
     if (error instanceof SyntaxError && error.message.startsWith("Invalid XML:")) {
       error.message = error.message.replace("Invalid XML:", "Invalid WebDAV XML:");
     }

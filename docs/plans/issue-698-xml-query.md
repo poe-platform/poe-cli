@@ -107,3 +107,13 @@ current-inventory scan reproduced 13 stale assertions across seven command and
 integration test files; 14 focused checks now pass with the XML pair included.
 The sealed historical source/hash transformation check still passes. These are
 expectation updates only; the command implementation is unchanged.
+
+The next full run passed the shared suite (20,364 tests) and reached all SafeBash
+cases: 22,686 passed, 86 skipped, one failed, and two were cancelled by test
+deadlines. The failure was a WebDAV diagnostic compatibility regression: the
+attribute cap still rejected the oversized listing, but its cause became the
+shared `XmlLimitError`. The DAV wrapper now translates that error back to its
+original plain prefixed `SyntaxError`; 87 focused parser/DAV checks pass.
+The two native-retirement scenarios reported success with no live workers before
+their surrounding test deadlines expired. Their verification overhead is being
+measured separately; no timeout or retirement assertion is waived.
