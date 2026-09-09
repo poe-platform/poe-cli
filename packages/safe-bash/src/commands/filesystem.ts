@@ -32,6 +32,24 @@ async function maybeStat(context: CommandContext, path: string, follow = true): 
   catch (error) { context.signal.throwIfAborted(); if (codeOf(error) === "ENOENT") return undefined; throw error; }
 }
 
+async function admitNoReplaceRename(context: CommandContext, target: string): Promise<void> {
+  let candidate = target;
+  while (true) {
+    try {
+      const capabilities = await context.fs.capabilitiesFor?.(candidate, { signal: context.signal }) ?? context.fs.capabilities;
+      context.signal.throwIfAborted();
+      if (capabilities.atomicRenameNoReplace !== true) {
+        throw new FsError("ENOTSUP", { syscall: "mv", path: target, message: "atomic no-replace rename is unavailable" });
+      }
+      return;
+    } catch (error) {
+      context.signal.throwIfAborted();
+      if (codeOf(error) !== "ENOENT" || candidate === "/") throw error;
+      candidate = dirname(candidate);
+    }
+  }
+}
+
 async function canonicalMissing(
   context: CommandContext, path: string, mode: "copy" | "preflight" | "realpath" = "copy",
 ): Promise<string> {
@@ -282,14 +300,20 @@ export function filesystemCommands(maxDirectoryEntries?: number): CommandDefinit
         const target = destination.directory ? joinPath(destination.target, basename(source)) : destination.target;
         if (parsed.flags.has("n") && await maybeStat(context, target, false)) return;
         await admitFilesystemModes(context, "mv", ["rename"], [source, target]);
+        if (parsed.flags.has("n")) await admitNoReplaceRename(context, target);
       });
       return eachOperand(context, destination.sources, async operand => {
         const source = pathOf(context, operand);
         const target = destination.directory ? joinPath(destination.target, basename(source)) : destination.target;
         if (parsed.flags.has("n") && await maybeStat(context, target, false)) return;
-        try { await context.fs.rename(source, target, { signal: context.signal }); }
+        if (parsed.flags.has("n")) await admitNoReplaceRename(context, target);
+        try { await context.fs.rename(source, target, { signal: context.signal, ...(parsed.flags.has("n") ? { noReplace: true } : {}) }); }
         catch (error) {
           context.signal.throwIfAborted();
+          if (parsed.flags.has("n")) {
+            if (codeOf(error) === "EEXIST") return;
+            throw error;
+          }
           if (codeOf(error) !== "EXDEV") throw error;
           if (!await moveAcrossDevices(context, source, target, parsed.flags.has("n"), budget)) {
             if (!parsed.flags.has("n")) throw new FsError("EINVAL", { path: source, dest: target, message: "source and destination are the same file" });

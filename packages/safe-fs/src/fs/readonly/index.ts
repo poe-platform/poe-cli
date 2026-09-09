@@ -4,7 +4,7 @@ import { readBytes } from "../../contracts/io.js";
 import type { ByteSource } from "../../contracts/io.js";
 import type {
   AppendFileOptions, CopyFileOptions, DirectoryEntry, FileStat,
-  FileSystem, FileSystemCapabilities, FsOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
+  FileSystem, FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
   ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
 import { compareEntries, registerEntryView } from "../mount/comparison.js";
@@ -145,7 +145,7 @@ export class ReadOnlyFileSystem implements FileSystem {
     readOnly("rmdir", path);
   }
 
-  async rename(source: string, destination: string, _options?: FsOptions): Promise<void> {
+  async rename(source: string, destination: string, _options?: RenameOptions): Promise<void> {
     readOnly("rename", source, destination);
   }
 

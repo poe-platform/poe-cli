@@ -121,6 +121,15 @@ export function withFileSystemQuota(fs: FileSystem, options: FileSystemQuotaOpti
         await fs.appendFile(path, data, appendOptions);
       });
     },
+    async rename(source, destination, renameOptions) {
+      if (renameOptions?.noReplace) {
+        renameOptions.signal?.throwIfAborted();
+        const capabilities = await fs.capabilitiesFor?.(destination, renameOptions) ?? fs.capabilities;
+        renameOptions?.signal?.throwIfAborted();
+        if (capabilities.atomicRenameNoReplace !== true) throw new FsError("ENOTSUP", { syscall: "rename", path: source, dest: destination });
+      }
+      await fs.rename(source, destination, renameOptions);
+    },
     copyFile(source, destination, copyOptions) {
       return mutate(async () => {
         await assertDelta(destination, (await fs.stat(source, copyOptions)).size, copyOptions);

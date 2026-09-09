@@ -39,7 +39,7 @@ export function readOnlyCapabilities(capabilities: FileSystemCapabilities): File
     rename: false, copy: false, exclusiveCopy: false, truncate: false, streamingAppend: false,
     randomAccessWrite: false, hardlinks: false, permissions: false, timestamps: false,
     descriptorWriteStream: false,
-    atomicRename: false, streamingWrite: false,
+    atomicRename: false, atomicRenameNoReplace: false, streamingWrite: false,
   });
 }
 

@@ -1,4 +1,5 @@
-import type { FileReadHandle, FileSystem, FsOptions } from "../contracts/filesystem.js";
+import type { FileReadHandle, FileSystem, FsOptions, RenameOptions } from "../contracts/filesystem.js";
+import { FsError } from "../contracts/errors.js";
 import type { ByteSource } from "../contracts/io.js";
 import { finishCleanup } from "../contracts/cleanup.js";
 import { registerEntryView } from "./mount/comparison.js";
@@ -73,6 +74,15 @@ export function scopeFileSystem(filesystem: FileSystem, charge: () => void, sign
           const peer = args[1] as FileSystem;
           args[1] = originals.get(peer) ?? peer;
         }
+        if (property === "rename" && (args[2] as RenameOptions | undefined)?.noReplace) return (async () => {
+          const options = args[2] as RenameOptions;
+          const capabilities = await original.capabilitiesFor?.(args[1] as string, options) ?? original.capabilities;
+          assertOpen(options);
+          if (capabilities.atomicRenameNoReplace !== true) throw new FsError("ENOTSUP", {
+            syscall: "rename", path: args[0] as string, dest: args[1] as string,
+          });
+          return Reflect.apply(method, original, args);
+        })();
         return Reflect.apply(method, original, args);
       };
       const scoped = property === "openReadFile"

@@ -35,6 +35,7 @@ establish support. `readOnly: true` takes precedence over all mutation flags.
 | `copy`, `exclusiveCopy` | Ordinary and exclusive `copyFile` operations |
 | `rename` | Configured rename primitive, not necessarily atomic |
 | `atomicRename` | Existing stronger atomic-rename guarantee |
+| `atomicRenameNoReplace` | Atomic rename with destination nonexistence as a publication precondition |
 | `readlink`, `symlinks`, `hardlinks` | Link inspection, symbolic-link creation, and hard-link creation |
 | `timestamps`, `permissions` | Timestamp and permission mutation |
 | `randomAccessWrite` | Eligibility for the shell's existing bounded descriptor-offset update strategy |
@@ -110,6 +111,37 @@ append implementations are unchanged. In particular, non-streaming remote
 append fallback costs are not repaired by this capability. There is no new
 global allocation limit, heap amplification claim, OOM protection, or arbitrary
 host deadline/preemption guarantee.
+
+## Atomic no-replace rename
+
+`rename(source, destination, { noReplace: true, signal })` requests an atomic
+move that must not replace an existing destination entry. `RenameOptions`
+extends `FsOptions`; omission or `noReplace: false` retains ordinary rename
+semantics. An existing destination, including a dangling symlink, rejects with
+`EEXIST` without changing either entry. The destination condition and publication
+must belong to the same atomic operation; stat followed by ordinary rename is
+not an implementation of this contract.
+
+Callers must require `atomicRenameNoReplace === true` before requesting this
+mode. `atomicRename`, method presence, exclusive creation, and exclusive copy
+do not establish support. Adapters that cannot provide the guarantee must reject
+`ENOTSUP` before mutation. Faithful wrappers must preserve the option and admit
+the actual backing operation, or refuse it. The capability does not promise
+cross-device moves: `EXDEV` remains an error and must not trigger an overwriting
+rename or copy/delete fallback for this mode.
+
+The memory adapter supports the operation. The real adapter refuses it because
+its portable Node rename primitive does not expose atomic no-replace semantics.
+An injected native filesystem may advertise support when its authoritative
+native operation implements the destination precondition atomically. This is a
+trusted provider assertion, not a guarantee inferred from an extra existence
+check in an adapter.
+
+`mv -n` skips an already existing target and treats an atomic `EEXIST` race as
+a successful skip, preserving the source and competing destination. For an
+absent target, it requires the affirmative no-replace capability and propagates
+the option. Unsupported or cross-device no-replace moves fail without a
+copy/delete fallback. Ordinary overwriting `mv` retains its existing behavior.
 
 ## Adapter and wrapper declarations
 

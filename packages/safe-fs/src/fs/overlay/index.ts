@@ -11,7 +11,7 @@ import { compareEntries, registerEntryView } from "../mount/comparison.js";
 import { admitDirectoryEntries, directoryEntryLimit } from "../directory-admission.js";
 import type {
   AppendFileOptions, CopyFileOptions, DirectoryEntry,
-  FileStat, FileSystem, FileSystemCapabilities, FsOptions, MkdirOptions,
+  FileStat, FileSystem, FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions,
   ReadDirectoryOptions, ReadFileOptions, ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
 
@@ -168,7 +168,7 @@ export class OverlayFileSystem implements FileSystem {
         : upper.readlink === false && this.#lower.capabilities.readlink === false ? false : undefined,
       ...(upper.readOnly === undefined ? {} : { readOnly: upper.readOnly }),
       ...(effectiveAppend === undefined ? {} : { append: effectiveAppend }),
-      atomicRename: false,
+      atomicRename: false, atomicRenameNoReplace: false,
       descriptorWriteStream: false,
       hardlinks: false,
       symlinks: writable && this.#upper.capabilities.symlinks === true
@@ -706,8 +706,9 @@ export class OverlayFileSystem implements FileSystem {
     if (entry.stat.type === "directory") await this.preserve(entry.path, entry.stat, options);
   }
 
-  async rename(source: string, destination: string, options: FsOptions = {}): Promise<void> {
+  async rename(source: string, destination: string, options: RenameOptions = {}): Promise<void> {
     return this.run(options, async () => {
+      if (options.noReplace) fail("ENOTSUP", source, "atomic no-replace rename is unsupported");
       this.writable(source);
       const original = await this.required(source, options, false);
       const target = await this.resolve(destination, options, false, true);

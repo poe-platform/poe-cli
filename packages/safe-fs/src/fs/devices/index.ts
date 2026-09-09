@@ -1,7 +1,7 @@
 import { FsError, isFsError } from "../../contracts/errors.js";
 import type {
   AppendFileOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileStat, FileSystem,
-  FileSystemCapabilities, FsOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
+  FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
   ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
 import type { ByteSource } from "../../contracts/io.js";
@@ -18,7 +18,7 @@ const deviceCapabilities: FileSystemCapabilities = Object.freeze({
   remove: false, removeDirectory: false, recursiveRemove: false, rename: false,
   mkdir: false, recursiveMkdir: false, symlinks: false, hardlinks: false, readlink: false,
   permissions: false, timestamps: false, truncate: false, randomAccessWrite: false,
-  atomicRename: false, descriptorWriteStream: true,
+  atomicRename: false, atomicRenameNoReplace: false, descriptorWriteStream: true,
 });
 
 function globalCapabilities(filesystem: FileSystem): FileSystemCapabilities {
@@ -258,8 +258,13 @@ export class DeviceFileSystem implements FileSystem {
     await this.#filesystem.rmdir(path, options);
   }
 
-  async rename(source: string, destination: string, options: FsOptions = {}): Promise<void> {
+  async rename(source: string, destination: string, options: RenameOptions = {}): Promise<void> {
     await this.#mutable(source, options, false); await this.#mutable(destination, options, false);
+    if (options.noReplace) {
+      const capabilities = await this.#filesystem.capabilitiesFor?.(destination, options) ?? this.#filesystem.capabilities;
+      options.signal?.throwIfAborted();
+      if (capabilities.atomicRenameNoReplace !== true) throw new FsError("ENOTSUP", { syscall: "rename", path: source, dest: destination });
+    }
     await this.#filesystem.rename(source, destination, options);
   }
 

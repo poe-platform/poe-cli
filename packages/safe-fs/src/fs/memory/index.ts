@@ -2,7 +2,7 @@ import { FsError } from "../../contracts/errors.js";
 import type { ErrnoCode } from "../../contracts/errors.js";
 import type {
   AppendFileOptions, CopyFileOptions, DirectoryEntry, EntryComparison, FileReadHandle, FileStat, FileSystem,
-  FsOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions, ReadStreamOptions, RemoveOptions,
+  FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions, ReadStreamOptions, RemoveOptions,
   WriteFileOptions,
 } from "../../contracts/filesystem.js";
 import type { ByteSource } from "../../contracts/io.js";
@@ -110,7 +110,7 @@ export class MemoryFileSystem implements FileSystem {
       read: true, stat: true, readdir: true, realpath: true, access: true,
       write: true, append: true, exclusiveCreate: true, explicitDirectories: true, implicitDirectories: false,
       mkdir: true, recursiveMkdir: true, remove: true, removeDirectory: true, recursiveRemove: true,
-      rename: true, copy: true, exclusiveCopy: true, readlink: true, truncate: true,
+      rename: true, atomicRenameNoReplace: true, copy: true, exclusiveCopy: true, readlink: true, truncate: true,
       streamingAppend: true, randomAccessWrite: true,
       readOnly: false,
       symlinks: true,
@@ -542,7 +542,7 @@ export class MemoryFileSystem implements FileSystem {
     this.changed(location.parent);
   }
 
-  async rename(source: string, destination: string, options: FsOptions = {}): Promise<void> {
+  async rename(source: string, destination: string, options: RenameOptions = {}): Promise<void> {
     options.signal?.throwIfAborted();
     try {
       const origin = this.entry(source, "rename");
@@ -551,6 +551,7 @@ export class MemoryFileSystem implements FileSystem {
       if (this.terminalDot(source) || this.terminalDot(destination)) this.fail("EINVAL", "rename", source, destination);
       if (node === this.root || target.node === this.root) this.fail("EBUSY", "rename", source, destination);
       if (destination.endsWith("/") && node.type !== "directory") this.fail("ENOTDIR", "rename", source, destination);
+      if (options.noReplace && target.node) this.fail("EEXIST", "rename", source, destination);
       if (target.node === node) return;
       if (node.type === "directory" && target.path.startsWith(`${origin.path}/`)) this.fail("EINVAL", "rename", source, destination);
       this.permission(origin.parent, 3, "rename", source);

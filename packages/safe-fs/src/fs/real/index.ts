@@ -9,7 +9,7 @@ import {
 } from "../../contracts/index.js";
 import type {
   AppendFileOptions, ByteSource, CopyFileOptions, DirectoryEntry, FileReadHandle, FileStat,
-  FileSystem, FileSystemCapabilities, FileType, FsOptions, MkdirOptions,
+  FileSystem, FileSystemCapabilities, FileType, FsOptions, RenameOptions, MkdirOptions,
   ReadDirectoryOptions, ReadFileOptions, ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/index.js";
 
@@ -111,7 +111,7 @@ export class RealFileSystem implements FileSystem {
     read: true, stat: true, readdir: true, realpath: true, access: true,
     write: true, append: true, exclusiveCreate: true, explicitDirectories: true, implicitDirectories: false,
     mkdir: true, recursiveMkdir: true, remove: true, removeDirectory: true, recursiveRemove: true,
-    rename: true, copy: true, exclusiveCopy: true, readlink: true, truncate: true,
+    rename: true, atomicRenameNoReplace: false, copy: true, exclusiveCopy: true, readlink: true, truncate: true,
     streamingAppend: true, randomAccessWrite: true,
     readOnly: false, symlinks: true, hardlinks: true, permissions: true,
     timestamps: true, atomicRename: true, streamingRead: true, streamingWrite: true, retainedRead: true,
@@ -365,8 +365,9 @@ export class RealFileSystem implements FileSystem {
     });
   }
 
-  async rename(source: string, destination: string, options: FsOptions = {}): Promise<void> {
+  async rename(source: string, destination: string, options: RenameOptions = {}): Promise<void> {
     return this.operation("rename", source, options, async () => {
+      if (options.noReplace) throw new FsError("ENOTSUP", { syscall: "rename", path: source, dest: destination });
       const from = await this.path(source, { ...options, followFinal: false });
       const to = await this.path(destination, { ...options, followFinal: false, missing: "final" });
       this.protectTerminal(source);

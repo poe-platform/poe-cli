@@ -54,6 +54,7 @@ export interface FileSystemCapabilities {
   readonly permissions?: boolean;
   readonly timestamps?: boolean;
   readonly atomicRename?: boolean;
+  readonly atomicRenameNoReplace?: boolean;
   readonly snapshotRmdir?: boolean;
   readonly streamingRead?: boolean;
   readonly retainedRead?: boolean;
@@ -70,6 +71,10 @@ export interface FileReadHandle {
   stat(options?: FsOptions): Promise<FileStat>;
   read(position: number, maxBytes: number, options?: FsOptions): Promise<Uint8Array>;
   close(): Promise<void>;
+}
+
+export interface RenameOptions extends FsOptions {
+  readonly noReplace?: boolean;
 }
 
 export interface ReadFileOptions extends FsOptions {
@@ -131,7 +136,7 @@ export interface FileSystem {
   mkdir(path: string, options?: MkdirOptions): Promise<void>;
   rm(path: string, options?: RemoveOptions): Promise<void>;
   rmdir?(path: string, options?: FsOptions): Promise<void>;
-  rename(source: string, destination: string, options?: FsOptions): Promise<void>;
+  rename(source: string, destination: string, options?: RenameOptions): Promise<void>;
   copyFile(source: string, destination: string, options?: CopyFileOptions): Promise<void>;
   realpath(path: string, options?: FsOptions): Promise<string>;
   access(path: string, mode?: number, options?: FsOptions): Promise<void>;

@@ -2,7 +2,7 @@ import { FsError, isFsError, toFsError } from "../../contracts/errors.js";
 import type { ErrnoCode } from "../../contracts/errors.js";
 import type {
   AppendFileOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileStat, FileSystem,
-  FileSystemCapabilities, FsOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
+  FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
   ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
 import type { ByteSource } from "../../contracts/io.js";
@@ -138,13 +138,13 @@ export class MountFileSystem implements FileSystem {
         if (capability === "descriptorWriteStream" && backend.capabilities.streamingWrite === false) return false;
         return declared === true && optional[capability]?.some(method => typeof backend[method] !== "function") ? false : declared;
       });
-      if (["rename", "copy", "exclusiveCopy"].includes(capability) && mounts.length > 1) return undefined;
+      if (["rename", "atomicRenameNoReplace", "copy", "exclusiveCopy"].includes(capability) && mounts.length > 1) return undefined;
       return values.every(value => value === true) ? true : values.every(value => value === false) ? false : undefined;
     };
     const semantics = Object.fromEntries([
       "read", "stat", "readdir", "realpath", "access",
       "write", "append", "exclusiveCreate", "explicitDirectories", "implicitDirectories", "mkdir", "recursiveMkdir",
-      "remove", "removeDirectory", "recursiveRemove", "rename", "copy", "exclusiveCopy", "readlink", "truncate",
+      "remove", "removeDirectory", "recursiveRemove", "rename", "atomicRenameNoReplace", "copy", "exclusiveCopy", "readlink", "truncate",
       "streamingAppend", "randomAccessWrite", "descriptorWriteStream", "symlinks", "hardlinks", "permissions", "timestamps",
     ].map(capability => [capability, common(capability)]).filter(([, value]) => value !== undefined));
     this.capabilities = Object.freeze({
@@ -466,7 +466,7 @@ export class MountFileSystem implements FileSystem {
     });
   }
 
-  rename(source: string, destination: string, options: FsOptions = {}): Promise<void> {
+  rename(source: string, destination: string, options: RenameOptions = {}): Promise<void> {
     return this.operation("rename", source, options, async () => {
       const origin = await this.resolve(source, options, { followFinal: false, entry: true });
       const target = await this.resolve(destination, options, {
@@ -478,6 +478,11 @@ export class MountFileSystem implements FileSystem {
       this.mutable(target);
       this.entryPath(source);
       this.entryPath(destination);
+      if (options.noReplace) {
+        const capabilities = await target.mount.backend.capabilitiesFor?.(target.local, options) ?? target.mount.backend.capabilities;
+        options.signal?.throwIfAborted();
+        if (capabilities.atomicRenameNoReplace !== true) fail("ENOTSUP");
+      }
       await origin.mount.backend.rename(origin.local, target.local, options);
     }, destination);
   }
