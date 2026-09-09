@@ -30,7 +30,7 @@ for (const allowDirectory of [undefined, false, 0, 1, "true", null]) {
 }
 
 for (const path of ["/d", "/d/", "/s", "/s/", "/"]) {
-  test(`opt-in directory handle exposes pinned snapshots without seek: ${path}`, async () => {
+  test(`opt-in directory handle exposes pinned snapshots and ext4 64-bit EOF: ${path}`, async () => {
     const filesystem = new MemoryFileSystem();
     await filesystem.mkdir("/d");
     await filesystem.symlink("d", "/s");
@@ -38,8 +38,9 @@ for (const path of ["/d", "/d/", "/s", "/s/", "/"]) {
     const retained = usage(filesystem);
     const handle = await open(filesystem, path);
     try {
-      assert.deepEqual(Object.keys(handle).sort(), ["close", "read", "stat"]);
-      assert.equal(handle.seekEnd, undefined);
+      assert.deepEqual(Object.keys(handle).sort(), ["close", "read", "seekEnd", "stat"]);
+      assert.equal(typeof handle.seekEnd, "function");
+      assert.equal(await handle.seekEnd!(), 9223372036854775807n);
       const first = await handle.stat();
       assert.deepEqual(first, before);
       Reflect.set(first, "mode", 0);
@@ -63,12 +64,15 @@ for (const allowDirectory of [undefined, false, true]) {
     const handle = await open(filesystem, "/f", allowDirectory === undefined ? {} : { allowDirectory });
     try {
       assert.equal((await handle.stat()).type, "file");
+      assert.equal(typeof handle.seekEnd, "function");
+      assert.equal(await handle.seekEnd!(), 3n);
       const bytes = await handle.read(1, 2);
       assert.deepEqual(bytes, Uint8Array.of(2, 3));
       bytes.fill(0);
       assert.deepEqual(await handle.read(0, 3), Uint8Array.of(1, 2, 3));
       await assert.rejects(handle.read(0, 0), code("EINVAL"));
       await filesystem.chmod("/f", 0);
+      assert.equal(await handle.seekEnd!(), 3n);
       assert.deepEqual(await handle.read(0, 3), Uint8Array.of(1, 2, 3));
     } finally { await handle.close(); }
     assert.deepEqual(usage(filesystem), before);
@@ -100,10 +104,12 @@ test("retained directory snapshots follow the pinned inode through rename, unlin
     assert.equal(removed.nlink, 0);
     assert.equal(removed.ctimeMs, 3000);
     assert.equal(removed.birthtimeMs, 1000);
-    assert.equal(handle.seekEnd, undefined);
+    assert.equal(typeof handle.seekEnd, "function");
+    assert.equal(await handle.seekEnd!(), 9223372036854775807n);
     await assert.rejects(handle.read(0, 1), code("EISDIR"));
     await assert.rejects(filesystem.stat("/old"), code("ENOENT"));
     filesystem.stat = async () => { throw new Error("retained stat must not resolve a pathname"); };
+    assert.equal(await handle.seekEnd!(), 9223372036854775807n);
     assert.deepEqual(await handle.stat(), removed);
   } finally { await handle.close(); }
 });

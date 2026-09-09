@@ -255,7 +255,18 @@ initialization is opaque metadata work, not a descriptor-retirement barrier;
 cancellation observes its late settlement without dispatching a later seek.
 Once native work is actually admitted, close retains the descriptor until that
 work finishes. Cancellation cannot forcibly stop a running native syscall.
-Memory directory admission does not invent an equivalent native end position.
+
+Memory retained read and resize handles support end-seeking. Regular-file
+handles return the current byte length of the pinned inode as a bigint;
+positional reads remain independent of the end-seek result. Explicitly admitted
+directory handles use the selected 64-bit Linux ext4 indexed-directory profile:
+the terminal htree cookie is `9223372036854775807n`, independent of directory
+entry count or stat size. This is a virtual compatibility policy, not observed
+host metadata or a claim about XFS, non-indexed ext4, or 32-bit directory cookies.
+Obtaining the cookie does not allocate file bytes; consumers must still enforce
+their size and quota limits before any requested growth. The operation retains
+inode identity through namespace changes and follows ordinary cancellation and
+closed-handle checks.
 
 Close synchronously stops admission, returns one shared promise and drains
 already admitted resource work before releasing the handle. Later operations

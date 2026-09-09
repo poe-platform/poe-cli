@@ -1,5 +1,63 @@
 # Issue 678: GNU-compatible file resizing
 
+## User baseline decision: September 9, 2026
+
+The user now explicitly says to skip the macOS issue and select the most common
+Linux behavior for truncate. Root selects the ordinary 64-bit Linux ext4
+directory-seek profile, consistent with Debian's documented default filesystem.
+This resolves the earlier ext4-versus-XFS baseline decision; it does not claim
+that all Linux filesystems return the same directory end offset.
+
+Implement the missing Memory retained end-seek from that profile's actual
+kernel/oracle behavior, with failing tests first. Keep file inode pinning,
+directory admission, cancellation, closed-handle errors and bounded allocation
+intact. Do not substitute directory stat size or add a user-visible profile
+option just to satisfy the tests. Preserve historical XFS evidence separately;
+Real must continue to follow its actual underlying filesystem.
+
+The existing honest virtual implementation version banner is not permission to
+claim GNU authorship or version identity. Retain the visible identity difference
+in the verification report rather than silently normalizing it or treating it
+as a reason to stop the functional fix. No remote-write permission is inferred
+from this filesystem decision.
+
+### Implemented ext4 retained end-seek
+
+Memory read and resize handles now obtain regular-file ends from the retained
+inode's current byte length. Admitted directory handles return the Linux64
+indexed-ext4 htree EOF, `9223372036854775807n`, rather than directory stat size.
+The six-line implementation preserves existing acquisition guards and the
+shared cancellation/closed-handle checks, without allocating the represented
+file length or reacquiring a pathname. The contract documents the selected
+virtual profile and excludes claims about XFS or non-indexed/32-bit ext4.
+
+The new memory-only retained-seek suite records 39 failures and 12 passes before
+the fix, then all 51 passes. Existing handle-key and missing-seek assertions are
+updated to require the new exact behavior while retaining admission, inode,
+metadata, ledger and invalid-operation assertions. All 13 neighboring retained
+filesystem test files pass 1,646 cases. Evidence is in
+`/tmp/issue-678-memory-ext4-{red-approved,green-v2}.log` and
+`/tmp/issue-678-memory-retained-neighbors-v2.log`; the intermediate obsolete
+assertion failures remain preserved.
+
+Independent review finds no actionable defect in the selected profile. Its
+separate current-source control checks directory/read/write end-seeking through
+scope and quota wrappers, one charge per seek, falsey cancellation, cleanup,
+and refusal of writer growth beyond quota. The command and successful output
+are retained in the review tool record, not a separate receipt file.
+
+The normal workspace/root build succeeds. An actual browser-worker run saves
+the unchanged comparison input as a virtual shell script and executes it with
+`sh`. Empty/populated directory references and existing/new targets produce
+exactly the native ext4 ASCII stdout: 41 bytes, no displayed stderr, and exit 0.
+The native fixture's mount type is explicitly checked as ext4. The screenshot
+is visually inspected; comparison inputs, native bytes, ARIA, PNG and the
+bounded comparison receipt are in `out/issue-678-ext4-profile/`. The task-owned
+browser is closed and verified absent, and its Vite server is stopped.
+
+These are focused checks, not a completed full-root gate, package-publication
+receipt, version-banner parity, or universal Linux filesystem claim.
+
 ## Root implementation decision: September 9, 2026
 
 - Add `preferredIoBlockSize`, `OpenResizeFileOptions`, `FileResizeHandle`,

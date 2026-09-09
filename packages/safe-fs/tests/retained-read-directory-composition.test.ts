@@ -44,7 +44,7 @@ describe("retained directory read composition", () => {
   });
 
   for (const [name, wrap] of Object.entries(wrappers)) {
-    it(`${name} preserves opt-in directory identity without inventing end seeking`, async () => {
+    it(`${name} preserves opt-in directory identity and ext4 64-bit end seeking`, async () => {
       const memory = new MemoryFileSystem();
       await memory.mkdir("/directory");
       const before = await memory.stat("/directory");
@@ -57,7 +57,8 @@ describe("retained directory read composition", () => {
         expect(await handle.stat()).toMatchObject({ type: "directory", ino: before.ino });
         expect((await memory.stat("/directory")).ino).not.toBe(before.ino);
         await expect(handle.read(0, 1)).rejects.toMatchObject({ code: "EISDIR" });
-        expect(handle.seekEnd).toBeUndefined();
+        expect(handle.seekEnd).toBeTypeOf("function");
+        expect(await handle.seekEnd!()).toBe(9223372036854775807n);
       } finally { await handle.close(); }
       await expect(handle.stat()).rejects.toMatchObject({ code: "EBADF" });
     });

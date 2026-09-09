@@ -22,7 +22,11 @@ test("Memory publishes virtual 4096 hints in fresh path and retained snapshots",
   const reader = await filesystem.openReadFile("/f");
   try {
     assert.equal((filesystem as FileSystem).capabilities.retainedResize, true);
-    assert.deepEqual(Object.keys(handle).sort(), ["close", "stat", "truncate"]);
+    assert.deepEqual(Object.keys(handle).sort(), ["close", "seekEnd", "stat", "truncate"]);
+    assert.equal(typeof handle.seekEnd, "function");
+    assert.equal(typeof reader.seekEnd, "function");
+    assert.equal(await handle.seekEnd!(), 3n);
+    assert.equal(await reader.seekEnd!(), 3n);
     const before = await filesystem.stat("/f");
     assert.equal(before.preferredIoBlockSize, 4096);
     assert.equal((await filesystem.lstat("/s")).preferredIoBlockSize, 4096);
@@ -30,6 +34,8 @@ test("Memory publishes virtual 4096 hints in fresh path and retained snapshots",
     assert.deepEqual(await handle.stat(), before);
     assert.deepEqual(await reader.stat(), before);
     await handle.truncate(2);
+    assert.equal(await handle.seekEnd!(), 2n);
+    assert.equal(await reader.seekEnd!(), 2n);
     const after = await handle.stat();
     assert.equal(before.size, 3);
     assert.equal(after.size, 2);

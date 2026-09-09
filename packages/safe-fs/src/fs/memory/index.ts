@@ -67,6 +67,7 @@ interface WriteTarget {
 }
 
 const typeModes = { file: 0o100000, directory: 0o040000, symlink: 0o120000 } as const;
+const ext4HtreeEof64 = (1n << 63n) - 1n;
 const ownedStats = new WeakMap<FileStat, { filesystem: FileSystem; path: string; root: DirectoryNode }>();
 const ownedStores = new WeakMap<FileSystem, { root: DirectoryNode; ledger: MemoryLedger; capabilities: FileSystem["capabilities"]; intact: () => boolean }>();
 const registeredAuthorities = new WeakSet<FileSystem>();
@@ -715,6 +716,7 @@ export class MemoryFileSystem implements FileSystem {
     };
     return {
       async stat(options = {}) { return snapshot(current(options.signal, "fstat")); },
+      async seekEnd(options = {}) { return BigInt(current(options.signal, "lseek").data.byteLength); },
       async truncate(length, options = {}) {
         const file = current(options.signal, "ftruncate");
         integer(length, "ftruncate", path);
@@ -769,6 +771,10 @@ export class MemoryFileSystem implements FileSystem {
     return {
       async stat(options = {}) {
         return snapshot(current(options.signal, "fstat"));
+      },
+      async seekEnd(options = {}) {
+        const file = current(options.signal, "lseek");
+        return file.type === "directory" ? ext4HtreeEof64 : BigInt(file.data.byteLength);
       },
       async read(position, maxBytes, options = {}) {
         const file = current(options.signal, "read");
