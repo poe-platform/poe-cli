@@ -99,3 +99,11 @@ watchdog, and output cap. The independent watchdog explicitly uses its original
 CommonJS mode and confirms timer installation before a case starts. Validate
 large requests, early pipe closure, overflow cleanup, native grep, and all
 inline-input cases before rerunning the full maintained gate.
+
+The second full run reached the portable-command test's three-second timeout.
+Its focused run passed, and phase profiling measured 258 ms for the maintained
+split build plus 119 ms for the CJS consumer build, versus 31 ms VM startup and
+169 ms combined native command execution. Keep both real builds fresh and move
+them into a scoped setup hook with its own three-second bound. The runtime test
+retains its three-second deadline and every VM/native-command assertion. These
+are two independently bounded phases, not the original total wall-clock bound.
