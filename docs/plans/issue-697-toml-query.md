@@ -78,3 +78,8 @@ The first normal build, 100 integration-discovery checks, and all 17 package-lin
 rules pass. An ad hoc screenshot verifies help, scalar/filtered output, exact
 date precision, and invalid-format diagnostics. Final committed build, full unit
 route, serial lint, installed consumers, and release checks remain delivery gates.
+
+The first full run found a current allocation-order assertion still matching the
+old YAML-only function calls. Updating its markers preserves the original
+ordering/mutation checks and adds TOML admission-before-copy coverage; all nine
+allocation repair tests pass. No product change is needed for this assertion.
