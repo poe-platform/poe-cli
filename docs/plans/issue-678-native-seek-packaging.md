@@ -140,3 +140,70 @@ Generated outputs: workspace `dist/native/fs-seek/**` and `dist/package.json`; p
 - No macOS, Windows, musl, arm64 or other-architecture artifact is established. Windows would also need a reviewed descriptor/syscall implementation and error semantics; renaming the Linux artifact or adding a stat-size fallback is not support. Do not add package-level `os`/`cpu` restrictions that would unnecessarily disable portable JS elsewhere. A deliberately narrower optional seek scope must be explicit.
 - Current release runners do not establish the pinned compiler/header/sysroot closure merely by being Ubuntu/Node 22. Toolchain provisioning, cross-target artifact production, authenticated assembly and tests must be designed into the existing release routes before publication.
 - Async syscall lifecycle, fd retention against close/reuse, cancellation/draining, directory-aware acquisition and arbitrary filesystem behavior remain with the parallel owners. This packaging proposal neither duplicates that API work nor closes the known GNU nonregular-seek/large-value gaps.
+
+## Installed root qualification — September 9, 2026
+
+The following evidence advances the earlier packaging proposal without changing
+its unsupported-target or GNU-parity limits. The candidate is the current mixed
+worktree at local HEAD `2bc5fc996e458a883c27f5eb9b87d9d1a86e5de6`, including
+uncommitted truncate work; it is not an exclusively committed release artifact.
+
+- After the normal maintained root build, the root tarball contains 5,069 files
+  whose bytes exactly match the pre-pack worktree. Archive SHA-256:
+  `a0c7d86a02831d1fcf72c8a3b6fbb37d2b43cc202d95ef30421534e574dcc43b`.
+  The native loader, manifest, declarations, and 17,544-byte Linux x64 glibc
+  binary are present with their expected bytes. Evidence:
+  `out/issue-678-tmp/root-pack-verification-v2.json`.
+- npm 10.9.8 unexpectedly invoked `prepare` during the earlier dry run despite
+  `--ignore-scripts`. That stderr remains preserved. There is no pre-dry-run Git
+  config baseline, so its prior contents are not claimed unchanged. An isolated,
+  integrity-checked npm 11.0.0 tool then passed positive/negative lifecycle
+  controls and packed the real root offline with scripts disabled. Twenty
+  protected repository metadata/hook files remain unchanged from this later
+  pre-pack baseline. No manifest scripts were removed or replaced with success
+  sentinels, and no project/global dependencies were upgraded.
+- The verified tarball was installed with lifecycle scripts disabled and
+  optional dependencies explicitly omitted in a fresh `/var/tmp` consumer.
+  The consumer was moved before product execution; the old path and all ancestor
+  `node_modules` directories are absent. All 5,069 installed package files still
+  match the archive/source baseline, and the lockfile integrity matches the
+  actual tarball. This is not a default-install or postinstall qualification.
+- Actual Node 18.18.0, Node 22.23.2, and Bun 1.3.8 each pass the same six public
+  native control groups: shared canonical/Node identities, initial bigint END
+  offset, retained-inode resize after path replacement, pre-abort reason and
+  subsequent valid seek, canonical EBADF after close, and exactly the installed
+  native binding in the module cache. Each run closes its one handle and checks
+  removal of its owned fixture. These qualify the exact Node minimum for this
+  public route, not every root API or all versions allowed by the engine range.
+  Evidence: `out/issue-678-tmp/root-installed-checkpoint-v1.md` and linked raw
+  runtime/relocation reports.
+- The extracted root's actual browser-condition Bash and filesystem entries,
+  hosted in Node 22.23.2, pass 16 fresh GNU numfmt comparisons with exact
+  stdout/stderr/status and 16 disposed shells. The sandbox-denied first attempt
+  remains separate from the approved successful rerun. This is not a browser
+  engine test or full numfmt parity. Evidence:
+  `out/issue-677-source-audit-v2/packed-root-browser-condition-v3.json`.
+- The installed public filesystem core and Bash entries bundle with no external
+  imports or native inputs under both `browser` and the maintained combined
+  `workerd,worker,browser` condition set. Each graph contains only three installed
+  package modules plus the in-memory consumer entry. Both profiles reject the
+  explicit Node-only filesystem export. This is condition-aware bundling, not
+  Worker execution or a claim about a condition set that omits `browser`.
+  Evidence: `out/issue-678-tmp/root-installed-portable-bundles-v1.json`.
+- Strict NodeNext declaration checks, with library checking enabled, pass the
+  selected public native filesystem and portable Bash/retained-handle fixtures.
+  The negative fixture retains exactly TS2322 and TS2345 for assigning a bigint
+  seek result to number and supplying bigint to the number-valued resize API.
+  The first compiler invocation returned expected statuses but failed the
+  isolation audit because its checkout cwd supplied ambient Node declarations.
+  The corrected invocation runs from the moved consumer: every resolved file is
+  inside that consumer or the explicitly supplied TypeScript standard library.
+  TypeScript 5.9.3 is test tooling; pinned `@types/node` 25.9.4 was installed only
+  as consumer-local test tooling. No `skipLibCheck`, diagnostic suppression,
+  repository declaration fallback, or public dependency change was introduced.
+  Evidence: `out/issue-678-tmp/root-installed-types-verification-v2.json`.
+
+Memory directory-reference semantics and version identity remain unresolved.
+These checks do not establish full root declaration/API coverage, actual browser
+or Worker execution, other native targets, syscall shutdown fault behavior,
+hermetic release toolchain provenance, remote-main delivery, or publication.
