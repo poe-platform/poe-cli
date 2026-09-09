@@ -1,5 +1,5 @@
 import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
-import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyShufCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
 import { FsError as CoreFsError, createDeviceFileSystem } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
@@ -8,6 +8,7 @@ if (FsError !== CompatibilityFsError) throw new Error("Compatibility filesystem 
 await verifyNullDeviceView({ createMemoryFileSystem, createDeviceFileSystem });
 await verifyCmpCommands();
 await verifyFmtCommands();
+await verifyShufCommands();
 const definitions = createAgentCommands();
 const commandNames = definitions.map(command => command.name).sort();
 if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
@@ -15,7 +16,7 @@ if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) 
 }
 const declaredCommands = [
   "[", "basename", "cat", "cmp", "cp", "cut", "dirname", "echo", "false", "fmt", "grep", "head", "ln", "ls",
-  "mkdir", "mv", "printf", "pwd", "readlink", "realpath", "rg", "rm", "rmdir", "sed", "sort",
+  "mkdir", "mv", "printf", "pwd", "readlink", "realpath", "rg", "rm", "rmdir", "sed", "shuf", "sort",
   "tail", "tee", "test", "touch", "tr", "true", "uniq", "wc",
 ];
 const declaredNames = definitions.filter(definition => Object.hasOwn(definition, "filesystemRequirements")).map(definition => definition.name).sort();

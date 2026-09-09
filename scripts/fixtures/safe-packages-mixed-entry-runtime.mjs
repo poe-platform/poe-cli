@@ -5,7 +5,7 @@ export const expectedAgentCommandNames = Object.freeze([
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "diff", "patch", "chmod", "stat", "mktemp", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort());
@@ -95,6 +95,39 @@ export async function verifyFmtCommands(entry = defaultEntry) {
     const binary = await shell.exec("fmt -u -w10", { stdin: new Uint8Array([255, 32, 32, 97, 10]) });
     if (binary.exitCode !== 0 || binary.stderr !== "" || JSON.stringify(Array.from(binary.stdoutBytes)) !== "[255,32,97,10]") {
       throw new Error(`Public fmt binary output changed: ${JSON.stringify(binary)}`);
+    }
+  } finally { await shell.dispose(); }
+}
+
+export async function verifyShufCommands(entry = defaultEntry) {
+  const filesystem = new entry.MemoryFileSystem();
+  await filesystem.writeFile("/shuf-random", new Uint8Array(64));
+  await filesystem.writeFile("/shuf-sparse-random", new Uint8Array([0, 0, 1, 0, 0]));
+  await filesystem.writeFile("/shuf-lines", new TextEncoder().encode("alpha\nbeta\ngamma\n"));
+  const shell = new entry.Shell({ fs: filesystem, env: { LC_ALL: "C" } }).use(entry.agentCommands());
+  try {
+    for (const [script, stdout, stderr = "", exitCode = 0] of [
+      ["shuf --random-source=/shuf-random /shuf-lines", "alpha\nbeta\ngamma\n"],
+      ["cat /shuf-lines | shuf --random-source=/shuf-random", "alpha\nbeta\ngamma\n"],
+      ["env shuf --random-source=/shuf-random /shuf-lines", "alpha\nbeta\ngamma\n"],
+      ["printf /shuf-lines | xargs shuf --random-source=/shuf-random", "alpha\nbeta\ngamma\n"],
+      ["shuf --random-source=/shuf-random -o /shuf-lines /shuf-lines; cat /shuf-lines", "alpha\nbeta\ngamma\n"],
+      ["shuf --random-source=/shuf-random -i7-10 -n3", "7\n8\n9\n"],
+      ["shuf --random-source=/shuf-sparse-random -i0-131071 -n2", "1\n1\n"],
+      ["shuf --random-source=/missing -n0 -e alpha beta", ""],
+      ["shuf --random-source=/missing -i1-18446744073709551615 -n0 -o /shuf-empty; test -f /shuf-empty && cat /shuf-empty", ""],
+      ["shuf -- \"'?\"", "", "shuf: ''\\''?': No such file or directory\n", 1],
+      ["shuf -- \"#'\"", "", "shuf: \"#'\": No such file or directory\n", 1],
+    ]) {
+      const result = await shell.exec(script);
+      if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
+        throw new Error(`Public shuf failed: ${script}: ${JSON.stringify(result)}`);
+      }
+    }
+    const bytes = new Uint8Array([255, 0, 0, 65, 0]);
+    const binary = await shell.exec("shuf --random-source=/shuf-random -z", { stdin: bytes });
+    if (binary.exitCode !== 0 || binary.stderr !== "" || JSON.stringify(Array.from(binary.stdoutBytes)) !== "[255,0,0,65,0]") {
+      throw new Error(`Public shuf binary output changed: ${JSON.stringify(binary)}`);
     }
   } finally { await shell.dispose(); }
 }

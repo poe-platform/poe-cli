@@ -424,6 +424,8 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/fmt.test.ts"));
   assert.ok(files.includes("tests/commands/fmt-adversarial.test.ts"));
   assert.ok(files.includes("tests/plugins/fmt-registration.test.ts"));
+  assert.ok(files.includes("tests/commands/shuf.test.ts"));
+  assert.ok(files.includes("tests/plugins/shuf-registration.test.ts"));
   assert.ok(files.includes("tests/shell/command-input.test.ts"));
   assert.ok(files.includes("tests/shell/parse-budget.test.ts"));
   assert.ok(files.includes("tests/shell/parse-admission.test.ts"));
