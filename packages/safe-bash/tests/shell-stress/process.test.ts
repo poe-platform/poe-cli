@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
@@ -226,6 +228,30 @@ test("isolated output overflow retires a blocked extra input pipe", async () => 
   });
   assert.equal((result.error as NodeJS.ErrnoException).code, "ENOBUFS");
   assert.equal(result.stdout.length + result.stderr.length, 1024);
+  assert.ok(result.pid);
+  assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
+});
+
+for (const [channel, code, exitStatus] of [
+  [0, "ECONNRESET", 0], [3, "ECONNRESET", 0],
+  [1, "ECONNRESET", 0], [2, "ECONNRESET", 0],
+  [3, "ECONNRESET", 7], [3, "EIO", 0],
+] as const) test(`isolated pipe ${channel} ${code} preserves exit ${exitStatus} ownership`, async context => {
+  const spawn = childProcess.spawn;
+  const reason = Object.assign(new Error(`read ${code}`), { code });
+  context.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+    const child = spawn(...args);
+    queueMicrotask(() => child.stdio[channel]!.emit("error", reason));
+    return child;
+  });
+  syncBuiltinESMExports();
+  context.after(() => { context.mock.restoreAll(); syncBuiltinESMExports(); });
+  const result = await isolatedSpawn(process.execPath, ["--eval", `process.exit(${exitStatus})`], {
+    extraInput: "request", timeout: 2000, maxBuffer: 1024,
+  });
+  const inputReset = (channel === 0 || channel === 3) && code === "ECONNRESET";
+  assert.equal(result.error, inputReset ? undefined : reason);
+  if (inputReset) assert.equal(result.status, exitStatus);
   assert.ok(result.pid);
   assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
 });

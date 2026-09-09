@@ -125,3 +125,11 @@ snapshot. New negative controls reject path, digest, deadline, cap, scenario,
 assertion, worker-source, and unrelated-byte drift. Existing depth controls remain
 active on the authenticated predecessor. The focused validator suite passes all
 92 cases and strict TypeScript checks.
+
+Linux release CI then reproduced ECONNRESET on an unread extra input pipe after
+a successful child exit. Treat it like EPIPE only for owned input streams; retain
+fatal stdout/stderr errors, unrelated input errors, nonzero exit statuses, and
+process-group cleanup. Two injected input resets failed before this correction.
+All 25 process tests now pass, including six transport controls for stdin, fd3,
+both output channels, exit status 7, and EIO. Strict TypeScript and independent
+review pass; deadlines and output caps are unchanged.

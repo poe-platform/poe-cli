@@ -65,7 +65,7 @@ export function isolatedSpawn(command: string, args: readonly string[], options:
     child.stdout.on("error", stop);
     child.stderr.on("error", stop);
     for (const input of inputs) input.on("error", error => {
-      if (!("code" in error && error.code === "EPIPE")) stop(error);
+      if (!("code" in error && (error.code === "EPIPE" || error.code === "ECONNRESET"))) stop(error);
     });
     child.on("error", error => { failure ??= error; });
     child.once("exit", killGroup);
