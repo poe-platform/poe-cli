@@ -392,8 +392,8 @@ describe("fixed guarded root lint arguments", () => {
     expect(await main({ argv, root, fileSystem, stderr, stdout: { write: vi.fn() } })).toBe(2);
     expect(stderr.write).toHaveBeenCalled();
   });
-  it("does not initialize current config before Phase 2 wiring", async () => {
-    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "eslint . --ext ts" } }) });
+  it.each(["eslint . --ext ts", "node scripts/lint-eslint.mjs"])("does not initialize current config for unsupported wiring %s", async command => {
+    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": command } }), "eslint.config.js": "export default [];" });
     const loadConfig = vi.fn();
     const code = await main({ argv: [], root, fileSystem: state.fileSystem, loadConfig, stdout: { write: vi.fn() }, stderr: { write: vi.fn() } });
     expect(code).toBe(2);
@@ -1033,7 +1033,7 @@ describe("guard refusal and policy regression controls", () => {
   });
   it("prevents root command or config identity drift across loading", async () => {
     for (const target of ["package.json", "eslint.config.js"]) {
-      const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
+      const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node --max-old-space-size=1024 scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
       const loadConfig = vi.fn(async () => {
         state.volume.writeFileSync(root + "/" + target, "changed");
         return { default: state.config, lintInputGuard: state.guard };
@@ -1052,7 +1052,7 @@ describe("guard refusal and policy regression controls", () => {
     expect(() => state.guard.fileSystem.readFileSync(root + "/src/file.js", "utf8")).toThrow(/options/);
   });
   it("exercises successful staged main only with injected memory config", async () => {
-    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
+    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node --max-old-space-size=1024 scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
     const realLoad = state.guard.loadReceipts;
     const guard = { ...state.guard, loadReceipts: () => realLoad(state.binding) };
     const stdout = { write: vi.fn() };
@@ -1075,7 +1075,7 @@ describe("final scope accounting controls", () => {
     expect(result.unprocessed.descendantsUnknown).toBe(true);
   });
   it("reports separate fixed bootstrap authentication counters", async () => {
-    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
+    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node --max-old-space-size=1024 scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
     const realLoad = state.guard.loadReceipts;
     const guard = { ...state.guard, loadReceipts: () => realLoad(state.binding) };
     const stderr = { write: vi.fn() };
@@ -1109,7 +1109,7 @@ describe("final scope accounting controls", () => {
     expect(guard.snapshot()).toMatchObject({ opens: 1, closes: 1, failed: true, subjectBytes: 3 });
   });
   it("refuses bulk suppressions before receipt authentication", async () => {
-    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];", "eslint-suppressions.json": "{}" });
+    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node --max-old-space-size=1024 scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];", "eslint-suppressions.json": "{}" });
     const stderr = { write: vi.fn() };
     expect(await main({ argv: [], root, fileSystem: state.fileSystem, loadConfig: async () => ({ default: state.config, lintInputGuard: state.guard }), stdout: { write: vi.fn() }, stderr })).toBe(2);
     expect(JSON.parse(stderr.write.mock.calls[0][0]).error).toContain("bulk suppressions");
@@ -1387,7 +1387,7 @@ describe("initialization failure diagnostics", () => {
     expect(state.operations).toHaveLength(1);
   });
   it("reports original ordered read-close errors through the runner", async () => {
-    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
+    const state = model({ "package.json": JSON.stringify({ scripts: { "lint:eslint": "node --max-old-space-size=1024 scripts/lint-eslint.mjs" } }), "eslint.config.js": "export default [];" });
     const boundaryBinding = { path: "packages/safe-bash/integration-boundaries.json", bytes: 2, sha256: digest("{}") };
     state.volume.writeFileSync(root + "/" + boundaryBinding.path, "{}");
     const closeSync = vi.fn((descriptor: number) => { state.memory.closeSync(descriptor); throw false; });
