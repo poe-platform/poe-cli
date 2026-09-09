@@ -2,8 +2,8 @@ import "./safe-packages-portable-search-types.mjs";
 import { agentCommands, createAgentCommands, createBoundedRegexProvider, type AgentCommandsOptions } from "@poe-platform/safe-bash";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import { posix } from "node:path";
-import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
-import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
+import { posixPath as contractPath, type CommandDefinition, type CommandInput } from "@poe-platform/safe-bash/contracts";
+import { posixPath as indexedPath, type CommandInput as IndexedCommandInput } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
 import { Budget, run, makeFsModule, type RunClock, type HostObjectIndexedDefinition, type HostObjectNamedDefinition, type CallbackInvocation } from "@poe-platform/safe-js";
 import { createMemoryFileSystem, type FileSystem } from "@poe-platform/safe-fs/core";
@@ -20,6 +20,23 @@ for (const paths of nodePaths) {
 const agentOptions: AgentCommandsOptions = { regexExecutor: createBoundedRegexProvider(), regex: { maxWorkers: 1 } };
 const commandNames: readonly string[] = createAgentCommands(agentOptions).map(command => command.name);
 void commandNames;
+const inputCommand: CommandDefinition = {
+  name: "typed-input",
+  async execute(context) {
+    const destination: string | undefined = context.stdoutFile?.path;
+    void destination;
+    if (!context.stdinInput) return { exitCode: 0 };
+    const input: CommandInput & IndexedCommandInput = context.stdinInput;
+    const position: number = input.position;
+    const size: number | undefined = input.stat?.size;
+    void size;
+    await input.seek?.(position, context.signal);
+    const result: IteratorResult<Uint8Array> = await input.read(1, context.signal);
+    if (!result.done) await context.stdout.write(result.value);
+    return { exitCode: 0 };
+  },
+};
+void inputCommand;
 const agent = new Shell({ fs }).use(agentCommands(agentOptions));
 await agent.dispose();
 const native = new Shell({ fs }).use(agentCommands({ regexExecutor: createNodeRegexProvider() }));

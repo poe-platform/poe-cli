@@ -105,7 +105,7 @@ export function resolveLimits(...limits: (ShellLimits | undefined)[]): Required<
   return result;
 }
 
-const budgetedSinks = new WeakMap<ByteSink, { budget: Budget; write: ByteSink["write"] }>();
+const budgetedSinks = new WeakMap<ByteSink, { budget: Budget; write: ByteSink["write"]; file?: NonNullable<CommandContext["stdoutFile"]> }>();
 
 export class Budget {
   readonly executionScope = Object.freeze({});
@@ -217,7 +217,7 @@ export class Budget {
         await interruptible(sink.write(chunk), signal);
       },
     };
-    budgetedSinks.set(output, { budget: this, write: output.write });
+    budgetedSinks.set(output, { budget: this, write: output.write, ...(ownership?.write === sink.write && ownership.file ? { file: ownership.file } : {}) });
     return output;
   }
 }
@@ -450,8 +450,18 @@ function signalSink(sink: ByteSink, signal: AbortSignal): ByteSink {
     } } : {}),
     async write(chunk) { signal.throwIfAborted(); await interruptible(write(chunk), signal); },
   };
-  if (owned) budgetedSinks.set(output, { budget: owned.budget, write: output.write });
+  if (owned) budgetedSinks.set(output, { ...owned, write: output.write });
   return output;
+}
+
+function bindCommandIO(context: CommandContext): void {
+  Object.defineProperties(context, {
+    stdinInput: { enumerable: true, get: () => context.stdin instanceof ShellInput ? context.stdin : undefined },
+    stdoutFile: { enumerable: true, get: () => {
+      const ownership = budgetedSinks.get(context.stdout);
+      return ownership?.write === context.stdout.write ? ownership.file : undefined;
+    } },
+  });
 }
 
 async function cloneState(state: State, signal: AbortSignal, scope?: InvocationScope, inheritLocals = true): Promise<State> {
@@ -2248,8 +2258,8 @@ export class Runtime {
           const stat = await interruptible(this.fs.stat(path, options), this.signal);
           if (stat.type === "directory" && !fileShortcut) throw new PublicDiagnostic(`${target}: Is a directory`);
           const source = stat.type === "directory" ? toByteSource("")
-            : await fileInput(this.fs, path, this.budget.limits.maxInputBytes, this.signal, this.inputProfile);
-          const input = new ShellInput(source, this.budget, this.signal);
+            : await fileInput(this.fs, path, this.budget.limits.maxInputBytes, this.signal, this.inputProfile, { stat, registerCleanup: cleanup => { io[invocationScope].register(cleanup); } });
+          const input = new ShellInput(source, this.budget, this.signal, { stat, ...source });
           inputs.add(input);
           descriptors.set(redirect.descriptor, { input, stdinIsDefault: false });
         } else {
@@ -2337,6 +2347,7 @@ export class Runtime {
             }
           });
           const output = this.budget.sink(target.sink, this.signal);
+          budgetedSinks.get(output)!.file = Object.freeze({ path });
           descriptors.set(redirect.descriptor, { output });
           if (redirect.operator === "&>") {
             replaced.add(2);
@@ -2548,6 +2559,7 @@ export class Runtime {
         return invocation;
       },
     };
+    bindCommandIO(context);
     bindFileOutputBudget(context, sink => this.budget.sink(sink, this.signal));
     if (argumentValues.values.every(value => typeof value === "string")) Reflect.deleteProperty(context, "argumentValues");
     const middleware = this.middleware.map<Middleware>((handler) => (context, next) => {
@@ -3083,6 +3095,7 @@ export class Runtime {
           return invocation;
         },
       };
+      bindCommandIO(context);
       bindFileOutputBudget(context, sink => this.budget.sink(sink, runtime.signal));
       if (argumentValues.values.every(value => typeof value === "string")) Reflect.deleteProperty(context, "argumentValues");
       const child = await runtime.shebangState(context, state);

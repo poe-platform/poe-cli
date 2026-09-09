@@ -5,7 +5,7 @@ export const expectedAgentCommandNames = Object.freeze([
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "diff", "patch", "chmod", "stat", "mktemp", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort());
@@ -29,6 +29,47 @@ export const nullDeviceWorkflows = Object.freeze([
   ["test -c /dev/null && test ! -f /dev/null && stat -c '%F %s' /dev/null", "character special file 0\n"],
   ["cd /dev; printf relative > ./null; cat null", ""],
 ]);
+
+export async function verifyCmpCommands(entry = defaultEntry) {
+  const filesystem = new entry.MemoryFileSystem();
+  await filesystem.writeFile("/cmp-left", new Uint8Array([0, 10, 255]));
+  await filesystem.writeFile("/cmp-right", new Uint8Array([0, 10, 254]));
+  await filesystem.writeFile("/cmp-empty", new Uint8Array());
+  await filesystem.writeFile("/cmp-prefixed", new Uint8Array([9, 0, 10, 255]));
+  await filesystem.writeFile("/cmp-long", new Uint8Array(100).fill(1));
+  await filesystem.writeFile("/cmp-shared-input", new TextEncoder().encode("abcdef\n"));
+  await filesystem.writeFile("/cmp-expected-prefix", new TextEncoder().encode("axyz\n"));
+  const shell = new entry.Shell({ fs: filesystem, env: { LC_ALL: "C" } }).use(entry.agentCommands());
+  try {
+    for (const [script, exitCode, stdout, stderr = ""] of [
+      ["cmp /cmp-left /cmp-left", 0, ""],
+      ["cmp /cmp-left /cmp-right", 1, "/cmp-left /cmp-right differ: char 3, line 2\n"],
+      ["LC_ALL=C.UTF-8 cmp /cmp-left /cmp-right", 1, "/cmp-left /cmp-right differ: byte 3, line 2\n"],
+      ["cmp --silent /cmp-left /cmp-right", 1, ""],
+      ["cmp -l /cmp-left /cmp-right", 1, "3 377 376\n"],
+      ["cmp -n 2 /cmp-left /cmp-right", 0, ""],
+      ["cmp -n1 -n3 /cmp-left /cmp-right", 0, ""],
+      ["cmp -i1:0 /cmp-prefixed /cmp-left", 0, ""],
+      ["cmp /cmp-prefixed /cmp-left 1 0", 0, ""],
+      ["cmp -b /cmp-left /cmp-right", 1, "/cmp-left /cmp-right differ: byte 3, line 2 is 377 M-^? 376 M-~\n"],
+      ["printf '\\000\\012\\377' | cmp - /cmp-left", 0, ""],
+      ["cmp /dev/null /cmp-empty", 0, ""],
+      ["{ cmp -n1 - /cmp-expected-prefix; cat; } </cmp-shared-input", 0, "bcdef\n"],
+      ["cat /cmp-shared-input | { cmp -n1 - /cmp-expected-prefix; cat; }", 0, "bcdef\n"],
+      ["cmp -l </cmp-left - /cmp-long", 1, "1   0   1\n2  12   1\n3 377   1\n", "cmp: EOF on - after byte 3\n"],
+      ["cmp -i1:2 </cmp-long - -", 2, "", "cmp: EOF on - which is empty\ncmp: -: Bad file descriptor\n"],
+      ["cmp -l /cmp-shared-input /cmp-expected-prefix >/dev/null", 1, ""],
+      ["cmp -l /cmp-shared-input /cmp-expected-prefix 3>/dev/null 1>&3", 1, ""],
+      ["ln -s /dev/null /cmp-null-alias; cmp -l /cmp-shared-input /cmp-expected-prefix >/cmp-null-alias", 1, ""],
+      ["cmp -l /cmp-empty /cmp-shared-input >/dev/null", 1, "", "cmp: EOF on /cmp-empty which is empty\n"],
+    ]) {
+      const result = await shell.exec(script);
+      if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
+        throw new Error(`Public cmp failed: ${script}: ${JSON.stringify(result)}`);
+      }
+    }
+  } finally { await shell.dispose(); }
+}
 
 export async function verifyNullDeviceView(filesystem) {
   const backing = filesystem.createMemoryFileSystem();

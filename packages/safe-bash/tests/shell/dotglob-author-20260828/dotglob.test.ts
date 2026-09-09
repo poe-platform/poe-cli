@@ -206,8 +206,8 @@ test("builtin discovery, function precedence, command bypass, registry unchanged
     assert.equal(result.stderr, "");
     assert.deepEqual(shell.commands.list().map(command => command.name), before);
     const names = createAgentCommands().map(command => command.name);
-    assert.equal(names.length, 82);
-    assert.equal(new Set(names).size, 82);
+    assert.equal(names.length, 83);
+    assert.equal(new Set(names).size, 83);
     for (const name of ["which", "timeout", "apply_patch", "sha512sum", "sha384sum", "sha224sum"]) assert.ok(names.includes(name));
     for (const name of ["shopt", "curl", "safejs", "node", "npm", "npx"]) assert.equal(names.includes(name), false);
   } finally { await shell.dispose(); }
