@@ -50,7 +50,7 @@ for (const source of [
   'value=`printf "%s" "${value^^}"`',
   'value=`printf "%s" "${value,}"`',
   'value=`printf "%s" "${value,,}"`',
-  'value=`printf "%s" "${value@Q}"`',
+  'value=`printf "%s" "${value@Q:-x}"`',
   'value=`cat <(printf "%s" "${value!}")`',
   'cat <(printf "%s" "${value!}")',
   'value=`printf "%s" "${value! later}"`',
@@ -59,6 +59,18 @@ for (const source of [
   'value=`printf "%s" "${value!"; printf "}"`',
 ]) test(`parameter failure exclusions stay parse errors: ${source}`, () => {
   assert.throws(() => parseShell(source), ShellSyntaxError);
+});
+
+test("supported parameter quoting remains available inside backticks", async () => {
+  const source = 'value="a b"; quoted=`printf "%s" "${value@Q}"`; printf "%s" "$quoted"';
+  assert.doesNotThrow(() => parseShell(source));
+  const shell = new Shell({ fs: createMemoryFileSystem() }).use(agentCommands());
+  try {
+    const result = await shell.exec(source);
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.stderr, "");
+    assert.equal(result.stdout, "'a b'");
+  } finally { await shell.dispose(); }
 });
 
 test("heredoc backticks retain their failed-substitution parse path", () => {

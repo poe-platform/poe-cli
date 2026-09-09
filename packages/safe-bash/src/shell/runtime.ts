@@ -61,6 +61,7 @@ import { compileEre } from "../commands/regex-execution/ere/syntax.js";
 import { matchEre } from "../commands/regex-execution/ere/matcher.js";
 import type { EreFragment } from "../commands/regex-execution/ere/types.js";
 import { PathLookup, pathTargets } from "./path-lookup.js";
+import { transformParameter } from "./parameter-transforms.js";
 
 export const defaultLimits: Required<ShellLimits> = {
   maxParseUnits: defaultMaxParseUnits,
@@ -2184,9 +2185,10 @@ export class Runtime {
     }
   }
 
-  async document(document: HereDocument, state: State, io: IO, line = document.endLine): Promise<string> {
+  async document(document: HereDocument, state: State, io: IO, line = document.endLine): Promise<ShellValue> {
     this.signal.throwIfAborted();
     let value = "";
+    let fragments: ShellValue[] | undefined;
     let size = 0;
     let words = 0;
     const warnings: string[] = [];
@@ -2195,15 +2197,24 @@ export class Runtime {
         this.signal.throwIfAborted();
         for (const warning of warnings.splice(0)) await writeDiagnostic(io.stderr, `shell: warning: ${warning}\n`);
         if (++words % 128 === 0) await yieldTurn(this.signal);
-        const part = (await this.word(word, state, { ...io, nameExpansionContext: "document" }, false)).join("");
-        size += Buffer.byteLength(part);
+        const part = concatShellValues(await this.valueWord(word, state, { ...io, nameExpansionContext: "document" }, false), io[valueScope]);
+        size += shellValueByteLength(part);
         if (size > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
-        value += part;
+        if (!fragments && typeof part === "string") value += part;
+        else {
+          if (!fragments) {
+            io[valueScope]?.reserve(64 + value.length * 2, 0);
+            fragments = [value];
+            value = "";
+          }
+          io[valueScope]?.reserve(32 + (typeof part === "string" ? part.length * 2 : 0), 0);
+          fragments.push(part);
+        }
       }
     } finally {
       for (const warning of warnings.splice(0)) await writeDiagnostic(io.stderr, `shell: warning: ${warning}\n`);
     }
-    return value;
+    return fragments ? concatShellValues(fragments, io[valueScope]) : value;
   }
 
   async redirect(redirects: readonly Redirect[], state: State, io: IO, inputs: Set<ShellInput>, outputs: Set<(completion: OutputCompletion) => void | Promise<void>>, isolatedInlineInput = false, persistMoves = false, fileShortcut = false, line?: number): Promise<IO> {
@@ -2232,6 +2243,7 @@ export class Runtime {
       const stdinIsDefault = descriptor?.input ? descriptor.stdinIsDefault : false;
       return {
         [invocationScope]: io[invocationScope],
+        ...(io[valueScope] === undefined ? {} : { [valueScope]: io[valueScope] }),
         ...(io.execution === undefined ? {} : { execution: io.execution }),
         ...(io.diagnosticLine === undefined ? {} : { diagnosticLine: io.diagnosticLine }),
         ...(io.diagnosticOffset === undefined ? {} : { diagnosticOffset: io.diagnosticOffset }),
@@ -2249,8 +2261,8 @@ export class Runtime {
       replaced.add(redirect.descriptor);
       if (redirect.document || redirect.operator === "<<<") {
         const hereString = redirect.operator === "<<<";
-        let value: string;
-        try { value = redirect.document ? await this.document(redirect.document, state, currentIO(), line) : (await this.word(redirect.target, state, currentIO(), false, false, hereString)).join(""); }
+        let value: ShellValue;
+        try { value = redirect.document ? await this.document(redirect.document, state, currentIO(), line) : concatShellValues(await this.valueWord(redirect.target, state, currentIO(), false, false, hereString), io[valueScope]); }
         catch (error) {
           if (error instanceof NounsetFailure) throw error;
           if (error instanceof ParameterExpansionFailure && !isolatedInlineInput) throw error;
@@ -2259,10 +2271,10 @@ export class Runtime {
           throw error;
         }
         if (hereString) {
-          if (Buffer.byteLength(value) >= this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
-          value += "\n";
+          if (shellValueByteLength(value) >= this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+          value = concatShellValues([value, "\n"], io[valueScope]);
         }
-        const input = new ShellInput(toByteSource(value), this.budget, this.signal);
+        const input = new ShellInput(toByteSource(typeof value === "string" ? value : shellValueBytes(value, io[valueScope])), this.budget, this.signal);
         inputs.add(input);
         descriptors.set(redirect.descriptor, { input, stdinIsDefault: false });
         continue;
@@ -4503,6 +4515,33 @@ export class Runtime {
   }
 
   private async valuePart(part: Exclude<WordPart, { kind: "text" }>, state: State, io: IO, hereString = false): Promise<ShellValue> {
+    if (part.kind === "variable" && part.transform) {
+      const selector = getArraySelector(part);
+      if (selector?.kind === "members" || part.name === "@" || part.name === "*") {
+        const members = selector ? await this.arrayMembers(part.name, state) : this.positionalValues(state);
+        const ifs = state.variables.IFS ?? " ";
+        const separator = ifs.length ? String.fromCodePoint(ifs.codePointAt(0)!) : "";
+        const fragments: ShellValue[] = [];
+        let bytes = 0;
+        for (const member of members) {
+          const value = await this.transformValue(member, part.transform, state, io);
+          bytes += shellValueByteLength(value) + (fragments.length ? Buffer.byteLength(separator) : 0);
+          if (bytes > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+          io[valueScope]?.reserve(32, 0);
+          if (fragments.length) fragments.push(separator);
+          fragments.push(value);
+        }
+        return concatShellValues(fragments, io[valueScope]);
+      }
+      const base: Extract<WordPart, { kind: "variable" }> = { ...part };
+      delete base.transform;
+      copyArraySelector(part, base);
+      const existing = selector?.kind === "element" ? arrayStore(state)?.get(part.name)?.get(numericIndex(selector.index) ?? -1) ?? (numericIndex(selector.index) === 0 ? this.variable(state, part.name) : undefined)
+        : /^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(part.name) ? this.variable(state, part.name)
+        : /^[1-9][0-9]*$/u.test(part.name) ? state.positional[Number(part.name) - 1] : "";
+      const value = await this.valuePart(base, state, io, hereString);
+      return existing === undefined ? "" : this.transformValue(value, part.transform, state, io);
+    }
     if (part.kind === "variable" && part.prefixNames) {
       const ifs = state.variables.IFS ?? " ";
       const separator = io.nameExpansionContext === "document" || io.nameExpansionContext === "conditional" && part.prefixNames === "@"
@@ -4537,6 +4576,16 @@ export class Runtime {
     const parameterDepth = (io.parameterDepth ?? 0) + 1;
     if (state.depth + parameterDepth > 64) throw new ShellSyntaxError("Syntax nesting exceeds 64", word.offset);
     return { ...io, parameterDepth };
+  }
+
+  private async transformValue(value: ShellValue, operator: "Q" | "E", state: State, io: IO): Promise<ShellValue> {
+    const allocation = io[valueScope] ?? this.budget.values.scope();
+    try {
+      return await transformParameter(value, operator, {
+        maximumBytes: this.budget.limits.maxExpansionBytes, byteLocale: byteLocale(state.variables), allocation,
+        work: { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 8 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") },
+      });
+    } finally { if (!io[valueScope]) allocation.close(); }
   }
 
   private async partValue(part: Exclude<WordPart, { kind: "text" }>, state: State, io: IO, hereString: boolean): Promise<ShellValue> {
@@ -4892,7 +4941,7 @@ export class Runtime {
       return fields;
     }
     const arrayOwned = word.parts.some(part => part.kind === "variable" && !part.prefixNames && (getArraySelector(part) !== undefined || arrayStore(state)?.get(part.name) !== undefined));
-    const prefixOwned = word.parts.some(part => part.kind === "variable" && part.prefixNames === "@");
+    const prefixOwned = word.parts.some(part => part.kind === "variable" && (part.prefixNames === "@" || part.transform && part.name === "@"));
     const owner = arrayOwned ? requireArrays(state).owner : undefined;
     const holding = owner?.hold();
     const scratch = !owner && split && state.variables.IFS !== "" && word.parts.some(part => !part.quoted && part.kind !== "text")
@@ -5021,19 +5070,25 @@ export class Runtime {
           emptyNameGroups ??= new Set<object>();
           emptyNameGroups.add(quoteGroup);
         }
-      } else if (part.kind === "variable" && selector?.kind === "members" && !part.length && split && (!part.quoted || selector.separator === "@")) {
-        const members = await this.arrayMembers(part.name, state);
+      } else if (part.kind === "variable" && split && (selector?.kind === "members" && !part.length && (!part.quoted || selector.separator === "@") || part.transform && part.name === "@")) {
+        const members = selector?.kind === "members" ? await this.arrayMembers(part.name, state) : this.positionalValues(state);
         for (let position = 0; position < members.length; position++) {
           if (position > 0) addField();
-          const value = members[position]!;
-          if (part.quoted || state.variables.IFS === "") append(value, !part.quoted, part.quoted || value.length > 0);
+          const original = members[position]!;
+          const value = part.transform ? await this.transformValue(original, part.transform, state, partIO) : original;
+          if (part.quoted || state.variables.IFS === "") append(value, !part.quoted, part.quoted || shellValueByteLength(value) > 0);
           else await appendSplit(value);
+        }
+        if (part.transform && members.length === 0 && quoteGroup) {
+          io[valueScope]?.reserve(32, 0);
+          emptyNameGroups ??= new Set<object>();
+          emptyNameGroups.add(quoteGroup);
         }
       } else if (part.kind === "text" && !splitText) {
         let value: ShellValue = invokedValues.get(part) ?? part.byteValue ?? part.value;
         if (typeof value === "string" && index === 0 && !part.quoted && /^~(?:\/|$)/u.test(value)) value = (state.variables.HOME ?? "~") + value.slice(1);
         append(value, !part.quoted, quotedPresence || shellValueByteLength(value) > 0);
-      } else if (part.kind === "variable" && part.name === "@" && part.quoted && !part.operator && split) {
+      } else if (part.kind === "variable" && part.name === "@" && part.quoted && !part.operator && !part.transform && split) {
         for (let position = 0; position < state.positional.length; position++) {
           if (position > 0) addField();
           append(stateMonitor(state)?.positionals.get(String(position), state.positional[position]!) ?? state.positional[position]!, false, true);

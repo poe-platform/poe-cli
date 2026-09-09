@@ -4,7 +4,7 @@ import { ParseBudget } from "./parse-budget.js";
 import { SourceLineIndex } from "./source-line-index.js";
 import { arithmeticEnd, prepareArithmetic } from "./arithmetic.js";
 import type { ArithmeticProgram } from "./arithmetic.js";
-import { arraySelector, compoundEntry, compoundHead, elementAssignment, getArrayAssignment, isQuoteMarker, prefixNameQuoteGroups, scalarAssignmentName, setArrayAssignment, setArraySelector, setQuoteMarker } from "./arrays/syntax.js";
+import { arraySelector, compoundEntry, compoundHead, elementAssignment, getArrayAssignment, getArraySelector, isQuoteMarker, prefixNameQuoteGroups, scalarAssignmentName, setArrayAssignment, setArraySelector, setQuoteMarker } from "./arrays/syntax.js";
 import type { ArrayEntry, ArraySelector } from "./arrays/syntax.js";
 import { conditionalBinary, conditionalUnary } from "./conditional.js";
 import type { ConditionalExpression } from "./conditional.js";
@@ -14,7 +14,7 @@ import type { ByteShellValue, ShellValue } from "../contracts/value.js";
 export type WordPart =
   | { kind: "text"; value: string; quoted: boolean; byteValue?: ByteShellValue }
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string; line: number; quoted: boolean }
-  | { kind: "variable"; name: string; quoted: boolean; line?: number; prefixNames?: "*" | "@"; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
+  | { kind: "variable"; name: string; quoted: boolean; line?: number; prefixNames?: "*" | "@"; transform?: "Q" | "E"; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
   | { kind: "failed-substitution"; diagnostic: string; quoted: boolean }
   | { kind: "failed-parameter"; source: string; line: number; quoted: boolean }
   | { kind: "compound-substitution-eof"; line: number; quoted: boolean }
@@ -392,7 +392,8 @@ class Lexer {
           else if (!literal && (inner === "$" || inner === "`")) {
             this.expansion(parts, true);
             const part = parts.at(-1)!;
-            nameListing ||= part.kind === "variable" && part.prefixNames === "@";
+            const selector = getArraySelector(part);
+            nameListing ||= part.kind === "variable" && (part.prefixNames === "@" || !!part.transform && (part.name === "@" || selector?.kind === "members" && selector.separator === "@"));
           }
           else if (inner === "\\" && /[$`"\\\n]/u.test(this.source[this.position + 1] ?? "")) {
             const escaped = this.source[this.position + 1]!;
@@ -591,7 +592,14 @@ class Lexer {
         if (end < 0) this.error("Unterminated indexed-array subscript");
         selector = arraySelector(this.source.slice(start, end), start, this.budget);
         this.position = end + 1;
-        if (this.source[this.position] !== "}") this.error("Unsupported indexed-array operator");
+        if (this.source[this.position] !== "}" && this.source[this.position] !== "@") this.error("Unsupported indexed-array operator");
+      }
+      let transform: "Q" | "E" | undefined;
+      if (this.source[this.position] === "@") {
+        const operation = this.source[this.position + 1];
+        if (length || prefixNames || (operation !== "Q" && operation !== "E") || this.source[this.position + 2] !== "}") this.error("Unsupported parameter transform");
+        transform = operation;
+        this.position += 2;
       }
       const operator = /^(?::[-=+?]|##|%%|\/\/|\/[#%]?|[-=+?#%])/u.exec(this.source.slice(this.position))?.[0];
       let alternate: Word | undefined;
@@ -634,7 +642,7 @@ class Lexer {
         parts.push({ kind: "failed-parameter", source: this.source.slice(parameterStart, this.position), line, quoted });
       } else {
         this.position++;
-        const part: WordPart = { kind: "variable", name, quoted, line, ...(prefixNames ? { prefixNames } : {}), ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
+        const part: WordPart = { kind: "variable", name, quoted, line, ...(prefixNames ? { prefixNames } : {}), ...(transform ? { transform } : {}), ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
         if (selector) setArraySelector(part, selector);
         parts.push(part);
       }
