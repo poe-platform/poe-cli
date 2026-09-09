@@ -114,3 +114,35 @@ without optional chaining or suppression that could hide an absent edge map.
 The full maintained typecheck and wider Bash validation remain to be completed
 after that correction. The input-pipe fix's independent review, focused
 red/green checks, and guarded ESLint are complete; remote delivery is not.
+
+## Separate native-peer assertion correction
+
+The foundation test now binds the core and loader edge maps and explicitly
+requires each to exist before inspecting its members. The loader must still
+equal the empty object, the core must still omit the private specifier, and the
+loader must still omit a JavaScript import edge to the native binary. No
+optional chaining, non-null assertion, cast, or diagnostic suppression replaces
+these checks; a missing map fails rather than satisfying an absence check.
+
+The maintained source/test compiler reproduces the two original TS2532 errors
+with exit 1 and then passes unchanged compiler settings after this correction.
+The exact test file passes all 42 cases, with no skips or cancellations, and
+`git diff --check` is clean. Evidence is in
+`out/native-peer-type-assertions-20260909/`, including the red/green compiler
+logs, focused TAP log, source hashes, and the predicate-preserving assertion
+diff. The corrected file's SHA-256 is
+`25c6203166a6266f9684d3d969f66969ae3fc74c39dc5961b42d0b47a61ce008`.
+
+This is a separate test-strength/type-safety fix to earlier work, not a change
+to the input-pipe predicate or filesystem production behavior. The complete
+maintained workspace typecheck now passes: source/tests and 26 current consumer
+groups are checked, while three intentional negative groups preserve their
+expected diagnostics. The four held evidence inputs are not runtime passes.
+Evidence: `out/release-input-pipe-20260909/workspace-typecheck-v2.log` and its
+zero exit receipt. The earlier failed gate remains intact.
+
+Guarded ESLint also passes after the correction: all 10,475 configured inputs
+are linted with zero errors or warnings. Evidence:
+`out/native-peer-type-assertions-20260909/root-eslint-v1.log`. The wider maintained
+Bash unit gate remains the next integration check; no remote delivery or
+successful replacement release is claimed by these local results.

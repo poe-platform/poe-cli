@@ -250,9 +250,13 @@ for (const empty of [false, true])
       assert.deepEqual(result.edges[`${prefix}${runtime}`], {
         [specifier]: `${prefix}${loaderPath}`
       });
-      assert.deepEqual(result.edges[`${prefix}${loaderPath}`], {});
-      assert.equal(result.edges[`${prefix}${core}`][specifier], undefined);
-      assert.equal(result.edges[`${prefix}${loaderPath}`]["./linux-x64-glibc.node"], undefined);
+      const coreEdges = result.edges[`${prefix}${core}`];
+      const loaderEdges = result.edges[`${prefix}${loaderPath}`];
+      assert.ok(coreEdges);
+      assert.ok(loaderEdges);
+      assert.deepEqual(loaderEdges, {});
+      assert.equal(coreEdges[specifier], undefined);
+      assert.equal(loaderEdges["./linux-x64-glibc.node"], undefined);
       const expected = [...setup.files].filter(
         ([path]) =>
           path !== "package.json" && (!path.endsWith(".d.ts") || path.startsWith(directory))
