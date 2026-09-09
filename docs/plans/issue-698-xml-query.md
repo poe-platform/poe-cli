@@ -99,3 +99,11 @@ without the unbundled Node stream implementation. Final combined command and
 independent tests pass 51 cases; bundle/metadata checks pass 40. The local
 candidate still requires the maintained full test and serial lint gates before
 push and published verification.
+
+The first full shared run passed 20,362 tests and exposed two additional old
+catalog assertions in the playground (kernel count and help text). Its maintained
+workspace suite passes all 166 tests after updating those expectations. A wider
+current-inventory scan reproduced 13 stale assertions across seven command and
+integration test files; 14 focused checks now pass with the XML pair included.
+The sealed historical source/hash transformation check still passes. These are
+expectation updates only; the command implementation is unchanged.
