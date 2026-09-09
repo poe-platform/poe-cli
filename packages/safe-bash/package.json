@@ -125,6 +125,12 @@
       "types": "./dist/commands/which/index.d.ts",
       "import": "./dist/commands/which/index.js"
     },
+    "./commands/xml": {
+      "types": "./dist/commands/xml/index.d.ts",
+      "workerd": "./dist/commands/xml/index.browser.js",
+      "browser": "./dist/commands/xml/index.browser.js",
+      "import": "./dist/commands/xml/index.js"
+    },
     "./fs/s3": {
       "types": "./dist/fs/s3/index.d.ts",
       "import": "./dist/fs/s3/index.js"

@@ -173,6 +173,12 @@
       "types": "./packages/safe-bash/dist/commands/which/index.d.ts",
       "import": "./packages/safe-bash/dist/commands/which/index.js"
     },
+    "./safe-bash/commands/xml": {
+      "types": "./packages/safe-bash/dist/commands/xml/index.d.ts",
+      "workerd": "./packages/safe-bash/dist/commands/xml/index.browser.js",
+      "browser": "./packages/safe-bash/dist/commands/xml/index.browser.js",
+      "import": "./packages/safe-bash/dist/commands/xml/index.js"
+    },
     "./safe-bash/fs/s3": {
       "types": "./packages/safe-bash/dist/fs/s3/index.d.ts",
       "import": "./packages/safe-bash/dist/fs/s3/index.js"

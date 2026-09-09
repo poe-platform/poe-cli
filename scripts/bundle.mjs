@@ -231,7 +231,7 @@ const shellOptions = resolveBrowserShellBuild(rootDir);
 const shellBundle = await esbuild.build(shellOptions);
 await publishBundleOutputs(shellBundle, {
   outdir: shellOptions.outdir,
-  entryPoints: shellOptions.entryPoints,
+  entryPoints: Object.values(shellOptions.entryPoints),
   workingDirectory: rootDir
 });
 consumerBuilds.push(shellBundle);

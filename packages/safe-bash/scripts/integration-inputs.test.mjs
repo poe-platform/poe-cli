@@ -449,6 +449,8 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/jq-control-flow.test.ts"));
   assert.ok(files.includes("tests/commands/jq-control-flow-limits.test.ts"));
   assert.ok(files.includes("tests/commands/yq-control-flow.test.ts"));
+  assert.ok(files.includes("tests/commands/xml-query.test.ts"));
+  assert.ok(files.includes("tests/commands/xml-query-review.test.ts"));
   assert.ok(files.includes("tests/commands/sort-human-numeric.test.ts"));
   assert.ok(files.includes("tests/commands/realpath-missing-admission.test.ts"));
   assert.ok(files.includes("tests/shell/source-line-nested.test.ts"));

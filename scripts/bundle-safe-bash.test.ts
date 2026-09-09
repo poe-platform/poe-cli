@@ -38,8 +38,8 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
     plugins: [{
       name: "public-built-shell-entries",
       setup(builder) {
-        builder.onResolve({ filter: /^@poe-platform\/safe-bash$/ }, () => ({
-          path: path.resolve(directory, manifest.exports["."].browser),
+        builder.onResolve({ filter: /^@poe-platform\/safe-bash(?:\/commands\/xml)?$/ }, args => ({
+          path: path.resolve(directory, manifest.exports[args.path.endsWith("/commands/xml") ? "./commands/xml" : "."].browser),
           namespace: "built-shell",
         }));
         builder.onResolve({ filter: /^\./, namespace: "built-shell" }, args => ({
@@ -53,6 +53,28 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   });
   return consumer.outputFiles![0]!.text;
 }
+
+it("shares the public XML command factory across portable root and subpath entries", async () => {
+  const manifest = JSON.parse(await readFile(path.join(root, "packages/safe-bash/package.json"), "utf8"));
+  expect(manifest.exports["./commands/xml"].browser).toBe("./dist/commands/xml/index.browser.js");
+  expect(manifest.exports["./commands/xml"].workerd).toBe("./dist/commands/xml/index.browser.js");
+  const result = await build(resolveBrowserShellBuild(root));
+  const compiled = await bundlePublicConsumer(result.outputFiles!, `
+    import { createXmlCommands as fromRoot } from "@poe-platform/safe-bash";
+    import { createXmlCommands as fromSubpath } from "@poe-platform/safe-bash/commands/xml";
+    export const shared = fromRoot === fromSubpath;
+  `);
+  const sandbox = createContext({
+    TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance,
+    require(name: string) {
+      if (name !== "@poe-platform/safe-fs/core") throw new Error(name);
+      return filesystem;
+    },
+  });
+  const consumer = runInContext(`(function(){ const module = { exports: {} }; ${compiled}; return module.exports; })()`, sandbox);
+  expect(consumer.shared).toBe(true);
+});
 
 it("runs nested env/xargs through the public default browser entry", async () => {
   const result = await build(resolveBrowserShellBuild(root));
@@ -111,7 +133,10 @@ it("builds the portable shell without Node workers, adapters, or duplicate files
 
 it("bundles the complete portable preset with one owned-argument identity", async () => {
   const options = resolveBrowserShellBuild(root);
-  expect(options.entryPoints).toEqual([path.join(root, "packages/safe-bash/src/core.browser.ts")]);
+  expect(options.entryPoints).toEqual({
+    "core.browser": path.join(root, "packages/safe-bash/src/core.browser.ts"),
+    "commands/xml/index.browser": path.join(root, "packages/safe-bash/src/commands/xml/index.ts"),
+  });
   const result = await build(options);
   const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
   for (const imported of imports.filter(item => item.external)) {
@@ -130,7 +155,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
   expect(portable.posixPath).toBe(filesystem.posixPath);
   expect(portable.posixPath.join("/a", "..", "b")).toBe("/b");
   const names = portable.createAgentCommands().map(command => command.name).sort();
-  expect(names).toHaveLength(82);
+  expect(names).toHaveLength(84);
   expect(names).toEqual([
     "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
     "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
@@ -138,7 +163,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
     "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "tar",
     "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
-    "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
+    "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch", "xq", "xmllint",
   ].sort());
   const commands = new portable.CommandRegistry();
   const plugin = portable.agentCommands({ regexExecutor: portable.createBoundedRegexProvider() });
