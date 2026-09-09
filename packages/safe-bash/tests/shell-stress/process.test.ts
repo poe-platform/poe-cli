@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
@@ -128,6 +130,94 @@ test("process harness preserves raw stdin/stdout/stderr and nonzero status", asy
   assert.equal(result.status, 7);
   assert.deepEqual(result.stdout, input);
   assert.deepEqual(result.stderr, Buffer.from([255, 0]));
+});
+
+test("process harness preserves child status with unread ordinary stdin", async context => {
+  for (const status of [0, 7]) {
+    await context.test(`exit ${status}`, async () => {
+      const result = await isolatedSpawn(process.execPath, ["--eval", `process.exit(${status})`], {
+        input: "x".repeat(1024 * 1024), timeout: 2000, maxBuffer: 1024,
+      });
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, status);
+      assert.equal(result.signal, null);
+    });
+  }
+});
+
+test("process harness scopes benign pipe errors to stdin and preserves cleanup", async context => {
+  const spawn = childProcess.spawn;
+  const cases = [
+    { stream: "stdin", code: "EPIPE", benign: true },
+    { stream: "stdin", code: "ECONNRESET", benign: true },
+    { stream: "stdin", code: "EIO", benign: false },
+    { stream: "stdin", code: undefined, benign: false },
+    { stream: "stdout", code: "EPIPE", benign: false },
+    { stream: "stdout", code: "ECONNRESET", benign: false },
+    { stream: "stderr", code: "EPIPE", benign: false },
+    { stream: "stderr", code: "ECONNRESET", benign: false },
+  ] as const;
+  for (const { stream, code, benign } of cases) {
+    await context.test(`${stream} ${code ?? "uncoded"}`, async subtest => {
+      const error = Object.assign(new Error(`injected ${stream} ${code}`), { code });
+      const mockedSpawn = subtest.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+        const child = spawn(...args);
+        queueMicrotask(() => child[stream]!.destroy(error));
+        return child;
+      });
+      syncBuiltinESMExports();
+      try {
+        const result = await isolatedSpawn(process.execPath, ["--eval", 'process.stdout.write("out"); process.stderr.write("err"); process.exitCode = 7;'], {
+          input: "x".repeat(1024 * 1024), timeout: 2000, maxBuffer: 1024,
+        });
+        assert.equal(result.error, benign ? undefined : error);
+        assert.equal(result.status, benign ? 7 : null);
+        assert.equal(result.signal, benign ? null : "SIGKILL");
+        if (benign) {
+          assert.equal(result.stdout.toString(), "out");
+          assert.equal(result.stderr.toString(), "err");
+        }
+        assert.ok(result.pid);
+        assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
+        const child = mockedSpawn.mock.calls[0]!.result!;
+        assert.ok(child.stdin!.destroyed && child.stdout!.destroyed && child.stderr!.destroyed);
+      } finally {
+        mockedSpawn.mock.restore();
+        syncBuiltinESMExports();
+      }
+    });
+  }
+});
+
+test("process harness retains deadline and output limits after stdin reset", async context => {
+  const spawn = childProcess.spawn;
+  for (const { code, script, timeout, bytes } of [
+    { code: "ETIMEDOUT", script: "while (true) {}", timeout: 150, bytes: 0 },
+    { code: "ENOBUFS", script: 'process.stdout.write(Buffer.alloc(2048)); setInterval(() => {}, 1000);', timeout: 2000, bytes: 1024 },
+  ]) {
+    await context.test(code, async subtest => {
+      const mockedSpawn = subtest.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+        const child = spawn(...args);
+        queueMicrotask(() => child.stdin!.destroy(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" })));
+        return child;
+      });
+      syncBuiltinESMExports();
+      try {
+        const result = await isolatedSpawn(process.execPath, ["--eval", script], {
+          input: "x".repeat(1024 * 1024), timeout, maxBuffer: 1024,
+        });
+        assert.equal((result.error as NodeJS.ErrnoException | undefined)?.code, code);
+        assert.equal(result.status, null);
+        assert.equal(result.signal, "SIGKILL");
+        assert.equal(result.stdout.length + result.stderr.length, bytes);
+        assert.ok(result.pid);
+        assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
+      } finally {
+        mockedSpawn.mock.restore();
+        syncBuiltinESMExports();
+      }
+    });
+  }
 });
 
 test("process harness hard-kills a synchronous infinite loop", async () => {
