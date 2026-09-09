@@ -107,3 +107,11 @@ split build plus 119 ms for the CJS consumer build, versus 31 ms VM startup and
 them into a scoped setup hook with its own three-second bound. The runtime test
 retains its three-second deadline and every VM/native-command assertion. These
 are two independently bounded phases, not the original total wall-clock bound.
+
+The third full run found a separate one-second hazardous-expansion child timeout;
+the original focused test reproduced ETIMEDOUT at 1,011 ms. Bundle the unchanged
+hazard fixture once in memory for that test, then run all five original scenarios
+in separate Node children with the original one-second deadline and 4,096-byte
+output cap. The 28-input bundle has no module-relative worker assets. All seven
+resource tests pass after this test-only change; the five children plus bundling
+take 955 ms in the focused check.
