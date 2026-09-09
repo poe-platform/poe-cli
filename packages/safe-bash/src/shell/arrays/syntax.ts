@@ -22,6 +22,7 @@ export type ArrayAssignment =
 const assignments = new WeakMap<Word, ArrayAssignment>();
 const selectors = new WeakMap<WordPart, ArraySelector>();
 const quoteMarkers = new WeakSet<WordPart>();
+export const prefixNameQuoteGroups = new WeakMap<WordPart, object>();
 
 export function setQuoteMarker(part: WordPart, synthetic: boolean): void {
   if (synthetic) quoteMarkers.add(part);
@@ -67,6 +68,8 @@ export function copyArraySelector(original: WordPart, copy: WordPart): WordPart 
   const selector = selectors.get(original);
   if (selector) selectors.set(copy, selector);
   setQuoteMarker(copy, isQuoteMarker(original));
+  const group = prefixNameQuoteGroups.get(original);
+  if (group) prefixNameQuoteGroups.set(copy, group);
   return copy;
 }
 

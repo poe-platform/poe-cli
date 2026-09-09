@@ -48,6 +48,7 @@ export class IndexedBinding {
   generation = 0;
   version = 0;
   references = 1;
+  assigned = false;
 
   private constructor(readonly owner: ArrayOwner) {}
 
@@ -84,12 +85,14 @@ export class IndexedBinding {
       text.release();
     };
     this.values.set(index, element);
+    this.assigned = true;
     if (index > this.maximum) this.maximum = index;
     previous?.slot.release();
   }
 
   async copy(signal: AbortSignal): Promise<IndexedBinding> {
     const copy = IndexedBinding.create(this.owner.parent!);
+    copy.assigned = this.assigned;
     this.retain();
     try {
       for (const [index, element] of this.values) {

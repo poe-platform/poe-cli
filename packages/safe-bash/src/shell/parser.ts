@@ -4,7 +4,7 @@ import { ParseBudget } from "./parse-budget.js";
 import { SourceLineIndex } from "./source-line-index.js";
 import { arithmeticEnd, prepareArithmetic } from "./arithmetic.js";
 import type { ArithmeticProgram } from "./arithmetic.js";
-import { arraySelector, compoundEntry, compoundHead, elementAssignment, getArrayAssignment, scalarAssignmentName, setArrayAssignment, setArraySelector, setQuoteMarker } from "./arrays/syntax.js";
+import { arraySelector, compoundEntry, compoundHead, elementAssignment, getArrayAssignment, isQuoteMarker, prefixNameQuoteGroups, scalarAssignmentName, setArrayAssignment, setArraySelector, setQuoteMarker } from "./arrays/syntax.js";
 import type { ArrayEntry, ArraySelector } from "./arrays/syntax.js";
 import { conditionalBinary, conditionalUnary } from "./conditional.js";
 import type { ConditionalExpression } from "./conditional.js";
@@ -14,7 +14,7 @@ import type { ByteShellValue, ShellValue } from "../contracts/value.js";
 export type WordPart =
   | { kind: "text"; value: string; quoted: boolean; byteValue?: ByteShellValue }
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string; line: number; quoted: boolean }
-  | { kind: "variable"; name: string; quoted: boolean; line?: number; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
+  | { kind: "variable"; name: string; quoted: boolean; line?: number; prefixNames?: "*" | "@"; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
   | { kind: "failed-substitution"; diagnostic: string; quoted: boolean }
   | { kind: "failed-parameter"; source: string; line: number; quoted: boolean }
   | { kind: "compound-substitution-eof"; line: number; quoted: boolean }
@@ -384,11 +384,16 @@ class Lexer {
         this.position++;
         text("", true, true, this.position - 1, this.position);
         const quoteParts = parts.length;
+        let nameListing = false;
         while (this.position < this.source.length && this.source[this.position] !== '"') {
           const inner = this.source[this.position]!;
           const opaque = this.braceReplay?.get(this.position);
           if (opaque !== undefined) { text(opaque, true); this.position++; }
-          else if (!literal && (inner === "$" || inner === "`")) this.expansion(parts, true);
+          else if (!literal && (inner === "$" || inner === "`")) {
+            this.expansion(parts, true);
+            const part = parts.at(-1)!;
+            nameListing ||= part.kind === "variable" && part.prefixNames === "@";
+          }
           else if (inner === "\\" && /[$`"\\\n]/u.test(this.source[this.position + 1] ?? "")) {
             const escaped = this.source[this.position + 1]!;
             if (escaped !== "\n") text(escaped, true, false, this.position, this.position + 2);
@@ -401,6 +406,17 @@ class Lexer {
         }
         if (this.source[this.position] !== '"' && !this.braceReplay) this.error("Unterminated double quote", { quote: '"', line: quoteLine });
         if (parts.length === quoteParts) setQuoteMarker(parts.at(-1)!, false);
+        if (nameListing) {
+          this.budget.admit();
+          const group = {};
+          for (let index = quoteParts - 1; index < parts.length; index++) {
+            this.budget.admit();
+            const part = parts[index]!;
+            // A preceding explicit empty quote can share this text part;
+            // its independent field-presence contribution must survive.
+            if (index !== quoteParts - 1 || isQuoteMarker(part) || part.kind !== "text" || part.value !== "") prefixNameQuoteGroups.set(part, group);
+          }
+        }
         const spelling = expansionSpellings.get(parts.at(-1)!);
         if (spelling) spelling.end = Math.min(this.position + 1, this.source.length);
         if (this.position < this.source.length) this.position++;
@@ -553,11 +569,20 @@ class Lexer {
     } else if (this.source[this.position] === "{") {
       this.position++;
       const parameterStart = this.position - 2;
-      const length = this.source[this.position] === "#" && /[a-zA-Z_]/u.test(this.source[this.position + 1] ?? "");
+      const listing = this.source[this.position] === "!";
+      if (listing) this.position++;
+      const length = !listing && this.source[this.position] === "#" && /[a-zA-Z_]/u.test(this.source[this.position + 1] ?? "");
       if (length) this.position++;
       const name = /^(?:[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|[?@*#-])/u.exec(this.source.slice(this.position))?.[0];
       if (!name) this.error("Unsupported parameter expansion");
       this.position += name.length;
+      let prefixNames: "*" | "@" | undefined;
+      if (listing) {
+        const separator = this.source[this.position];
+        if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name) || (separator !== "*" && separator !== "@") || this.source[this.position + 1] !== "}") this.error("Unsupported indirect parameter expansion");
+        prefixNames = separator;
+        this.position++;
+      }
       let selector: ArraySelector | undefined;
       if (this.source[this.position] === "[") {
         if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) this.error("Unsupported indexed-array parameter");
@@ -609,7 +634,7 @@ class Lexer {
         parts.push({ kind: "failed-parameter", source: this.source.slice(parameterStart, this.position), line, quoted });
       } else {
         this.position++;
-        const part: WordPart = { kind: "variable", name, quoted, line, ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
+        const part: WordPart = { kind: "variable", name, quoted, line, ...(prefixNames ? { prefixNames } : {}), ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
         if (selector) setArraySelector(part, selector);
         parts.push(part);
       }

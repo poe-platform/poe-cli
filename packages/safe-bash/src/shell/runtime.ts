@@ -46,7 +46,7 @@ import type {
   CancellationAdmissionSnapshot, CancellationBoundary, CancellationControlOriginInput, CancellationOrigin,
   CancellationReport, CancellationSelection, CapturedCancellationOutcome, PreparedChildCancellation,
 } from "./cancellation.js";
-import { getArrayAssignment, getArraySelector, copyArraySelector, numericIndex, literalIndex, isQuoteMarker } from "./arrays/syntax.js";
+import { getArrayAssignment, getArraySelector, copyArraySelector, numericIndex, literalIndex, isQuoteMarker, prefixNameQuoteGroups } from "./arrays/syntax.js";
 import type { ArrayAssignment } from "./arrays/syntax.js";
 import { ArrayFailure, ArrayOwner, exactSum } from "./arrays/ledger.js";
 import { controlNames, IndexedBinding, textToken } from "./arrays/bindings.js";
@@ -106,6 +106,36 @@ export function resolveLimits(...limits: (ShellLimits | undefined)[]): Required<
 }
 
 const budgetedSinks = new WeakMap<ByteSink, { budget: Budget; write: ByteSink["write"]; file?: NonNullable<CommandContext["stdoutFile"]> }>();
+
+async function sortExpansionStrings(values: string[], work: StringWork): Promise<void> {
+  const compare = async (left: string, right: string): Promise<number> => {
+    for (let index = 0; index < Math.min(left.length, right.length); index++) {
+      const pending = stringCheckpoint(work);
+      if (pending) await pending;
+      const difference = left.charCodeAt(index) - right.charCodeAt(index);
+      if (difference) return difference;
+    }
+    return left.length - right.length;
+  };
+  const sift = async (root: number, end: number): Promise<void> => {
+    while (root * 2 + 1 < end) {
+      let child = root * 2 + 1;
+      if (child + 1 < end && await compare(values[child]!, values[child + 1]!) < 0) child++;
+      if (await compare(values[root]!, values[child]!) >= 0) return;
+      const saved = values[root]!;
+      values[root] = values[child]!;
+      values[child] = saved;
+      root = child;
+    }
+  };
+  for (let index = Math.floor(values.length / 2) - 1; index >= 0; index--) await sift(index, values.length);
+  for (let end = values.length - 1; end > 0; end--) {
+    const saved = values[0]!;
+    values[0] = values[end]!;
+    values[end] = saved;
+    await sift(0, end);
+  }
+}
 
 export class Budget {
   readonly executionScope = Object.freeze({});
@@ -343,6 +373,7 @@ export interface State {
 }
 
 interface IO {
+  readonly nameExpansionContext?: "document" | "conditional" | undefined;
   readonly [invocationScope]: InvocationScope;
   readonly [valueScope]?: ValueScope;
   readonly parameterDepth?: number;
@@ -367,7 +398,7 @@ interface Descriptor {
 }
 
 function isolateIO(io: IO): IO {
-  return { ...io, ...(io.descriptors ? { descriptors: new Map([...io.descriptors].map(([number, descriptor]) => [number, { ...descriptor }])) } : {}) };
+  return { ...io, nameExpansionContext: undefined, ...(io.descriptors ? { descriptors: new Map([...io.descriptors].map(([number, descriptor]) => [number, { ...descriptor }])) } : {}) };
 }
 
 function activeIO(io: IO): IO {
@@ -1535,6 +1566,7 @@ export class Runtime {
       const current = store.get(name);
       if (index !== undefined && current) {
         staged = index === "members" ? IndexedBinding.create(store.owner) : await current.copy(this.signal);
+        staged.assigned = current.assigned;
         let maximum = -1;
         for (const key of staged.values.keys()) {
           operation.reserve({ work: 2 }).release();
@@ -1700,7 +1732,8 @@ export class Runtime {
       this.signal.throwIfAborted();
       if (state.readonlyVariables?.has(name)) throw new ArrayFailure("readonly binding");
       if (!watch.valid()) throw new ArrayFailure("stale binding");
-      if (!(assignment.kind === "compound" && assignment.append && writes === 0)) {
+      staged.assigned = true;
+      if (!(assignment.kind === "compound" && assignment.append && writes === 0 && current?.assigned)) {
         let released: Promise<void> | undefined;
         stateMonitor(state)!.publish(tickets, name, () => {
           supersede();
@@ -1973,8 +2006,8 @@ export class Runtime {
             fs: this.fs, cwd: state.cwd, signal: this.signal,
             locale: state.variables.LC_ALL || state.variables.LC_COLLATE || state.variables.LANG || "C",
             work: { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes"), allocation },
-            expand: async (word, pattern = false) => (await this.word(word, state, io, false, pattern, false, pattern)).join(""),
-            regex: (subject, pattern) => this.ere(subject, pattern, state, io),
+            expand: async (word, pattern = false) => (await this.word(word, state, { ...io, nameExpansionContext: "conditional" }, false, pattern, false, pattern)).join(""),
+            regex: (subject, pattern) => this.ere(subject, pattern, state, { ...io, nameExpansionContext: "conditional" }),
             option: name => name === "braceexpand" ? state.braceexpand !== false : name === "errexit" ? !!state.errexit : name === "nounset" ? !!state.nounset : name === "pipefail" ? state.pipefail : false,
             present: name => {
               const match = /^([a-zA-Z_][a-zA-Z_0-9]*)(?:\[(0|[1-9][0-9]*|[@*])\])?$/u.exec(name);
@@ -2162,7 +2195,7 @@ export class Runtime {
         this.signal.throwIfAborted();
         for (const warning of warnings.splice(0)) await writeDiagnostic(io.stderr, `shell: warning: ${warning}\n`);
         if (++words % 128 === 0) await yieldTurn(this.signal);
-        const part = (await this.word(word, state, io, false)).join("");
+        const part = (await this.word(word, state, { ...io, nameExpansionContext: "document" }, false)).join("");
         size += Buffer.byteLength(part);
         if (size > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
         value += part;
@@ -4425,7 +4458,67 @@ export class Runtime {
     return shellValueText(await this.valuePart(part, state, io, hereString));
   }
 
+  private async *prefixNames(prefix: string, state: State): AsyncGenerator<string> {
+    const allocation = this.budget.values.scope();
+    const store = arrayStore(state);
+    const holding = store?.owner.hold();
+    const work: StringWork = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+    try {
+      allocation.reserveBytes(128);
+      const names: string[] = [];
+      const seen = new Set<string>();
+      let bytes = 0;
+      const consider = async (name: string, assigned: boolean): Promise<void> => {
+        const scanned = await scanString(name, work);
+        const pending = stringCheckpoint(work, name.length + 1);
+        if (pending) await pending;
+        if (!assigned || !name.startsWith(prefix) || seen.has(name)) return;
+        for (let index = 0; index < name.length; index++) {
+          const pending = stringCheckpoint(work);
+          if (pending) await pending;
+          const code = name.charCodeAt(index);
+          if (!(code === 95 || code >= 65 && code <= 90 || code >= 97 && code <= 122 || index > 0 && code >= 48 && code <= 57)) return;
+        }
+        if (names.length >= this.budget.limits.maxExpansionFields) this.budget.fail("maxExpansionFields");
+        if (scanned.bytes > this.budget.limits.maxExpansionBytes - bytes) this.budget.fail("maxExpansionBytes");
+        bytes += scanned.bytes;
+        allocation.reserveBytes(name.length * 2 + 64);
+        seen.add(name);
+        names.push(name);
+      };
+      for (const name in state.variables) if (Object.hasOwn(state.variables, name)) await consider(name, state.variables[name] !== undefined);
+      if (store) for (const [name, entry] of store.bindings) await consider(name, entry.binding.assigned);
+      // Bash lists initialized names from dynamically enclosing local scopes,
+      // even when the current local value shadows them with an unset value.
+      for (const frame of state.locals) for (const [name, saved] of frame) {
+        await consider(name, saved.value !== undefined || typedSavedVariables.get(saved)?.binding?.assigned === true);
+      }
+      await sortExpansionStrings(names, work);
+      for (const name of names) {
+        const pending = stringCheckpoint(work);
+        if (pending) await pending;
+        yield name;
+      }
+    } finally { allocation.close(); holding?.release(); }
+  }
+
   private async valuePart(part: Exclude<WordPart, { kind: "text" }>, state: State, io: IO, hereString = false): Promise<ShellValue> {
+    if (part.kind === "variable" && part.prefixNames) {
+      const ifs = state.variables.IFS ?? " ";
+      const separator = io.nameExpansionContext === "document" || io.nameExpansionContext === "conditional" && part.prefixNames === "@"
+        ? " " : ifs.length ? String.fromCodePoint(ifs.codePointAt(0)!) : "";
+      const fragments: string[] = [];
+      let bytes = 0;
+      for await (const name of this.prefixNames(part.name, state)) {
+        const join = fragments.length ? separator : "";
+        bytes += Buffer.byteLength(name) + Buffer.byteLength(join);
+        if (bytes > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+        io[valueScope]?.reserve((name.length + join.length) * 2 + 32, 0);
+        fragments.push(join, name);
+      }
+      io[valueScope]?.reserve(bytes * 2, 0);
+      return fragments.join("");
+    }
     const binding = part.kind === "variable" ? arrayStore(state)?.get(part.name) : undefined;
     const holding = binding ? requireArrays(state).owner.hold() : undefined;
     const selector = getArraySelector(part);
@@ -4798,7 +4891,8 @@ export class Runtime {
       }
       return fields;
     }
-    const arrayOwned = word.parts.some(part => part.kind === "variable" && (getArraySelector(part) !== undefined || arrayStore(state)?.get(part.name) !== undefined));
+    const arrayOwned = word.parts.some(part => part.kind === "variable" && !part.prefixNames && (getArraySelector(part) !== undefined || arrayStore(state)?.get(part.name) !== undefined));
+    const prefixOwned = word.parts.some(part => part.kind === "variable" && part.prefixNames === "@");
     const owner = arrayOwned ? requireArrays(state).owner : undefined;
     const holding = owner?.hold();
     const scratch = !owner && split && state.variables.IFS !== "" && word.parts.some(part => !part.quoted && part.kind !== "text")
@@ -4807,12 +4901,14 @@ export class Runtime {
     if (owner) await this.prepareArrayObservers(state, owner);
     owner?.reserve({ metadata: 128 + word.parts.length * 32, allocatedSlots: word.parts.length + 1, work: word.parts.length + 5 });
     scratch?.reserve(word.parts.length * 32, 0);
-    const fields: { fragments: ShellValue[]; bytes: boolean; patterns: string[] | undefined; present: boolean }[] = [];
+    const fields: { fragments: ShellValue[]; bytes: boolean; patterns: string[] | undefined; present: boolean; independentPresence: boolean; quoteGroups?: object[] }[] = [];
+    let emptyNameGroups: Set<object> | undefined;
+    let quoteGroup: object | undefined;
     const addField = (): void => {
       if (fields.length >= this.budget.limits.maxExpansionFields) this.budget.fail("maxExpansionFields");
       scratch?.reserve(32, 0);
       owner?.reserve({ metadata: 32, allocatedSlots: 1, work: 3 });
-      fields.push({ fragments: [], bytes: false, patterns: undefined, present: false });
+      fields.push({ fragments: [], bytes: false, patterns: undefined, present: false, independentPresence: false });
     };
     addField();
     let expansionBytes = 0;
@@ -4845,6 +4941,14 @@ export class Runtime {
       regexAppend?.(text, !glob);
       field.fragments.push(value);
       field.present ||= present;
+      if (present) {
+        if (size > 0 || !quoteGroup) field.independentPresence = true;
+        else {
+          io[valueScope]?.reserve(32, 0);
+          field.quoteGroups ??= [];
+          field.quoteGroups.push(quoteGroup);
+        }
+      }
     };
     const appendSplit = async (value: ShellValue): Promise<void> => {
       this.budget.cpuCheckpoint();
@@ -4891,7 +4995,8 @@ export class Runtime {
     const parts = word.parts.map((part) => ({ part, splitText: false, io }));
     for (let index = 0; index < parts.length; index++) {
       const { part, splitText, io: partIO } = parts[index]!;
-      const quotedPresence = part.quoted && !(arrayOwned && isQuoteMarker(part));
+      quoteGroup = prefixNameQuoteGroups.get(part);
+      const quotedPresence = part.quoted && !((arrayOwned || prefixOwned) && isQuoteMarker(part));
       if (part.kind === "variable" && ["-", "+", ":-", ":+"].includes(part.operator ?? "") && /^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(part.name)) {
         const value = this.variable(state, part.name);
         const missing = value === undefined || (part.operator!.startsWith(":") && value === "");
@@ -4905,7 +5010,18 @@ export class Runtime {
         }
       }
       const selector = getArraySelector(part);
-      if (part.kind === "variable" && selector?.kind === "members" && !part.length && split && (!part.quoted || selector.separator === "@")) {
+      if (part.kind === "variable" && part.prefixNames === "@" && split && (part.quoted || state.variables.IFS === "")) {
+        let position = 0;
+        for await (const name of this.prefixNames(part.name, state)) {
+          if (position++) addField();
+          append(name, !part.quoted, true);
+        }
+        if (position === 0 && quoteGroup) {
+          io[valueScope]?.reserve(32, 0);
+          emptyNameGroups ??= new Set<object>();
+          emptyNameGroups.add(quoteGroup);
+        }
+      } else if (part.kind === "variable" && selector?.kind === "members" && !part.length && split && (!part.quoted || selector.separator === "@")) {
         const members = await this.arrayMembers(part.name, state);
         for (let position = 0; position < members.length; position++) {
           if (position > 0) addField();
@@ -4935,6 +5051,16 @@ export class Runtime {
     let resultBytes = 0;
     for (const field of fields) {
       if (!field.present && split) continue;
+      if (split && !field.independentPresence && field.quoteGroups) {
+        const work: StringWork = { remaining: this.budget.limits.maxExpansionBytes, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+        let empty = true;
+        for (const group of field.quoteGroups) {
+          const pending = stringCheckpoint(work);
+          if (pending) await pending;
+          if (!emptyNameGroups?.has(group)) { empty = false; break; }
+        }
+        if (empty) continue;
+      }
       if (scratch && field.fragments.length > 1 && !field.bytes) scratch.reserve(field.fragments.reduce((bytes, value) => bytes + shellValueText(value).length * 2, 0), 0);
       const assembled = concatShellValues(field.fragments, io[valueScope]);
       const projection = shellValueText(assembled);
@@ -5198,33 +5324,7 @@ export class Runtime {
       }
       // In-place heap sort preserves ordinary UTF-16 pathname order while
       // charging comparisons, including long common prefixes, and yielding.
-      const compare = async (left: string, right: string): Promise<number> => {
-        for (let index = 0; index < Math.min(left.length, right.length); index++) {
-          const pending = stringCheckpoint(work);
-          if (pending) await pending;
-          const difference = left.charCodeAt(index) - right.charCodeAt(index);
-          if (difference) return difference;
-        }
-        return left.length - right.length;
-      };
-      const sift = async (root: number, end: number): Promise<void> => {
-        while (root * 2 + 1 < end) {
-          let child = root * 2 + 1;
-          if (child + 1 < end && await compare(found[child]!, found[child + 1]!) < 0) child++;
-          if (await compare(found[root]!, found[child]!) >= 0) return;
-          const saved = found[root]!;
-          found[root] = found[child]!;
-          found[child] = saved;
-          root = child;
-        }
-      };
-      for (let index = Math.floor(found.length / 2) - 1; index >= 0; index--) await sift(index, found.length);
-      for (let end = found.length - 1; end > 0; end--) {
-        const saved = found[0]!;
-        found[0] = found[end]!;
-        found[end] = saved;
-        await sift(0, end);
-      }
+      await sortExpansionStrings(found, work);
       return found.length ? found : [value];
     } finally { scratch.close(); }
   }
