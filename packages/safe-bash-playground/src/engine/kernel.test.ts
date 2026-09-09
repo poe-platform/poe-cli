@@ -427,6 +427,7 @@ describe("real safe-bash browser kernel", () => {
         "fmt",
         "shuf",
         "numfmt",
+        "truncate",
         "cp",
         "cut",
         "dirname",
@@ -463,7 +464,7 @@ describe("real safe-bash browser kernel", () => {
         "apply_patch"
       ])
     );
-    expect(kernel.supportedCommands).toHaveLength(86);
+    expect(kernel.supportedCommands).toHaveLength(87);
     expect(kernel.supportedCommands).toEqual(expect.arrayContaining(["sha512sum", "sha384sum", "sha224sum"]));
   });
 });

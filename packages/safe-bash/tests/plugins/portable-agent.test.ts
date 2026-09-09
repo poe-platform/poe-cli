@@ -11,7 +11,7 @@ const expected = [
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find", "cmp", "fmt", "shuf", "numfmt",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "truncate", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort();
@@ -101,11 +101,11 @@ test("complete portable agent preset accepts an omitted provider", async () => {
   await plugin.dispose?.();
 });
 
-test("default inventory matches the independent 86 names and excludes host opt-ins", () => {
+test("default inventory matches the independent 87 names and excludes host opt-ins", () => {
   const names = createAgentCommands().map(command => command.name);
-  assert.equal(names.length, 86);
+  assert.equal(names.length, 87);
   assert.deepEqual(names.sort(), expected);
-  assert.equal(new Set(names).size, 86);
+  assert.equal(new Set(names).size, 87);
 });
 
 test("portable preset graph never loads fs, native workers, or host command adapters", async () => {
@@ -158,7 +158,7 @@ test("portable registration is atomic and replacement preserves unrelated comman
   const custom = commands.get("custom");
   const replacement = agentCommands({ regexExecutor: browser.createBoundedRegexProvider(), replace: true });
   await replacement.setup(host);
-  assert.equal(commands.list().length, 87);
+  assert.equal(commands.list().length, 88);
   assert.equal(commands.get("custom"), custom);
   await replacement.dispose?.();
   assert.throws(() => replacement.setup(host), /disposed/);

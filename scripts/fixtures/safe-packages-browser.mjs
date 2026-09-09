@@ -1,5 +1,5 @@
 import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
-import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyShufCommands, verifyNumfmtCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyShufCommands, verifyNumfmtCommands, verifyTruncateCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
 import { FsError as CoreFsError, createDeviceFileSystem } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
@@ -10,6 +10,7 @@ await verifyCmpCommands();
 await verifyFmtCommands();
 await verifyShufCommands();
 await verifyNumfmtCommands();
+await verifyTruncateCommands();
 const definitions = createAgentCommands();
 const commandNames = definitions.map(command => command.name).sort();
 if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
@@ -18,7 +19,7 @@ if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) 
 const declaredCommands = [
   "[", "basename", "cat", "cmp", "cp", "cut", "dirname", "echo", "false", "fmt", "grep", "head", "ln", "ls",
   "mkdir", "mv", "numfmt", "printf", "pwd", "readlink", "realpath", "rg", "rm", "rmdir", "sed", "shuf", "sort",
-  "tail", "tee", "test", "touch", "tr", "true", "uniq", "wc",
+  "tail", "tee", "test", "touch", "tr", "true", "truncate", "uniq", "wc",
 ];
 const declaredNames = definitions.filter(definition => Object.hasOwn(definition, "filesystemRequirements")).map(definition => definition.name).sort();
 if (JSON.stringify(declaredNames) !== JSON.stringify(declaredCommands)) throw new Error("Default browser filesystem requirement declarations changed");
@@ -26,7 +27,7 @@ for (const definition of definitions.filter(definition => !Object.hasOwn(definit
   const support = evaluateCommandSupport(definition, { readOnly: true });
   if (support.declared || support.status !== "partial" || support.modes.length) throw new Error(`Undeclared browser command support became optimistic: ${definition.name}`);
 }
-for (const [name, expected] of [["printf", "supported"], ["mkdir", "unsupported"], ["tee", "partial"]]) {
+for (const [name, expected] of [["printf", "supported"], ["mkdir", "unsupported"], ["tee", "partial"], ["truncate", "unsupported"]]) {
   const definition = definitions.find(command => command.name === name);
   if (!definition || evaluateCommandSupport(definition, { readOnly: true }).status !== expected) {
     throw new Error(`Browser filesystem capability evaluation failed: ${name}`);

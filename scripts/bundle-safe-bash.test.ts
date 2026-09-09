@@ -54,7 +54,7 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   return consumer.outputFiles![0]!.text;
 }
 
-it("runs nested env/xargs through the public default browser entry", async () => {
+it("runs nested env/xargs and truncate through the public default browser entry", async () => {
   const result = await build(resolveBrowserShellBuild(root));
   const consumer = await bundlePublicConsumer(result.outputFiles!, await readFile(path.join(root, "scripts/fixtures/safe-packages-mixed-entry-runtime.mjs"), "utf8"));
   const sandbox = createContext({
@@ -77,6 +77,7 @@ it("runs nested env/xargs through the public default browser entry", async () =>
   }
   const entry = publicConsumer.defaultEntry;
   expect(entry.MemoryFileSystem).toBe(filesystem.MemoryFileSystem);
+  await publicConsumer.verifyTruncateCommands(entry);
   const argumentsFromBrowser = entry.createCommandArguments(["nested"]);
   expect(entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: argumentsFromBrowser })).toBe(argumentsFromBrowser);
   expect(() => entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: { ...argumentsFromBrowser } })).toThrow("Expected owned command arguments");
@@ -130,13 +131,13 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
   expect(portable.posixPath).toBe(filesystem.posixPath);
   expect(portable.posixPath.join("/a", "..", "b")).toBe("/b");
   const names = portable.createAgentCommands().map(command => command.name).sort();
-  expect(names).toHaveLength(86);
+  expect(names).toHaveLength(87);
   expect(names).toEqual([
     "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
     "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
     "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
     "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-    "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+    "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "truncate", "tar",
     "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
     "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
   ].sort());

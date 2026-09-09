@@ -1,11 +1,12 @@
 import * as defaultEntry from "@poe-platform/safe-bash";
+import { FileSystemQuotaError, withFileSystemQuota } from "@poe-platform/safe-fs/core";
 
 export const expectedAgentCommandNames = Object.freeze([
   "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "truncate", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort());
@@ -158,6 +159,53 @@ export async function verifyNumfmtCommands(entry = defaultEntry) {
       throw new Error(`Public numfmt binary output changed: ${JSON.stringify(binary)}`);
     }
   } finally { await shell.dispose(); }
+}
+
+export async function verifyTruncateCommands(entry = defaultEntry) {
+  const filesystem = new entry.MemoryFileSystem();
+  await filesystem.writeFile("/truncate-file", new Uint8Array([1, 2, 3, 4, 5, 6]), { mode: 0o620 });
+  await filesystem.writeFile("/truncate-reference", new Uint8Array([7, 8, 9]));
+  await filesystem.writeFile("/truncate-script", new TextEncoder().encode("truncate -r /truncate-reference /truncate-script-output\nstat -c '%a:%s' /truncate-script-output\n"));
+  const shell = new entry.Shell({ fs: filesystem, env: { LC_ALL: "C" } }).use(entry.agentCommands({ metadata: { umask: 0o027 } }));
+  try {
+    for (const [script, stdout, stderr = "", exitCode = 0] of [
+      ["truncate -s9 /truncate-file /truncate-new; stat -c '%a:%s' /truncate-file /truncate-new", "620:9\n640:9\n"],
+      ["env truncate -s2 /truncate-file; stat -c '%s' /truncate-file | cat", "2\n"],
+      ["printf /truncate-new | xargs truncate -s+1; stat -c '%s' /truncate-new", "10\n"],
+      ["sh /truncate-script", "640:3\n"],
+      ["truncate -s0 /dev/null", "", "truncate: failed to truncate '/dev/null' at 0 bytes: Invalid argument\n", 1],
+      ["truncate -s+1 /dev/null", "", "truncate: failed to truncate '/dev/null' at 1 bytes: Invalid argument\n", 1],
+      ["truncate -s/4 /dev/null", "", "truncate: failed to truncate '/dev/null' at 0 bytes: Invalid argument\n", 1],
+      ["truncate -r /dev/null /truncate-null-reference", ""],
+      ["truncate -s0 /dev/null/", "", "truncate: cannot open '/dev/null/' for writing: Is a directory\n", 1],
+      ["truncate -cs0 /dev/null/", "", "truncate: cannot open '/dev/null/' for writing: Not a directory\n", 1],
+    ]) {
+      const result = await shell.exec(script);
+      if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
+        throw new Error(`Public truncate failed: ${script}: ${JSON.stringify(result)}`);
+      }
+    }
+    for (const [path, bytes] of [["/truncate-file", [1, 2]], ["/truncate-new", new Array(10).fill(0)], ["/truncate-script-output", [0, 0, 0]], ["/truncate-null-reference", []]]) {
+      if (JSON.stringify(Array.from(await filesystem.readFile(path))) !== JSON.stringify(bytes)) throw new Error(`Public truncate bytes changed: ${path}`);
+    }
+    const retained = await filesystem.openResizeFile("/truncate-file");
+    try {
+      await filesystem.rename("/truncate-file", "/truncate-moved");
+      await filesystem.writeFile("/truncate-file", new Uint8Array([99]));
+      await retained.truncate(4);
+      if (JSON.stringify(Array.from(await filesystem.readFile("/truncate-moved"))) !== "[1,2,0,0]"
+        || JSON.stringify(Array.from(await filesystem.readFile("/truncate-file"))) !== "[99]") throw new Error("Public retained resize retargeted a replacement pathname");
+    } finally { await retained.close(); }
+  } finally { await shell.dispose(); }
+  const backing = new entry.MemoryFileSystem();
+  await backing.writeFile("/quota-file", new Uint8Array([1, 2, 3]));
+  const failures = [];
+  const limited = new entry.Shell({ fs: withFileSystemQuota(backing, { maxBytes: 4 }), onInternalError: error => failures.push(error) }).use(entry.agentCommands());
+  try {
+    const result = await limited.exec("truncate -s8 /quota-file");
+    if (result.exitCode !== 1 || !failures.some(error => error instanceof FileSystemQuotaError)
+      || JSON.stringify(Array.from(await backing.readFile("/quota-file"))) !== "[1,2,3]") throw new Error("Public truncate bypassed quota admission or lost its refusal");
+  } finally { await limited.dispose(); }
 }
 
 export async function verifyNullDeviceView(filesystem) {

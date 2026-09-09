@@ -58,6 +58,37 @@ browser is closed and verified absent, and its Vite server is stopped.
 These are focused checks, not a completed full-root gate, package-publication
 receipt, version-banner parity, or universal Linux filesystem claim.
 
+### Command candidate and ext4 regressions
+
+The pending truncate implementation and registration now have the selected
+directory baseline available through the real Memory retained-handle route.
+The public ext4 suite records 68 native GNU 8.30 cases across empty/populated
+references and existing/new targets, covering bounded modifiers, overflow,
+creation and diagnostic effects. Its 74 tests include quota refusal/recovery
+and cleanup controls. The initial public-bundle run records 61 failures and
+13 passes; after rebuilding the fixed source, all 74 pass. That red binds the
+old public bundle; the separate 51-test TDD receipt binds the source change.
+
+The native capture explicitly uses umask 022. The first ambient-umask-002
+capture is preserved separately, not normalized into the accepted profile.
+The executable SHA-256 remains
+`72577f960652d3abb3f3a61b807b061fe433f0deaa8edec1f9230087806e299c`.
+Captures are `/tmp/truncate-ext4-bounded-v2-cGt43s/snapshot.json` and the
+preserved `/tmp/truncate-ext4-bounded-v1-loxkDh/snapshot.json`.
+
+The existing truncate suite passes 1,571 tests and registration passes six.
+One old actual-Memory directory expectation fails first, then changes to require
+the exact ext4 INT64_MAX/EFBIG diagnostic, target-open/close effects, preserved
+bytes and no huge resize dispatch; all 54 directory-admission tests then pass.
+Unsupported custom-backend checks remain unchanged. These individual receipts
+are under `/tmp/truncate-ext4-handoff-sTH994/`; the combined process-wrapper
+receipt reports four files, not an additional independent case denominator.
+
+The command, public/plugin inventory, nested invocation and Playground fixtures
+are delivered together locally. The honest version identity still differs from
+GNU and remains explicitly outside exact oracle passes. Full maintained gates
+and remote delivery are not established by this candidate checkpoint.
+
 ## Root implementation decision: September 9, 2026
 
 - Add `preferredIoBlockSize`, `OpenResizeFileOptions`, `FileResizeHandle`,
