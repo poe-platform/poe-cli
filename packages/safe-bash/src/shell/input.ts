@@ -434,6 +434,52 @@ export class ShellInput implements ByteSource, CommandInput {
     });
   }
 
+  mapfileRecord(delimiter: number, strip: boolean, allocation: ValueAllocation): Promise<{ value: ShellValue; present: boolean }> {
+    return this.#cursor.consume(this.signal, async () => {
+      this.#cursor.admitBoundedRead();
+      allocation.reserve(64, 0);
+      const parts: ShellValue[] = [];
+      let length = 0;
+      let truncated = false;
+      let pulls = 0;
+      while (true) {
+        if (++pulls % 128 === 0) await yieldTurn(this.signal);
+        const result = await this.#cursor.take(this.signal);
+        if (result.done) return { value: concatShellValues(parts, allocation), present: length > 0 };
+        const chunk = result.value;
+        for (let offset = 0; offset < chunk.length;) {
+          await yieldTurn(this.signal);
+          if (length >= this.budget.limits.maxOutputBytes) this.budget.fail("maxOutputBytes");
+          const end = Math.min(offset + 1024, chunk.length, offset + this.budget.limits.maxOutputBytes - length);
+          allocation.reserve(end - offset + 64, 0);
+          const output = new Uint8Array(end - offset);
+          let used = 0;
+          let terminated = false;
+          while (offset < end) {
+            const byte = chunk[offset++]!;
+            this.#cursor.position++;
+            if (++length > this.budget.limits.maxOutputBytes) this.budget.fail("maxOutputBytes");
+            if (byte === delimiter) {
+              if (!strip && byte !== 0 && !truncated) output[used++] = byte;
+              terminated = true;
+              break;
+            }
+            if (byte === 0) truncated = true;
+            if (!truncated) output[used++] = byte;
+          }
+          if (used) {
+            allocation.reserve(32, 0);
+            parts.push(shellValueFromBytes(output.subarray(0, used), allocation));
+          }
+          if (terminated) {
+            if (offset < chunk.length) this.#cursor.remainder = chunk.subarray(offset);
+            return { value: concatShellValues(parts, allocation), present: true };
+          }
+        }
+      }
+    });
+  }
+
   private async readBounded(raw: boolean, options: { count?: number; delimiter?: number; byteCount?: boolean; exact?: boolean }): Promise<{ value: string; escaped: ReadonlySet<number>; terminated: boolean }> {
     const text = new ReadText();
     let characters = 0;

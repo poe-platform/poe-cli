@@ -1,5 +1,6 @@
 import { Admission, ArrayFailure, ArrayOwner, exactSum } from "./ledger.js";
 import type { Tickets } from "./ledger.js";
+import { shellValueByteLength, shellValueBytes, shellValueFromBytes, shellValueText, type ShellValue } from "../../contracts/value.js";
 
 export const controlNames: ReadonlySet<string> = new Set([
   "PATH", "PWD", "OLDPWD", "HOME", "CDPATH", "IFS", "OPTIND", "OPTERR", "OPTARG", "REPLY", "LANG", "LC_ALL", "LC_CTYPE",
@@ -8,7 +9,7 @@ export const controlNames: ReadonlySet<string> = new Set([
 export class OwnedText {
   references = 1;
 
-  constructor(readonly value: string, readonly bytes: number, readonly admission: Admission) {}
+  constructor(readonly value: string, readonly bytes: number, readonly admission: Admission, readonly rawValue?: ShellValue) {}
 
   retain(): this {
     if (this.references === Number.MAX_SAFE_INTEGER) throw new ArrayFailure("reference capacity is not representable");
@@ -35,6 +36,34 @@ export async function textToken(owner: ArrayOwner, value: string, signal: AbortS
   }
   const admission = owner.reserve({ payload: bytes, metadata: 32, work: 4 });
   return new OwnedText(value, bytes, admission);
+}
+
+export async function valueToken(owner: ArrayOwner, value: ShellValue, signal: AbortSignal): Promise<OwnedText> {
+  if (typeof value === "string") return textToken(owner, value, signal);
+  const bytes = shellValueByteLength(value);
+  const temporary = owner.reserve({ payload: bytes * 3, metadata: 64, work: 4 });
+  try {
+    const input = shellValueBytes(value);
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    let text: string | undefined = "";
+    for (let offset = 0; offset < bytes; offset += 1024) {
+      const end = Math.min(bytes, offset + 1024);
+      owner.reserve({ work: end - offset }).release();
+      await owner.ledger.checkpoint(signal, end - offset);
+      if (text !== undefined) try { text += decoder.decode(input.subarray(offset, end), { stream: end < bytes }); }
+      catch (error) {
+        if (!(error instanceof TypeError) || "code" in error && error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
+        text = undefined;
+      }
+    }
+    if (text !== undefined) return await textToken(owner, text, signal);
+    // Invalid UTF-8 needs an owned raw copy and its decoded projection.
+    const admission = owner.reserve({ payload: bytes * 4, metadata: 128, work: 4 });
+    try {
+      const raw = shellValueFromBytes(input);
+      return new OwnedText(shellValueText(raw), bytes, admission, raw);
+    } catch (error) { admission.release(); throw error; }
+  } finally { temporary.release(); }
 }
 
 export interface Element {
