@@ -2585,6 +2585,7 @@ export class Runtime {
 
   private async dispatchScoped(name: string, values: readonly ShellValue[], state: State, io: IO, assignments: Map<string, SavedVariable>, bypassFunctions: boolean): Promise<number> {
     const { [invocationScope]: scope, ...publicIO } = io;
+    Reflect.deleteProperty(publicIO, valueScope);
     const allocation = this.budget.values.scope();
     scope.register(() => allocation.close());
     const argumentValues = this.admitArguments(values, allocation);
@@ -2624,7 +2625,8 @@ export class Runtime {
       scope.assertOpen();
       const forwardedValues = getCommandArguments(forwarded);
       const admitted = forwardedValues === argumentValues ? argumentValues : this.admitArguments(forwardedValues.values, allocation);
-      const context = { ...forwarded, args: admitted.args, argumentValues: admitted, [invocationScope]: scope };
+      const context = { ...forwarded, args: admitted.args, argumentValues: admitted, [invocationScope]: scope,
+        ...(io[valueScope] === undefined ? {} : { [valueScope]: io[valueScope] }) };
       const previous = new Map<string, SavedVariable & { overlay: string | undefined }>();
       const cwd = state.cwd;
       const directoryStackCwdPublication = state.directoryStackCwdPublication;
@@ -3144,6 +3146,8 @@ export class Runtime {
           return invocation;
         },
       };
+      Reflect.deleteProperty(context, invocationScope);
+      Reflect.deleteProperty(context, valueScope);
       bindCommandIO(context);
       bindFileOutputBudget(context, sink => this.budget.sink(sink, runtime.signal));
       if (argumentValues.values.every(value => typeof value === "string")) Reflect.deleteProperty(context, "argumentValues");
