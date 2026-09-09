@@ -424,6 +424,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/device-stream-admission.test.ts"));
   assert.ok(files.includes("tests/commands/cmp.test.ts"));
   assert.ok(files.includes("tests/commands/cmp-adversarial.test.ts"));
+  assert.ok(files.includes("tests/commands/cmp-skip.test.ts"));
   assert.ok(files.includes("tests/commands/fmt.test.ts"));
   assert.ok(files.includes("tests/commands/fmt-adversarial.test.ts"));
   assert.ok(files.includes("tests/plugins/fmt-registration.test.ts"));

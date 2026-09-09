@@ -261,3 +261,24 @@ observable differences that must be fixed before delivery.
   `out/issue-674-cmp-skip-repair-v1/root-eslint-v1.log` and `.exit`.
   This is the ESLint gate, not a claim that the full root lint/types/workflow or
   full unit route was rerun after this focused fix.
+
+## Explicit discovery guard and later verification
+
+- September 9, 2026: the cmp skip regression already executes through automatic
+  discovery, but its explicit membership assertion is missing from the maintained
+  discovery test. A failing literal-admission check confirms that omission before
+  adding the single assertion. This is a missing future-discovery guard, not a
+  newly discovered failure of cmp or an assertion that the test previously never ran.
+- The literal check then passes, as do both selected maintained controls for
+  default runner membership and current integration type accounting. Root guarded
+  ESLint completes all 10,475 configured inputs with zero errors or warnings.
+  Receipts: `discovery-literal-{red,green}-v1`, `discovery-maintained-v1`, and
+  `discovery-eslint-v1` under `out/issue-674-cmp-skip-repair-v1`.
+- Later broader evidence now exists: full maintained `npm test`, including
+  post-test stages, passes at local `541042a1a` before the subsequent numfmt fix.
+  After that fix, the maintained Bash workspace route passes at `d1989dff6`:
+  302 runner checks and 26,596 Bash tests, with 63 skips reported separately.
+  This last result is a Bash workspace pass, not a second whole-root pass.
+- The cmp implementation, existing regression bytes and native captures remain
+  unchanged. This checkpoint adds no new native comparisons and makes no claim
+  of packed-root qualification, remote-main delivery, issue closure or publication.
