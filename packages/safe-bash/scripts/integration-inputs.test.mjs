@@ -389,6 +389,7 @@ function assertSource7Discovery(files) {
     "tests/contracts/value.test.ts",
     "tests/shell/value-state.test.ts",
     "tests/shell/byte-values.test.ts",
+    "tests/shell/globstar.test.ts",
     "tests/shell/network-execution-deadline.test.ts",
   ]) assert.ok(files.includes(path), "retained byte-value test is missing: " + path);
   assert.equal(new Set(files).size, files.length);

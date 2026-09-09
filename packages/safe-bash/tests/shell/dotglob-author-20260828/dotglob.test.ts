@@ -4,9 +4,10 @@ import { Shell, MemoryFileSystem, ShellLimitError, standardCommands, createAgent
 import type { ShellOptions, ShellCommandContext, FsOptions } from "../../../src/index.js";
 
 const line = (enabled: boolean, print = false): string => print ? `shopt -${enabled ? "s" : "u"} dotglob\n` : `dotglob             \t${enabled ? "on" : "off"}\n`;
+const globstarLine = (print = false): string => print ? "shopt -u globstar\n" : "globstar            \toff\n";
 const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const diagnostic = (text: string): string => `shell: line 1: shopt: ${text}\n`;
-const unsupported = (name: string): string => diagnostic(`${name}: unsupported shell option name (only dotglob is supported)`);
+const unsupported = (name: string): string => diagnostic(`${name}: unsupported shell option name (supported: dotglob, globstar)`);
 
 async function fixture(options: Partial<ShellOptions> = {}) {
   const fs = new MemoryFileSystem();
@@ -37,7 +38,8 @@ for (const enabled of [false, true]) {
         const selected = (!set || enabled) && (!unset || !enabled);
         const output = quiet || named && (set || unset) || !named && !selected ? "" : line(enabled, print).repeat(named ? 2 : 1);
         const status = named && !set && !unset && !enabled ? 1 : 0;
-        assert.equal(result.stdout, `${output}status=${status}\n${line(named && (set || unset) ? set : enabled, true)}`);
+        const extra = !named && !quiet && !set ? globstarLine(print) : "";
+        assert.equal(result.stdout, `${output}${extra}status=${status}\n${line(named && (set || unset) ? set : enabled, true)}${globstarLine(true)}`);
         assert.equal(result.stderr, "");
         assert.equal(result.exitCode, 0);
       });
@@ -47,7 +49,7 @@ for (const enabled of [false, true]) {
     for (const names of ["", " dotglob expand_aliases"]) {
       test(`conflict preflight ${enabled} ${flags}${names}`, async () => {
         const result = await run(`${prefix}shopt ${flags}${names}; printf '%s\\n' "$?"; shopt -p`);
-        assert.equal(result.stdout, `1\n${line(enabled, true)}`);
+        assert.equal(result.stdout, `1\n${line(enabled, true)}${globstarLine(true)}`);
         assert.equal(result.stderr, diagnostic("cannot set and unset shell options simultaneously"));
       });
     }
@@ -55,15 +57,15 @@ for (const enabled of [false, true]) {
   for (const [flags, token] of [["-z", "-z"], ["-sz", "-z"], ["-suz", "-z"], ["-su -pz", "-z"], ["-o", "-o"], ["-so", "-o"], ["--help", "--help"], ["--version", "--version"], ["--dotglob", "--dotglob"]]) {
     test(`invalid flag before effects ${enabled} ${flags}`, async () => {
       const result = await run(`${prefix}shopt ${flags} dotglob; printf '%s\\n' "$?"; shopt -p`);
-      assert.equal(result.stdout, `2\n${line(enabled, true)}`);
-      assert.equal(result.stderr, diagnostic(`${token}: unsupported option`) + "shopt: usage: shopt [-pqsu] [--] [dotglob ...]\n");
+      assert.equal(result.stdout, `2\n${line(enabled, true)}${globstarLine(true)}`);
+      assert.equal(result.stderr, diagnostic(`${token}: unsupported option`) + "shopt: usage: shopt [-pqsu] [--] [dotglob globstar ...]\n");
     });
   }
   for (const name of ["", "-", "+s", "Dotglob", "dot", "dotglob=on", "expand_aliases", "globskipdots", "nullglob", "unrecognized"]) {
     for (const flags of ["", "-s", "-u", "-q", "-upq"]) {
       test(`unknown operand ${enabled} ${flags} ${JSON.stringify(name)}`, async () => {
         const result = await run(`${prefix}shopt ${flags} -- ${quote(name)}; printf '%s\\n' "$?"; shopt -p`);
-        assert.equal(result.stdout, `1\n${line(enabled, true)}`);
+        assert.equal(result.stdout, `1\n${line(enabled, true)}${globstarLine(true)}`);
         assert.equal(result.stderr, unsupported(name));
       });
     }
@@ -73,13 +75,13 @@ for (const enabled of [false, true]) {
       const result = await run(`${prefix}shopt ${flags} dotglob expand_aliases dotglob '' dotglob; printf '%s\\n' "$?"; shopt -p`);
       const mutation = flags.includes("s") || flags.includes("u");
       const output = mutation || flags.includes("q") ? "" : line(enabled, flags.includes("p")).repeat(3);
-      assert.equal(result.stdout, `${output}1\n${line(mutation ? flags.includes("s") : enabled, true)}`);
+      assert.equal(result.stdout, `${output}1\n${line(mutation ? flags.includes("s") : enabled, true)}${globstarLine(true)}`);
       assert.equal(result.stderr, unsupported("expand_aliases") + unsupported(""));
     });
   }
   test(`leading scan ends at operand ${enabled}`, async () => {
     const result = await run(`${prefix}shopt dotglob -s -- -sz dotglob; printf '%s\\n' "$?"; shopt -p`);
-    assert.equal(result.stdout, `${line(enabled).repeat(2)}1\n${line(enabled, true)}`);
+    assert.equal(result.stdout, `${line(enabled).repeat(2)}1\n${line(enabled, true)}${globstarLine(true)}`);
     assert.equal(result.stderr, unsupported("-s") + unsupported("--") + unsupported("-sz"));
   });
 }
@@ -172,7 +174,7 @@ test("fresh public exec and environment do not enable private option", async () 
   const { shell } = await fixture({ env: { BASHOPTS: "dotglob", SHELLOPTS: "dotglob" } });
   try {
     assert.equal((await shell.exec("shopt -s dotglob; argv *")).stdout, encode(all));
-    assert.equal((await shell.exec("argv *; shopt -p")).stdout, encode(visible) + line(false, true));
+    assert.equal((await shell.exec("argv *; shopt -p")).stdout, encode(visible) + line(false, true) + globstarLine(true));
   } finally { await shell.dispose(); }
 });
 
@@ -279,7 +281,7 @@ for (const names of ["dotglob expand_aliases", "expand_aliases dotglob"]) test(`
   try {
     const result = await shell.exec(`shopt -s ${names}; shopt -p`);
     assert.deepEqual(states, [names.startsWith("dotglob") ? 0 : 1]);
-    assert.equal(result.stdout, line(true, true));
+    assert.equal(result.stdout, line(true, true) + globstarLine(true));
   } finally { await shell.dispose(); }
 });
 
@@ -290,7 +292,7 @@ test("diagnostic write failure stops operands under existing mapped status", asy
   let calls = 0;
   try {
     const result = await shell.exec("shopt -s expand_aliases dotglob; printf '%s\\n' \"$?\"; shopt -p", { stderr: { async write() { calls++; throw reason; } }, onInternalError(error) { observed.push(error); } });
-    assert.equal(result.stdout, "1\n" + line(false, true));
+    assert.equal(result.stdout, "1\n" + line(false, true) + globstarLine(true));
     assert.equal(result.stderr, unsupported("expand_aliases") + "shell: line 1: internal error\n");
     assert.equal(observed.length, 2);
     for (const error of observed) assert.equal(error, reason);
@@ -302,7 +304,7 @@ test("named interpreter diagnostics preserve line and usage formatting", async (
   const result = await run("bash -c 'true\nshopt -sz dotglob' author-script");
   assert.equal(result.exitCode, 2);
   assert.equal(result.stdout, "");
-  assert.equal(result.stderr, "author-script: line 2: shopt: -z: unsupported option\nshopt: usage: shopt [-pqsu] [--] [dotglob ...]\n");
+  assert.equal(result.stderr, "author-script: line 2: shopt: -z: unsupported option\nshopt: usage: shopt [-pqsu] [--] [dotglob globstar ...]\n");
 });
 
 test("env shebang registered target receives cloned private state", async () => {

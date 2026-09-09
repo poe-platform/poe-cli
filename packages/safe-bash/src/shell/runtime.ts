@@ -116,6 +116,8 @@ export class Budget {
   iterations = 0;
   bytes = 0;
   sourceBytes = 0;
+  globstarEntries = 0;
+  globstarStates = 0;
   readonly controller = new AbortController();
   readonly signal: AbortSignal;
   #wallClockTimer: ReturnType<typeof setTimeout> | undefined;
@@ -331,6 +333,7 @@ export interface State {
   directoryStack?: { readonly entries: readonly string[]; readonly bytes: number };
   directoryStackCwdPublication?: symbol;
   dotglob?: boolean;
+  globstar?: boolean;
   braceexpand?: boolean;
   pipefail: boolean;
   errexit?: boolean;
@@ -2905,6 +2908,7 @@ export class Runtime {
       cwd: state.cwd, variables, exported, functions: new Map(), getopts: { cursor: createGetoptsState(), integer: true },
       directoryStack: { entries: [], bytes: 0 },
       dotglob: false,
+      globstar: false,
       positional: [...args], arg0, profile: context.command === "sh" ? "sh" : "bash", status: 0, substitutionStatus: 0, depth: state.depth + 1,
       loopDepth: 0, functionDepth: 0, locals: [], pipefail: false, isolated: true,
       errexit: false,
@@ -3881,7 +3885,7 @@ export class Runtime {
         else if (flag === "u") unset = true;
         else {
           await this.diagnostic(context, `shopt: ${option.startsWith("--") ? option : `-${flag}`}: unsupported option`);
-          await writeDiagnostic(context.stderr, "shopt: usage: shopt [-pqsu] [--] [dotglob ...]\n");
+          await writeDiagnostic(context.stderr, "shopt: usage: shopt [-pqsu] [--] [dotglob globstar ...]\n");
           return 2;
         }
       }
@@ -3890,24 +3894,24 @@ export class Runtime {
       await this.diagnostic(context, "shopt: cannot set and unset shell options simultaneously");
       return 1;
     }
-    const emit = async (): Promise<void> => {
-      if (!quiet) await writeText(context.stdout, print ? `shopt -${state.dotglob ? "s" : "u"} dotglob\n` : `dotglob             \t${state.dotglob ? "on" : "off"}\n`);
+    const emit = async (name: "dotglob" | "globstar"): Promise<void> => {
+      if (!quiet) await writeText(context.stdout, print ? `shopt -${state[name] ? "s" : "u"} ${name}\n` : `${name.padEnd(20)}\t${state[name] ? "on" : "off"}\n`);
     };
     if (index === context.args.length) {
-      if ((!set || state.dotglob) && (!unset || !state.dotglob)) await emit();
+      for (const name of ["dotglob", "globstar"] as const) if ((!set || state[name]) && (!unset || !state[name])) await emit(name);
       return 0;
     }
     let status = 0;
     for (; index < context.args.length; index++) {
       this.signal.throwIfAborted();
       const name = context.args[index]!;
-      if (name !== "dotglob") {
-        await this.diagnostic(context, `shopt: ${name}: unsupported shell option name (only dotglob is supported)`);
+      if (name !== "dotglob" && name !== "globstar") {
+        await this.diagnostic(context, `shopt: ${name}: unsupported shell option name (supported: dotglob, globstar)`);
         status = 1;
-      } else if (set || unset) state.dotglob = set;
+      } else if (set || unset) state[name] = set;
       else {
-        await emit();
-        if (!state.dotglob) status = 1;
+        await emit(name);
+        if (!state[name]) status = 1;
       }
     }
     return status;
@@ -5055,8 +5059,189 @@ export class Runtime {
     } finally { holding.release(); }
   }
 
+  private async recursiveGlob(value: string, pattern: string, state: State): Promise<string[]> {
+    // Entry/state limits are invocation-wide, including hidden and nonmatching
+    // entries. They are separate from the number of emitted expansion fields.
+    const failWalk = (message: string): never => {
+      const error = new FsError("EFBIG", { syscall: "glob", message });
+      this.budget.controller.abort(error);
+      throw error;
+    };
+    const work: StringWork = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+    const scratch = this.budget.values.scope();
+    work.allocation = scratch;
+    type Candidate = { path: string; bytes: number; descend: boolean; depth: number };
+    try {
+      const segments: string[] = [];
+      let start = 0;
+      for (let end = 0; end <= pattern.length; end++) {
+        const pending = stringCheckpoint(work);
+        if (pending) await pending;
+        if (end !== pattern.length && pattern[end] !== "/") continue;
+        if (end > start) {
+          const bytes = (await scanString(pattern, work, start, end)).bytes;
+          if (++this.budget.globstarStates > 100_000) failWalk("globstar traversal state limit exceeded");
+          scratch.reserveBytes(bytes * 2 + 64);
+          segments.push(pattern.slice(start, end));
+        }
+        start = end + 1;
+      }
+      const make = (parent: Candidate, suffix: string, bytes: number, descend: boolean, depth: number): Candidate => {
+        const separator = parent.path && parent.path !== "/" ? "/" : "";
+        const size = parent.bytes + separator.length + bytes;
+        if (size > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+        if (++this.budget.globstarStates > 100_000) failWalk("globstar traversal state limit exceeded");
+        if (depth > 128) failWalk("globstar directory depth limit exceeded");
+        // Includes the candidate, queue/map/set slots and later segment-array
+        // references. Reservations remain cumulative until this glob settles.
+        scratch.reserveBytes(size * 2 + 128);
+        return { path: parent.path + separator + suffix, bytes: size, descend, depth };
+      };
+      const empty: Candidate = { path: "", bytes: 0, descend: true, depth: 0 };
+      let candidates = [make(empty, pattern.startsWith("/") ? "/" : "", pattern.startsWith("/") ? 1 : 0, true, 0)];
+      const ignored = (error: unknown): boolean => {
+        this.signal.throwIfAborted();
+        return ["ENOENT", "ENOTDIR", "EACCES"].includes(errorCode(error) ?? "");
+      };
+      const read = async (candidate: Candidate) => {
+        const maxEntries = 100_000 - this.budget.globstarEntries;
+        let entries;
+        try { entries = await interruptible(this.fs.readdir(pathOf(state, candidate.path || "."), { signal: this.signal, maxEntries }), this.signal); }
+        catch (error) {
+          this.signal.throwIfAborted();
+          if (errorCode(error) === "EFBIG") this.budget.controller.abort(error);
+          throw error;
+        }
+        this.signal.throwIfAborted();
+        if (entries.length > maxEntries) failWalk("globstar directory entry limit exceeded");
+        this.budget.globstarEntries += entries.length;
+        return entries;
+      };
+      let wildcardPrefix = false;
+      for (let index = 0; index < segments.length; index++) {
+        const segment = segments[index]!;
+        const terminal = index === segments.length - 1;
+        const next = new Map<string, Candidate>();
+        const add = (candidate: Candidate): void => {
+          const prior = next.get(candidate.path);
+          if (!prior || candidate.descend && !prior.descend) next.set(candidate.path, candidate);
+        };
+        if (segment === "**") {
+          const visited = new Set<string>();
+          for (const root of candidates) {
+            this.signal.throwIfAborted();
+            try {
+              if ((await interruptible(this.fs.stat(pathOf(state, root.path || "."), { signal: this.signal }), this.signal)).type !== "directory") continue;
+            } catch (error) { if (ignored(error)) continue; throw error; }
+            if (!terminal || root.path) {
+              // A literal prefix retains its separator in the zero-depth
+              // terminal match; expanded prefixes do not (GNU Bash 5.2).
+              add(terminal && !wildcardPrefix && root.path !== "/" ? make(root, "", 0, root.descend, root.depth) : root);
+            }
+            const queue = root.descend ? [root] : [];
+            while (queue.length) {
+              const directory = queue.pop()!;
+              if (visited.has(directory.path)) continue;
+              visited.add(directory.path);
+              let entries;
+              try { entries = await read(directory); }
+              catch (error) { if (ignored(error)) continue; throw error; }
+              for (const entry of entries) {
+                const pending = stringCheckpoint(work);
+                if (pending) await pending;
+                if (entry.name === "." || entry.name === ".." || !state.dotglob && entry.name.startsWith(".")) continue;
+                const bytes = (await scanString(entry.name, work)).bytes;
+                const child = make(directory, entry.name, bytes, entry.type === "directory", directory.depth + (entry.type === "directory" ? 1 : 0));
+                if (terminal || entry.type === "directory" || entry.type === "symlink" && root.path !== "") add(child);
+                if (entry.type === "directory") queue.push(child);
+              }
+            }
+          }
+          wildcardPrefix = true;
+        } else if (!/(?:^|[^\\])[*?[]/u.test(segment)) {
+          const literal = segment.replace(/\\(.)/gu, "$1");
+          const bytes = (await scanString(literal, work)).bytes;
+          for (const candidate of candidates) add(make(candidate, literal, bytes, true, candidate.depth));
+        } else {
+          const matches = await compilePattern(segment, work);
+          for (const candidate of candidates) {
+            let entries;
+            try { entries = await read(candidate); }
+            catch (error) { if (ignored(error)) continue; throw error; }
+            for (const entry of entries) {
+              const pending = stringCheckpoint(work);
+              if (pending) await pending;
+              if (entry.name !== "." && entry.name !== ".." && (state.dotglob || !entry.name.startsWith(".") || segment.startsWith(".")) && await matches(entry.name)) {
+                add(make(candidate, entry.name, (await scanString(entry.name, work)).bytes, true, candidate.depth));
+              }
+            }
+          }
+          wildcardPrefix = true;
+        }
+        candidates = [...next.values()];
+      }
+      const found: string[] = [];
+      let outputBytes = 0;
+      for (const candidate of candidates) {
+        this.signal.throwIfAborted();
+        try {
+          const path = pathOf(state, candidate.path);
+          const stat = await interruptible(value.endsWith("/") ? this.fs.stat(path, { signal: this.signal }) : this.fs.lstat(path, { signal: this.signal }), this.signal);
+          if (value.endsWith("/") && stat.type !== "directory") continue;
+          const slash = value.endsWith("/") && !candidate.path.endsWith("/") ? "/" : "";
+          if (found.length >= this.budget.limits.maxExpansionFields) this.budget.fail("maxExpansionFields");
+          outputBytes += candidate.bytes + slash.length;
+          if (outputBytes > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+          scratch.reserveBytes(candidate.bytes * 2 + slash.length + 8);
+          found.push(candidate.path + slash);
+        } catch (error) { if (!ignored(error)) throw error; }
+      }
+      // In-place heap sort preserves ordinary UTF-16 pathname order while
+      // charging comparisons, including long common prefixes, and yielding.
+      const compare = async (left: string, right: string): Promise<number> => {
+        for (let index = 0; index < Math.min(left.length, right.length); index++) {
+          const pending = stringCheckpoint(work);
+          if (pending) await pending;
+          const difference = left.charCodeAt(index) - right.charCodeAt(index);
+          if (difference) return difference;
+        }
+        return left.length - right.length;
+      };
+      const sift = async (root: number, end: number): Promise<void> => {
+        while (root * 2 + 1 < end) {
+          let child = root * 2 + 1;
+          if (child + 1 < end && await compare(found[child]!, found[child + 1]!) < 0) child++;
+          if (await compare(found[root]!, found[child]!) >= 0) return;
+          const saved = found[root]!;
+          found[root] = found[child]!;
+          found[child] = saved;
+          root = child;
+        }
+      };
+      for (let index = Math.floor(found.length / 2) - 1; index >= 0; index--) await sift(index, found.length);
+      for (let end = found.length - 1; end > 0; end--) {
+        const saved = found[0]!;
+        found[0] = found[end]!;
+        found[end] = saved;
+        await sift(0, end);
+      }
+      return found.length ? found : [value];
+    } finally { scratch.close(); }
+  }
+
   async glob(value: string, pattern: string, state: State): Promise<string[]> {
     if (!/(?:^|[^\\])[*?[]/u.test(pattern)) return [value];
+    if (state.globstar) {
+      const work: StringWork = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+      let start = 0;
+      for (let end = 0; end <= pattern.length; end++) {
+        const pending = stringCheckpoint(work);
+        if (pending) await pending;
+        if (end !== pattern.length && pattern[end] !== "/") continue;
+        if (end - start === 2 && pattern[start] === "*" && pattern[start + 1] === "*") return this.recursiveGlob(value, pattern, state);
+        start = end + 1;
+      }
+    }
     const absolute = pattern.startsWith("/");
     const work: StringWork = { remaining: Math.min(Number.MAX_SAFE_INTEGER, this.budget.limits.maxExpansionBytes * 4 + 1024), signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
     let candidates = [absolute ? "/" : ""];
