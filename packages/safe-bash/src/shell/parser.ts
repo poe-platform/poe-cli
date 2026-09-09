@@ -16,6 +16,7 @@ export type WordPart =
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string; line: number; quoted: boolean }
   | { kind: "variable"; name: string; quoted: boolean; line?: number; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
   | { kind: "failed-substitution"; diagnostic: string; quoted: boolean }
+  | { kind: "failed-parameter"; source: string; line: number; quoted: boolean }
   | { kind: "substitution"; script: Script; line: number; sourceLine?: number; quoted: boolean };
 
 export interface Word {
@@ -129,7 +130,7 @@ class Lexer {
   conditionalPattern: "pattern" | "regex" | undefined;
   braceReplay?: ReadonlyMap<number, ShellValue>;
   readonly documents: HereDocument[] = [];
-  constructor(readonly budget: ParseBudget, readonly source: string, readonly depth: number, readonly warnings: string[] = [], readonly lineOffset = 0, readonly byteLocale = false, readonly documentLine?: number, readonly partial = false, readonly lineIndex = new SourceLineIndex(source, budget), readonly sourceOffset = 0) {
+  constructor(readonly budget: ParseBudget, readonly source: string, readonly depth: number, readonly warnings: string[] = [], readonly lineOffset = 0, readonly byteLocale = false, readonly documentLine?: number, readonly partial = false, readonly lineIndex = new SourceLineIndex(source, budget), readonly sourceOffset = 0, readonly ordinaryBacktick = false) {
     if (depth > 64) throw new ShellSyntaxError("Syntax nesting exceeds 64", 0);
   }
 
@@ -502,7 +503,7 @@ class Lexer {
       }
       if (this.source[this.position] !== "`") this.error("Unterminated command substitution");
       this.position++;
-      try { parts.push({ kind: "substitution", script: parseSource(source, this.depth + this.operandDepth + 1, this.warnings, line - 1, this.byteLocale, this.budget), line, quoted }); }
+      try { parts.push({ kind: "substitution", script: parseSource(source, this.depth + this.operandDepth + 1, this.warnings, line - 1, this.byteLocale, this.budget, this.documentLine === undefined), line, quoted }); }
       catch (error) {
         if (this.documentLine === undefined || !(error instanceof ShellSyntaxError) || /nesting|exceeds/u.test(error.reason)) throw error;
         this.budget.admit();
@@ -593,11 +594,21 @@ class Lexer {
           }
         } finally { this.operandDepth--; }
       }
-      if (this.source[this.position] !== "}") this.error("Unterminated or unsupported parameter expansion");
-      this.position++;
-      const part: WordPart = { kind: "variable", name, quoted, line, ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
-      if (selector) setArraySelector(part, selector);
-      parts.push(part);
+      if (this.source[this.position] !== "}") {
+        let end = this.position;
+        if (this.ordinaryBacktick && !selector && !operator && !substring && /^[a-zA-Z_]/u.test(name)
+          && !"^,@".includes(this.source[this.position] ?? "")) {
+          while (end < this.source.length && !" \t\r\n$`'\"\\{}[]();|&<>".includes(this.source[end]!)) end++;
+        }
+        if (end === this.position || this.source[end] !== "}") this.error("Unterminated or unsupported parameter expansion");
+        this.position = end + 1;
+        parts.push({ kind: "failed-parameter", source: this.source.slice(parameterStart, this.position), line, quoted });
+      } else {
+        this.position++;
+        const part: WordPart = { kind: "variable", name, quoted, line, ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
+        if (selector) setArraySelector(part, selector);
+        parts.push(part);
+      }
     } else {
       const name = /^(?:[a-zA-Z_][a-zA-Z_0-9]*|[?@*#0-9-])/u.exec(this.source.slice(this.position))?.[0];
       if (name) {
@@ -619,10 +630,10 @@ class Parser {
   nesting = 0;
   readonly openCommands: { name: string; line: number }[] = [];
 
-  constructor(readonly budget: ParseBudget, source: string, depth: number, warnings: string[] = [], lineOffset = 0, position?: number, byteLocale = false, partial = false, lineIndex = new SourceLineIndex(source, budget), sourceOffset = 0) {
+  constructor(readonly budget: ParseBudget, source: string, depth: number, warnings: string[] = [], lineOffset = 0, position?: number, byteLocale = false, partial = false, lineIndex = new SourceLineIndex(source, budget), sourceOffset = 0, ordinaryBacktick = false) {
     if (position === undefined && depth === 0 && source.includes("\0")) throw new ShellSyntaxError("NUL bytes are not valid shell source", source.indexOf("\0"));
     budget.admit();
-    this.lexer = new Lexer(budget, source, depth, warnings, lineOffset, byteLocale, undefined, partial, lineIndex, sourceOffset);
+    this.lexer = new Lexer(budget, source, depth, warnings, lineOffset, byteLocale, undefined, partial, lineIndex, sourceOffset, ordinaryBacktick);
     this.lexer.position = position ?? 0;
     this.current = this.lexer.next();
   }
@@ -993,9 +1004,9 @@ export function parseShellInputUnit(source: string, byteLocale = false, budget =
   }
 }
 
-function parseSource(source: string, depth: number, warnings: string[], lineOffset: number, byteLocale: boolean, budget: ParseBudget): Script {
+function parseSource(source: string, depth: number, warnings: string[], lineOffset: number, byteLocale: boolean, budget: ParseBudget, ordinaryBacktick = false): Script {
   budget.admit();
-  const parser = new Parser(budget, source, depth, warnings, lineOffset, undefined, byteLocale);
+  const parser = new Parser(budget, source, depth, warnings, lineOffset, undefined, byteLocale, false, undefined, 0, ordinaryBacktick);
   const script = parser.script();
   if (parser.current.kind !== "end") parser.error("Unexpected token");
   return script;

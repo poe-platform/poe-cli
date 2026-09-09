@@ -4431,6 +4431,7 @@ export class Runtime {
 
   private async partValue(part: Exclude<WordPart, { kind: "text" }>, state: State, io: IO, hereString: boolean): Promise<ShellValue> {
     this.signal.throwIfAborted();
+    if (part.kind === "failed-parameter") throw new ExpansionFailure(`${part.source}: bad substitution`, io.diagnosticLine ?? part.line);
     if (part.kind === "failed-substitution") {
       if (state.depth >= this.budget.limits.maxSubstitutionDepth) this.budget.fail("maxSubstitutionDepth");
       await writeDiagnostic(io.stderr, part.diagnostic);
