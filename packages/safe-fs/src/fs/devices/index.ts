@@ -225,7 +225,8 @@ export class DeviceFileSystem implements FileSystem {
     options.signal?.throwIfAborted();
     const merged = new Map<string, DirectoryEntry>();
     for (const entry of entries) {
-      if (!entry.name || entry.name === "." || entry.name === ".." || entry.name.includes("/") || entry.name.includes("\0")) throw new FsError("EIO", { path, message: "invalid directory entry" });
+      if (entry.name === "." || entry.name === "..") continue;
+      if (!entry.name || entry.name.includes("/") || entry.name.includes("\0")) throw new FsError("EIO", { path, message: "invalid directory entry" });
       merged.set(entry.name, { name: entry.name, type: entry.type });
       admitDirectoryEntries(merged.size, limit, path);
     }

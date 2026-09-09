@@ -1,5 +1,5 @@
 import { FsError, isFsError } from "../../contracts/errors.js";
-import type { FileSystem, FsOptions } from "../../contracts/filesystem.js";
+import type { FileStat, FileSystem, FsOptions } from "../../contracts/filesystem.js";
 import { validatePath } from "../../contracts/virtual-path.js";
 
 export const nullPath = "/dev/null";
@@ -19,7 +19,7 @@ export function lexicalDevicePath(path: string): string {
 export async function resolveDevicePath(filesystem: FileSystem, path: string, options: FsOptions, followFinal = true): Promise<string> {
   options.signal?.throwIfAborted();
   const lexical = lexicalDevicePath(path);
-  const aliases = typeof filesystem.readlink === "function" && filesystem.capabilities.symlinks === true;
+  const aliases = typeof filesystem.lstat === "function";
   if (!aliases && lexical !== nullPath && lexical !== deviceDirectory && lexical !== "/") return lexical;
   const pending = path.split("/");
   const parts: string[] = [];
@@ -35,29 +35,31 @@ export async function resolveDevicePath(filesystem: FileSystem, path: string, op
     if (component === "..") { parts.pop(); continue; }
     const candidate = `/${[...parts, component].join("/")}`;
     if (candidate !== deviceDirectory && candidate !== nullPath && ((followFinal && aliases) || pending.length)) {
+      const lookup = absolute ? candidate : candidate.slice(1);
+      let stat: FileStat | undefined;
       try {
-        const lookup = absolute ? candidate : candidate.slice(1);
         if (typeof filesystem.lstat !== "function") throw new FsError("ENOTSUP", { path });
-        const stat = await filesystem.lstat(lookup, options);
-        options.signal?.throwIfAborted();
-        if (stat.type === "symlink") {
-          if (!filesystem.readlink) throw new FsError("ENOTSUP", { path });
-          if (++links > 40) throw new FsError("ELOOP", { path });
-          const target = await filesystem.readlink(lookup, options);
-          options.signal?.throwIfAborted();
-          validatePath(target);
-          expanded += target.length;
-          if (expanded > 65536) throw new FsError("ENAMETOOLONG", { path });
-          if (target.startsWith("/")) { parts.length = 0; absolute = true; }
-          pending.unshift(...target.split("/"));
-          continue;
-        }
-        if (pending.length && stat.type !== "directory") traversalFailure ??= new FsError("ENOTDIR", { path });
+        stat = await filesystem.lstat(lookup, options);
       } catch (error) {
         options.signal?.throwIfAborted();
+        if (isFsError(error, "ENOTSUP") && links === 0 && lexical !== nullPath && lexical !== deviceDirectory && lexical !== "/") return lexical;
         if (!isFsError(error, "ENOENT")) throw error;
         if (pending.length) traversalFailure ??= error;
       }
+      options.signal?.throwIfAborted();
+      if (stat?.type === "symlink") {
+        if (typeof filesystem.readlink !== "function") throw new FsError("ENOTSUP", { path });
+        if (++links > 40) throw new FsError("ELOOP", { path });
+        const target = await filesystem.readlink(lookup, options);
+        options.signal?.throwIfAborted();
+        validatePath(target);
+        expanded += target.length;
+        if (expanded > 65536) throw new FsError("ENAMETOOLONG", { path });
+        if (target.startsWith("/")) { parts.length = 0; absolute = true; }
+        pending.unshift(...target.split("/"));
+        continue;
+      }
+      if (stat && pending.length && stat.type !== "directory") traversalFailure ??= new FsError("ENOTDIR", { path });
     }
     parts.push(component);
   }

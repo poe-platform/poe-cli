@@ -109,7 +109,7 @@ test("virtual batch preserves fresh Shell/FS, rejected cases and raw independent
   assert.ok(rejected && rejected.status === "rejected");
   assert.ok(rejected.error.includes("maxCommands"));
   assert.ok(fresh && fresh.status === "fulfilled");
-  assert.deepEqual(fresh.observation, { ...emptyObservation, stdout: "<>:0:/", stdoutBase64: Buffer.from("<>:0:/").toString("base64") });
+  assert.deepEqual(fresh.observation, { ...emptyObservation, stdout: "<>:0:/work", stdoutBase64: Buffer.from("<>:0:/work").toString("base64") });
   assert.ok(bytes && bytes.status === "fulfilled");
   assert.deepEqual(bytes.observation, {
     stdout: Buffer.from([255, 0]).toString(), stdoutBase64: Buffer.from([255, 0]).toString("base64"),

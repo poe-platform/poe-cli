@@ -143,3 +143,12 @@ and monitor both releases until successful publication. No fix is claimed yet.
   59 tests. Frozen references and original bounds remain unchanged. A fresh
   build, packed candidate, full gate, and workerd revalidation are still required;
   no push is claimed.
+- An independent installed-consumer probe against `5de688d3a` exposes an alias
+  bypass on a mixed mount: an unrelated read-only mount makes the global
+  symlink-creation capability unknown, causing an existing `/alias` to reveal
+  and overwrite the historical null row. The evidence is
+  `/tmp/kamilio-700-mixed-mount-alias-red.json`. Alias inspection must use entry
+  metadata rather than creation capability; unresolved discovered links must
+  fail closed. New mixed-mount/read-only controls and persistent workerd cases
+  are required before the next candidate is accepted. Earlier 37-case workerd
+  passes do not certify these newly reproduced compositions.

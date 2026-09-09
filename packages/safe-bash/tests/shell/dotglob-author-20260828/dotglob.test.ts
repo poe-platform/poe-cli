@@ -109,7 +109,7 @@ for (const [pattern, off, on] of globs) test(`actual glob execution-time off/on/
   assert.equal(result.exitCode, 0);
 });
 
-test("custom provider dot entries never become wildcard candidates; order is retained until final sort", async () => {
+for (const cwd of ["/", "/work"]) test(`custom provider dot entries never become wildcard candidates; order is retained until final sort (${cwd})`, async () => {
   class DottedFileSystem extends MemoryFileSystem {
     readonly probes: string[] = [];
     override async readdir(path: string, options?: FsOptions) {
@@ -119,13 +119,20 @@ test("custom provider dot entries never become wildcard candidates; order is ret
     }
   }
   const fs = new DottedFileSystem();
-  for (const path of ["/z", "/a", "/.z", "/.a"]) await fs.mkdir(path);
-  const { shell } = await fixture({ fs, cwd: "/" });
+  const prefix = cwd === "/" ? "" : cwd;
+  if (prefix) await fs.mkdir(prefix);
+  for (const path of ["/z", "/a", "/.z", "/.a"]) await fs.mkdir(`${prefix}${path}`);
+  const { shell } = await fixture({ fs, cwd });
   try {
     const result = await shell.exec("argv .*; argv .?; argv *; shopt -s dotglob; argv .*; argv *; argv */*; argv . ..");
-    assert.equal(result.stdout, encode([".a", ".z"], [".a", ".z"], ["a", "z"], [".a", ".z"], [".a", ".z", "a", "z"], ["*/*"], [".", ".."]));
+    assert.equal(result.stdout, encode(
+      [".a", ".z"], [".a", ".z"], cwd === "/" ? ["a", "dev", "z"] : ["a", "z"], [".a", ".z"],
+      cwd === "/" ? [".a", ".z", "a", "dev", "z"] : [".a", ".z", "a", "z"], cwd === "/" ? ["dev/null"] : ["*/*"], [".", ".."],
+    ));
     assert.equal(result.stderr, "");
-    assert.deepEqual(fs.probes.slice(-5), ["/", "/z", "/a", "/.z", "/.a"]);
+    assert.equal(result.exitCode, 0);
+    const traversal = [cwd === "/" ? "/" : `${cwd}/.`, ...["/z", "/a", "/.z", "/.a"].map(path => `${prefix}${path}`), ...(cwd === "/" ? ["/dev"] : [])];
+    assert.deepEqual(fs.probes.slice(-traversal.length), traversal);
   } finally { await shell.dispose(); }
 });
 

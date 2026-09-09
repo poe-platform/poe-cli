@@ -117,6 +117,34 @@ describe("virtual null device", () => {
     expect(await historical.view.readdir("/dev", { maxEntries: 1 })).toEqual([{ name: "null", type: "character" }]);
   });
 
+  for (const path of ["/", "/dev"]) it(`ignores provider dot entries while retaining merged order and admission at ${path}`, async () => {
+    const { backing, view } = await fixture(true);
+    const readdir = vi.spyOn(backing, "readdir").mockResolvedValue([
+      { name: ".", type: "directory" }, { name: "..", type: "directory" },
+      { name: "z", type: "file" }, { name: "a", type: "file" },
+    ]);
+    const signal = new AbortController().signal;
+    expect(await view.readdir(path, { signal, maxEntries: 3 })).toEqual([
+      { name: "z", type: "file" }, { name: "a", type: "file" },
+      { name: path === "/" ? "dev" : "null", type: path === "/" ? "directory" : "character" },
+    ]);
+    expect(readdir).toHaveBeenLastCalledWith(path, { signal, maxEntries: 3 });
+    await expect(view.readdir(path, { maxEntries: 2 })).rejects.toMatchObject({ code: "EFBIG" });
+    readdir.mockResolvedValue([{ name: ".", type: "directory" }, { name: "..", type: "directory" }]);
+    expect(await view.readdir(path, { maxEntries: 1 })).toEqual([
+      { name: path === "/" ? "dev" : "null", type: path === "/" ? "directory" : "character" },
+    ]);
+    await expect(view.readdir(path, { maxEntries: 0 })).rejects.toMatchObject({ code: "EFBIG" });
+  });
+
+  for (const path of ["/", "/dev"]) for (const name of ["", "nested/entry", "nul\0entry"]) it(`rejects malformed provider entry ${JSON.stringify(name)} at ${path}`, async () => {
+    const { backing, view } = await fixture(true);
+    vi.spyOn(backing, "readdir").mockResolvedValue([
+      { name: ".", type: "directory" }, { name: "..", type: "directory" }, { name, type: "file" },
+    ]);
+    await expect(view.readdir(path)).rejects.toMatchObject({ code: "EIO" });
+  });
+
   it("retains device read handles and reports character metadata through bridge APIs", async () => {
     const { view } = await fixture();
     const handle = await view.openReadFile!("/dev/null");
@@ -181,7 +209,9 @@ describe("virtual null device", () => {
     expect(readFile).toHaveBeenCalledWith("relative/../ordinary", options);
     expect(writeFile).toHaveBeenCalledWith("relative/../ordinary", bytes("value"), options);
     expect(copyFile).toHaveBeenCalledWith("relative/source", "relative/destination", options);
-    expect(lstat).not.toHaveBeenCalled();
+    expect(lstat.mock.calls).toEqual([
+      ["relative", options], ["relative", options], ["relative", options], ["relative", options],
+    ]);
     expect(await view.capabilitiesFor!("relative/ordinary")).toEqual({ ...capabilities,
       streamingRead: false, streamingWrite: false, streamingAppend: false, descriptorWriteStream: false, retainedRead: false });
     await expect(view.copyFile("relative/source", "/dev/null")).rejects.toMatchObject({ code: "ENOTSUP" });

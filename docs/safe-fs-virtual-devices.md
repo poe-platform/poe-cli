@@ -45,6 +45,12 @@ filesystem. Use `capabilitiesFor(path)` to distinguish backing paths from the
 device; a mixed view's global capabilities are not a promise that every path is
 writable.
 
+Existing symlink aliases are resolved through entry metadata, including on
+read-only filesystems and mixed mounts. A global symlink-creation flag does not
+establish whether existing links can be followed. If a discovered link cannot
+be resolved, the view rejects the operation instead of forwarding a possible
+device write to storage.
+
 ## Historical data and persistence
 
 Existing backing `/dev/null` records are masked, not deleted or rewritten.
