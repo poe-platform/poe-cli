@@ -44,6 +44,7 @@ const providerOptions: BoundedRegexProviderOptions = {
   maxWorkers: 1, maxPatterns: 8, maxPatternBytes: 1024, maxRows: 16,
   maxInputBytes: 8192, maxResultBytes: 256, maxWork: 100000,
   maxAllocationUnits: 100000, maxStates: 1024,
+  maxMatchesPerLine: 8, maxTotalMatches: 16,
 };
 portablePlugins(createBoundedRegexProvider(providerOptions));
 

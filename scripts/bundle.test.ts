@@ -192,13 +192,18 @@ it.each([
     }
     expect(build.mock.calls.filter(([options]) => options.outdir === path.join(root, "packages/safe-bash/dist"))
       .map(([options]) => options.entryPoints)).toEqual([
-      [path.join(root, "packages/safe-bash/src/core.browser.ts")],
+      {
+        "core.browser": path.join(root, "packages/safe-bash/src/core.browser.ts"),
+        "commands/xml/index.browser": path.join(root, "packages/safe-bash/src/commands/xml/index.ts"),
+        "commands/yq/index.browser": path.join(root, "packages/safe-bash/src/commands/yq/index.ts"),
+      },
     ]);
   }
 );
 
-it("preserves the previous SafeJS bundle when compilation fails", async () => {
+it.each(["workerd", "node"])("preserves the previous SafeJS bundle when %s compilation fails", async profile => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const previousEntry = path.join(root, "packages/safe-js/dist/index.js");
   const previousChunk = path.join(root, "packages/safe-js/dist/chunks/chunk-OLD.js");
   const volume = Volume.fromJSON({
     [path.join(root, "package.json")]: "{}",
@@ -206,7 +211,7 @@ it("preserves the previous SafeJS bundle when compilation fails", async () => {
     [path.join(root, "packages/safe-fs/package.json")]:
       '{"name":"@poe-code/safe-fs","exports":{"./node":{"import":"./dist/node/index.js"}}}',
     [path.join(root, "packages/memory/package.json")]: '{"name":"@poe-code/memory"}',
-    [path.join(root, "packages/safe-js/dist/index.js")]: 'export * from "./chunks/chunk-OLD.js";',
+    [previousEntry]: 'export * from "./chunks/chunk-OLD.js";',
     [previousChunk]: "export const previous = true;",
     [path.join(root, "dist/metafile.json")]: "{}"
   });
@@ -214,7 +219,7 @@ it("preserves the previous SafeJS bundle when compilation fails", async () => {
   addNativeFixture(root, volume);
   const failure = new Error("SafeJS compilation failed");
   const build = vi.fn(async (options: BuildOptions) => {
-    if (options.outdir === path.join(root, "packages/safe-js/dist")) throw failure;
+    if (options.outdir === path.join(root, "packages/safe-js/dist") && options.conditions?.includes(profile)) throw failure;
     return { metafile: { outputs: {} } };
   });
   vi.doMock("node:fs/promises", () => createFsFromVolume(volume).promises);
@@ -228,12 +233,21 @@ it("preserves the previous SafeJS bundle when compilation fails", async () => {
 
   expect(build).toHaveBeenLastCalledWith(expect.objectContaining({ write: false, metafile: true }));
   const producer = build.mock.calls.at(-1)![0];
-  expect((producer.entryPoints as Record<string, string>)["safe-fs"]).toBe(
-    path.join(root, "packages/safe-fs/src/index.ts")
-  );
-  expect(producer.alias!["@poe-code/safe-fs/node"]).toBe(
-    path.join(root, "packages/safe-fs/src/node-host.ts")
-  );
+  expect(producer.conditions).toEqual([profile]);
+  if (profile === "node") {
+    expect((producer.entryPoints as Record<string, string>)["safe-fs"]).toBe(
+      path.join(root, "packages/safe-fs/src/index.ts")
+    );
+    expect(producer.alias!["@poe-code/safe-fs/node"]).toBe(
+      path.join(root, "packages/safe-fs/src/node-host.ts")
+    );
+  } else {
+    expect(producer.entryPoints).toEqual({ workerd: path.join(root, "packages/safe-js/src/workerd.ts") });
+    expect(producer.alias!["@poe-code/safe-fs"]).toBe("poe-code/safe-fs");
+    expect(producer.alias!["@poe-code/safe-fs/node"]).toBe("poe-code/safe-fs/node");
+    expect(producer.external).toContain("poe-code/safe-fs");
+    expect(producer.splitting).toBe(false);
+  }
   for (const [options] of build.mock.calls.slice(0, -1)) {
     expect(options.alias!["@poe-code/safe-fs"]).toBe("poe-code/safe-fs");
     expect(options.alias!["@poe-code/safe-fs/node"]).toBe("poe-code/safe-fs/node");
@@ -241,6 +255,7 @@ it("preserves the previous SafeJS bundle when compilation fails", async () => {
     expect(options.metafile).toBe(true);
   }
   expect(volume.existsSync(previousChunk)).toBe(true);
+  expect(volume.readFileSync(previousEntry, "utf8")).toBe('export * from "./chunks/chunk-OLD.js";');
   expect(volume.readFileSync(previousChunk, "utf8")).toBe("export const previous = true;");
 });
 

@@ -17,6 +17,7 @@ export type WordPart =
   | { kind: "variable"; name: string; quoted: boolean; line?: number; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
   | { kind: "failed-substitution"; diagnostic: string; quoted: boolean }
   | { kind: "failed-parameter"; source: string; line: number; quoted: boolean }
+  | { kind: "compound-substitution-eof"; line: number; quoted: boolean }
   | { kind: "substitution"; script: Script; line: number; sourceLine?: number; quoted: boolean };
 
 export interface Word {
@@ -119,6 +120,7 @@ function printedSimpleLines(lists: readonly AndOr[], separators: readonly boolea
 }
 
 class IncompleteShellInput extends Error {}
+class CompoundListEofError extends ShellSyntaxError {}
 
 class Lexer {
   position = 0;
@@ -629,6 +631,7 @@ class Parser {
   lookahead: Token | undefined;
   nesting = 0;
   readonly openCommands: { name: string; line: number }[] = [];
+  completedInput?: { lists: AndOr[]; count: number; line: number };
 
   constructor(readonly budget: ParseBudget, source: string, depth: number, warnings: string[] = [], lineOffset = 0, position?: number, byteLocale = false, partial = false, lineIndex = new SourceLineIndex(source, budget), sourceOffset = 0, ordinaryBacktick = false) {
     if (position === undefined && depth === 0 && source.includes("\0")) throw new ShellSyntaxError("NUL bytes are not valid shell source", source.indexOf("\0"));
@@ -638,8 +641,9 @@ class Parser {
     this.current = this.lexer.next();
   }
 
-  error(message: string): never {
+  error(message: string, compoundList = false): never {
     const command = this.current.kind === "end" ? this.openCommands.findLast((command) => ["{", "if", "while", "until", "for", "case"].includes(command.name)) : undefined;
+    if (compoundList && command && this.lexer.ordinaryBacktick) throw new CompoundListEofError(message, this.current.offset, 2, command);
     throw new ShellSyntaxError(message, this.current.offset, 2, command);
   }
 
@@ -658,19 +662,20 @@ class Parser {
 
   isEnd(): boolean { return this.current.kind === "end"; }
 
-  expect(value: string): void {
-    if (!this.is(value)) this.error(`Expected ${value}`);
+  expect(value: string, compoundList = false): void {
+    if (!this.is(value)) this.error(`Expected ${value}`, compoundList);
     this.advance();
   }
 
   newlines(): void { while (this.is("\n")) this.advance(); }
 
-  script(stops = new Set<string>(), inputUnit = false): Script {
+  script(stops = new Set<string>(), inputUnit = false, captureInputUnits = false): Script {
     this.budget.admit();
     const lists: AndOr[] = [];
     const separators: boolean[] = [];
     this.newlines();
     const line = this.lexer.lineAt(this.current.offset);
+    if (captureInputUnits) this.completedInput = { lists, count: 0, line };
     while (this.current.kind !== "end" && !stops.has(this.current.value)) {
       this.budget.admit();
       const pipelines = [this.pipeline()];
@@ -682,9 +687,11 @@ class Parser {
       }
       lists.push({ pipelines, operators });
       separators.push(this.is("\n"));
+      if (captureInputUnits && this.is("\n")) this.completedInput!.count = lists.length;
       if (inputUnit && this.is("\n")) break;
       if (this.is(";") || this.is("\n")) {
         this.advance();
+        if (captureInputUnits && this.is("\n")) this.completedInput!.count = lists.length;
         if (inputUnit && this.is("\n")) break;
         this.newlines();
       } else if (!this.isEnd() && !this.is(")") && !(stops.has(this.current.value) && [";;", ";&", ";;&"].includes(this.current.value))) this.error("Expected command separator");
@@ -791,15 +798,15 @@ class Parser {
       const subshell = this.is("(");
       this.advance();
       const body = this.script(new Set([subshell ? ")" : "}"]));
-      if (!body.lists.length) this.error("Empty compound command");
-      this.expect(subshell ? ")" : "}");
+      if (!body.lists.length) this.error("Empty compound command", !subshell);
+      this.expect(subshell ? ")" : "}", !subshell);
       command = { kind: subshell ? "subshell" : "group", body, redirects: [] };
     } else if (this.is("if")) {
       this.advance();
       const branches: { condition: Script; body: Script }[] = [];
       while (true) {
         const condition = this.nonemptyScript(new Set(["then"]));
-        this.expect("then");
+        this.expect("then", true);
         const body = this.nonemptyScript(new Set(["elif", "else", "fi"]));
         this.budget.admit();
         branches.push({ condition, body });
@@ -811,17 +818,18 @@ class Parser {
         this.advance();
         otherwise = this.nonemptyScript(new Set(["fi"]));
       }
-      this.expect("fi");
+      this.expect("fi", true);
       command = { kind: "if", branches, ...(otherwise ? { otherwise } : {}), redirects: [] };
     } else if (this.is("case")) {
       this.advance();
       if (!this.current.word) this.error("Expected case subject");
       const subject = this.advance().word!;
       this.newlines();
-      this.expect("in");
+      this.expect("in", true);
       this.newlines();
       const clauses: CaseClause[] = [];
       while (!this.is("esac")) {
+        if (this.isEnd()) this.error("Expected case pattern", true);
         if (this.is("(")) this.advance();
         const patterns: Word[] = [];
         while (true) {
@@ -832,7 +840,7 @@ class Parser {
         }
         this.expect(")");
         const body = this.script(new Set([";;", ";&", ";;&", "esac"]));
-        if (![";;", ";&", ";;&", "esac"].includes(this.current.value)) this.error("Expected case terminator");
+        if (![";;", ";&", ";;&", "esac"].includes(this.current.value)) this.error("Expected case terminator", true);
         const terminator = this.current.value as CaseClause["terminator"];
         this.budget.admit();
         clauses.push({ patterns, body, terminator });
@@ -840,14 +848,14 @@ class Parser {
         this.advance();
         this.newlines();
       }
-      this.expect("esac");
+      this.expect("esac", true);
       command = { kind: "case", subject, clauses, redirects: [] };
     } else if (this.is("while") || this.is("until")) {
       const kind = this.advance().value as "while" | "until";
       const condition = this.nonemptyScript(new Set(["do"]));
-      this.expect("do");
+      this.expect("do", true);
       const body = this.nonemptyScript(new Set(["done"]));
-      this.expect("done");
+      this.expect("done", true);
       command = { kind, condition, body, redirects: [] };
     } else if (this.is("for")) {
       this.advance();
@@ -861,11 +869,11 @@ class Parser {
         while (this.current.kind === "word") words.push(this.advance().word!);
       }
       if (this.is(";") || this.is("\n")) this.advance();
-      else if (words) this.error("Expected for separator");
+      else if (words) this.error("Expected for separator", true);
       this.newlines();
-      this.expect("do");
+      this.expect("do", true);
       const body = this.nonemptyScript(new Set(["done"]));
-      this.expect("done");
+      this.expect("done", true);
       command = { kind: "for", name, ...(words ? { words } : {}), body, redirects: [] };
     } else if (this.is("function")) {
       this.advance();
@@ -934,7 +942,7 @@ class Parser {
 
   nonemptyScript(stops: Set<string>): Script {
     const script = this.script(stops);
-    if (!script.lists.length) this.error("Expected nonempty compound list");
+    if (!script.lists.length) this.error("Expected nonempty compound list", true);
     return script;
   }
 
@@ -1006,8 +1014,19 @@ export function parseShellInputUnit(source: string, byteLocale = false, budget =
 
 function parseSource(source: string, depth: number, warnings: string[], lineOffset: number, byteLocale: boolean, budget: ParseBudget, ordinaryBacktick = false): Script {
   budget.admit();
+  const warningCount = warnings.length;
   const parser = new Parser(budget, source, depth, warnings, lineOffset, undefined, byteLocale, false, undefined, 0, ordinaryBacktick);
-  const script = parser.script();
-  if (parser.current.kind !== "end") parser.error("Unexpected token");
-  return script;
+  try {
+    const script = parser.script(new Set(), false, ordinaryBacktick);
+    if (parser.current.kind !== "end") parser.error("Unexpected token");
+    return script;
+  } catch (error) {
+    if (!(error instanceof CompoundListEofError) || warnings.length !== warningCount) throw error;
+    const prefix = parser.completedInput;
+    budget.admit(6 + (prefix?.count ?? 0));
+    const lists = prefix?.lists.slice(0, prefix.count) ?? [];
+    const line = lineOffset + source.split("\n").length + Number(!source.endsWith("\n"));
+    lists.push({ pipelines: [{ negate: false, commands: [{ kind: "simple", line, redirects: [], words: [{ offset: source.length, parts: [{ kind: "compound-substitution-eof", line, quoted: true }] }] }] }], operators: [] });
+    return { lists, line: prefix?.line ?? lineOffset + 1 };
+  }
 }

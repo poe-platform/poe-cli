@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test, { after, before } from "node:test";
@@ -23,12 +23,12 @@ let dependencyDirectory: string | undefined;
 let dependencies: { name: string; files: { path: string; sha256: string }[] }[] = [];
 const dependencyLock = JSON.parse(readFileSync(join(root, "../../package-lock.json"), "utf8"));
 before(async () => {
-  dependencyDirectory = mkdtempSync(join(tmpdir(), "virtual-bash-writer-dependencies-"));
+  dependencyDirectory = realpathSync(mkdtempSync(join(tmpdir(), "virtual-bash-writer-dependencies-")));
   dependencies = await prepareArchiveDependencies({ manifest: JSON.parse(readFileSync(join(root, "package.json"), "utf8")), lock: dependencyLock }, resolveTools(), dependencyDirectory);
 });
 after(() => { if (dependencyDirectory) rmSync(dependencyDirectory, { recursive: true, force: true }); });
 const sandbox = (sourceRoot = root) => {
-  const directory = mkdtempSync(join(tmpdir(), "virtual-bash-writer-test-"));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "virtual-bash-writer-test-")));
   try {
     const boundaries = validateBoundaries(JSON.parse(readFileSync(join(sourceRoot, "integration-boundaries.json"), "utf8")));
     cpSync(join(sourceRoot, "src"), join(directory, "src"), { recursive: true, filter: source => {

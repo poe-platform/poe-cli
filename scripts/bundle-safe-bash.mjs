@@ -6,7 +6,11 @@ export function resolveBrowserShellBuild(rootDir) {
   const transport = path.join(directory, "src/commands/regex-execution/ere/transport/root.js");
   return {
     absWorkingDir: rootDir,
-    entryPoints: [path.join(directory, "src/core.browser.ts")],
+    entryPoints: {
+      "core.browser": path.join(directory, "src/core.browser.ts"),
+      "commands/xml/index.browser": path.join(directory, "src/commands/xml/index.ts"),
+      "commands/yq/index.browser": path.join(directory, "src/commands/yq/index.ts"),
+    },
     outdir: path.join(directory, "dist"),
     splitting: true,
     chunkNames: "chunks/[name]-[hash]",

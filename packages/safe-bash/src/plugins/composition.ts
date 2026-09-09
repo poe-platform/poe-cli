@@ -28,6 +28,7 @@ import type { ExprCommandsOptions } from "../commands/expr/internal.js";
 import { createWhichCommands, type WhichCommandsOptions } from "../commands/which/index.js";
 import { createTimeoutCommands, type TimeoutCommandsOptions } from "../commands/timeout/index.js";
 import { createApplyPatchCommands, type ApplyPatchCommandsOptions } from "../commands/apply-patch/index.js";
+import { createXmlCommands, type XmlCommandsOptions } from "../commands/xml/index.js";
 import type { RegexExecutionOptions } from "../commands/regex-execution/protocol.js";
 import type { BoundedRegexProvider } from "../commands/regex-execution/provider.js";
 
@@ -35,6 +36,7 @@ export interface AgentCommandsOptions {
   readonly execution?: ExecutionCommandsOptions;
   readonly bytes?: Omit<ByteCommandsOptions, "replace">;
   readonly applyPatch?: Omit<ApplyPatchCommandsOptions, "replace">;
+  readonly xml?: Omit<XmlCommandsOptions, "replace">;
   readonly timeout?: Omit<TimeoutCommandsOptions, "replace">;
   readonly which?: Omit<WhichCommandsOptions, "replace">;
   readonly expr?: Omit<ExprCommandsOptions, "replace" | "regex" | "regexExecutor">;
@@ -86,6 +88,7 @@ export function composeAgentCommands(options: AgentCommandsOptions, executors: A
   const whichLimits = options.which?.limits;
   const timeoutOptions = options.timeout;
   const applyPatchLimits = options.applyPatch?.limits;
+  const xmlLimits = options.xml?.limits;
   commands.push(
     ...createStandardCommandsWithGrep({ execute: options.execute ?? commandExecutor(name => commands.find(command => command.name === name)), ...(options.execution === undefined ? {} : { execution: options.execution }), ...(options.regex === undefined ? {} : { regex: options.regex }), ...(options.maxDirectoryEntries === undefined ? {} : { maxDirectoryEntries: options.maxDirectoryEntries }), ...(options.maxTeeTargets === undefined ? {} : { maxTeeTargets: options.maxTeeTargets }), ...(options.maxTailFollowHandles === undefined ? {} : { maxTailFollowHandles: options.maxTailFollowHandles }) }, grep),
     ...createTextProgramCommands({ ...options.text }),
@@ -114,6 +117,7 @@ export function composeAgentCommands(options: AgentCommandsOptions, executors: A
       maxTimerMilliseconds: timeoutOptions.maxTimerMilliseconds,
     }),
     ...createApplyPatchCommands(applyPatchLimits === undefined ? {} : { limits: applyPatchLimits }),
+    ...createXmlCommands(xmlLimits === undefined ? {} : { limits: xmlLimits }),
   );
   return new CommandRegistry(commands).list();
 }

@@ -15,3 +15,5 @@ export { scopeFileSystem } from "./fs/scoped.js";
 export * from "./fs/webdav/index.js";
 export * from "./bridge/index.js";
 export { compareEntries } from "./fs/mount/comparison.js";
+export { parseXml, parseXmlSteps, XmlLimitError } from "./xml.js";
+export type { XmlName, XmlAttribute, XmlContent, XmlElement, XmlLimits } from "./xml.js";

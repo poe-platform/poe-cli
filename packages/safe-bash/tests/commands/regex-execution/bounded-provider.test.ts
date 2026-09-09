@@ -3,6 +3,9 @@ import test from "node:test";
 import { createBoundedRegexProvider } from "../../../src/commands/regex-execution/bounded-provider.js";
 import { defaults, exprMatchCeilings, type Descriptor, type Reply } from "../../../src/commands/regex-execution/protocol.js";
 import type { RegexWorker, RegexWorkerRequest } from "../../../src/commands/regex-execution/provider.js";
+import { EreLedger } from "../../../src/commands/regex-execution/ere/limits.js";
+import { compileEre } from "../../../src/commands/regex-execution/ere/syntax.js";
+import { createEreSpanMatcher, matchEre } from "../../../src/commands/regex-execution/ere/matcher.js";
 import { RegexExecutor } from "../../../src/commands/regex-execution/portable.js";
 
 const grep = (patterns: string[], overrides: object = {}): Descriptor => ({
@@ -73,7 +76,7 @@ test("unsupported dialects and flags are rejected even without subject rows", as
   const syntax = await run(request(grep(["["]), []));
   assert.ok("error" in syntax);
   assert.match(syntax.error, /invalid ERE/);
-  const all = await run({ ...request(grep(["x"])), rows: [row("x", true)] });
+  const all = await run({ ...request(literal("rg", ["x"])), rows: [row("x", true)] });
   assert.ok("error" in all);
   assert.match(all.error, /all-match/);
 });
@@ -335,4 +338,95 @@ test("budget options are finite positive bounded integers and unknown options ar
   for (const options of [{ maxInputBytes: Infinity }, { maxWorkers: 0 }, { maxRows: 1.5 }, { maxWork: Number.MAX_SAFE_INTEGER }, { typo: 1 }]) {
     assert.throws(() => createBoundedRegexProvider(options), /option|limit/);
   }
+});
+
+test("grep enumeration retains nonoverlapping leftmost-longest byte spans", async () => {
+  for (const [descriptor, text, expected] of [
+    [grep(["giraffe"], { extended: false }), "giraffe giraffe", [0, 7, 8, 15]],
+    [grep(["a", "ab"]), "zababa", [1, 3, 3, 5, 5, 6]],
+    [grep(["a|ab"]), "ab ab", [0, 2, 3, 5]],
+    [grep(["ab", "b..b"]), "abxxbxxb", [0, 2, 4, 8]],
+    [grep(["^|a"]), "aaa", [0, 1, 1, 2, 2, 3]],
+    [literal("grep", ["é", "é🦊"]), "é🦊é", [0, 6, 6, 8]],
+    [grep(["^a|b$"]), "aab", [0, 1, 2, 3]],
+    [grep(["a"], { whole: true }), "aa", []],
+    [grep(["a*"]), "ba", [0, 0, 1, 2, 2, 2]],
+    [literal("grep", [""]), "é", [0, 0, 2, 2]],
+  ] as const) {
+    assert.deepEqual(spans(await run({ id: 1, descriptor, rows: [row(text, true)] })), [expected]);
+  }
+});
+
+test("grep enumeration enforces independent retained match and result bounds", async () => {
+  const input = { id: 1, descriptor: grep(["a"]), rows: [row("aa", true), row("a", true)] };
+  assert.deepEqual(spans(await run(input, { maxMatchesPerLine: 2, maxTotalMatches: 3, maxResultBytes: 48 })), [[0, 1, 1, 2], [0, 1]]);
+  for (const limits of [{ maxMatchesPerLine: 1 }, { maxTotalMatches: 2 }, { maxResultBytes: 47 }]) {
+    const reply = await run(input, limits);
+    assert.ok("error" in reply);
+    assert.match(reply.error, /limit/);
+  }
+});
+
+
+test("prepared ERE cursor authenticates programs and validates its subject only once", async () => {
+  const ledger = new EreLedger({ maxExpansionBytes: 65536, maxExpansionFields: 8192 });
+  const program = await compileEre([{ text: "a", literal: false }], ledger);
+  const scan = await createEreSpanMatcher(program, "a".repeat(4096), ledger);
+  const before = ledger.usage.work;
+  assert.deepEqual(await scan(2048), { start: 2048, end: 2049 });
+  assert.ok(ledger.usage.work - before < 64, "cursor must not rescan the whole subject");
+  assert.equal(ledger.usage.captureBytes, 0, "span-only matching does not materialize capture strings");
+  for (const cursor of [-1, 4097, NaN, 0.5]) await assert.rejects(scan(cursor), RangeError);
+  await assert.rejects(createEreSpanMatcher({ ...program }, "a", ledger));
+  await assert.rejects(createEreSpanMatcher(program, "é", ledger));
+  const normal = await matchEre(program, "a", ledger);
+  assert.equal(normal.matched, true);
+  assert.deepEqual(normal.values, ["a"]);
+});
+
+test("enumeration is work-bounded and recovers after a refused hostile request", async () => {
+  const worker = createBoundedRegexProvider({ maxWork: 2048 }).createWorker(defaults);
+  try {
+    const reply = await exchange(worker, { id: 1, descriptor: grep(["(a+)+b"]), rows: [row("a".repeat(64), true)] });
+    assert.ok("error" in reply);
+    assert.match(reply.error, /work|allocation|states/);
+    assert.deepEqual(spans(await exchange(worker, { id: 2, descriptor: grep(["a"]), rows: [row("aa", true)] })), [[0, 1, 1, 2]]);
+  } finally { await worker.terminate(); }
+});
+
+test("enumeration cancellation retains falsey identity and permits a subsequent session", async () => {
+  const executor = new RegexExecutor(createBoundedRegexProvider({ maxWorkers: 1, maxMatchesPerLine: 4096, maxTotalMatches: 4096, maxResultBytes: 65536 }));
+  const controller = new AbortController();
+  const session = executor.open(controller.signal);
+  const pending = session.run(grep(["a"]), [row("a".repeat(4096), true)]);
+  const rejected = assert.rejects(pending, reason => reason === false);
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  controller.abort(false);
+  await rejected;
+  await session.close();
+  const recovered = executor.open(new AbortController().signal);
+  try { assert.deepEqual(await recovered.run(grep(["a"]), [row("aa", true)]), [[{ start: 0, end: 1 }, { start: 1, end: 2 }]]); }
+  finally { await recovered.close(); await executor.dispose(); }
+});
+
+test("enumeration caches absent and future candidates within a shared work budget", async () => {
+  for (const [descriptor, count] of [[literal("grep", ["a", "z"]), 512], [grep(["a", "$"], { extended: true }), 514]] as const) {
+    const reply = await run({ id: 1, descriptor, rows: [row("a".repeat(256), true)] }, {
+      maxMatchesPerLine: 257, maxTotalMatches: 257, maxResultBytes: 4112, maxWork: 12000,
+    });
+    const found = spans(reply)[0]!;
+    assert.equal(found.length, count);
+    assert.deepEqual(found.slice(0, 4), [0, 1, 1, 2]);
+  }
+});
+
+test("empty and mixed selection rows consume the same aggregate match allowance", async () => {
+  const empty = await run({ id: 1, descriptor: grep([""]), rows: [row("abc", true)] }, { maxMatchesPerLine: 3 });
+  assert.ok("error" in empty);
+  assert.match(empty.error, /matches per line/);
+  const mixed = { id: 1, descriptor: grep(["a"]), rows: [row("a"), row("aa", true)] };
+  assert.deepEqual(spans(await run(mixed, { maxTotalMatches: 3 })), [[0, 1], [0, 1, 1, 2]]);
+  const over = await run(mixed, { maxTotalMatches: 2 });
+  assert.ok("error" in over);
+  assert.match(over.error, /total match/);
 });

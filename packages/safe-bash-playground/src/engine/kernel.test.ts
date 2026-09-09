@@ -461,10 +461,12 @@ describe("real safe-bash browser kernel", () => {
         "jq",
         "gzip",
         "sha256sum",
-        "apply_patch"
+        "apply_patch",
+        "xq",
+        "xmllint"
       ])
     );
-    expect(kernel.supportedCommands).toHaveLength(87);
+    expect(kernel.supportedCommands).toHaveLength(89);
     expect(kernel.supportedCommands).toEqual(expect.arrayContaining(["sha512sum", "sha384sum", "sha224sum"]));
   });
 });

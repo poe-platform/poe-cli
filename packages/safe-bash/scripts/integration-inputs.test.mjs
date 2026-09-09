@@ -382,6 +382,7 @@ function assertSource7Discovery(files) {
   for (const path of [
     "tests/commands/bytes/input-budget.test.ts",
     "tests/commands/node-safejs.test.ts",
+    "tests/commands/node-export-boundary.test.ts",
     "tests/commands/input.test.ts",
     "tests/commands/network/mounted-output.test.ts",
     "tests/commands/network/aggregate-deadline.test.ts",
@@ -465,6 +466,11 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/jq-control-flow.test.ts"));
   assert.ok(files.includes("tests/commands/jq-control-flow-limits.test.ts"));
   assert.ok(files.includes("tests/commands/yq-control-flow.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml-parser.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml-review.test.ts"));
+  assert.ok(files.includes("tests/commands/xml-query.test.ts"));
+  assert.ok(files.includes("tests/commands/xml-query-review.test.ts"));
   assert.ok(files.includes("tests/commands/sort-human-numeric.test.ts"));
   assert.ok(files.includes("tests/commands/realpath-missing-admission.test.ts"));
   assert.ok(files.includes("tests/shell/source-line-nested.test.ts"));
@@ -473,6 +479,8 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/shell/parameter-depth.test.ts"));
   assert.ok(files.includes("tests/shell/runtime-parameter-depth.test.ts"));
   assert.ok(files.includes("tests/shell/backtick-parameter-failure.test.ts"));
+  assert.ok(files.includes("tests/shell/backtick-compound-eof.test.ts"));
+  assert.ok(files.includes("tests/shell/invocation-cleanup-census.test.ts"));
   assert.ok(files.includes("tests/commands/structured/string-work.test.ts"));
   assert.ok(files.includes("tests/commands/cut-bom.test.ts"));
   assert.ok(files.includes("tests/commands/line-fragment-admission.test.ts"));
@@ -1859,6 +1867,7 @@ test("default normal runner passes every discovered active file to serial Node e
   assert.ok(files.includes("tests/commands/regex-execution/portable.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/provider.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/bounded-provider.test.ts"));
+  assert.ok(files.includes("tests/commands/grep-only-matching.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/bounded-expr-provider.test.ts"));
   assert.ok(files.includes("tests/commands/expr/bre-engine.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/default-provider.test.ts"));
@@ -1887,6 +1896,18 @@ test("repository boundaries preserve unaccepted YQ as active source tests", () =
   const selected = discoverTests(root, current);
   assert.ok(selected.includes("tests/commands/yq-author-20260828/yq.test.ts"));
   assert.ok(selected.includes("tests/commands/yq-author-20260828/repair-allocation-v1/repair.test.ts"));
+});
+
+test("optional node workerd acceptance remains admitted current input", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const boundaries = loadBoundaries(root);
+  for (const path of [
+    "tests/integration/optional-node-workerd/worker.mjs",
+    "tests/integration/optional-node-workerd/config.capnp",
+  ]) {
+    assertAdmittedInputPath(path, boundaries);
+    assert.ok(readRegularInput(root, path, 65536, fs, boundaries).length > 0);
+  }
 });
 
 test("UTF-8 literal workerd acceptance remains admitted current input", () => {

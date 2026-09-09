@@ -45,7 +45,7 @@ import { evaluateResourceScope, resourceSuspension } from "./resource-management
 import type { AsyncSuspensionContext } from "./async.js";
 
 const capturedExceptionBrand = Symbol("CapturedException");
-const readDOMExceptionCode = Object.getOwnPropertyDescriptor(DOMException.prototype, "code")!.get!;
+const readDOMExceptionCode = Object.getOwnPropertyDescriptor(DOMException.prototype, "code")?.get;
 internalSymbols.add(capturedExceptionBrand);
 export type { SandboxErrorName } from "../error/shape.js";
 
@@ -282,7 +282,7 @@ export function coerceThrownValue(
       cause: readErrorCause(reason),
       span
     });
-    if (reason instanceof DOMException)
+    if (readDOMExceptionCode !== undefined && reason instanceof DOMException)
       Object.defineProperty(error, "code", { value: Reflect.apply(readDOMExceptionCode, reason, []), enumerable: true });
     return error;
   }

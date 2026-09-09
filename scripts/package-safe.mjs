@@ -8,6 +8,7 @@ import ts from "typescript";
 import { build } from "esbuild";
 import { resolveBundleGraph } from "./bundle-graph.mjs";
 import { copyNativeAssets, nativeImportMapping, readBuiltNativeAssets } from "../packages/safe-fs/scripts/native-assets.mjs";
+import { resolveWorkerdRuntimeBuild } from "./bundle-fs.mjs";
 
 export function rewriteModuleSpecifiers(filename, text, rewrite) {
   const source = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
@@ -89,9 +90,14 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
     if (name === "safe-js") {
       const graph = await resolveBundleGraph(rootDir, workspaces, files);
       const alias = Object.fromEntries(Object.entries(graph.alias).map(([specifier, target]) => [specifier, publicSpecifier(specifier) !== specifier ? publicSpecifier(specifier) : target]));
-      const entryPoints = Object.fromEntries(Object.entries(source.exports).map(([key, target]) => [key === "." ? "index" : key.slice(2), path.join(packageDir, "src", target.import.slice("./dist/".length, -3) + ".ts")]));
-      const result = await bundle({ absWorkingDir: rootDir, entryPoints, alias, external: [...graph.external, "@poe-platform/safe-fs"], bundle: true, splitting: true, platform: "node", target: "node18.18", format: "esm", outdir: path.join(packageDir, "dist"), chunkNames: "chunks/[name]-[hash]", sourcemap: true, write: false });
+      const entryPoints = Object.fromEntries(Object.entries(source.exports).filter(([key]) => key !== "./workerd").map(([key, target]) => [key === "." ? "index" : key.slice(2), path.join(packageDir, "src", target.import.slice("./dist/".length, -3) + ".ts")]));
+      const external = [...graph.external, "@poe-platform/safe-fs"];
+      const result = await bundle({ absWorkingDir: rootDir, entryPoints, alias, external, bundle: true, splitting: true, platform: "node", target: "node18.18", format: "esm", outdir: path.join(packageDir, "dist"), chunkNames: "chunks/[name]-[hash]", sourcemap: true, write: false });
       for (const output of result.outputFiles) bundled.set(output.path, output.contents);
+      if (source.exports["./workerd"]) {
+        const workerd = await bundle(resolveWorkerdRuntimeBuild(rootDir, { alias, external }));
+        for (const output of workerd.outputFiles) bundled.set(output.path, output.contents);
+      }
     }
     const enqueueExport = value => {
       if (typeof value === "string" && value.startsWith("./")) {

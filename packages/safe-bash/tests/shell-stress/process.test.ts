@@ -31,7 +31,10 @@ function batchHarness() {
       assert.ok(args.includes("--unhandled-rejections=strict"));
       assert.equal(options.timeout, hardDeadlineMs);
       assert.equal(options.maxBuffer, 1024 * 1024);
-      const request = JSON.parse(String(options.input)) as { kind: string; fixtures: StressCase[] };
+      assert.ok(args.includes("--request-fd=3"));
+      assert.ok(!args.includes("tsx"));
+      assert.equal(typeof options.input, "string");
+      const request = JSON.parse(String(options.extraInput)) as { kind: string; fixtures: StressCase[] };
       assert.equal(request.kind, "batch");
       return {
         pid: 123, error: undefined, status: 0, signal: null,
@@ -266,4 +269,77 @@ test("process harness kills descendants holding inherited pipes after parent exi
     }
   }
   assert.equal(exists, false, `Descendant ${descendant} survived group cleanup`);
+});
+
+test("isolated child receives independent script and request input channels", async () => {
+  const result = await isolatedSpawn(process.execPath, ["--input-type=module", "-"], {
+    input: 'import {readFileSync} from "node:fs";process.stdout.write(readFileSync(3));',
+    extraInput: "owned request", timeout: 2000, maxBuffer: 1024,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.toString(), "owned request");
+});
+
+test("isolated child safely closes an unread extra input pipe", async () => {
+  const result = await isolatedSpawn(process.execPath, ["--eval", "process.exit(0)"], {
+    extraInput: "x".repeat(1024 * 1024), timeout: 2000, maxBuffer: 1024,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0);
+});
+
+test("isolated request input drains beyond pipe capacity", async () => {
+  const request = "payload".repeat(32768);
+  const result = await isolatedSpawn(process.execPath, ["--input-type=module", "-"], {
+    input: 'import {readFileSync} from "node:fs";const value=readFileSync(3,"utf8");console.log(value.length);',
+    extraInput: request, timeout: 2000, maxBuffer: 1024,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr.toString());
+  assert.equal(result.stdout.toString(), `${request.length}\n`);
+});
+
+test("bundled virtual batches retain native regex worker asset resolution", async () => {
+  const result = await runVirtualBatch([
+    { name: "native grep", script: "printf 'alpha\\nbeta\\n' | grep '^a.*a$'" },
+    { name: "native extended grep", script: "printf 'alpha\\nbeta\\n' | grep -E '^b.+a$'" },
+  ]);
+  assert.deepEqual(result.outcomes.map(outcome => outcome.status === "fulfilled" ? [outcome.observation.exitCode, outcome.observation.stdout] : outcome), [
+    [0, "alpha\n"], [0, "beta\n"],
+  ]);
+});
+
+test("isolated output overflow retires a blocked extra input pipe", async () => {
+  const result = await isolatedSpawn(process.execPath, ["--eval", 'process.stdout.write(Buffer.alloc(2048));setInterval(() => {},1000);'], {
+    extraInput: "x".repeat(1024 * 1024), timeout: 2000, maxBuffer: 1024,
+  });
+  assert.equal((result.error as NodeJS.ErrnoException).code, "ENOBUFS");
+  assert.equal(result.stdout.length + result.stderr.length, 1024);
+  assert.ok(result.pid);
+  assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
+});
+
+for (const [channel, code, exitStatus] of [
+  [0, "ECONNRESET", 0], [3, "ECONNRESET", 0],
+  [1, "ECONNRESET", 0], [2, "ECONNRESET", 0],
+  [3, "ECONNRESET", 7], [3, "EIO", 0],
+] as const) test(`isolated pipe ${channel} ${code} preserves exit ${exitStatus} ownership`, async context => {
+  const spawn = childProcess.spawn;
+  const reason = Object.assign(new Error(`read ${code}`), { code });
+  context.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+    const child = spawn(...args);
+    queueMicrotask(() => child.stdio[channel]!.emit("error", reason));
+    return child;
+  });
+  syncBuiltinESMExports();
+  context.after(() => { context.mock.restoreAll(); syncBuiltinESMExports(); });
+  const result = await isolatedSpawn(process.execPath, ["--eval", `process.exit(${exitStatus})`], {
+    extraInput: "request", timeout: 2000, maxBuffer: 1024,
+  });
+  const inputReset = (channel === 0 || channel === 3) && code === "ECONNRESET";
+  assert.equal(result.error, inputReset ? undefined : reason);
+  if (inputReset) assert.equal(result.status, exitStatus);
+  assert.ok(result.pid);
+  assert.throws(() => process.kill(-result.pid!, 0), { code: "ESRCH" });
 });

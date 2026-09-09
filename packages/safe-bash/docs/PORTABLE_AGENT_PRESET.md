@@ -82,9 +82,9 @@ retain their independently bounded cooperative implementations. The built-in
 native-worker, wall-clock-preemption or RSS-isolation guarantee.
 
 Its supported modes include restricted ASCII grep BRE/ERE, fixed non-NUL UTF-8
-matching, and conservative ASCII BRE expr matching with anchored match lengths
+matching, bounded grep `-o` extraction, and conservative ASCII BRE expr matching with anchored match lengths
 and bounded captures. Its unsupported modes include non-ASCII/NUL expr inputs, rg regex and
-glob descriptors, case-insensitive/word selection and all-match enumeration.
+glob descriptors, case-insensitive/word selection and rg all-match enumeration.
 Unsupported requests fail at provider admission with explicit diagnostics and
 nonzero status, without executing an unbounded regex or falling back to Node.
 For example `expr aa : 'a*'` prints `2`, while `expr abc : 'a\(.\)c'` prints `b`;

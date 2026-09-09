@@ -55,7 +55,8 @@ provider rejection. No command-level binary policy is overridden by this profile
 | plain `grep` | Conservative BRE subset: ordinary literals, `.`, bracket classes, repetition `*`, leading `^`, and trailing `$`; escapes, interior anchors, leading `*`, and extended operator syntax are rejected |
 | `rg -F` | Case-sensitive valid UTF-8 fixed-string matching |
 | plain regex `rg` | Rejected; POSIX ERE spans are not advertised as rg regex semantics |
-| `grep -o` / `rg -o` | Rejected; all-match enumeration is not supported |
+| `grep -o` | Bounded non-overlapping extraction for the supported fixed/BRE/ERE profiles |
+| `rg -o` | Rejected; rg all-match enumeration is not supported |
 | Unicode regex, case folding, smart case, word matching | Rejected |
 | rg path globs | Rejected, including validation with no candidate rows |
 
@@ -77,6 +78,15 @@ rg returns the earliest span, breaking ties by pattern order. Whole-record
 matching compares the complete byte sequence. Ordinary rg mode still rejects
 multiline patterns; NUL-delimited records do not permit embedded NUL payloads.
 
+For grep extraction, matches are selected by earliest start, then greatest
+length across patterns. Searches continue after the preceding nonempty match,
+using offsets into the original record so anchors retain their meaning. Empty
+matches select a record but produce no `-o` output; iteration advances by one
+valid character after an empty match. Fixed matching preserves UTF-8 byte spans;
+BRE/ERE extraction retains the same ASCII profile as ordinary selection.
+Count, quiet, filename-only, and inverted-selection modes request selection
+instead of enumerating ranges when `-o` does not produce extracted output.
+
 ### Provider budgets
 
 All provider options are optional. Their defaults are:
@@ -88,17 +98,25 @@ All provider options are optional. Their defaults are:
 | `maxPatternBytes` | 8,192 | Aggregate encoded pattern bytes per request |
 | `maxRows` | 128 | Subject rows per request |
 | `maxInputBytes` | 65,536 | Aggregate subject bytes per request |
-| `maxResultBytes` | 2,048 | Result-span storage admitted at 16 bytes per row |
+| `maxResultBytes` | 2,048 | Aggregate result-span storage, 16 bytes per retained match |
+| `maxMatchesPerLine` | 128 | Retained matches per subject row |
+| `maxTotalMatches` | 128 | Retained matches across the request's rows |
 | `maxWork` | 2,000,000 | Cumulative validation, encoding and matching work per request |
 | `maxAllocationUnits` | 1,000,000 | Cumulative algorithmic allocation accounting per request |
 | `maxStates` | 65,536 | Cumulative interpreter states or literal failure-table entries per request |
 
 Options must be positive safe integers. Hard ceilings are 32 workers, 128
 patterns, 65,532 pattern bytes, 4,096 rows, 1,048,576 input bytes, 65,536 result
-bytes, 33,554,432 work units, 4,000,000 allocation units, and 65,536 states.
+bytes, 100,000 matches per row and per request, 33,554,432 work units,
+4,000,000 allocation units, and 65,536 states.
 Unknown options and explicit `undefined` values are rejected. To increase a
 batch size, increase both its input/row limits and the independent result and
 work/storage limits as needed; changing one limit does not widen the others.
+Count and result-byte limits apply before retaining each match, including empty
+matches used for record selection. These limits are per provider request; command
+output and execution limits separately bound work across successive requests.
+Request admission also retains its conservative one-span-per-row result reserve,
+even for rows that eventually have no match.
 
 The provider rejects overload rather than storing an endpoint-local request
 queue. Each endpoint owns at most one request at a time. Its work, state,

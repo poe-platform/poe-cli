@@ -7,7 +7,7 @@ import { versionGateSnippet } from "./node-version-gate.mjs";
 import { resolveGithubWorkflowAssetCopies } from "./bundle-assets.mjs";
 import { assertSafeBundleOutputs, assertSafeOutputDirectory } from "./guard-package-dist.mjs";
 import { resolveBundleGraph, resolveConsumerGraph } from "./bundle-graph.mjs";
-import { resolveCanonicalFsBuilds } from "./bundle-fs.mjs";
+import { mergeRuntimeBundleOutputs, resolveCanonicalFsBuilds, resolveWorkerdRuntimeBuild } from "./bundle-fs.mjs";
 import { copyNativeAssets, nativeImportMapping, readNativeRegistry } from "../packages/safe-fs/scripts/native-assets.mjs";
 import { collectCanonicalNativeAssets, readBoundedNativeBytes } from "../packages/package-lint/dist/native-assets.js";
 import { resolveBrowserShellBuild } from "./bundle-safe-bash.mjs";
@@ -221,11 +221,17 @@ const safejsScope = JSON.parse(await readFile(path.join(rootDir, "packages/safe-
 assert.equal(JSON.stringify(safejsScope.imports?.[nativeAssets.specifier]),
   JSON.stringify(nativeImportMapping(nativeAssets, "dist")), "Invalid worktree native private import mapping");
 const fsBuilds = {};
+const workerdOptions = resolveWorkerdRuntimeBuild(rootDir, consumerBuildOptions);
+const workerdBundle = await esbuild.build(workerdOptions);
+consumerBuilds.push(workerdBundle);
 for (const [profile, options] of Object.entries(fsBuildOptions)) {
   const result = await esbuild.build(options);
-  await publishBundleOutputs(result, {
+  const publication = profile === "node" ? mergeRuntimeBundleOutputs(result, workerdBundle) : result;
+  const entryPoints = Object.values(options.entryPoints);
+  if (profile === "node") entryPoints.push(...Object.values(workerdOptions.entryPoints));
+  await publishBundleOutputs(publication, {
     outdir: options.outdir,
-    entryPoints: Object.values(options.entryPoints),
+    entryPoints,
     workingDirectory: rootDir
   });
   fsBuilds[profile] = result;
@@ -237,7 +243,7 @@ const shellOptions = resolveBrowserShellBuild(rootDir);
 const shellBundle = await esbuild.build(shellOptions);
 await publishBundleOutputs(shellBundle, {
   outdir: shellOptions.outdir,
-  entryPoints: shellOptions.entryPoints,
+  entryPoints: Object.values(shellOptions.entryPoints),
   workingDirectory: rootDir
 });
 consumerBuilds.push(shellBundle);

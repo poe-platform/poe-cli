@@ -13,9 +13,11 @@
   "exports": {
     ".": {
       "types": {
+        "workerd": "./dist/core.d.ts",
         "browser": "./dist/core.d.ts",
         "default": "./dist/index.d.ts"
       },
+      "workerd": "./dist/core.browser.js",
       "browser": "./dist/core.browser.js",
       "import": "./dist/index.js"
     },
@@ -123,6 +125,18 @@
       "types": "./dist/commands/which/index.d.ts",
       "import": "./dist/commands/which/index.js"
     },
+    "./commands/xml": {
+      "types": "./dist/commands/xml/index.d.ts",
+      "workerd": "./dist/commands/xml/index.browser.js",
+      "browser": "./dist/commands/xml/index.browser.js",
+      "import": "./dist/commands/xml/index.js"
+    },
+    "./commands/yq": {
+      "types": "./dist/commands/yq/index.d.ts",
+      "workerd": "./dist/commands/yq/index.browser.js",
+      "browser": "./dist/commands/yq/index.browser.js",
+      "import": "./dist/commands/yq/index.js"
+    },
     "./fs/s3": {
       "types": "./dist/fs/s3/index.d.ts",
       "import": "./dist/fs/s3/index.js"
@@ -151,6 +165,18 @@
       "types": "./dist/node.d.ts",
       "browser": null,
       "import": "./dist/node.js"
+    },
+    "./commands/node/host": {
+      "types": {
+        "workerd": "./dist/node-unavailable.d.ts",
+        "worker": "./dist/node-unavailable.d.ts",
+        "browser": "./dist/node-unavailable.d.ts",
+        "default": "./dist/commands/node/worker-provider.d.ts"
+      },
+      "workerd": null,
+      "worker": null,
+      "browser": null,
+      "import": "./dist/commands/node/worker-provider.js"
     }
   },
   "files": [
@@ -184,7 +210,6 @@
   "poeCode": {
     "packageLint": {
       "sourceExclude": [
-        "src/commands/structured/query-core.ts",
         "src/commands/xan/argv.ts",
         "src/commands/xan/budget.ts",
         "src/commands/xan/commands.ts",
@@ -194,12 +219,7 @@
         "src/commands/xan/options.ts",
         "src/commands/xan/selector.ts",
         "src/commands/xan/sort.ts",
-        "src/commands/xan/writer.ts",
-        "src/commands/yq/accounting.ts",
-        "src/commands/yq/encoder.ts",
-        "src/commands/yq/errors.ts",
-        "src/commands/yq/index.ts",
-        "src/commands/yq/parser.ts"
+        "src/commands/xan/writer.ts"
       ]
     },
     "integration": {
