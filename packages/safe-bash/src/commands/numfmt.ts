@@ -650,7 +650,7 @@ class Converter {
     if (settings.developer) await this.output.emit(`format String:\n  input: ${quoted}\n  grouping: ${settings.grouping ? "yes" : "no"}\n  padding width: ${settings.padding}\n  alignment: ${settings.left ? "Left" : "Right"}\n  prefix: ${quote(settings.prefix, settings.unicode)}\n  suffix: ${quote(settings.postfix, settings.unicode)}\n`, true);
   }
 
-  private async number(text: string): Promise<{ value: Binary; precision: number } | false> {
+  private async number(text: string, backing: Uint8Array, start: number): Promise<{ value: Binary; precision: number } | false> {
     const settings = this.settings;
     const quoted = quote(text, settings.unicode);
     if (settings.developer) await this.output.emit(`simple_strtod_human:\n  input string: ${quoted}\n  locale decimal-point: ${quote(".", settings.unicode)}\n  MAX_UNSCALED_DIGITS: 18\n`, true);
@@ -698,20 +698,32 @@ class Converter {
       if (settings.from === "none") return this.failure(`rejecting suffix in input: ${quoted} (consider using --from)`);
       exponent = suffix === undefined ? 0 : "KMGTPEZY".indexOf(suffix) + 1;
       offset++;
-      if (settings.from === "auto" && text[offset] === "i") {
+      if (settings.from === "auto" && backing[start + offset] === 105) {
         base = 1024; offset++;
         if (settings.developer) await this.output.emit("  Auto-scaling, found 'i', switching to base 1024\n", true);
       }
       precision = 0;
     }
     if (settings.from === "iec-i") {
-      if (text[offset] !== "i") return this.failure(`missing 'i' suffix in input: ${quoted} (e.g Ki/Mi/Gi)`);
+      if (backing[start + offset] !== 105) return this.failure(`missing 'i' suffix in input: ${quoted} (e.g Ki/Mi/Gi)`);
       offset++;
     }
     const multiplier = power(base, exponent);
     value = multiply(value, multiplier);
     if (settings.developer) await this.output.emit(`  suffix power=${base}^${exponent} = ${fixed(multiplier, 6)}\n  returning value: ${fixed(value, 6)} (${general(value, true)})\n`, true);
-    if (offset < text.length) return this.failure(`invalid suffix in input ${quoted}: ${quote(text.slice(offset), settings.unicode)}`);
+    let tail = text.slice(offset);
+    if (offset > text.length && backing[start + offset]) {
+      if (settings.invalid === "ignore") return this.failure("");
+      const tailStart = start + offset;
+      let tailEnd = tailStart;
+      while (tailEnd < backing.length && backing[tailEnd]) {
+        tailEnd++;
+        if ((tailEnd - tailStart) % 4096 === 0) await this.tick(4096);
+      }
+      await this.tick((tailEnd - tailStart) % 4096);
+      tail = byteText(backing.subarray(tailStart, tailEnd));
+    }
+    if (tail) return this.failure(`invalid suffix in input ${quoted}: ${quote(tail, settings.unicode)}`);
     if (loss && settings.debug) await this.warning(`large input value ${quoted}: possible precision loss`);
     if (settings.fromUnit !== 1n || settings.toUnit !== 1n) value = divide(multiply(value, binary(settings.fromUnit)), binary(settings.toUnit));
     return { value, precision };
@@ -767,7 +779,7 @@ class Converter {
     return rendered;
   }
 
-  async line(line: string, newline: boolean): Promise<void> {
+  async line(line: string, newline: boolean, backing = textBytes(line + "\0")): Promise<void> {
     const settings = this.settings;
     const nul = line.indexOf("\0");
     if (nul >= 0) line = line.slice(0, nul);
@@ -781,11 +793,12 @@ class Converter {
         while (blank(line[end]) || line[end] === "\n") end++;
         while (end < line.length && !blank(line[end]) && line[end] !== "\n") end++;
       }
+      backing[end] = 0;
       let text = line.slice(start, end);
       await this.tick((settings.fields?.length ?? 0) + 1);
       if (settings.fields ? settings.fields.some(([low, high]) => low <= field && field <= high) : field === 1n) {
         if (settings.suffix && text.length > settings.suffix.length) {
-          if (text.endsWith(settings.suffix)) { text = text.slice(0, -settings.suffix.length); if (settings.developer) await this.output.emit(`trimming suffix ${quote(settings.suffix, settings.unicode)}\n`, true); }
+          if (text.endsWith(settings.suffix)) { text = text.slice(0, -settings.suffix.length); backing[start + text.length] = 0; if (settings.developer) await this.output.emit(`trimming suffix ${quote(settings.suffix, settings.unicode)}\n`, true); }
           else if (settings.developer) await this.output.emit("no valid suffix found\n", true);
         }
         let skipped = 0;
@@ -794,7 +807,7 @@ class Converter {
           settings.padding = skipped > 0 || field > 1n ? BigInt(text.length) : 0n;
           if (settings.developer) await this.output.emit(`setting Auto-Padding to ${settings.padding} characters\n`, true);
         }
-        const parsed = await this.number(text.slice(skipped));
+        const parsed = await this.number(text.slice(skipped), backing, start + skipped);
         const converted = parsed && await this.human(parsed.value, parsed.precision);
         await this.output.emit(converted === false ? text : settings.prefix + converted + settings.postfix);
       } else await this.output.emit(text);
@@ -862,14 +875,23 @@ export function numfmtCommand(): CommandDefinition {
           let received = 0;
           let empty = 0;
           let readFailure: string | undefined;
+          let backing: Uint8Array = new Uint8Array(0);
           const process = async (bytes: Uint8Array, terminated: boolean): Promise<void> => {
+            const initialized = bytes.length + (terminated ? 2 : 1);
+            if (backing.length < initialized) backing = new Uint8Array(initialized);
+            backing.set(bytes);
+            backing[bytes.length] = terminated ? settings.separator.charCodeAt(0) : 0;
+            if (terminated) backing[bytes.length + 1] = 0;
             const line = byteText(bytes);
             if (settings.header) {
               settings.header--;
               const header = line + (terminated ? settings.separator : "");
               const nul = header.indexOf("\0");
               await output.emit(nul < 0 ? header : header.slice(0, nul));
-            } else await converter.line(line, terminated);
+            } else {
+              backing[bytes.length] = 0;
+              await converter.line(line, terminated, backing);
+            }
           };
           while (true) {
             await converter.tick();

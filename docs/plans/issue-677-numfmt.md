@@ -1,5 +1,84 @@
 # Issue 677: GNU-compatible number formatting
 
+## Reopened initialized-buffer parity defect, September 9, 2026
+
+- An independent original-source review finds a new mismatch in the current
+  command (`numfmt.ts` SHA-256
+  `6f157ba94ace71d9dc41e43a35a1ed171a10b403b2447a2907545c0356f9d40b`).
+  Twelve fresh native/public-built-entry comparisons complete: ten mismatches,
+  two exact negative controls, no skipped or normalized comparisons. This is
+  additional evidence against full parity, not a new command or provider scope.
+- Minimal measured case: `numfmt --from=auto -d,`, stdin exactly `1 ,x` without
+  a newline. GNU 8.30 exits 2 with empty stdout and stderr exactly
+  `numfmt: invalid suffix in input '1 ': 'x'\n`; the current product exits 0,
+  emits `1,x`, and has empty stderr. Variants cover embedded NUL, suffix trimming,
+  headers and invalid-input diagnostic/output sequencing.
+- The reviewed GNU field parser replaces a separator with NUL but retains
+  initialized bytes after it. After trailing blanks, its suffix membership test
+  accepts NUL, advances past it and observes the retained tail. Standalone field
+  slicing loses that context. The repair must preserve only established,
+  initialized-buffer behavior, not invent unknown heap contents or emulate
+  out-of-allocation reads. Keep existing numeric arithmetic, admission limits,
+  cancellation and raw-byte ownership contracts.
+- Evidence and actual source/helper read ranges are in
+  `out/issue-677-source-audit-v2/report.md`; exact argv/stdin/stdout/stderr/status
+  pairs are in `results.jsonl` there. The initial sandbox EPERM capture remains
+  separate. All twelve native processes finish and all twelve public shells
+  dispose; no production files change during the audit.
+- The full maintained `npm test` route subsequently passes on the unchanged
+  pre-repair worktree at local HEAD `541042a1a5171418c3f8c71ba8fb10563293fbc4`,
+  including native npm pre/post stages. Its green result does not cover these
+  newly discovered failures. After that run terminates, start TDD in a separate
+  `numfmt-field-buffer.test.ts`, reproduce the measured failures before changing
+  `numfmt.ts`, and retain all existing snapshots unchanged. Root owns discovery,
+  public/built replay, screenshots, focused integration and atomic delivery.
+
+### Focused repair and qualification
+
+- Four additional pre-repair oracle probes validate prior-record lookahead:
+  three new mismatches and one newline-terminated control. The audit therefore
+  totals 16 measured profiles, with 13 original mismatches and three matches.
+  Prior header bytes, ordinary newline removal and earlier inserted field NULs
+  have distinct effects; these are captured rather than guessed.
+- The command now retains a bounded byte backing independently of field text.
+  It preserves initialized prior-record bytes and actual field/suffix NUL
+  mutations, while keeping fresh operands and invocations separate. Backing is
+  bounded by the existing 1 MiB record limit plus two terminators. Diagnostic-tail
+  scans charge the existing work budget and yield; ignore mode avoids producing
+  an unused diagnostic tail. No allocator padding, unknown heap bytes, native
+  fallback, new public option or shared-parser change is introduced.
+- TDD first reproduces ten failures and two passing controls. Expanded coverage
+  reproduces 40 failures and seven passes before the fix. The final direct run
+  passes all 871 cases: 824 unchanged original tests and 47 new controls, with
+  no failures or skips. New coverage includes both producer layouts, falsey
+  stderr/retirement errors, cooperative cancellation, work exhaustion and
+  invocation isolation. Original snapshots and raw captures remain unchanged.
+- Scoped strict types pass. An additional non-maintained `--noUnusedParameters`
+  experiment reports one untouched transitive diagnostic at
+  `src/shell/runtime.ts:1271`; it remains in `repair-types-v1.log`, not relabeled
+  a passing check. The maintained selected workspace build and root type check
+  both pass. Root guarded ESLint completes all 10,475 configured inputs with
+  zero errors or warnings, and both selected literal discovery controls pass.
+- Fresh built public-entry comparisons pass all 16 profiles independently on
+  Node 22.23.2 and Bun 1.3.8. Each run captures fresh GNU output, verifies it
+  against the unchanged original capture, compares stdout/stderr/status without
+  normalization and disposes all 16 shells. These are 32 fresh comparisons of
+  the same 16 profiles, not 32 unique cases or packed-consumer qualification.
+- Four actual public-shell `printf %b ... | numfmt ...` workflows pass exact
+  output/status assertions. Root visually inspects `terminal-v2.png`. The first
+  image retains its incorrect `printf %s` display label despite direct-injected
+  input; only the ad-hoc fixture is corrected, and v2 executes the displayed
+  pipeline. This was a presentation defect, not another product regression.
+- Receipts live under `out/issue-677-source-audit-v2`: `repair-report.md`,
+  `root-{build,eslint,types,discovery}-v1`, `public-{node,bun}-v1`, and the two
+  screenshot attempts. Frozen command SHA-256 is
+  `2f4b00b6f5db20ffcd8e8d6cfaa9c205a6226e7e4cfcea23444826f536b09121`;
+  new test SHA-256 is
+  `a9aa2760a4be3deafaa70fb28c870329870a5c9174c854cac7628004423c85a9`.
+  The earlier full-unit pass predates this focused repair. No fresh full-root
+  pass, universal GNU parity, remote delivery, issue closure or release is
+  claimed by these focused results.
+
 ## Source and confirmed gap
 
 - Resolve kamilio's issues in order; deliver cmp, fmt and shuf before numfmt.
