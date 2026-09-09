@@ -68,3 +68,24 @@ parser test passes all 37 cases, maintained Bash typecheck passes all 26 current
 consumer groups and source/tests, and root lint passes with no errors or warnings.
 Receipts are `toml-type-fix-runtime-v1`, `toml-type-fix-emission-v1.json`,
 `typecheck-v2` and `lint-v2` under the integration evidence directory.
+
+## Final remote delta
+
+The pre-push fetch discovers remote `8c186cf47` (UTF-8 grep subjects). Commit
+`a918b51aa` merges it without conflicts after the type-only correction. Independent
+review finds no concrete regression; the two overlapping inventory/browser
+fixture edits are disjoint and preserve the local utilities. The maintained
+focused regex/grep/consumer runtime cohort passes 457 tests, and authenticated
+test-inventory checks pass 100 tests. The normal build and all maintained Bash
+typechecks pass again (`build-v3`, `typecheck-v3`).
+
+Fresh scoped tarballs from this candidate pass the maintained installed Node and
+Bun smoke fixtures, public TypeScript consumer and browser-platform bundle
+fixture. The latter is executed in Node as in CI, not claimed as a new real-browser
+run. Temporary npm 11 packs and installs with lifecycle scripts disabled; no
+publication occurs locally. Evidence is `/tmp/poe-release-final-packed.Trc8VR`,
+also recorded in `packed-v1.path`. The earlier full unit run qualifies the first
+merge; these focused checks qualify the additional remote delta and unchanged
+runtime output of the type annotation. Remote CI still validates the final SHA.
+Final root lint (`lint-v3`) also passes all 10,506 configured inputs, root
+TypeScript and workflow lint with no errors or warnings.
