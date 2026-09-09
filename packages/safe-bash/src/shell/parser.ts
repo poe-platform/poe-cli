@@ -79,6 +79,7 @@ export type Command = (
   | { kind: "while"; condition: Script; body: Script }
   | { kind: "until"; condition: Script; body: Script }
   | { kind: "for"; name: string; words?: Word[]; body: Script }
+  | { kind: "select"; name: string; words?: Word[]; body: Script }
   | { kind: "function"; name: string; body: Command }
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string }
   | { kind: "conditional"; expression: ConditionalExpression; source: string }
@@ -892,10 +893,10 @@ class Parser {
       const body = this.nonemptyScript(new Set(["done"]));
       this.expect("done", true);
       command = { kind, condition, body, redirects: [] };
-    } else if (this.is("for")) {
-      this.advance();
+    } else if (this.is("for") || this.is("select")) {
+      const kind = this.advance().value as "for" | "select";
       const name = this.advance().value;
-      if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) this.error("Invalid for variable");
+      if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) this.error(`Invalid ${kind} variable`);
       this.newlines();
       let words: Word[] | undefined;
       if (this.is("in")) {
@@ -904,12 +905,12 @@ class Parser {
         while (this.current.kind === "word") words.push(this.advance().word!);
       }
       if (this.is(";") || this.is("\n")) this.advance();
-      else if (words) this.error("Expected for separator", true);
+      else if (words) this.error(`Expected ${kind} separator`, true);
       this.newlines();
       this.expect("do", true);
       const body = this.nonemptyScript(new Set(["done"]));
       this.expect("done", true);
-      command = { kind: "for", name, ...(words ? { words } : {}), body, redirects: [] };
+      command = { kind, name, ...(words ? { words } : {}), body, redirects: [] };
     } else if (this.is("function")) {
       this.advance();
       if (this.current.kind !== "word" || !/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(this.current.value)) this.error("Invalid function name");
@@ -927,7 +928,7 @@ class Parser {
       this.expect("(");
       this.expect(")");
       this.newlines();
-      if (!["{", "(", "if", "case", "while", "until", "for", "[["].includes(this.current.value)) this.error("Expected function body");
+      if (!["{", "(", "if", "case", "while", "until", "for", "select", "[["].includes(this.current.value)) this.error("Expected function body");
       command = { kind: "function", name, body: this.command(), redirects: [] };
     } else {
       if (["!", "then", "else", "elif", "fi", "do", "done", "}", "case", "esac", "select", "function", "[[", "]]"].includes(this.current.value)) this.error(`Unexpected or unsupported keyword ${this.current.value}`);

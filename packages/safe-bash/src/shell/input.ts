@@ -3,6 +3,7 @@ import { FsError, toByteSource } from "../contracts/index.js";
 import type { ByteSource, CommandInput, FileReadHandle, FileStat, FileSystem, FileSystemCapabilities, InvocationCleanup } from "../contracts/index.js";
 import { yieldTurn } from "../contracts/yield.js";
 import { Budget, interruptible } from "./runtime.js";
+import { concatShellValues, shellValueFromBytes, type ShellValue, type ValueAllocation } from "../contracts/value.js";
 
 type InputProvenance = Pick<CommandInput, "stat" | "seek"> & {
   readonly readChunk?: (maxBytes?: number) => Promise<IteratorResult<Uint8Array>>;
@@ -386,6 +387,51 @@ export class ShellInput implements ByteSource, CommandInput {
 
   line(raw: boolean, options?: { count?: number; delimiter?: number; byteCount?: boolean; exact?: boolean }): Promise<{ value: string; escaped: ReadonlySet<number>; terminated: boolean }> {
     return this.#cursor.consume(this.signal, () => options ? this.readBounded(raw, options) : this.readLine(raw));
+  }
+
+  /** Select uses read's escape rules without projecting raw REPLY bytes to text. */
+  selectLine(allocation: ValueAllocation): Promise<{ value: ShellValue; terminated: boolean }> {
+    return this.#cursor.consume(this.signal, async () => {
+      allocation.reserve(64, 0);
+      const parts: ShellValue[] = [];
+      let escaping = false;
+      let length = 0;
+      let pulls = 0;
+      while (true) {
+        if (++pulls % 128 === 0) await yieldTurn(this.signal);
+        const result = await this.#cursor.take(this.signal);
+        if (result.done) return { value: concatShellValues(parts, allocation), terminated: false };
+        const chunk = result.value;
+        for (let offset = 0; offset < chunk.length;) {
+          await yieldTurn(this.signal);
+          const end = Math.min(offset + 1024, chunk.length);
+          allocation.reserve(end - offset + 64, 0);
+          const output = new Uint8Array(end - offset);
+          let used = 0;
+          let terminated = false;
+          while (offset < end) {
+            const byte = chunk[offset++]!;
+            this.#cursor.position++;
+            if (++length > this.budget.limits.maxOutputBytes) this.budget.fail("maxOutputBytes");
+            if (byte === 0) continue;
+            if (escaping) {
+              escaping = false;
+              if (byte !== 10) output[used++] = byte;
+            } else if (byte === 92) escaping = true;
+            else if (byte === 10) { terminated = true; break; }
+            else output[used++] = byte;
+          }
+          if (used) {
+            allocation.reserve(32, 0);
+            parts.push(shellValueFromBytes(output.subarray(0, used), allocation));
+          }
+          if (terminated) {
+            if (offset < chunk.length) this.#cursor.remainder = chunk.subarray(offset);
+            return { value: concatShellValues(parts, allocation), terminated: true };
+          }
+        }
+      }
+    });
   }
 
   private async readBounded(raw: boolean, options: { count?: number; delimiter?: number; byteCount?: boolean; exact?: boolean }): Promise<{ value: string; escaped: ReadonlySet<number>; terminated: boolean }> {

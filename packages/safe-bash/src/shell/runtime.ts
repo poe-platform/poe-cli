@@ -27,6 +27,7 @@ import { BraceExpansionFailure, expandBraces } from "./brace-expansion.js";
 import { evaluatePositionalArithmetic } from "./arithmetic-parameters.js";
 import { compilePattern, compilePatternBoundaries, matchesPattern } from "./pattern.js";
 import { nextCodePointOffset, previousCodePointOffset, scanString, stringCheckpoint } from "./string-operations.js";
+import { selectMenu } from "./select-menu.js";
 import type { StringWork } from "./string-operations.js";
 import { byteLocale } from "./locale.js";
 import { functionDisplay } from "./display.js";
@@ -2098,6 +2099,48 @@ export class Runtime {
             const result = await this.loopBody(command.body, state, io);
             status = result.status;
             if (result.stop) break;
+          }
+        } else if (command.kind === "select") {
+          const values = command.words ? await this.valueWords(command.words, state, io) : this.positionalValues(state);
+          if (!values.length) return 0;
+          const input = io.stdin instanceof ShellInput ? io.stdin : new ShellInput(io.stdin, this.budget, this.signal);
+          const work = { remaining: this.budget.limits.maxExpansionBytes * 8, signal: this.signal, exhausted: (): never => this.budget.fail("maxExpansionBytes") };
+          let showMenu = true;
+          while (true) {
+            this.budget.loop();
+            if (showMenu) await selectMenu(values, state.variables.COLUMNS, byteLocale(state.variables), io.stderr, work, allocation);
+            const prompt = stateMonitor(state)?.values.get("PS3", state.variables.PS3 ?? "#? ") ?? state.variables.PS3 ?? "#? ";
+            await io.stderr.write(shellValueBytes(prompt, allocation));
+            const line = await input.selectLine(allocation);
+            if (state.readonlyVariables?.has("REPLY")) {
+              await this.diagnostic(io, "REPLY: readonly variable");
+              await writeText(io.stdout, "\n");
+              return 1;
+            }
+            this.writeVariable(state, "REPLY", line.value);
+            if (!line.terminated) { await writeText(io.stdout, "\n"); return 1; }
+            const bytes = shellValueBytes(line.value, allocation);
+            if (!bytes.length) { showMenu = true; continue; }
+            let choice = 0;
+            let phase: "start" | "digits" | "tail" = "start";
+            let valid = true;
+            let negative = false;
+            let digits = false;
+            for (const byte of bytes) {
+              const pending = stringCheckpoint(work);
+              if (pending) await pending;
+              if (byte === 32 || byte >= 9 && byte <= 13) { if (phase === "digits") phase = "tail"; continue; }
+              if (phase === "start" && (byte === 43 || byte === 45)) { negative = byte === 45; phase = "digits"; continue; }
+              if (phase === "tail" || byte < 48 || byte > 57) { valid = false; continue; }
+              phase = "digits";
+              digits = true;
+              choice = Math.min(values.length + 1, choice * 10 + byte - 48);
+            }
+            await this.assignVariable(state, command.name, valid && digits && !negative && choice >= 1 && choice <= values.length ? values[choice - 1]! : "");
+            const result = await this.loopBody(command.body, state, io);
+            status = result.status;
+            if (result.stop) break;
+            showMenu = shellValueByteLength(stateMonitor(state)?.values.get("REPLY", state.variables.REPLY ?? "") ?? state.variables.REPLY ?? "") === 0;
           }
         } else {
           while (true) {
