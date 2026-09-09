@@ -53,6 +53,16 @@ for (const regexExecutor of [undefined, createBoundedRegexProvider()]) {
     if (result.exitCode !== 0 || result.stderr !== "" || result.stdout !== "done\n") {
       throw new Error(`Production default search smoke failed: ${JSON.stringify(result)}`);
     }
+    for (const [script, expected] of [
+      ["printf 'giraffe giraffe\\n' | grep -o giraffe", "giraffe\ngiraffe\n"],
+      ["printf 'zab ab\\n' | grep -Eo 'a|ab'", "ab\nab\n"],
+      ["printf 'é🦊é🦊\\n' | grep -Fo 'é🦊'", "é🦊\né🦊\n"],
+    ]) {
+      const extracted = await search.exec(script);
+      if (extracted.exitCode !== 0 || extracted.stderr !== "" || extracted.stdout !== expected) {
+        throw new Error(`Production grep extraction failed: ${script}: ${JSON.stringify(extracted)}`);
+      }
+    }
   } finally { await search.dispose(); }
 }
 const nested = await runNestedCommands();

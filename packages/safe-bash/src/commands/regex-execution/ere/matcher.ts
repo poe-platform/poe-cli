@@ -98,9 +98,29 @@ async function resetDescendants(node: EreNode, previous: readonly (EreSpan | nul
 
 export async function matchEre(program: EreProgram, subject: string, ledger: EreLedger, signal?: AbortSignal): Promise<EreResult> {
   ledger.check(signal);
-  const root = resolveEreProgram(program, ledger);
+  resolveEreProgram(program, ledger);
   ledger.admitInput("subjectBytes", subject.length, signal);
   await admitAscii(subject, ledger, signal);
+  return runMatcher(program, subject, ledger, signal, 0, true);
+}
+
+/** Owns one validated immutable subject; cursor searches preserve original anchors. */
+export async function createEreSpanMatcher(program: EreProgram, subject: string, ledger: EreLedger, signal?: AbortSignal): Promise<(start: number) => Promise<EreSpan | undefined>> {
+  ledger.check(signal);
+  resolveEreProgram(program, ledger);
+  ledger.admitInput("subjectBytes", subject.length, signal);
+  await admitAscii(subject, ledger, signal);
+  ledger.charge("allocationUnits", 2, signal);
+  return async start => {
+    if (!Number.isSafeInteger(start) || start < 0 || start > subject.length) throw new RangeError("Invalid ERE search cursor");
+    return runMatcher(program, subject, ledger, signal, start, false);
+  };
+}
+
+async function runMatcher(program: EreProgram, subject: string, ledger: EreLedger, signal: AbortSignal | undefined, from: number, materialize: true): Promise<EreResult>;
+async function runMatcher(program: EreProgram, subject: string, ledger: EreLedger, signal: AbortSignal | undefined, from: number, materialize: false): Promise<EreSpan | undefined>;
+async function runMatcher(program: EreProgram, subject: string, ledger: EreLedger, signal: AbortSignal | undefined, from: number, materialize: boolean): Promise<EreResult | EreSpan | undefined> {
+  const root = resolveEreProgram(program, ledger);
   const width = program.groups + 1;
   ledger.charge("work", width * 2, signal);
   ledger.charge("allocationUnits", width * 2 + 1, signal);
@@ -117,7 +137,7 @@ export async function matchEre(program: EreProgram, subject: string, ledger: Ere
     ledger.charge("allocationUnits", 5, signal);
     pending.push({ position, task: next, captures, histories });
   };
-  for (let start = 0; start <= subject.length; start++) {
+  for (let start = from; start <= subject.length; start++) {
     push(start, task(() => ({ kind: "node", node: root, next: null })), emptyCaptures, emptyHistories);
     let best: State | undefined;
     while (pending.length > 0) {
@@ -196,6 +216,11 @@ export async function matchEre(program: EreProgram, subject: string, ledger: Ere
       }
     }
     if (best) {
+      if (!materialize) {
+        ledger.charge("allocationUnits", 2, signal);
+        ledger.check(signal);
+        return Object.freeze({ start, end: best.position });
+      }
       ledger.charge("captureSlots", width, signal);
       let bytes = best.position - start;
       for (let group = 1; group < width; group++) {
@@ -221,7 +246,8 @@ export async function matchEre(program: EreProgram, subject: string, ledger: Ere
       return Object.freeze({ matched: true, captures: Object.freeze(captures), values: Object.freeze(values) });
     }
   }
-  ledger.charge("allocationUnits", 3, signal);
   ledger.check(signal);
+  if (!materialize) return undefined;
+  ledger.charge("allocationUnits", 3, signal);
   return Object.freeze({ matched: false, captures: Object.freeze([] as const), values: Object.freeze([] as const) });
 }

@@ -4,7 +4,7 @@ import { matchExprSteps } from "../expr/bre-engine.js";
 import { EreSyntaxError, EreUnsupportedError, EreProfileLimitError, EreUsageUnknownError } from "./ere/errors.js";
 import { EreLedger } from "./ere/limits.js";
 import { compileEre } from "./ere/syntax.js";
-import { matchEre } from "./ere/matcher.js";
+import { createEreSpanMatcher, matchEre } from "./ere/matcher.js";
 import type { EreProgram } from "./ere/types.js";
 import type { BoundedRegexProvider, RegexWorker, RegexWorkerRequest } from "./provider.js";
 import { ExprMatchError, exprMatchCeilings, type ExprMatchDescriptor, type ExprMatchLimits, type ExprMatchReply, type GrepDescriptor, type Reply, type Row, type SearchDescriptor } from "./protocol.js";
@@ -19,17 +19,19 @@ export interface BoundedRegexProviderOptions {
   readonly maxWork?: number;
   readonly maxAllocationUnits?: number;
   readonly maxStates?: number;
+  readonly maxMatchesPerLine?: number;
+  readonly maxTotalMatches?: number;
 }
 
 const defaults: Required<BoundedRegexProviderOptions> = Object.freeze({
   maxWorkers: 2, maxPatterns: 32, maxPatternBytes: 8192, maxRows: 128,
   maxInputBytes: 65_536, maxResultBytes: 2048, maxWork: 2_000_000,
-  maxAllocationUnits: 1_000_000, maxStates: 65_536,
+  maxAllocationUnits: 1_000_000, maxStates: 65_536, maxMatchesPerLine: 128, maxTotalMatches: 128,
 });
 const ceilings: Required<BoundedRegexProviderOptions> = Object.freeze({
   maxWorkers: 32, maxPatterns: 128, maxPatternBytes: 65_532, maxRows: 4096,
   maxInputBytes: 1_048_576, maxResultBytes: 65_536, maxWork: 33_554_432,
-  maxAllocationUnits: 4_000_000, maxStates: 65_536,
+  maxAllocationUnits: 4_000_000, maxStates: 65_536, maxMatchesPerLine: 100_000, maxTotalMatches: 100_000,
 });
 
 type SelectionDescriptor = GrepDescriptor | SearchDescriptor;
@@ -38,6 +40,7 @@ interface OwnedRequest {
   readonly descriptor: SelectionDescriptor;
   readonly rows: readonly Row[];
   readonly ledger: EreLedger;
+  readonly limits: Required<BoundedRegexProviderOptions>;
 }
 interface OwnedExprRequest {
   readonly id: number;
@@ -128,7 +131,7 @@ function admit(input: RegexWorkerRequest, limits: Required<BoundedRegexProviderO
       || Object.hasOwn(row, "directory") && typeof row.directory !== "boolean"
       || Object.hasOwn(row, "ancestors") && typeof row.ancestors !== "boolean") fail("protocol", "invalid row");
     if (Object.hasOwn(row, "directory") || Object.hasOwn(row, "ancestors")) fail("unsupported", "glob row flags are unsupported");
-    if (row.all) fail("unsupported", "all-match enumeration is unsupported");
+    if (row.all && selected.kind !== "grep") fail("unsupported", "rg all-match enumeration is unsupported");
     const length = byteLength.call(row.bytes) as number;
     if (length > limits.maxInputBytes - bytes) fail("limit", "aggregate input byte limit exceeded");
     bytes += length;
@@ -150,9 +153,9 @@ function admit(input: RegexWorkerRequest, limits: Required<BoundedRegexProviderO
     const source = new Uint8Array(byteBuffer.call(row.bytes) as ArrayBuffer, byteOffset.call(row.bytes) as number, byteLength.call(row.bytes) as number);
     const copy = new Uint8Array(source.length);
     copy.set(source);
-    rows.push({ bytes: copy, all: false, terminated: row.terminated });
+    rows.push({ bytes: copy, all: row.all, terminated: row.terminated });
   }
-  return { id: input.id, descriptor: ownedDescriptor, rows, ledger };
+  return { id: input.id, descriptor: ownedDescriptor, rows, ledger, limits };
 }
 
 function admitExpr(input: RegexWorkerRequest, limits: Required<BoundedRegexProviderOptions>, signal: AbortSignal): OwnedExprRequest {
@@ -313,13 +316,13 @@ async function compileLiteral(bytes: Uint8Array, ledger: EreLedger, signal: Abor
   return { bytes, fallback };
 }
 
-async function literalStart(program: LiteralProgram, subject: Uint8Array, whole: boolean, ledger: EreLedger, signal: AbortSignal): Promise<number> {
+async function literalStart(program: LiteralProgram, subject: Uint8Array, whole: boolean, ledger: EreLedger, signal: AbortSignal, from = 0): Promise<number> {
   const { bytes, fallback } = program;
   ledger.charge("work", 1, signal);
   await ledger.checkpoint(signal);
-  if (whole && bytes.length !== subject.length || bytes.length > subject.length) return -1;
-  if (bytes.length === 0) return 0;
-  for (let index = 0, prefix = 0; index < subject.length;) {
+  if (whole && (from !== 0 || bytes.length !== subject.length) || bytes.length > subject.length - from) return -1;
+  if (bytes.length === 0) return from;
+  for (let index = from, prefix = 0; index < subject.length;) {
     ledger.charge("work", 1, signal);
     if (subject[index] === bytes[prefix]) {
       index++;
@@ -331,15 +334,68 @@ async function literalStart(program: LiteralProgram, subject: Uint8Array, whole:
   return -1;
 }
 
+interface Span { readonly start: number; readonly end: number }
+interface MatchUsage { count: number }
+
+async function enumerate(input: OwnedRequest, row: Row, finders: readonly ((from: number) => Promise<Span | undefined>)[], usage: MatchUsage, signal: AbortSignal): Promise<Float64Array> {
+  const { ledger, limits } = input;
+  ledger.charge("allocationUnits", finders.length + 2, signal);
+  const cached: (Span | null | undefined)[] = new Array(finders.length);
+  const ranges: number[] = [];
+  for (let from = 0; from <= row.bytes.length;) {
+    let best: Span | undefined;
+    for (let index = 0; index < finders.length; index++) {
+      ledger.charge("work", 1, signal);
+      await ledger.checkpoint(signal);
+      let candidate = cached[index];
+      if (candidate === undefined || candidate !== null && candidate.start < from) {
+        candidate = await finders[index]!(from) ?? null;
+        cached[index] = candidate;
+      }
+      if (candidate && (!best || candidate.start < best.start || candidate.start === best.start && candidate.end > best.end)) best = candidate;
+    }
+    if (!best) break;
+    if (ranges.length / 2 >= limits.maxMatchesPerLine) fail("limit", "matches per line limit exceeded");
+    if (usage.count >= limits.maxTotalMatches) fail("limit", "total match limit exceeded");
+    if (usage.count >= Math.floor(limits.maxResultBytes / 16)) fail("limit", "result byte limit exceeded");
+    ledger.charge("work", 2, signal);
+    // Charge temporary number pairs and the final Float64Array before retaining either.
+    ledger.charge("allocationUnits", 24, signal);
+    usage.count++;
+    ranges.push(best.start, best.end);
+    if (best.end > best.start) from = best.end;
+    else {
+      const byte = row.bytes[best.end];
+      from = best.end + (byte === undefined || byte < 0x80 ? 1 : byte < 0xe0 ? 2 : byte < 0xf0 ? 3 : 4);
+    }
+  }
+  ledger.charge("work", ranges.length, signal);
+  await ledger.checkpoint(signal);
+  return new Float64Array(ranges);
+}
+
 async function executeLiteral(input: OwnedRequest, signal: AbortSignal): Promise<Reply> {
   const { descriptor: selected, rows, ledger } = input;
   const programs: LiteralProgram[] = [];
   for (const pattern of selected.patterns) {
     programs.push(await compileLiteral(await literalBytes(pattern, selected, ledger, signal), ledger, signal));
   }
+  ledger.charge("allocationUnits", 3, signal);
   const results: Float64Array[] = [];
+  const usage: MatchUsage = { count: 0 };
   for (const row of rows) {
     await validateUtf8(row.bytes, ledger, signal);
+    if (row.all) {
+      ledger.charge("allocationUnits", programs.length * 2, signal);
+      const finders = programs.map(program => async (from: number): Promise<Span | undefined> => {
+        const start = await literalStart(program, row.bytes, selected.whole, ledger, signal, from);
+        if (start < 0) return undefined;
+        ledger.charge("allocationUnits", 2, signal);
+        return { start, end: start + program.bytes.length };
+      });
+      results.push(await enumerate(input, row, finders, usage, signal));
+      continue;
+    }
     let start = -1;
     let end = -1;
     for (const program of programs) {
@@ -349,6 +405,10 @@ async function executeLiteral(input: OwnedRequest, signal: AbortSignal): Promise
       if (selected.kind === "grep") break;
     }
     signal.throwIfAborted();
+    if (start >= 0) {
+      if (usage.count >= input.limits.maxTotalMatches || usage.count >= Math.floor(input.limits.maxResultBytes / 16)) fail("limit", "total match or result byte limit exceeded");
+      usage.count++;
+    }
     results.push(start < 0 ? new Float64Array() : new Float64Array([start, end]));
   }
   return { id: input.id, results };
@@ -367,7 +427,9 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
       : [{ text: pattern, literal: selected.fixed }];
     programs.push(await compileEre(fragments, ledger, signal));
   }
+  ledger.charge("allocationUnits", 3, signal);
   const results: Float64Array[] = [];
+  const usage: MatchUsage = { count: 0 };
   for (const row of rows) {
     // The admitted ASCII profile makes every character offset the original byte offset.
     ledger.charge("allocationUnits", row.bytes.length * 2 + 2, signal);
@@ -379,6 +441,13 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
       await ledger.checkpoint(signal);
     }
     const subject = characters.join("");
+    if (row.all) {
+      ledger.charge("allocationUnits", programs.length + 1, signal);
+      const finders: ((from: number) => Promise<Span | undefined>)[] = [];
+      for (const program of programs) finders.push(await createEreSpanMatcher(program, subject, ledger, signal));
+      results.push(await enumerate(input, row, finders, usage, signal));
+      continue;
+    }
     let span: { readonly start: number; readonly end: number } | undefined;
     for (const program of programs) {
       const match = await matchEre(program, subject, ledger, signal);
@@ -389,6 +458,10 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
       if (!span || candidate.start < span.start) span = candidate;
     }
     signal.throwIfAborted();
+    if (span) {
+      if (usage.count >= input.limits.maxTotalMatches || usage.count >= Math.floor(input.limits.maxResultBytes / 16)) fail("limit", "total match or result byte limit exceeded");
+      usage.count++;
+    }
     results.push(span ? new Float64Array([span.start, span.end]) : new Float64Array());
   }
   return { id: input.id, results };
