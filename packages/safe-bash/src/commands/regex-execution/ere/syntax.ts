@@ -195,7 +195,7 @@ class Parser {
           await this.ledger.checkpoint(this.signal);
           members[code] = !members[code];
         }
-        return this.node(() => ({ kind: "set", members: Object.freeze(members), nullable: false, captured: false }));
+        return this.node(() => ({ kind: "set", members: Object.freeze(members), nonAscii: negate, nullable: false, captured: false }));
       }
       first = false;
       if (this.at("[") && (this.at(".", this.offset + 1) || this.at("=", this.offset + 1))) {

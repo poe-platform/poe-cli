@@ -62,6 +62,9 @@ for (const regexExecutor of [undefined, createBoundedRegexProvider()]) {
       ["printf 'giraffe giraffe\\n' | grep -o giraffe", "giraffe\ngiraffe\n"],
       ["printf 'zab ab\\n' | grep -Eo 'a|ab'", "ab\nab\n"],
       ["printf 'é🦊é🦊\\n' | grep -Fo 'é🦊'", "é🦊\né🦊\n"],
+      ["printf '<div class=\"section-title\">⚽ Alternate Plan: Football Fans</div>\\n' > /day5.html; grep -n section-title /day5.html", "1:<div class=\"section-title\">⚽ Alternate Plan: Football Fans</div>\n"],
+      ["LC_ALL=C grep -n 'Alternate Plan' /day5.html", "1:<div class=\"section-title\">⚽ Alternate Plan: Football Fans</div>\n"],
+      ["printf 'é🦊first café second\\n' | grep -Eo 'first|second'", "first\nsecond\n"],
     ]) {
       const extracted = await search.exec(script);
       if (extracted.exitCode !== 0 || extracted.stderr !== "" || extracted.stdout !== expected) {
