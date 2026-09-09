@@ -5,7 +5,7 @@ export const expectedAgentCommandNames = Object.freeze([
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort());
@@ -128,6 +128,34 @@ export async function verifyShufCommands(entry = defaultEntry) {
     const binary = await shell.exec("shuf --random-source=/shuf-random -z", { stdin: bytes });
     if (binary.exitCode !== 0 || binary.stderr !== "" || JSON.stringify(Array.from(binary.stdoutBytes)) !== "[255,0,0,65,0]") {
       throw new Error(`Public shuf binary output changed: ${JSON.stringify(binary)}`);
+    }
+  } finally { await shell.dispose(); }
+}
+
+export async function verifyNumfmtCommands(entry = defaultEntry) {
+  const filesystem = new entry.MemoryFileSystem();
+  await filesystem.writeFile("/numfmt-numbers", new TextEncoder().encode("1024\n1048576\n"));
+  await filesystem.writeFile("/numfmt-table", new TextEncoder().encode("name,bytes\nalpha,1000\nbeta,2500000\n"));
+  await filesystem.writeFile("/numfmt-script", new TextEncoder().encode("numfmt --header --delimiter=, --field=2 --to=si < /numfmt-table > /numfmt-output\ncat /numfmt-output\n"));
+  const shell = new entry.Shell({ fs: filesystem, env: { LC_ALL: "C" } }).use(entry.agentCommands());
+  try {
+    for (const [script, stdout, stderr = "", exitCode = 0] of [
+      ["numfmt --to=si 1000 2500000", "1.0K\n2.5M\n"],
+      ["cat /numfmt-numbers | numfmt --to=iec", "1.0K\n1.0M\n"],
+      ["env numfmt --from=iec-i 1Ki 2Mi", "1024\n2097152\n"],
+      ["printf '1000 2000' | xargs numfmt --to=si", "1.0K\n2.0K\n"],
+      ["sh /numfmt-script", "name,bytes\nalpha,1.0K\nbeta,2.5M\n"],
+      ["numfmt --round=nearest --format=%.1f -- 1.25 -1.25", "1.3\n-1.3\n"],
+      ["numfmt --from=iec-i 1Ki invalid 2Mi", "1024\n", "numfmt: invalid number: 'invalid'\n", 2],
+    ]) {
+      const result = await shell.exec(script);
+      if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
+        throw new Error(`Public numfmt failed: ${script}: ${JSON.stringify(result)}`);
+      }
+    }
+    const binary = await shell.exec("numfmt --delimiter=, --field=2 --to=si", { stdin: new Uint8Array([255, 44, 49, 48, 48, 48, 10]) });
+    if (binary.exitCode !== 0 || binary.stderr !== "" || JSON.stringify(Array.from(binary.stdoutBytes)) !== "[255,44,49,46,48,75,10]") {
+      throw new Error(`Public numfmt binary output changed: ${JSON.stringify(binary)}`);
     }
   } finally { await shell.dispose(); }
 }

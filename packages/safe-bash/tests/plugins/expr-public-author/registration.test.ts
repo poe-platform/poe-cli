@@ -17,13 +17,13 @@ async function direct(definition: CommandDefinition, args: string[], overrides: 
   finally { await Promise.all(cleanups.flatMap(cleanup => [cleanup(), cleanup()])); }
 }
 
-test("public85 inventory retains frozen expr76 plus which, timeout, apply_patch three SHA-2 commands, cmp, fmt and shuf", async () => {
+test("public86 inventory retains frozen expr76 plus which, timeout, apply_patch three SHA-2 commands, cmp, fmt, shuf and numfmt", async () => {
   assert.equal(expected.names76.length, 76); assert.equal(new Set(expected.names76).size, 76);
-  const names85 = [...expected.names76, "which", "timeout", "apply_patch", "sha512sum", "sha384sum", "sha224sum", "cmp", "fmt", "shuf"].sort();
-  assert.equal(names85.length, 85); assert.equal(new Set(names85).size, 85);
-  assert.deepEqual(createAgentCommands().map(command => command.name).sort(), names85);
+  const names86 = [...expected.names76, "which", "timeout", "apply_patch", "sha512sum", "sha384sum", "sha224sum", "cmp", "fmt", "shuf", "numfmt"].sort();
+  assert.equal(names86.length, 86); assert.equal(new Set(names86).size, 86);
+  assert.deepEqual(createAgentCommands().map(command => command.name).sort(), names86);
   const target = host(); await agentCommands().setup(target);
-  assert.deepEqual(target.commands.list().map(command => command.name).sort(), names85);
+  assert.deepEqual(target.commands.list().map(command => command.name).sort(), names86);
   for (const name of ["getopts", "curl", "safejs", "node", "npm", "npx"]) assert.equal(target.commands.has(name), false);
 });
 
@@ -35,7 +35,7 @@ test("expr aggregate collision preflight and top-level replacement preserve cust
   assert.throws(() => agentCommands(nested).setup(target), /already registered: expr/u);
   assert.deepEqual(target.commands.list(), [original, custom]);
   await agentCommands({ ...nested, replace: true }).setup(target);
-  assert.equal(target.commands.list().length, 86); assert.equal(target.commands.get("custom"), registeredCustom); assert.notEqual(target.commands.get("expr"), registeredExpr);
+  assert.equal(target.commands.list().length, 87); assert.equal(target.commands.get("custom"), registeredCustom); assert.notEqual(target.commands.get("expr"), registeredExpr);
 });
 
 test("unknown nested expr regex is ignored with and without global regex", () => {
