@@ -51,7 +51,7 @@ export interface EreNodeBase {
 
 export type EreNode = EreNodeBase & (
   | { readonly kind: "empty" | "dot" | "start" | "end" }
-  | { readonly kind: "literal"; readonly code: number }
+  | { readonly kind: "literal"; readonly code: number; readonly insensitive: boolean }
   | { readonly kind: "set"; readonly members: readonly boolean[]; readonly nonAscii: boolean }
   | { readonly kind: "sequence" | "alternative"; readonly children: readonly EreNode[] }
   | { readonly kind: "group"; readonly index: number; readonly child: EreNode }

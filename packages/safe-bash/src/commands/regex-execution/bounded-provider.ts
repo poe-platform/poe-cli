@@ -1,4 +1,5 @@
 import { PublicDiagnostic } from "../../diagnostics.js";
+import { foldAscii } from "./ascii.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import { matchExprSteps } from "../expr/bre-engine.js";
 import { EreSyntaxError, EreUnsupportedError, EreProfileLimitError, EreUsageUnknownError } from "./ere/errors.js";
@@ -106,7 +107,7 @@ function descriptor(value: unknown, limits: Required<BoundedRegexProviderOptions
   record(value, ["kind", "patterns", ...flags, ...(kind.value === "rg" ? ["case"] : [])]);
   for (const flag of flags) if (typeof value[flag] !== "boolean") fail("protocol", `invalid ${flag} flag`);
   if (kind.value === "rg" && !["sensitive", "insensitive", "smart"].includes(value.case as string)) fail("protocol", "invalid case flag");
-  if (value.word || kind.value === "grep" && value.insensitive || kind.value === "rg" && value.case !== "sensitive") fail("unsupported", "only case-sensitive, non-word selection is supported");
+  if (value.word || kind.value === "rg" && value.case !== "sensitive") fail("unsupported", "word matching and rg case-insensitive selection are unsupported");
   if (kind.value === "rg" && !value.fixed) fail("unsupported", "rg regex modes are unsupported; use fixed UTF-8 patterns");
   array(value.patterns, limits.maxPatterns, "pattern");
   let bytes = 0;
@@ -282,11 +283,16 @@ async function literalBytes(pattern: string, selected: SelectionDescriptor, ledg
   return bytes;
 }
 
-interface LiteralProgram { readonly bytes: Uint8Array; readonly fallback: Uint32Array }
+interface LiteralProgram { readonly bytes: Uint8Array; readonly fallback: Uint32Array; readonly insensitive: boolean }
 
-async function compileLiteral(bytes: Uint8Array, ledger: EreLedger, signal: AbortSignal): Promise<LiteralProgram> {
+async function compileLiteral(bytes: Uint8Array, ledger: EreLedger, signal: AbortSignal, insensitive = false): Promise<LiteralProgram> {
+  if (insensitive) for (let index = 0; index < bytes.length; index++) {
+    ledger.charge("work", 1, signal);
+    await ledger.checkpoint(signal);
+    bytes[index] = foldAscii(bytes[index]!);
+  }
   ledger.charge("states", bytes.length, signal);
-  ledger.charge("allocationUnits", bytes.length * 4 + 3, signal);
+  ledger.charge("allocationUnits", bytes.length * 4 + 4, signal);
   const fallback = new Uint32Array(bytes.length);
   // KMP failure links bound prefix-heavy matching to linear work per pattern/row.
   for (let index = 1, prefix = 0; index < bytes.length;) {
@@ -296,7 +302,7 @@ async function compileLiteral(bytes: Uint8Array, ledger: EreLedger, signal: Abor
     else index++;
     await ledger.checkpoint(signal);
   }
-  return { bytes, fallback };
+  return { bytes, fallback, insensitive };
 }
 
 async function literalStart(program: LiteralProgram, subject: Uint8Array, whole: boolean, ledger: EreLedger, signal: AbortSignal, from = 0): Promise<number> {
@@ -307,7 +313,7 @@ async function literalStart(program: LiteralProgram, subject: Uint8Array, whole:
   if (bytes.length === 0) return from;
   for (let index = from, prefix = 0; index < subject.length;) {
     ledger.charge("work", 1, signal);
-    if (subject[index] === bytes[prefix]) {
+    if ((program.insensitive ? foldAscii(subject[index]!) : subject[index]) === bytes[prefix]) {
       index++;
       if (++prefix === bytes.length) return index - prefix;
     } else if (prefix > 0) prefix = fallback[prefix - 1]!;
@@ -361,7 +367,7 @@ async function executeLiteral(input: OwnedRequest, signal: AbortSignal): Promise
   const { descriptor: selected, rows, ledger } = input;
   const programs: LiteralProgram[] = [];
   for (const pattern of selected.patterns) {
-    programs.push(await compileLiteral(await literalBytes(pattern, selected, ledger, signal), ledger, signal));
+    programs.push(await compileLiteral(await literalBytes(pattern, selected, ledger, signal), ledger, signal, selected.kind === "grep" && selected.insensitive));
   }
   ledger.charge("allocationUnits", 3, signal);
   const results: Float64Array[] = [];
@@ -408,7 +414,7 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
     const fragments = selected.whole
       ? [{ text: "^(", literal: false }, { text: pattern, literal: selected.fixed }, { text: ")$", literal: false }]
       : [{ text: pattern, literal: selected.fixed }];
-    programs.push(await compileEre(fragments, ledger, signal));
+    programs.push(await compileEre(fragments, ledger, signal, selected.kind === "grep" && selected.insensitive));
   }
   ledger.charge("allocationUnits", 3, signal);
   const results: Float64Array[] = [];

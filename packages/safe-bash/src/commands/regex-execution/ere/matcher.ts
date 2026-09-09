@@ -1,4 +1,5 @@
 import { validateUtf8 } from "../utf8.js";
+import { foldAscii } from "../ascii.js";
 import { EreLedger } from "./limits.js";
 import { admitAscii, resolveEreProgram } from "./syntax.js";
 import type { EreNode, EreProgram, EreResult, EreSpan } from "./types.js";
@@ -231,7 +232,7 @@ async function runMatcher(program: EreProgram, subject: string, ledger: EreLedge
         case "literal":
         case "set": {
           const code = subject.charCodeAt(state.position);
-          if (state.position < subject.length && (node.kind === "dot" || node.kind === "literal" && node.code === code || node.kind === "set" && (code < 128 ? node.members[code] : node.nonAscii))) {
+          if (state.position < subject.length && (node.kind === "dot" || node.kind === "literal" && (node.insensitive ? foldAscii(node.code) === foldAscii(code) : node.code === code) || node.kind === "set" && (code < 128 ? node.members[code] : node.nonAscii))) {
             push(state.position + 1, current.next, state.captures, state.histories);
           }
           break;

@@ -39,8 +39,8 @@ It can run inside a workerd request context without Node compatibility flags.
 Literal modes accept **valid non-NUL UTF-8 patterns and subjects**. Grep regex
 modes accept ASCII patterns and valid non-NUL UTF-8 subjects. Invalid UTF-8 and embedded NUL in a subject or pattern are
 explicitly rejected, including malformed subjects when the pattern list is empty.
-Literal matching compares original bytes without decoding, normalization, case
-folding, or replacement characters. Supported results retain original byte
+Literal matching compares original bytes without normalization or replacement
+characters; grep `-i` additionally equates ASCII letter case. Supported results retain original byte
 offsets and command output bytes, including BOM bytes.
 
 These are provider admission rules. Normal `rg` binary detection still handles
@@ -50,14 +50,15 @@ provider rejection. No command-level binary policy is overridden by this profile
 
 | Mode | Supported behavior |
 | --- | --- |
-| `grep -E` | Case-sensitive restricted ASCII ERE patterns over UTF-8 scalars, leftmost-longest matching |
-| `grep -F` | Case-sensitive valid UTF-8 literal matching |
+| `grep -E` | Restricted ASCII ERE patterns over UTF-8 scalars, leftmost-longest matching; optional ASCII `-i` |
+| `grep -F` | Valid UTF-8 literal matching; optional ASCII `-i` |
 | plain `grep` | Conservative BRE subset: ordinary literals, `.`, bracket classes, repetition `*`, leading `^`, and trailing `$`; escapes, interior anchors, leading `*`, and extended operator syntax are rejected |
 | `rg -F` | Case-sensitive valid UTF-8 fixed-string matching |
 | plain regex `rg` | Rejected; POSIX ERE spans are not advertised as rg regex semantics |
 | `grep -o` | Bounded non-overlapping extraction for the supported fixed/BRE/ERE profiles |
+| `grep -i` | ASCII A–Z/a–z equivalence for fixed, BRE and ERE selection and extraction; original output case preserved |
 | `rg -o` | Rejected; rg all-match enumeration is not supported |
-| Non-ASCII regex patterns, Unicode character classes, case folding, smart case, word matching | Rejected |
+| Non-ASCII regex patterns, Unicode character classes, Unicode folding, rg case modes, smart case, word matching | Unsupported |
 | rg path globs | Rejected, including validation with no candidate rows |
 
 Pattern lists, empty patterns, zero-pattern lists, whole-record selection, and
@@ -78,6 +79,14 @@ normalization, Unicode property matching, or locale-dependent classification.
 ordinary `grep -n 'section-title'` can select an HTML line containing `⚽` and
 preserves its original UTF-8 bytes; `grep -Eo '.'` on `é😀` emits each scalar
 separately. Use `grep -F` for non-ASCII literal patterns.
+
+With grep `-i`, ASCII letter comparisons ignore case. Bracket sets include both
+cases before negation, so `[^a]` excludes both `a` and `A`; `[:upper:]` and
+`[:lower:]` both include ASCII letters in either case. Non-ASCII scalars remain
+distinct: fixed `é` does not match `É`, and `k` does not match the Kelvin sign
+`K`. Regex patterns remain ASCII-only. No locale changes this policy, and input
+or output is never lowercased. `-i` works independently of `-o`; both use the same
+work, allocation, match-count and output limits. Unicode folding is not performed.
 
 The worker protocol is unchanged: grep pattern strings contain raw bytes in
 Latin-1 code units and are validated as UTF-8 bytes; rg pattern strings contain

@@ -61,7 +61,7 @@ test("fixed literals, BRE subset, pattern lists, whole and empty patterns retain
 
 test("unsupported dialects and flags are rejected even without subject rows", async () => {
   const unsupported: Descriptor[] = [
-    grep(["x"], { insensitive: true }), grep(["x"], { word: true }),
+    grep(["x"], { word: true }),
     grep(["a\\+"], { extended: false }), grep(["é"]),
     ...["a^", "$a", "a^b", "a$b", "*a", "^*a", "^^*"].map(pattern => grep([pattern], { extended: false })),
     { kind: "rg", patterns: ["a|ab"], fixed: false, case: "sensitive", whole: false, word: false, nullData: false },
@@ -483,4 +483,59 @@ test("UTF-8 preparation and enumeration remain allocation/work bounded and cance
   const rejected = assert.rejects(pending, reason => reason === false);
   controller.abort(false);
   await rejected;
+});
+
+test("ASCII-insensitive grep retains original spans for fixed BRE and ERE", async () => {
+  for (const options of [{ fixed: true }, { extended: false }, { extended: true }]) {
+    const descriptor = grep(["giraffe"], { ...options, insensitive: true });
+    assert.deepEqual(spans(await run(request(descriptor, ["é GiRaFfE", "other"]))), [[3, 10], []]);
+    assert.deepEqual(spans(await run({ id: 1, descriptor, rows: [row("GIRAFFE giraffe", true)] })), [[0, 7, 8, 15]]);
+  }
+});
+
+test("ASCII-insensitive regex closes case sets before complement", async () => {
+  for (const [pattern, text, expected] of [
+    ["[^a]+", "aAébB", [2, 6]],
+    ["[a-c]+", "xAbCy", [1, 4]],
+    ["[[:upper:]]+", "éaZ", [2, 4]],
+    ["[[:lower:]]+", "éZa", [2, 4]],
+    ["^ab+$", "ABb", [0, 3]],
+  ] as const) assert.deepEqual(spans(await run(request(grep([pattern], { insensitive: true }), [text]))), [expected]);
+  const fixed = literal("grep", ["Éa"]);
+  assert.deepEqual(spans(await run(request({ ...fixed, insensitive: true } as Descriptor, ["éA", "ÉA"]))), [[], [0, 3]]);
+});
+
+test("ordinary ERE stays case-sensitive and opted-in capture values retain original case", async () => {
+  const ledger = new EreLedger({ maxExpansionBytes: 65536, maxExpansionFields: 8192 });
+  const sensitive = await compileEre("(a+)", ledger);
+  assert.equal((await matchEre(sensitive, "AA", ledger)).matched, false);
+  const insensitive = await compileEre("(a+)", ledger, undefined, true);
+  assert.deepEqual((await matchEre(insensitive, "AaA", ledger)).values, ["AaA", "AaA"]);
+});
+
+test("ASCII-insensitive matching preserves shared work and allocation bounds", async () => {
+  for (const options of [{ maxWork: 512 }, { maxAllocationUnits: 512 }]) {
+    const reply = await run({ id: 1, descriptor: grep(["a"], { insensitive: true }), rows: [row("A".repeat(1024), true)] }, options);
+    assert.ok("error" in reply);
+    assert.match(reply.error, /work|allocation/);
+  }
+  const reply = await run({ id: 1, descriptor: grep(["(a+)+b"], { insensitive: true }), rows: [row("A".repeat(64), true)] }, { maxStates: 32 });
+  assert.ok("error" in reply);
+  assert.match(reply.error, /states/);
+});
+
+test("ASCII-insensitive enumeration preserves live abort identity and worker reuse", async () => {
+  const executor = new RegexExecutor(createBoundedRegexProvider({ maxWorkers: 1, maxMatchesPerLine: 4096, maxTotalMatches: 4096, maxResultBytes: 65536 }));
+  const controller = new AbortController();
+  const session = executor.open(controller.signal);
+  const descriptor = grep(["a"], { insensitive: true });
+  const pending = session.run(descriptor, [row("A".repeat(4096), true)]);
+  const rejected = assert.rejects(pending, reason => reason === false);
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  controller.abort(false);
+  await rejected;
+  await session.close();
+  const recovered = executor.open(new AbortController().signal);
+  try { assert.deepEqual(await recovered.run(descriptor, [row("aA", true)]), [[{ start: 0, end: 1 }, { start: 1, end: 2 }]]); }
+  finally { await recovered.close(); await executor.dispose(); }
 });
