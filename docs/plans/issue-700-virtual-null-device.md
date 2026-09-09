@@ -152,3 +152,35 @@ and monitor both releases until successful publication. No fix is claimed yet.
   fail closed. New mixed-mount/read-only controls and persistent workerd cases
   are required before the next candidate is accepted. Earlier 37-case workerd
   passes do not certify these newly reproduced compositions.
+- Candidate `a6d2a7aa5fd99612af08b941de8a27c60cd36d81`, packaged as
+  `0.0.0-issue700-local3`, passes all 43 expanded actual-workerd groups with
+  no failures or skips. Mixed-mount and read-only-root aliases pass through
+  the public factory and Shell; no backing-device calls occur. Historical
+  bytes, ETag, and metadata remain unchanged across three recreated local
+  Miniflare instances. The report is
+  `/tmp/kamilio-700-workerd-alias.gf3bQt/candidate-jzpi0M/continuity-GOn15f/final-report.json`.
+  It verifies 59 unchanged input hashes, three tarball SRI bindings, and
+  40 installed-file bindings. All owned instances and containers are disposed.
+  Installed Node, Bun, browser, type, legacy-compatibility, and isolated
+  SafeFS-only checks also pass. This remains candidate evidence, not a
+  published-release claim.
+- The final alias-admission cohort passes 1,383 of 1,384 tests; the remaining
+  WebDAV assertion expects the old metadata-probe sequence. Its additional
+  ancestor and final-entry probes are all depth-zero `PROPFIND`, with no
+  content reads or mutations. Updating that exact ordered trace preserves
+  status/output and metadata-only assertions; the complete focused file then
+  passes all 59 tests. Commit `ed01103b3` changes only that test expectation,
+  not the validated candidate's product code. The fresh full repository gate
+  and final lint are running; delivery and publication remain unclaimed.
+- The complete serial shell run then reports 22,512 passes, four failures,
+  no cancellations, and 63 skips. Two failures are the same metadata-only
+  WebDAV admission change in other current tests; their complete files pass
+  66 tests after exact request-trace updates. The remaining two expose a test
+  importing raw sibling-source MemoryFileSystem alongside canonical packaged
+  FsError, creating incompatible error identities. Using the existing public
+  adapter import fixes all 37 tests in that file without changing any assertion
+  or product code. The original EOF-probe, streaming, and byte-bound checks
+  remain intact. Preserve the failed run at
+  `/tmp/kamilio-700-full-gate-v5.1kgJYn/log` and rerun the complete maintained
+  uncached route with its supported workspace concurrency and reviewed shell
+  parallelism; do not substitute focused passes for the full gate.
