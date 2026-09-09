@@ -89,3 +89,31 @@ merge; these focused checks qualify the additional remote delta and unchanged
 runtime output of the type annotation. Remote CI still validates the final SHA.
 Final root lint (`lint-v3`) also passes all 10,506 configured inputs, root
 TypeScript and workflow lint with no errors or warnings.
+
+## Delivered candidate and release-check correction
+
+Remote main is verified at `adc4d5b8e8ff60fe95ccc80e37aead59b47f3dcc` after a
+normal push. Validated utility issues 674–678 are closed after remote delivery.
+Scoped workflow 34395450065 publishes SafeFS, SafeJS and Safe Bash 0.1.513 with
+provenance. Root workflow 34395450680 fails its packed smoke check, not a utility
+test: serialized native-asset facts intentionally lose their in-process authority.
+
+The same packed smoke command reproduces the failure locally (`root-smoke-red-v1`).
+Refreshing facts initially still fails (`root-smoke-green-v1`, despite its attempted
+green label): the root tarball omits the collector's source/provenance inputs.
+Include exactly the registry, C source, original loader and declaration in its
+packlist. Authenticate installed bytes with the existing bounded collector and
+real metadata, then overlay its fresh facts before policy validation. Do not trust
+serialized facts, weaken private-import guards or authenticate checkout binaries.
+The temporary smoke consumer explicitly installs the current compiler version
+needed by the collector; production dependencies do not change. Its unit
+expectation is first red (`root-smoke-compiler-red-v1`), then green.
+
+The corrected complete packed CLI/SDK smoke passes (`root-smoke-green-v2`), and
+smoke-runner/native-authentication tests pass 114 cases (`root-smoke-unit-v2`),
+including existing serialized-fact, missing/tampered-asset and path controls.
+Keep the failed release and both local failures as evidence; push the narrow
+correction and monitor the new root release through actual publication.
+Final root lint (`root-smoke-lint-v2`) and all 17 package-lint rules pass.
+The repaired smoke consumer contains explicit QA TypeScript tooling; its success
+does not independently certify a TypeScript-free production dependency graph.

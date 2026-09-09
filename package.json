@@ -451,7 +451,11 @@
     "packages/toolcraft-schema/dist",
     "packages/workspace-resolver/dist",
     "packages/worktree/dist",
-    "packages/safe-fs/dist/**/*.d.ts"
+    "packages/safe-fs/dist/**/*.d.ts",
+    "packages/safe-fs/native/assets.json",
+    "packages/safe-fs/native/seek.c",
+    "packages/safe-fs/native/loader.mjs",
+    "packages/safe-fs/src/native/loader.d.ts"
   ],
   "engines": {
     "node": ">=18.18"
