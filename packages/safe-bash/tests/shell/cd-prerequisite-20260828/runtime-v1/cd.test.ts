@@ -276,7 +276,12 @@ for (const adapter of ["memory", "real", "readonly", "s3", "webdav"] as const) t
     assert.equal(result.stderr, "");
     assert.ok(requests.every(request => request.startsWith("PROPFIND:0:")));
     if (adapter === "webdav") assert.deepEqual(requests, [
+      "PROPFIND:0:/dav/absent",
       "PROPFIND:0:/dav/absent/target", "PROPFIND:0:/dav/absent",
+      "PROPFIND:0:/dav/absent/target", "PROPFIND:0:/dav/absent",
+      "PROPFIND:0:/dav/one",
+      "PROPFIND:0:/dav/one/target", "PROPFIND:0:/dav/one/target",
+      "PROPFIND:0:/dav/one",
       "PROPFIND:0:/dav/one/target", "PROPFIND:0:/dav/one/target",
     ]);
   } finally { await rm(root, { recursive: true, force: true }); }
