@@ -115,3 +115,13 @@ in separate Node children with the original one-second deadline and 4,096-byte
 output cap. The 28-input bundle has no module-relative worker assets. All seven
 resource tests pass after this test-only change; the five children plus bundling
 take 955 ms in the focused check.
+
+That reviewed fixture change also requires a current provenance update. Keep the
+old resource-depth receipt and all historical snapshots byte-for-byte unchanged.
+Authenticate the exact new 6,792-byte fixture, reverse only the import insertion
+and hazard-launch replacement to its sealed 6,495-byte predecessor, then run the
+original depth-migration validator to reconstruct the 6,029-byte historical
+snapshot. New negative controls reject path, digest, deadline, cap, scenario,
+assertion, worker-source, and unrelated-byte drift. Existing depth controls remain
+active on the authenticated predecessor. The focused validator suite passes all
+92 cases and strict TypeScript checks.
