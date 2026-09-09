@@ -164,9 +164,9 @@ export async function* fileSource(context: CommandContext, path: string, limits:
 }
 
 export async function publish(context: CommandContext, path: string, source: ByteSource, mode = 0o600): Promise<void> {
-  const options = { signal: context.signal, flag: "wx" as const, mode };
   const capabilities = await operation(context, () => context.fs.capabilitiesFor?.(path, { signal: context.signal }) ?? context.fs.capabilities);
   context.signal.throwIfAborted();
+  const options = { signal: context.signal, flag: "wx" as const, ...(capabilities.permissions === false ? {} : { mode }) };
   if (context.fs.writeStream && capabilities.streamingWrite !== false) {
     let finished = false;
     const observed = (async function* () { yield* readBytes(source, context.signal); finished = true; })();

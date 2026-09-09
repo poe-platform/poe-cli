@@ -1871,6 +1871,7 @@ test("default normal runner passes every discovered active file to serial Node e
   assert.ok(files.includes("tests/commands/grep-utf8-subjects.test.ts"));
   assert.ok(files.includes("tests/commands/grep-insensitive.test.ts"));
   assert.ok(files.includes("tests/commands/grep-bre-literals.test.ts"));
+  assert.ok(files.includes("tests/commands/archive/permissions.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/utf8-subject-review.test.ts"));
   assert.ok(files.includes("tests/commands/regex-execution/bounded-expr-provider.test.ts"));
   assert.ok(files.includes("tests/commands/expr/bre-engine.test.ts"));
