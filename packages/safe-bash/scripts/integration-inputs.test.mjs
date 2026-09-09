@@ -449,6 +449,9 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/commands/jq-control-flow.test.ts"));
   assert.ok(files.includes("tests/commands/jq-control-flow-limits.test.ts"));
   assert.ok(files.includes("tests/commands/yq-control-flow.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml-parser.test.ts"));
+  assert.ok(files.includes("tests/commands/yq-toml-review.test.ts"));
   assert.ok(files.includes("tests/commands/xml-query.test.ts"));
   assert.ok(files.includes("tests/commands/xml-query-review.test.ts"));
   assert.ok(files.includes("tests/commands/sort-human-numeric.test.ts"));

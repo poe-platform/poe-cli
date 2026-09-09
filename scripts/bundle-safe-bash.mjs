@@ -9,6 +9,7 @@ export function resolveBrowserShellBuild(rootDir) {
     entryPoints: {
       "core.browser": path.join(directory, "src/core.browser.ts"),
       "commands/xml/index.browser": path.join(directory, "src/commands/xml/index.ts"),
+      "commands/yq/index.browser": path.join(directory, "src/commands/yq/index.ts"),
     },
     outdir: path.join(directory, "dist"),
     splitting: true,
