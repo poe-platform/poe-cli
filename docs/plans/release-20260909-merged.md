@@ -117,3 +117,25 @@ correction and monitor the new root release through actual publication.
 Final root lint (`root-smoke-lint-v2`) and all 17 package-lint rules pass.
 The repaired smoke consumer contains explicit QA TypeScript tooling; its success
 does not independently certify a TypeScript-free production dependency graph.
+
+## Subsequent remote changes and aggregate-test correction
+
+Repair `b41b3dd22` is verified on remote main. Its scoped release publishes
+0.1.514, and its root packed check passes in CI. That root run is subsequently
+canceled rather than completing publication. New remote main `1e21b143e` retains
+the repair and adds lint-cache maintenance plus ASCII case-insensitive grep.
+Fast-forward the clean local main without discarding either change.
+
+The newer release 34398882314 exposes two stale aggregate-route assertions:
+`grep -i a` is now supported but the tests still expect status 2. Reproduce the
+exact two failures locally after the current build is restored (22 pass, 2 fail).
+An earlier attempt during the build failed module loading and is retained as
+separate evidence, not counted as the assertion reproduction. Change only the
+aggregate test: assert exact successful mixed-case stdout, empty stderr and
+status 0 for `-i`, and retain rejection coverage with unsupported `-w`.
+The corrected file passes 24 cases, and related suites pass 131 cases without
+skips. Evidence is `/tmp/safe-bash-default-executor-refactor-*-20260909.log`.
+The current normal build and complete packed CLI/SDK smoke also pass; product
+code and the command inventory are unchanged by this correction.
+Final root lint passes all 10,508 configured inputs, root types and workflows
+without errors or warnings (`grep-ignore-case-lint-v1`).
