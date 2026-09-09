@@ -5,7 +5,7 @@ import { defaults, exprMatchCeilings, type Descriptor, type Reply } from "../../
 import type { RegexWorker, RegexWorkerRequest } from "../../../src/commands/regex-execution/provider.js";
 import { EreLedger } from "../../../src/commands/regex-execution/ere/limits.js";
 import { compileEre } from "../../../src/commands/regex-execution/ere/syntax.js";
-import { createEreSpanMatcher, matchEre } from "../../../src/commands/regex-execution/ere/matcher.js";
+import { createEreSpanMatcher, matchEre, prepareUtf8EreSubject } from "../../../src/commands/regex-execution/ere/matcher.js";
 import { RegexExecutor } from "../../../src/commands/regex-execution/portable.js";
 
 const grep = (patterns: string[], overrides: object = {}): Descriptor => ({
@@ -87,12 +87,12 @@ test("BRE boundary-anchor admission retains character-class literals and named c
   }
 });
 
-test("raw non-ASCII, invalid UTF-8 and NUL are refused without decoding or replacement", async () => {
-  for (const bytes of [Uint8Array.of(0xff), Uint8Array.of(0xc0, 0x80), Uint8Array.of(0), new TextEncoder().encode("é")]) {
+test("invalid UTF-8 and NUL are refused without decoding or replacement", async () => {
+  for (const bytes of [Uint8Array.of(0xff), Uint8Array.of(0xc0, 0x80), Uint8Array.of(0)]) {
     const input = { ...request(grep(["."])), rows: [{ bytes, all: false, terminated: true }] };
     const reply = await run(input);
     assert.ok("error" in reply);
-    assert.match(reply.error, /non-NUL ASCII/);
+    assert.match(reply.error, /non-NUL UTF-8/);
     assert.deepEqual(input.rows[0]!.bytes, bytes);
   }
 });
@@ -429,4 +429,58 @@ test("empty and mixed selection rows consume the same aggregate match allowance"
   const over = await run(mixed, { maxTotalMatches: 2 });
   assert.ok("error" in over);
   assert.match(over.error, /total match/);
+});
+
+test("ordinary ASCII grep patterns search UTF-8 HTML with original byte spans", async () => {
+  const text = '<div class="section-title">⚽ Alternate Plan: Football Fans</div>';
+  for (const extended of [false, true]) {
+    for (const pattern of ["section-title", "Alternate Plan"]) {
+      const start = Buffer.byteLength(text.slice(0, text.indexOf(pattern)));
+      assert.deepEqual(spans(await run(request(grep([pattern], { extended }), [text]))), [[start, start + pattern.length]]);
+    }
+  }
+  assert.deepEqual(spans(await run(request(grep(["absent"]), ["café ⚽"]))), [[]]);
+});
+
+test("UTF-8 regex enumeration consumes scalars and retains original byte offsets", async () => {
+  for (const [pattern, expected] of [
+    [".", [0, 2, 2, 6, 6, 7]],
+    ["[^a]+", [0, 6]],
+    ["[[:alpha:]]+", [6, 7]],
+    ["^..a$", [0, 7]],
+    ["", [0, 0, 2, 2, 6, 6, 7, 7]],
+  ] as const) assert.deepEqual(spans(await run({ id: 1, descriptor: grep([pattern]), rows: [row("é🦊a", true)] })), [expected]);
+});
+
+
+test("prepared UTF-8 subject owns its input and rejects interior-byte cursors and foreign programs", async () => {
+  const ledger = new EreLedger({ maxExpansionBytes: 65536, maxExpansionFields: 8192 });
+  const program = await compileEre([{ text: ".", literal: false }], ledger);
+  const bytes = new TextEncoder().encode("é🦊a");
+  const preparing = prepareUtf8EreSubject(bytes, ledger);
+  bytes.fill(120);
+  const prepared = await preparing;
+  const scan = prepared(program);
+  assert.deepEqual(await scan(0), { start: 0, end: 2 });
+  assert.deepEqual(await scan(2), { start: 2, end: 6 });
+  assert.deepEqual(await scan(6), { start: 6, end: 7 });
+  for (const cursor of [1, 3, 4, 5, -1, 8, NaN]) await assert.rejects(scan(cursor), RangeError);
+  assert.throws(() => prepared({ ...program }), TypeError);
+  const other = new EreLedger({ maxExpansionBytes: 65536, maxExpansionFields: 8192 });
+  const foreign = await compileEre([{ text: ".", literal: false }], other);
+  assert.throws(() => prepared(foreign), TypeError);
+});
+
+test("UTF-8 preparation and enumeration remain allocation/work bounded and cancellable", async () => {
+  for (const options of [{ maxAllocationUnits: 512 }, { maxWork: 512 }]) {
+    const reply = await run({ id: 1, descriptor: grep(["."]), rows: [row("🦊".repeat(256), true)] }, options);
+    assert.ok("error" in reply);
+    assert.match(reply.error, /allocation|work/);
+  }
+  const controller = new AbortController();
+  const ledger = new EreLedger({ maxExpansionBytes: 65536, maxExpansionFields: 8192 });
+  const pending = prepareUtf8EreSubject(new TextEncoder().encode("🦊".repeat(4096)), ledger, controller.signal);
+  const rejected = assert.rejects(pending, reason => reason === false);
+  controller.abort(false);
+  await rejected;
 });

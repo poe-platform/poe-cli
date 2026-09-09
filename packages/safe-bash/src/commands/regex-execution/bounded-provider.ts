@@ -4,7 +4,8 @@ import { matchExprSteps } from "../expr/bre-engine.js";
 import { EreSyntaxError, EreUnsupportedError, EreProfileLimitError, EreUsageUnknownError } from "./ere/errors.js";
 import { EreLedger } from "./ere/limits.js";
 import { compileEre } from "./ere/syntax.js";
-import { createEreSpanMatcher, matchEre } from "./ere/matcher.js";
+import { prepareUtf8EreSubject } from "./ere/matcher.js";
+import { validateUtf8 } from "./utf8.js";
 import type { EreProgram } from "./ere/types.js";
 import type { BoundedRegexProvider, RegexWorker, RegexWorkerRequest } from "./provider.js";
 import { ExprMatchError, exprMatchCeilings, type ExprMatchDescriptor, type ExprMatchLimits, type ExprMatchReply, type GrepDescriptor, type Reply, type Row, type SearchDescriptor } from "./protocol.js";
@@ -240,24 +241,6 @@ async function admitBre(pattern: string, ledger: EreLedger, signal: AbortSignal)
   }
 }
 
-async function validateUtf8(input: Uint8Array | string, ledger: EreLedger, signal: AbortSignal): Promise<void> {
-  for (let index = 0; index < input.length;) {
-    const first = typeof input === "string" ? input.charCodeAt(index) : input[index]!;
-    const width = first < 0x80 ? 1 : first >= 0xc2 && first <= 0xdf ? 2
-      : first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 0;
-    ledger.charge("work", Math.max(width, 1), signal);
-    if (first === 0 || width === 0 || width > input.length - index) fail("unsupported", "literal patterns and subjects require valid non-NUL UTF-8 bytes");
-    for (let continuation = 1; continuation < width; continuation++) {
-      const byte = typeof input === "string" ? input.charCodeAt(index + continuation) : input[index + continuation]!;
-      if (byte < 0x80 || byte > 0xbf || continuation === 1 && (
-        first === 0xe0 && byte < 0xa0 || first === 0xed && byte > 0x9f
-        || first === 0xf0 && byte < 0x90 || first === 0xf4 && byte > 0x8f
-      )) fail("unsupported", "literal patterns and subjects require valid non-NUL UTF-8 bytes");
-    }
-    index += width;
-    await ledger.checkpoint(signal);
-  }
-}
 
 async function literalBytes(pattern: string, selected: SelectionDescriptor, ledger: EreLedger, signal: AbortSignal): Promise<Uint8Array> {
   const { kind } = selected;
@@ -431,28 +414,18 @@ async function execute(input: OwnedRequest, signal: AbortSignal): Promise<Reply>
   const results: Float64Array[] = [];
   const usage: MatchUsage = { count: 0 };
   for (const row of rows) {
-    // The admitted ASCII profile makes every character offset the original byte offset.
-    ledger.charge("allocationUnits", row.bytes.length * 2 + 2, signal);
-    const characters: string[] = [];
-    for (const byte of row.bytes) {
-      ledger.charge("work", 1, signal);
-      if (byte === 0 || byte > 127) fail("unsupported", "subjects require non-NUL ASCII; Unicode and invalid UTF-8 are unsupported");
-      characters.push(String.fromCharCode(byte));
-      await ledger.checkpoint(signal);
-    }
-    const subject = characters.join("");
+    const subject = await prepareUtf8EreSubject(row.bytes, ledger, signal);
     if (row.all) {
       ledger.charge("allocationUnits", programs.length + 1, signal);
       const finders: ((from: number) => Promise<Span | undefined>)[] = [];
-      for (const program of programs) finders.push(await createEreSpanMatcher(program, subject, ledger, signal));
+      for (const program of programs) finders.push(subject(program));
       results.push(await enumerate(input, row, finders, usage, signal));
       continue;
     }
     let span: { readonly start: number; readonly end: number } | undefined;
     for (const program of programs) {
-      const match = await matchEre(program, subject, ledger, signal);
-      if (!match.matched) continue;
-      const candidate = match.captures[0]!;
+      const candidate = await subject(program)(0);
+      if (!candidate) continue;
       if (selected.kind === "grep") { span = candidate; break; }
       // Fixed rg patterns select the first occurrence, breaking ties by pattern order.
       if (!span || candidate.start < span.start) span = candidate;
@@ -547,7 +520,7 @@ class CooperativeWorker implements RegexWorker {
   }
 }
 
-/** Cooperative ASCII grep/expr regex and non-NUL UTF-8 literals; not a native-worker/RSS sandbox. */
+/** Cooperative ASCII grep patterns over UTF-8 scalars, ASCII expr, and UTF-8 literals; not a native-worker/RSS sandbox. */
 export function createBoundedRegexProvider(input: BoundedRegexProviderOptions = {}): BoundedRegexProvider {
   const limits = options(input);
   let active = 0;

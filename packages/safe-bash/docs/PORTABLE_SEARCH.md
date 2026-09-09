@@ -36,8 +36,8 @@ from the Node and browser entries. It uses the package's cooperative ERE
 interpreter and byte-literal matcher, not native guest `RegExp`, a subprocess, or a Node/browser Worker.
 It can run inside a workerd request context without Node compatibility flags.
 
-Literal modes accept **valid non-NUL UTF-8 patterns and subjects**; regex modes
-remain ASCII-only. Invalid UTF-8 and embedded NUL in a subject or pattern are
+Literal modes accept **valid non-NUL UTF-8 patterns and subjects**. Grep regex
+modes accept ASCII patterns and valid non-NUL UTF-8 subjects. Invalid UTF-8 and embedded NUL in a subject or pattern are
 explicitly rejected, including malformed subjects when the pattern list is empty.
 Literal matching compares original bytes without decoding, normalization, case
 folding, or replacement characters. Supported results retain original byte
@@ -50,14 +50,14 @@ provider rejection. No command-level binary policy is overridden by this profile
 
 | Mode | Supported behavior |
 | --- | --- |
-| `grep -E` | Case-sensitive restricted ASCII ERE, leftmost-longest matching |
+| `grep -E` | Case-sensitive restricted ASCII ERE patterns over UTF-8 scalars, leftmost-longest matching |
 | `grep -F` | Case-sensitive valid UTF-8 literal matching |
 | plain `grep` | Conservative BRE subset: ordinary literals, `.`, bracket classes, repetition `*`, leading `^`, and trailing `$`; escapes, interior anchors, leading `*`, and extended operator syntax are rejected |
 | `rg -F` | Case-sensitive valid UTF-8 fixed-string matching |
 | plain regex `rg` | Rejected; POSIX ERE spans are not advertised as rg regex semantics |
 | `grep -o` | Bounded non-overlapping extraction for the supported fixed/BRE/ERE profiles |
 | `rg -o` | Rejected; rg all-match enumeration is not supported |
-| Unicode regex, case folding, smart case, word matching | Rejected |
+| Non-ASCII regex patterns, Unicode character classes, case folding, smart case, word matching | Rejected |
 | rg path globs | Rejected, including validation with no candidate rows |
 
 Pattern lists, empty patterns, zero-pattern lists, whole-record selection, and
@@ -68,6 +68,16 @@ grammar has a 4,096-node and 64-level ceiling. Descriptor and pattern validation
 run even when a batch has no subject rows. Sed continues to use its existing
 separate instruction interpreter and limits; this provider does not redefine
 sed's dialect.
+
+Grep BRE/ERE matching treats each Unicode scalar as one subject character:
+`.` matches one scalar, including an emoji; ASCII bracket ranges and named
+classes match only their ASCII members, while negated classes can match
+non-ASCII scalars. Combining marks remain separate characters. There is no
+normalization, Unicode property matching, or locale-dependent classification.
+`LC_ALL=C` does not change this profile into byte-wise regex matching. For example,
+ordinary `grep -n 'section-title'` can select an HTML line containing `⚽` and
+preserves its original UTF-8 bytes; `grep -Eo '.'` on `é😀` emits each scalar
+separately. Use `grep -F` for non-ASCII literal patterns.
 
 The worker protocol is unchanged: grep pattern strings contain raw bytes in
 Latin-1 code units and are validated as UTF-8 bytes; rg pattern strings contain
@@ -83,7 +93,8 @@ length across patterns. Searches continue after the preceding nonempty match,
 using offsets into the original record so anchors retain their meaning. Empty
 matches select a record but produce no `-o` output; iteration advances by one
 valid character after an empty match. Fixed matching preserves UTF-8 byte spans;
-BRE/ERE extraction retains the same ASCII profile as ordinary selection.
+BRE/ERE extraction uses the same UTF-8 scalar profile as ordinary selection,
+with spans expressed as original byte offsets.
 Count, quiet, filename-only, and inverted-selection modes request selection
 instead of enumerating ranges when `-o` does not produce extracted output.
 
