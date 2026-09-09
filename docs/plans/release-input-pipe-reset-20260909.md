@@ -146,3 +146,45 @@ are linted with zero errors or warnings. Evidence:
 `out/native-peer-type-assertions-20260909/root-eslint-v1.log`. The wider maintained
 Bash unit gate remains the next integration check; no remote delivery or
 successful replacement release is claimed by these local results.
+
+## Complete maintained Bash gate
+
+After local repair commits `c7705ba33` and `1761995e2`, the maintained
+`npm run test:unit --workspace=virtual-bash` route completes successfully at
+HEAD `1761995e2842a3d7decf12abe8cce3664fca7a74`. It runs all 302 runner checks
+and discovers 673 active TypeScript test files. The Bash result is 26,611
+passes, zero failures/cancellations, and 63 skips out of 26,674 reported tests.
+The skips and reported filesystem policy divergences are not parity passes.
+
+The command runs on Node 22.23.2 with the previously approved test temporary
+directory. Repository-local Git hook variables are cleared only in the child
+environment. No optional profiles, selectors, cached replacement result, or
+test exclusions are introduced. This is the full maintained Bash workspace
+route, not another repository-wide `npm test` run.
+
+The before/after HEAD and pending-worktree status agree. Hashes of both process
+helper files, the corrected native-peer test, and the current numfmt/truncate
+implementations also agree at the gate boundaries. Pending truncate work is
+preserved and remains part of this mixed-worktree unit run. Evidence is in
+`out/release-input-pipe-20260909/full-bash-unit-v1.log`, its zero exit receipt,
+and adjacent HEAD/status/hash records.
+
+The local fixes are validated; they have not been pushed, closed out remotely,
+or validated by a release containing these local commits. The historical root
+release at `9a6dd926` failed its unread-extra-input assertion.
+
+## Subsequent read-only release observation
+
+A later read-only check finds root workflow run `34378014482`, for remote
+commit `70388ee34694164051a95d7afd7d0e35f428a43b`, completed successfully on
+September 9, 2026 at 16:59:45 UTC. Its `release-stable` job `102562143240`
+succeeds, and the publication log explicitly reports `poe-code@15.0.2`
+published to npm's latest dist-tag at 16:59:40 UTC, followed by the GitHub
+release. This is an actual publication report, not merely a successful no-op.
+The retained log is
+`out/release-input-pipe-20260909/release-34378014482-publication.log`.
+
+This newer remote success supersedes the earlier failure as the latest observed
+root release status. It does not prove that these separately held local commits
+were delivered or that the remote helper equals the local repair. No push,
+issue mutation, workflow rerun, or remote reconciliation was performed.
