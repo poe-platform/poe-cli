@@ -207,3 +207,65 @@ Memory directory-reference semantics and version identity remain unresolved.
 These checks do not establish full root declaration/API coverage, actual browser
 or Worker execution, other native targets, syscall shutdown fault behavior,
 hermetic release toolchain provenance, remote-main delivery, or publication.
+
+## Clean committed-root qualification: September 9, 2026
+
+A separate artifact is built from exact committed HEAD
+`1761995e2842a3d7decf12abe8cce3664fca7a74`, not the mixed worktree used above.
+The admitted Git archive contains 49,960 blobs; all remain byte-identical after
+the normal `npm run build`. All 1,638 root esbuild inputs resolve inside the
+isolated source tree. Dependency installation disables lifecycle scripts;
+the maintained build itself runs normally and succeeds. This does not establish
+hermetic compiler/sysroot provenance.
+
+The actual npm tarball has SHA-256
+`63bfe451abbc005b499d9afb33d1d6fc101baaf3ad6d72d5a1904eb448ffe74b`.
+All 5,053 members match the pre-pack built files, and all installed files match
+after relocation to `/var/tmp/poe-code-committed-consumer.b42WMd-relocated`.
+The package is a real directory, the old consumer path is absent, and no
+ancestor `node_modules` supplies fallback dependencies. Compared with the older
+5,069-member mixed-worktree artifact, this package excludes the four truncate
+outputs and twelve stale browser/portable outputs. The two artifacts are not
+byte-equivalent; earlier qualification is not silently transferred.
+
+The committed four-utility fixture passes its cmp, fmt, shuf and numfmt
+workflows on Node 22.23.2, Bun 1.3.8 and Node with the browser condition.
+Only its public import specifier changes from the scoped package to the root
+export, using the maintained TypeScript-AST rewriter. Reversing that one change
+reproduces the original fixture bytes. These are maintained expected cases,
+not fresh GNU oracle captures; truncate remains absent from the exact inventory.
+
+Six selected public retained-handle/native controls pass separately on Node
+18.18.0, Node 22.23.2 and Bun 1.3.8: canonical identity, bigint END seek,
+rename-retained inode/resize, pre-abort behavior, closed-handle errors, and
+loading exactly the installed native binary. Owned handles and fixture
+directories are closed/removed. This is Linux x64 coverage, not other targets
+or the complete public API.
+
+Fresh GNU numfmt comparisons pass all 16 cases with exact stdout bytes, stderr
+bytes and exit status on Node 22.23.2 and the Node-hosted browser condition.
+All sixteen shells are disposed in each profile. The first Bun comparison
+invocation stalls without producing results and is terminated with SIGTERM
+(exit 143); its failure is preserved, not counted as a pass. A resolver-only
+Bun control succeeds. The cause of the larger invocation remains under
+investigation at this checkpoint, so no equivalent Bun differential result is
+claimed here despite its separate maintained-workflow passes.
+
+A subsequent bounded diagnostic runs a native-only control, a stage-instrumented
+driver, and one exact original-driver replay. The original replay succeeds on
+Bun 1.3.8 with all 16 byte-exact comparisons and 16 disposals, preserving the
+binding and installed-entry assertions. Its driver SHA-256 remains
+`2c8870ebd1c18c3d1e847c7948e1604afdaa870fb826098113e11a6a34fdffc2`.
+The separate result is
+`out/issue-678-tmp/committed-root-numfmt-original-replay-bun-v2.json` with exit 0.
+All instrumented stages complete, so they do not identify where the historical
+invocation stalled. No production change or harness correction was made. The
+initial exit 143 remains a failed invocation; this bounded success neither
+erases it nor establishes a fixed hang or reliable repeated execution.
+
+Evidence is under `out/issue-678-tmp/`, prefixed `committed-root-`: source
+admission and build audit, pack verification, relocated consumer admission,
+`utilities-*`, `native-*`, and `numfmt-*` records retain separate scopes.
+Memory directory-reference semantics and version identity remain unresolved.
+No remote-main delivery, publication, full utility parity, or actual browser
+engine execution is established by these local checks.
