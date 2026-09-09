@@ -120,6 +120,47 @@ describe("fixture operation observation retention", () => {
     expect(decodings).toBe(0);
   });
 
+  it("does not copy cached listings for internal pathname membership", () => {
+    const state = model(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`src/allocation-${index}.js`, ""])));
+    state.guard.directory("src");
+    const before = state.guard.snapshot().metadataOperations;
+    const iterator = Array.prototype[Symbol.iterator];
+    let listingIterations = 0;
+    Array.prototype[Symbol.iterator] = function(this: unknown[]) {
+      if (this.length === 12 && typeof this[0] === "string" && this[0].startsWith("allocation-")) listingIterations++;
+      return iterator.call(this);
+    };
+    let result;
+    try { result = state.guard.directory("src", true); }
+    finally { Array.prototype[Symbol.iterator] = iterator; }
+    expect(result.inspections.size).toBe(12);
+    expect(state.guard.snapshot().metadataOperations - before).toBe(148);
+    expect(state.operations.filter(operation => operation.method === "readdirSync" && operation.path === root + "/src")).toHaveLength(14);
+    expect(listingIterations).toBe(2); // One outward copy and one traversal, never per-child copies.
+  });
+
+  it("keeps raw-order cache entries private when callers sort or mutate listings", () => {
+    const state = model({ "src/z.js": "", "src/a.js": "" });
+    const guard = createLintInputGuard({ root, boundaries, fileSystem: { ...state.fileSystem, readdirSync(absolute: string, options: unknown) {
+      return absolute === root + "/src" ? [Buffer.from("z.js"), Buffer.from("a.js")] : state.fileSystem.readdirSync(absolute, options as any);
+    } } });
+    expect(guard.directory("src").entries).toEqual(["a.js", "z.js"]);
+    const decode = vi.spyOn(Buffer.prototype, "toString");
+    let decodings;
+    let entries;
+    try {
+      entries = guard.directory("src").entries;
+      decodings = decode.mock.calls.filter(([encoding]) => encoding === "utf8").length;
+    } finally { decode.mockRestore(); }
+    expect(decodings).toBe(0);
+    entries[0] = "forged.js";
+    expect(guard.directory("src").entries).toEqual(["a.js", "z.js"]);
+    const ancestors = guard.fileSystem.readdirSync("/");
+    ancestors.splice(0, ancestors.length, "forged");
+    expect(guard.fileSystem.readdirSync("/")).not.toContain("forged");
+    expect(() => guard.inspect("src/forged.js")).toThrow("exact pathname spelling required");
+  });
+
   it("does not expose or borrow cached directory observations", () => {
     const state = model({ "src/π.js": "export {};" });
     const bytes = Buffer.from("π.js");

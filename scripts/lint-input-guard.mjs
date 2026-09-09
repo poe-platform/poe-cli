@@ -157,7 +157,7 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
     if (previous && values.length === previous.bytes.length && previous.bytes.every((expected, index) => Buffer.isBuffer(values[index]) && values[index].equals(expected))) {
       decodedDirectories.delete(absolute);
       decodedDirectories.set(absolute, previous);
-      return [...previous.strings];
+      return previous.strings;
     }
     let byteLength = 0;
     const strings = Array.from(values, value => {
@@ -169,6 +169,7 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
       return name;
     });
     assert.equal(new Set(strings).size, strings.length, 'duplicate directory entry');
+    Object.freeze(strings);
     if (previous) {
       decodedDirectories.delete(absolute);
       decodedDirectoryBytes -= previous.byteLength;
@@ -183,7 +184,7 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
         decodedDirectoryBytes -= removed.byteLength;
         decodedDirectoryEntries -= removed.bytes.length;
       }
-      decodedDirectories.set(absolute, { bytes: values.map(value => Buffer.from(value)), strings: [...strings], byteLength });
+      decodedDirectories.set(absolute, { bytes: values.map(value => Buffer.from(value)), strings, byteLength });
       decodedDirectoryBytes += byteLength;
       decodedDirectoryEntries += values.length;
     }
@@ -328,7 +329,7 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
     if (inspectEntries) ancestors.unshift({ absolute: '/', identity: Object.fromEntries(identityKeys.map(key => [key, input.rootStat[key]])) });
     assert.ok(input.stat.isDirectory() && !input.stat.isSymbolicLink(), 'regular non-symlink directory required');
     budget(counters.directories < limits.directories, 'directory cap');
-    const entries = names(input.absolute).sort();
+    const entries = [...names(input.absolute)].sort();
     budget(counters.entries + entries.length <= limits.entries, 'aggregate directory entry cap');
     counters.directories++;
     counters.entries += entries.length;
@@ -590,7 +591,7 @@ export function createLintInputGuard({ root, boundaries, fileSystem = fs, limits
       assert.ok(options === undefined || (options && Object.keys(options).length === 1 && options.encoding === 'buffer'), 'unsupported directory read options');
       const path = absoluteInput(absolute);
       const entries = path === null ? names(absolute) : directory(path).entries;
-      return options ? entries.map(name => Buffer.from(name, 'utf8')) : entries;
+      return options ? entries.map(name => Buffer.from(name, 'utf8')) : path === null ? [...entries] : entries;
     },
     lstatSync(absolute) {
       available();
