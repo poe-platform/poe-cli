@@ -196,3 +196,68 @@ observable differences that must be fixed before delivery.
 - Remote main advances independently to `cc49d6f0f` during these checks.
   Preserve that concurrent mv fix when integrating cmp; the prior full gate
   is not represented as a test of the yet-to-be-rebased combined tree.
+
+## September 9, 2026: zero-limit pipe-skip regression
+
+- Renewed source-first scrutiny finds a concrete missed workflow, not a version
+  identity difference. GNU diffutils 3.7 `cmp.c` discards a nonseekable initial
+  prefix before entering its comparison loop, including when `-n0` requests no
+  compared bytes. The existing virtual cursor only discards that prefix while
+  filling comparison buffers, which the zero-limit loop never requests.
+- With input bytes `01 02 80 ff`,
+  `cat left | { cmp -n0 -i2:0 - right; cat; }` must leave `80 ff` for the final
+  `cat`. The current implementation instead leaves all four bytes. Reversing
+  stdin's operand position reproduces the same bug. Both implementations return
+  status 0; checking only status or cmp's own empty output would miss it.
+- Four bounded original controls and their exact stdout/stderr/status are in
+  `out/issue-674-cmp-audit-v1/native-v2.json`. The in-memory reproduction records
+  two failing pipe-skip cases and two passing no-skip/seekable controls in
+  `unit-red-v1.log`; no product change precedes that reproduction. Original
+  source and executable hashes are retained; executable bytes are not decoded.
+- Root assigns the cmp owner a focused cursor/test repair. Preserve early-open
+  failures, same-input shortcuts, bounded reads, cancellation and cleanup.
+  Consume the skipped bytes, not any downstream byte, and retain native results
+  unchanged. Existing version/localization limitations are not user waivers of
+  the renewed one-to-one comparison requirement.
+- After the maintained focused regression and neighboring tests pass, inspect
+  an actual source-shell terminal capture using the maintained screenshot tool:
+  pipe an ASCII input through both operand orientations, a zero-skip control and
+  a seekable-input control, then inspect what the following `cat` receives.
+  This ad hoc visual check supplements the binary-byte regressions; it is not a
+  screenshot test, packaged-consumer qualification, push or release.
+
+### Focused repair and verification
+
+- The cursor now consumes pending nonseekable prefixes before comparison while
+  retaining existing admission and early-return ordering. A zero-limit named
+  nonregular stream receives a positive, bounded chunk hint; positive-limit
+  hints are unchanged. No new API, backend policy, shared-input protocol or
+  native fallback is introduced.
+- The owner reads all 695 lines of the original utility and, after bounded
+  retrieval of the official 3.7 source archive, all 109 lines of `lib/cmpbuf.c`
+  and 19 lines of its header. The archive's utility bytes match the previously
+  authenticated original before its helpers are used. Source hashes, admission
+  limits and relevant helper sections are recorded in
+  `out/issue-674-cmp-skip-repair-v1/handoff.md`.
+- Maintained TDD preserves the initial 23-failure/7-pass reproduction and the
+  later independently reproduced zero-chunk stream defect. The final focused
+  results pass 34 new regressions, 218 existing cmp tests and 61 adversarial
+  tests: 313 individual cases, no failures or skips. The selected three-file
+  runner and scoped strict types also pass. The original four unchanged native
+  controls replay successfully; that is not a fresh native execution.
+- Terminal inspection passes all four ASCII workflows with the expected
+  downstream output `CD`, `CD`, `ABCD`, `CD`, each exit 0 and empty stderr.
+  The maintained screenshot tool renders
+  `out/issue-674-cmp-skip-repair-v1/terminal-v2.png`, which root visually inspects.
+  The first image remains: its fixture incorrectly supplied strings to the
+  Uint8Array-only filesystem API and failed before cmp ran. Only the fixture is
+  corrected; that failed capture is not a product regression or passing test.
+- These checks concern the current source fix, not the older packed artifacts.
+  Full-repository unit completion and the separate truncate native metadata/lock
+  prerequisite remain unproven. No remote delivery or issue closure is implied.
+- The maintained discovery route includes `tests/commands/cmp-skip.test.ts`
+  exactly once. Root `npm run lint:eslint` completes successfully for all 10,473
+  configured inputs, with zero errors and warnings; receipt:
+  `out/issue-674-cmp-skip-repair-v1/root-eslint-v1.log` and `.exit`.
+  This is the ESLint gate, not a claim that the full root lint/types/workflow or
+  full unit route was rerun after this focused fix.

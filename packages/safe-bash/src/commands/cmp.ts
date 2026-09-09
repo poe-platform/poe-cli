@@ -235,7 +235,10 @@ class Cursor {
       this.stat = stat;
       this.position = skip;
       if (stat?.type === "file" && Number.isSafeInteger(stat.size) && stat.size >= 0) this.size = Math.max(0, stat.size - skip);
-      if (limit === 0) return;
+      if (limit === 0 && (this.handle || Number.isFinite(this.size) || this.skip === 0)) {
+        this.skip = 0;
+        return;
+      }
       if (this.handle) {
         const handle = this.handle;
         let position = Number.isFinite(this.size) ? Math.min(skip, stat!.size) : Math.min(skip, Number.MAX_SAFE_INTEGER);
@@ -249,7 +252,7 @@ class Cursor {
       } else if (this.context.fs.readStream && capabilities.streamingRead !== false) {
         const start = Number.isFinite(this.size) ? Math.min(skip, stat!.size) : 0;
         if (Number.isFinite(this.size)) this.skip = 0;
-        this.source = () => this.context.fs.readStream!(path, { signal: this.signal, chunkSize: Math.min(blockBytes, limit),
+        this.source = () => this.context.fs.readStream!(path, { signal: this.signal, chunkSize: Math.min(blockBytes, limit || this.skip),
           ...(start ? { start } : {}),
           ...(limit === Infinity || this.skip ? {} : { endExclusive: Math.min(Number.MAX_SAFE_INTEGER, start + limit) }) });
       } else {
@@ -280,6 +283,7 @@ class Cursor {
 
   async fill(remaining: number): Promise<boolean> {
     this.signal.throwIfAborted();
+    if (remaining === 0 && this.skip === 0) return false;
     if (!this.reader) {
       try { this.iterator = this.source!()[Symbol.asyncIterator](); }
       catch (error) { throw inputError(error, this.name); }
@@ -296,6 +300,7 @@ class Cursor {
     }
     while (this.offset === this.bytes.length) {
       this.signal.throwIfAborted();
+      if (remaining === 0 && this.skip === 0) return false;
       this.requestBytes = Math.min(blockBytes, this.skip || remaining);
       const item = await this.reader!.next();
       if (item.done) return false;
@@ -392,6 +397,7 @@ async function compare(context: CommandContext, parsed: CmpOptions): Promise<num
     const flush = async (): Promise<void> => {
       if (report) { await output(context, report); report = ""; }
     };
+    for (const cursor of cursors) await cursor.fill(0);
     while (compared < limit) {
       const hasLeft = await left.fill(limit - compared);
       const hasRight = await right.fill(limit - compared);
