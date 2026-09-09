@@ -4500,9 +4500,11 @@ export class Runtime {
       for (const byte of bytes) if (byte !== 0) bytes[length++] = byte;
       while (length && bytes[length - 1] === 10) length--;
       const sanitized = bytes.subarray(0, length);
-      try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(sanitized); }
+      const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+      try { return decoder.decode(sanitized); }
       catch (error) {
-        if (!(error instanceof TypeError) || (error as NodeJS.ErrnoException).code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
+        this.signal.throwIfAborted();
+        if (!(error instanceof TypeError) || ("code" in error && error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA")) throw error;
         return shellValueFromBytes(sanitized, io[valueScope]);
       }
     }

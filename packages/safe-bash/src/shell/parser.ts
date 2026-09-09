@@ -450,9 +450,11 @@ class Lexer {
       if (character === "'") {
         const nul = bytes.indexOf(0);
         const raw = Uint8Array.from(nul < 0 ? bytes : bytes.slice(0, nul));
-        try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw); }
+        const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+        try { return decoder.decode(raw); }
         catch (error) {
-          if (!(error instanceof TypeError) || !("code" in error) || error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
+          this.budget.admit(0);
+          if (!(error instanceof TypeError) || ("code" in error && error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA")) throw error;
           this.budget.admit(2);
           return shellValueFromBytes(raw);
         }
