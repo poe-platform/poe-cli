@@ -460,6 +460,7 @@ function assertSource7Discovery(files) {
   assert.ok(files.includes("tests/shell/runtime-parameter-depth.test.ts"));
   assert.ok(files.includes("tests/shell/backtick-parameter-failure.test.ts"));
   assert.ok(files.includes("tests/shell/backtick-compound-eof.test.ts"));
+  assert.ok(files.includes("tests/shell/invocation-cleanup-census.test.ts"));
   assert.ok(files.includes("tests/commands/structured/string-work.test.ts"));
   assert.ok(files.includes("tests/commands/cut-bom.test.ts"));
   assert.ok(files.includes("tests/commands/line-fragment-admission.test.ts"));

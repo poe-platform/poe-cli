@@ -175,13 +175,30 @@ export function compilerToolPaths(repository: string, resolve = (from: string, s
   ];
 }
 
-export async function census(directory: string, base = directory): Promise<Hashes> {
+interface CensusReader {
+  readdir(path: string, options: { withFileTypes: true }): Promise<readonly { name: string; isSymbolicLink(): boolean; isDirectory(): boolean }[]>;
+  readFile(path: string): Promise<Uint8Array>;
+}
+
+export async function census(directory: string, base = directory, io: CensusReader = { readdir, readFile }): Promise<Hashes> {
+  const paths: string[] = [];
+  async function visit(current: string): Promise<void> {
+    for (const entry of await io.readdir(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      assert.ok(!entry.isSymbolicLink(), `Unexpected snapshot symlink: ${path}`);
+      if (entry.isDirectory()) await visit(path);
+      else paths.push(path);
+    }
+  }
+  await visit(directory);
   const result: Hashes = {};
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    assert.ok(!entry.isSymbolicLink(), `Unexpected snapshot symlink: ${path}`);
-    if (entry.isDirectory()) Object.assign(result, await census(path, base));
-    else result[relative(base, path)] = digest(await readFile(path));
+  for (let offset = 0; offset < paths.length; offset += 16) {
+    const batch = paths.slice(offset, offset + 16);
+    const reads = await Promise.allSettled(batch.map(async path => digest(await io.readFile(path))));
+    for (const [index, read] of reads.entries()) {
+      if (read.status === "rejected") throw read.reason;
+      result[relative(base, batch[index]!)] = read.value;
+    }
   }
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)));
 }

@@ -117,3 +117,14 @@ original plain prefixed `SyntaxError`; 87 focused parser/DAV checks pass.
 The two native-retirement scenarios reported success with no live workers before
 their surrounding test deadlines expired. Their verification overhead is being
 measured separately; no timeout or retirement assertion is waived.
+
+Timing investigation showed native retirement itself completed in 797/868 ms;
+reconstructing the peer graph took only 183 ms, so graph verification remains
+unchanged. Snapshot census now hashes in batches of at most 16 reads after full
+recursive admission. Every started read settles before a failure propagates;
+no later batch starts on failure, and sorted hashes and symlink refusal remain.
+Four memory-only tests first exposed serial overlap/draining behavior and now
+pass, with independent review. The unchanged public cleanup file passes all 20
+native and tamper scenarios under the original deadlines; the previously
+cancelled cases completed in 6.27 s and 2.89 s. The rebuilt public WebDAV listing
+suite passes all three cases, and maintained discovery passes 100 checks.
