@@ -73,23 +73,66 @@ export interface Element {
 
 export class IndexedBinding {
   readonly values = new Map<number, Element>();
+  readonly keys = new Map<string, { index: number; text: OwnedText; admission: Admission }>();
+  readonly keyByIndex = new Map<number, string>();
   maximum = -1;
   generation = 0;
   version = 0;
   references = 1;
   assigned = false;
 
-  private constructor(readonly owner: ArrayOwner) {}
+  private constructor(readonly owner: ArrayOwner, readonly associative = false) {}
 
-  static create(parent: ArrayOwner): IndexedBinding {
+  static create(parent: ArrayOwner, associative = false): IndexedBinding {
     const owner = ArrayOwner.create(parent.ledger, parent);
     try {
       owner.reserve({ wrappers: 1, metadata: 128, work: 7 });
-      return new IndexedBinding(owner);
+      return new IndexedBinding(owner, associative);
     } catch (error) {
       void owner.close();
       throw error;
     }
+  }
+
+  async keyIdentity(value: ShellValue, owner: ArrayOwner, signal: AbortSignal): Promise<string> {
+    const length = shellValueByteLength(value);
+    if (!length) throw new ArrayFailure("bad array subscript");
+    const admission = owner.reserve({ payload: length * 5, metadata: 64 + length * 16, work: length + 2 });
+    try {
+    const bytes = shellValueBytes(value);
+    const parts: string[] = [];
+    for (const byte of bytes) {
+      parts.push(byte.toString(16).padStart(2, "0"));
+      await owner.ledger.checkpoint(signal);
+    }
+    return parts.join("");
+    } finally { admission.release(); }
+  }
+
+  async keyIndex(value: ShellValue, owner: ArrayOwner, signal: AbortSignal, create = false): Promise<number | undefined> {
+    const identity = await this.keyIdentity(value, owner, signal);
+    const existing = this.keys.get(identity);
+    if (existing || !create) return existing?.index;
+    const index = this.maximum + 1;
+    const admission = this.owner.reserve({ metadata: 128 + identity.length * 2, work: 8 });
+    let text: OwnedText;
+    try { text = await valueToken(this.owner, value, signal); }
+    catch (error) { admission.release(); throw error; }
+    const entry = { index, text, admission };
+    admission.cleanup = () => {
+      if (this.keys.get(identity) === entry) { this.keys.delete(identity); this.keyByIndex.delete(index); }
+      text.release();
+    };
+    this.keys.set(identity, entry);
+    this.keyByIndex.set(index, identity);
+    this.maximum = index;
+    return index;
+  }
+
+  remove(index: number): void {
+    this.values.get(index)?.slot.release();
+    const identity = this.keyByIndex.get(index);
+    if (identity !== undefined) this.keys.get(identity)?.admission.release();
   }
 
   get(index: number): string | undefined { return this.values.get(index)?.text.value; }
@@ -120,13 +163,23 @@ export class IndexedBinding {
   }
 
   async copy(signal: AbortSignal): Promise<IndexedBinding> {
-    const copy = IndexedBinding.create(this.owner.parent!);
+    const copy = IndexedBinding.create(this.owner.parent!, this.associative);
     copy.assigned = this.assigned;
     this.retain();
     try {
+      for (const [identity, entry] of this.keys) {
+        const admission = copy.owner.reserve({ metadata: 128 + identity.length * 2, work: identity.length + 8 });
+        copy.owner.parent!.adopt(entry.text.admission);
+        const text = entry.text.retain();
+        const cloned = { index: entry.index, text, admission };
+        admission.cleanup = () => { if (copy.keys.get(identity) === cloned) { copy.keys.delete(identity); copy.keyByIndex.delete(entry.index); } text.release(); };
+        copy.keys.set(identity, cloned); copy.keyByIndex.set(entry.index, identity);
+        await copy.owner.ledger.checkpoint(signal, identity.length + 8);
+      }
       for (const [index, element] of this.values) {
         copy.owner.reserve({ work: 2 }).release();
         const slot = copy.owner.reserve({ slots: 1, metadata: 32, work: 5 });
+        copy.owner.parent!.adopt(element.text.admission);
         const text = element.text.retain();
         const cloned = { text, slot };
         slot.cleanup = () => { if (copy.values.get(index) === cloned) copy.values.delete(index); text.release(); };

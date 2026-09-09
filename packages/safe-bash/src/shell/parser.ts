@@ -14,7 +14,7 @@ import type { ByteShellValue, ShellValue } from "../contracts/value.js";
 export type WordPart =
   | { kind: "text"; value: string; quoted: boolean; byteValue?: ByteShellValue }
   | { kind: "arithmetic"; expression: ArithmeticProgram; source: string; line: number; quoted: boolean }
-  | { kind: "variable"; name: string; quoted: boolean; line?: number; prefixNames?: "*" | "@"; transform?: "Q" | "E"; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
+  | { kind: "variable"; name: string; quoted: boolean; line?: number; prefixNames?: "*" | "@"; keys?: boolean; transform?: "Q" | "E"; length?: boolean; operator?: string; alternate?: Word; replacement?: Word; substring?: { offset: Word; length?: Word; source: string } }
   | { kind: "failed-substitution"; diagnostic: string; quoted: boolean }
   | { kind: "failed-parameter"; source: string; line: number; quoted: boolean }
   | { kind: "compound-substitution-eof"; line: number; quoted: boolean }
@@ -580,7 +580,7 @@ class Lexer {
       if (!name) this.error("Unsupported parameter expansion");
       this.position += name.length;
       let prefixNames: "*" | "@" | undefined;
-      if (listing) {
+      if (listing && this.source[this.position] !== "[") {
         const separator = this.source[this.position];
         if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name) || (separator !== "*" && separator !== "@") || this.source[this.position + 1] !== "}") this.error("Unsupported indirect parameter expansion");
         prefixNames = separator;
@@ -590,12 +590,14 @@ class Lexer {
       if (this.source[this.position] === "[") {
         if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/u.test(name)) this.error("Unsupported indexed-array parameter");
         const start = ++this.position;
-        const end = this.source.indexOf("]", start);
-        if (end < 0) this.error("Unterminated indexed-array subscript");
-        selector = arraySelector(this.source.slice(start, end), start, this.budget);
+        const keyWord = this.word("]");
+        const end = this.position;
+        if (this.source[end] !== "]") this.error("Unterminated indexed-array subscript");
+        selector = arraySelector(this.source.slice(start, end), start, this.budget, keyWord);
         this.position = end + 1;
         if (this.source[this.position] !== "}" && this.source[this.position] !== "@") this.error("Unsupported indexed-array operator");
       }
+      if (listing && selector?.kind === "element") this.error("Unsupported indirect parameter expansion");
       let transform: "Q" | "E" | undefined;
       if (this.source[this.position] === "@") {
         const operation = this.source[this.position + 1];
@@ -645,6 +647,7 @@ class Lexer {
       } else {
         this.position++;
         const part: WordPart = { kind: "variable", name, quoted, line, ...(prefixNames ? { prefixNames } : {}), ...(transform ? { transform } : {}), ...(length ? { length } : {}), ...(operator ? { operator, alternate: alternate! } : {}), ...(replacement ? { replacement } : {}), ...(substring ? { substring } : {}) };
+        if (listing && selector) part.keys = true;
         if (selector) setArraySelector(part, selector);
         parts.push(part);
       }
@@ -995,7 +998,7 @@ class Parser {
             word = { offset: word.offset, parts: word.parts, spelling: this.lexer.source.slice(word.offset, end) };
             setArrayAssignment(word, { kind: "compound", ...head, entries });
           } else {
-            const assignment = words.every(previous => getArrayAssignment(previous) || scalarAssignmentName(previous)) ? elementAssignment(word, this.budget) : undefined;
+            const assignment = words.every(previous => getArrayAssignment(previous) || scalarAssignmentName(previous)) ? elementAssignment(word, this.budget, source => parseArraySubscript(source, this.budget, this.lexer.byteLocale, this.lexer.depth), (source, start) => { const lexer = new Lexer(this.budget, source, this.lexer.depth, [], 0, this.lexer.byteLocale); lexer.position = start; lexer.word("]"); return lexer.source[lexer.position] === "]" ? lexer.position : -1; }) : undefined;
             if (assignment) setArrayAssignment(word, assignment);
           }
           words.push(word);
@@ -1040,6 +1043,11 @@ export function parseShell(source: string, depth = 0, options: ShellParseOptions
   const script = parseSource(source, depth, warnings, 0, false, budget);
   budget.admit();
   return { ...script, ...(warnings.length ? { warnings } : {}) };
+}
+
+export function parseArraySubscript(source: string, budget: ParseBudget, byteLocale = false, depth = 0): Word {
+  const lexer = new Lexer(budget, source, depth, [], 0, byteLocale);
+  return lexer.word("\0");
 }
 
 export function parseBraceWord(source: string, opaque: ReadonlyMap<number, ShellValue>, budget: ParseBudget): Word {

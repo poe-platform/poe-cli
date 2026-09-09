@@ -15,7 +15,7 @@ import type { CommandArguments } from "../contracts/command.js";
 import { ValueArena } from "./value-state.js";
 import type { HeldValue, ValueScope, ValueStore } from "./value-state.js";
 import type { Command, HereDocument, Pipeline, Redirect, Script, Word, WordPart } from "./parser.js";
-import { compoundEntryWords, HereDocumentSyntaxError, hereDocumentWords, parseShellInputUnit, parseShellUnit } from "./parser.js";
+import { parseArraySubscript, compoundEntryWords, HereDocumentSyntaxError, hereDocumentWords, parseShellInputUnit, parseShellUnit } from "./parser.js";
 import { SourceLineIndex } from "./source-line-index.js";
 import { ShellLimitError, ShellSyntaxError } from "./types.js";
 import type { ShellCommandContext, ShellInvokeOptions, ShellLimits } from "./types.js";
@@ -85,7 +85,7 @@ export const defaultLimits: Required<ShellLimits> = {
 };
 
 const shellBuiltinNames = new Set([
-  ":", "true", "false", "pwd", "cd", "set", "shift", "export", "local", "unset", "read", "mapfile", "readarray",
+  ":", "true", "false", "pwd", "cd", "set", "shift", "export", "local", "unset", "read", "declare", "mapfile", "readarray",
   "exit", "return", "break", "continue", "command", "builtin", "type", "readonly", "echo", "printf", "test", "[", ".", "source", "eval", "getopts", "let", "pushd", "dirs", "popd", "shopt",
 ]);
 
@@ -1463,7 +1463,7 @@ export class Runtime {
 
   variable(state: State, name: string): string | undefined {
     const binding = arrayStore(state)?.get(name);
-    return binding ? binding.get(0) : state.variables[name];
+    return binding ? binding.get(binding.associative ? binding.keys.get("30")?.index ?? -1 : 0) : state.variables[name];
   }
 
   private requireParameter(value: string | undefined, name: string, state: State, io: IO, line?: number): void {
@@ -1589,7 +1589,7 @@ export class Runtime {
           if (key !== index && key > maximum) maximum = key;
           await operation.ledger.checkpoint(this.signal, 2);
         }
-        if (typeof index === "number") staged.values.get(index)?.slot.release();
+        if (typeof index === "number") staged.remove(index);
         staged.maximum = maximum;
       }
       this.signal.throwIfAborted();
@@ -1631,11 +1631,12 @@ export class Runtime {
       const current = store.get(name);
       if (!current) throw new ArrayFailure("stale binding");
       staged = await current.copy(this.signal);
-      const previous = current.values.get(0)?.text.rawValue ?? current.get(0) ?? "";
+      const index = staged.associative ? (await staged.keyIndex("0", operation, this.signal, true))! : 0;
+      const previous = current.values.get(index)?.text.rawValue ?? current.get(index) ?? "";
       const value = !append ? expanded : typeof previous === "string" && typeof expanded === "string"
         ? await this.arrayJoin(operation, [previous, expanded], "") : concatShellValues([previous, expanded], valueAllocation);
       const token = await valueToken(staged.owner, value, this.signal);
-      try { staged.insert(0, token); } catch (error) { token.release(); throw error; }
+      try { staged.insert(index, token); } catch (error) { token.release(); throw error; }
       const supersede = await stateMonitor(state)!.prepareTypedPublication(name, operation, this.signal);
       this.signal.throwIfAborted();
       if (state.readonlyVariables?.has(name)) throw new ArrayFailure("readonly binding");
@@ -1667,10 +1668,31 @@ export class Runtime {
     return result;
   }
 
+  private async arrayIndex(binding: IndexedBinding | undefined, index: { decimal: string; source?: string; word?: Word }, state: State, io: IO, owner: ArrayOwner, create = false): Promise<number | undefined> {
+    if (!binding?.associative) {
+      const selected = index.source === undefined ? index : literalIndex(index.source, 0, this.budget.parsing);
+      const number = numericIndex(selected);
+      if (number === undefined) throw new ArrayFailure("index outside 0..2147483647");
+      return number;
+    }
+    const word = index.word ?? parseArraySubscript(index.source ?? index.decimal, this.budget.parsing, byteLocale(state.variables), state.depth);
+    const fields = await this.valueWord(word, state, io, false);
+    const value = fields.length === 1 ? fields[0]! : concatShellValues(fields, io[valueScope]);
+    if (shellValueByteLength(value) === 0) {
+      await this.diagnostic(io, "associative array: bad array subscript");
+      if (create) throw completedExit(1);
+      return undefined;
+    }
+    return binding.keyIndex(value, owner, this.signal, create);
+  }
+
   async arrayAssignment(assignment: ArrayAssignment, state: State, io: IO): Promise<void> {
     const name = assignment.name;
     this.signal.throwIfAborted();
-    if (state.readonlyVariables?.has(name)) throw new ArrayFailure("readonly binding");
+    if (state.readonlyVariables?.has(name)) {
+      if (arrayStore(state)?.get(name)?.associative) { await this.diagnostic(io, `${name}: readonly variable`); throw completedExit(1); }
+      throw new ArrayFailure("readonly binding");
+    }
     if (controlNames.has(name)) throw new ArrayFailure("control binding cannot be indexed");
     if (state.exported.has(name)) throw new ArrayFailure("exported binding cannot be indexed");
     const store = requireArrays(state);
@@ -1680,11 +1702,12 @@ export class Runtime {
     try {
       const watch = await store.watch(name, operation, this.signal);
       const current = store.get(name);
+      if (current?.associative && assignment.kind === "compound" && assignment.entries.length) throw new ArrayFailure("nonempty associative compound assignment is unsupported");
       const initialMaximum = current?.maximum ?? (state.variables[name] === undefined ? -1 : 0);
       let planned: number | null = assignment.append && assignment.kind === "compound" ? initialMaximum + 1 : 0;
       if (assignment.kind === "element") {
         operation.reserve({ work: assignment.index.decimal.length + 1 }).release();
-        if (numericIndex(assignment.index) === undefined) throw new ArrayFailure("index outside 0..2147483647");
+        if (!current?.associative && numericIndex(literalIndex(assignment.index.source ?? assignment.index.decimal, 0, this.budget.parsing)) === undefined) throw new ArrayFailure("index outside 0..2147483647");
       } else for (const entry of assignment.entries) {
         operation.reserve({ work: entry.value.parts.length + (entry.index?.decimal.length ?? 0) + 2 }).release();
         if (entry.index) {
@@ -1710,7 +1733,7 @@ export class Runtime {
       const tickets = operation.reserve({ generation: true, version: true, epoch: true, work: 8 });
       const prepared = await store.prepareName(name, operation, this.signal);
       const preserve = assignment.kind === "element" || assignment.append;
-      staged = preserve && current ? await current.copy(this.signal) : IndexedBinding.create(store.owner);
+      staged = preserve && current ? await current.copy(this.signal) : IndexedBinding.create(store.owner, current?.associative);
       if (preserve && !current && state.variables[name] !== undefined) {
         const token = await valueToken(staged.owner, stateMonitor(state)?.values.get(name, state.variables[name]!) ?? state.variables[name]!, this.signal);
         try { staged.insert(0, token); } catch (error) { token.release(); throw error; }
@@ -1726,7 +1749,7 @@ export class Runtime {
       const join = async (values: readonly ShellValue[]): Promise<ShellValue> => values.every(value => typeof value === "string")
         ? this.arrayJoin(operation, values as readonly string[], "") : concatShellValues(values, io[valueScope]);
       if (assignment.kind === "element") {
-        const index = numericIndex(assignment.index)!;
+        const index = (await this.arrayIndex(staged, assignment.index, state, io, operation, true))!;
         const fields = await this.valueWord(assignment.value, state, io, false);
         let value = await join(fields);
         if (assignment.append) value = await join([staged.values.get(index)?.text.rawValue ?? staged.get(index) ?? "", value]);
@@ -4158,6 +4181,7 @@ export class Runtime {
     let releaseHolding: (() => void) | undefined;
     try {
       const options = await mapfileOptions(context, work, allocation);
+      if (arrayStore(state)?.get(options.name)?.associative) throw new MapfileUsageError(`${options.name}: not an indexed array`, 1);
       if (state.readonlyVariables?.has(options.name)) throw new MapfileUsageError(`${options.name}: readonly variable`, 1);
       if (controlNames.has(options.name) || state.exported.has(options.name)) throw new ArrayFailure("control or exported binding cannot be indexed");
       const store = requireArrays(state);
@@ -4292,9 +4316,13 @@ export class Runtime {
       this.replacePositionals(state, this.positionalValues(state).slice(count));
       return 0;
     }
-    if (command === "export" || command === "local" || command === "readonly") {
+    if (command === "export" || command === "local" || command === "readonly" || command === "declare") {
+      const associativeDeclaration = command === "declare";
       const declarationArgs = [...args];
-      let indexedLocal = false;
+      let indexedLocal = associativeDeclaration;
+      if (associativeDeclaration) {
+        if (declarationArgs.shift() !== "-A" || !declarationArgs.length) { await this.diagnostic(context, "declare: only -A NAME is supported"); return 2; }
+      }
       if (command === "local") {
         const options = localDeclarationOptions(declarationArgs, this.signal);
         if (options.error !== undefined) {
@@ -4337,11 +4365,11 @@ export class Runtime {
         if (arrayStore(state)?.get(name) && command === "export") {
           await this.diagnostic(context, "indexed array: indexed binding cannot be exported"); status = 1; continue;
         }
-        if (command === "local" && indexedLocal) {
+        if ((command === "local" || associativeDeclaration) && indexedLocal) {
           if (controlNames.has(name)) throw new ArrayFailure("control binding cannot be indexed");
           if (state.exported.has(name)) throw new ArrayFailure("exported binding cannot be indexed");
-          const existingLocal = locals!.get(name);
-          const saved = existingLocal ? undefined : assignments.get(name) ?? saveVariable(state, name);
+          const existingLocal = locals?.get(name);
+          const saved = !locals || existingLocal ? undefined : assignments.get(name) ?? saveVariable(state, name);
           let operation: ArrayOwner | undefined;
           let holding: ReturnType<ArrayOwner["hold"]> | undefined;
           let shadow: IndexedBinding | undefined;
@@ -4366,11 +4394,13 @@ export class Runtime {
             const tickets = operation.reserve({ generation: true, version: true, epoch: true, work: 8 });
             const prepared = await store.prepareName(name, operation, this.signal);
             const current = store.get(name);
-            shadow = !saved && current ? await current.copy(this.signal) : IndexedBinding.create(store.owner);
+            if (!saved && current && current.associative !== associativeDeclaration) throw new ArrayFailure("cannot convert array kind");
+            shadow = !saved && current ? await current.copy(this.signal) : IndexedBinding.create(store.owner, associativeDeclaration);
             const value = match[2] ?? (!saved && !current && Object.hasOwn(state.variables, name) ? state.variables[name] : undefined);
             if (value !== undefined) {
-              const token = await textToken(shadow.owner, value, this.signal);
-              try { shadow.insert(0, token); } catch (error) { token.release(); throw error; }
+              const retained = associativeDeclaration && match[2] === undefined ? stateMonitor(state)!.values.get(name, value) : value;
+              const token = await valueToken(shadow.owner, retained, this.signal);
+              try { shadow.insert(associativeDeclaration ? (await shadow.keyIndex("0", operation, this.signal, true))! : 0, token); } catch (error) { token.release(); throw error; }
             }
             this.signal.throwIfAborted();
             if (state.readonlyVariables?.has(name)) throw new ArrayFailure("readonly binding");
@@ -4490,13 +4520,21 @@ export class Runtime {
     }
     if (command === "unset") {
       let status = 0;
-      for (const name of args) {
+      for (let argument = 0; argument < args.length; argument++) {
+        const name = args[argument]!;
         const selected = /^([a-zA-Z_][a-zA-Z_0-9]*)\[(.*)\]$/su.exec(name);
         if (selected) {
           const base = selected[1]!;
           const selector = selected[2]!;
           if (state.readonlyVariables?.has(base)) { await this.diagnostic(context, "indexed array: readonly binding"); status = 1; continue; }
-          if (selector === "@" || selector === "*") await this.unsetIndexed(state, base, "members");
+          const binding = arrayStore(state)?.get(base);
+          if (binding?.associative) {
+            const original = getCommandArguments(context).values[argument]!;
+            const index = typeof original === "string"
+              ? await this.arrayIndex(binding, { decimal: selector, source: selector }, state, context, binding.owner)
+              : await binding.keyIndex(shellValueFromBytes(shellValueBytes(original, context[valueScope]).subarray(base.length + 1, shellValueByteLength(original) - 1), context[valueScope]), binding.owner, this.signal);
+            if (index !== undefined) await this.unsetIndexed(state, base, index);
+          } else if (selector === "@" || selector === "*") await this.unsetIndexed(state, base, "members");
           else {
             let index: number | undefined;
             try { index = numericIndex(literalIndex(selector, 0, this.budget.parsing)); }
@@ -4688,7 +4726,7 @@ export class Runtime {
     if (part.kind === "variable" && part.transform) {
       const selector = getArraySelector(part);
       if (selector?.kind === "members" || part.name === "@" || part.name === "*") {
-        const members = selector ? await this.arrayMembers(part.name, state, io) : this.positionalValues(state);
+        const members = selector ? await this.arrayMembers(part.name, state, io, part.keys) : this.positionalValues(state);
         const ifs = state.variables.IFS ?? " ";
         const separator = ifs.length ? String.fromCodePoint(ifs.codePointAt(0)!) : "";
         const fragments: ShellValue[] = [];
@@ -4731,7 +4769,16 @@ export class Runtime {
     const binding = part.kind === "variable" ? arrayStore(state)?.get(part.name) : undefined;
     const holding = binding ? requireArrays(state).owner.hold() : undefined;
     const selector = getArraySelector(part);
-    const index = selector?.kind === "element" ? numericIndex(selector.index) : 0;
+    if (selector?.kind === "element" && binding?.associative) {
+      try {
+        const index = await this.arrayIndex(binding, selector.index, state, io, binding.owner);
+        const token = index === undefined ? undefined : binding.values.get(index)?.text;
+        this.requireParameter(token?.value, part.kind === "variable" ? part.name : "", state, io);
+        if (part.kind === "variable" && part.length) return this.parameterLength(token?.value ?? "");
+        return token?.rawValue ? shellValueFromBytes(shellValueBytes(token.rawValue, io[valueScope]), io[valueScope]) : token?.value ?? "";
+      } finally { holding?.release(); }
+    }
+    const index = selector?.kind === "element" ? numericIndex(selector.index) : binding?.associative ? binding.keys.get("30")?.index : 0;
     const token = index === undefined || selector?.kind === "members" ? undefined : binding?.values.get(index)?.text;
     token?.retain();
     try {
@@ -4837,7 +4884,7 @@ export class Runtime {
         return part.length ? this.parameterLength(value ?? "") : value ?? "";
       }
       if (part.length) return String(binding?.values.size ?? (state.variables[part.name] === undefined ? 0 : 1));
-      const values = await this.arrayMembers(part.name, state, io);
+      const values = await this.arrayMembers(part.name, state, io, part.keys);
       const separator = Array.from(state.variables.IFS ?? " ")[0] ?? "";
       if (values.every(value => typeof value === "string")) return this.arrayJoin(store.owner, values as string[], separator);
       io[valueScope]?.reserve(values.length * 32 + 64, 0);
@@ -5245,7 +5292,7 @@ export class Runtime {
           emptyNameGroups.add(quoteGroup);
         }
       } else if (part.kind === "variable" && split && (selector?.kind === "members" && !part.length && (!part.quoted || selector.separator === "@") || part.transform && part.name === "@")) {
-        const members = selector?.kind === "members" ? await this.arrayMembers(part.name, state, io) : this.positionalValues(state);
+        const members = selector?.kind === "members" ? await this.arrayMembers(part.name, state, io, part.keys) : this.positionalValues(state);
         for (let position = 0; position < members.length; position++) {
           if (position > 0) addField();
           const original = members[position]!;
@@ -5385,7 +5432,7 @@ export class Runtime {
     return createCommandArguments(values, allocation);
   }
 
-  async arrayMembers(name: string, state: State, io: IO): Promise<ShellValue[]> {
+  async arrayMembers(name: string, state: State, io: IO, keys = false): Promise<ShellValue[]> {
     const store = requireArrays(state);
     const holding = store.owner.hold();
     try {
@@ -5396,7 +5443,7 @@ export class Runtime {
       if (value === undefined) return [];
       store.owner.reserve({ metadata: 32, allocatedSlots: 1, work: 3 });
       await textToken(store.owner, value, this.signal);
-      return [value];
+      return [keys ? "0" : value];
     }
     binding.retain();
     try {
@@ -5404,7 +5451,7 @@ export class Runtime {
       const values: ShellValue[] = [];
       for (const index of indices) {
         store.owner.reserve({ metadata: 32, allocatedSlots: 1, work: 4 });
-        const token = binding.values.get(index)!.text;
+        const token = keys ? binding.associative ? binding.keys.get(binding.keyByIndex.get(index)!)!.text : await textToken(store.owner, String(index), this.signal) : binding.values.get(index)!.text;
         const value = token.rawValue === undefined ? token.value : shellValueFromBytes(shellValueBytes(token.rawValue, io[valueScope]), io[valueScope]);
         if (typeof value === "string") await textToken(store.owner, value, this.signal);
         values.push(value);
