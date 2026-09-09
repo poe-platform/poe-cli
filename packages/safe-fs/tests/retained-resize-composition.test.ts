@@ -425,7 +425,9 @@ describe.each(wrappers)("%s retained-resize composition", (_name, wrap) => {
 
   it.each([false, undefined])("does not acquire when selected support is %s", async retainedResize => {
     const { backing, open } = await fixture();
-    const filesystem = wrap(view(backing, { capabilities: { ...backing.capabilities, retainedResize } }));
+    const capabilities = { ...backing.capabilities };
+    Reflect.set(capabilities, "retainedResize", retainedResize);
+    const filesystem = wrap(view(backing, { capabilities }));
     expect((await filesystem.capabilitiesFor?.("/file") ?? filesystem.capabilities).retainedResize).not.toBe(true);
     await expect(filesystem.openResizeFile!("/file")).rejects.toMatchObject({ code: "ENOTSUP" });
     expect(open).not.toHaveBeenCalled();

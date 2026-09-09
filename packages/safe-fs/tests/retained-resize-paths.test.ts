@@ -168,7 +168,11 @@ describe.each([
   it.each([false, undefined])("does not grant missing-target support from a parent when selected support is %s", async retainedResize => {
     const memory = await fixture();
     const open = vi.fn(memory.openResizeFile.bind(memory));
-    const query = vi.fn(async (path: string) => ({ ...memory.capabilities, retainedResize: path === "/" ? true : retainedResize }));
+    const query = vi.fn(async (path: string) => {
+      const capabilities = { ...memory.capabilities };
+      Reflect.set(capabilities, "retainedResize", path === "/" ? true : retainedResize);
+      return capabilities;
+    });
     const filesystem = wrap(view(memory, { capabilitiesFor: query, openResizeFile: open }));
     await expect(openRetainedResizeFile(filesystem, "/missing", { create: true })).rejects.toMatchObject({ code: "ENOTSUP" });
     expect(query.mock.calls.every(([path]) => path === "/missing")).toBe(true);

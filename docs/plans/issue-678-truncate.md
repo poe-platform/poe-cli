@@ -89,6 +89,20 @@ are delivered together locally. The honest version identity still differs from
 GNU and remains explicitly outside exact oracle passes. Full maintained gates
 and remote delivery are not established by this candidate checkpoint.
 
+### Retained-fixture type corrections
+
+The neighboring strict fixture compilation also exposes five diagnostics in
+four earlier retained-filesystem test files. The fixes preserve intentional
+incomplete/undefined inputs through an explicit unknown boundary and own-property
+construction, and annotate the mutable byte fixture as `Uint8Array`. No production
+types, compiler settings, negative assertions or error handling are weakened.
+The same compiler invocation changes from five errors to exit 0, and all 13
+neighbor files still pass 1,646 tests. This focused compiler route already uses
+`skipLibCheck`; it validates the named fixtures, not library declarations.
+Evidence: `/tmp/issue-678-memory-retained-neighbors-types-v2.log`,
+`/tmp/issue-678-memory-retained-neighbors-types-v3.log`, and
+`/tmp/issue-678-memory-retained-neighbors-v3.log`.
+
 ## Root implementation decision: September 9, 2026
 
 - Add `preferredIoBlockSize`, `OpenResizeFileOptions`, `FileResizeHandle`,

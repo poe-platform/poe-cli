@@ -29,7 +29,7 @@ describe("retained-resize admission", () => {
 
   it.each([{}, { retainedResize: false }, { readOnly: true }])("preserves unpromised capability identity %j", capabilities => {
     const original = Object.freeze({ read: true, ...capabilities });
-    const filesystem = Object.freeze({ capabilities: original }) as FileSystem;
+    const filesystem = Object.freeze({ capabilities: original }) as unknown as FileSystem;
     expect(admission.retainedResizeCapabilities(filesystem)).toBe(original);
     expect(admission.retainedResizeCapabilities(filesystem).retainedResize).not.toBe(true);
   });
@@ -74,7 +74,9 @@ describe("retained-resize admission", () => {
   });
 
   it.each([false, undefined])("refuses unpromised support %s before acquisition", async retainedResize => {
-    const { filesystem, openResizeFile } = fixture({ retainedResize });
+    const capabilities: FileSystemCapabilities = {};
+    Reflect.set(capabilities, "retainedResize", retainedResize);
+    const { filesystem, openResizeFile } = fixture(capabilities);
     await expect(admission.openRetainedResizeFile(filesystem, "/file", {})).rejects.toMatchObject({ code: "ENOTSUP", path: "/file" });
     expect(openResizeFile).not.toHaveBeenCalled();
   });

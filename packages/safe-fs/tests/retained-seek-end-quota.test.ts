@@ -12,7 +12,7 @@ function deferred() {
 
 function fixture(supported = true) {
   const memory = new MemoryFileSystem();
-  const pinned = { bytes: Uint8Array.of(1, 2, 3), end: 3n, ino: 1 };
+  const pinned: { bytes: Uint8Array; end: bigint; ino: number } = { bytes: Uint8Array.of(1, 2, 3), end: 3n, ino: 1 };
   const entries = new Map([["/file", pinned]]);
   const scope = {};
   const events: string[] = [];
