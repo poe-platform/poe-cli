@@ -188,3 +188,28 @@ This newer remote success supersedes the earlier failure as the latest observed
 root release status. It does not prove that these separately held local commits
 were delivered or that the remote helper equals the local repair. No push,
 issue mutation, workflow rerun, or remote reconciliation was performed.
+
+## Pinned remote-main repair comparison
+
+A subsequent read-only main lookup still resolves to
+`70388ee34694164051a95d7afd7d0e35f428a43b`. Its exact commit patch changes the
+owned-input error predicate from EPIPE-only to EPIPE-or-ECONNRESET, retaining
+fatal stdout/stderr handlers. Unlike the local helper, the remote helper also
+owns an extra fd3 input. The remote change applies the predicate to both owned
+inputs and adds six transport regression controls. Thus the diagnosed release
+failure has an independently delivered equivalent repair; it no longer needs
+another remote fix on the evidence currently available. This does not make the
+local helper/test files identical to remote or deliver the local commits.
+
+The exact remote commands-directory listing contains 51 entries and none of
+`cmp.ts`, `fmt.ts`, `shuf.ts`, or `numfmt.ts`. Those four local implementations
+are not present at this pinned remote-main revision. The first whole-tree API
+response was explicitly truncated and was not used to infer absence; the
+subsequent exact directory listing supplies that evidence. The helper's remote
+Git blob is `db47a6c4922559fcc8ac3875f5d9f2f382f97eba`, distinct from the local
+`67a34a958a094fb36fc8a81647b6cd5dbad29421`.
+
+The author issue listing still shows issues 674 through 678 open, as well as
+the platform-specific issue 662. No issue is closed and no remote mutation is
+performed by this verification. Existing delivery restrictions and the
+unresolved truncate profile/identity decision still prevent goal completion.
