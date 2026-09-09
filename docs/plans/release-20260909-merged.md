@@ -53,3 +53,18 @@ successful push alone is not a successful release.
 Evidence for this integration is under `out/release-20260909-merged/`; process
 helper evidence is `/tmp/retained-child-input-merge.5rWQG6/`. Earlier local-only
 gate receipts qualify their own revisions, not this merged candidate.
+
+## Final integration checks
+
+The complete maintained `npm test` route passes at merge commit `a15cffe1b`,
+including its native pre/post stages. Root lint, the corrected normal build,
+focused bundle tests and merged command inventories also pass. The first Bash
+typecheck retains one failure in the remote TOML parser fixture: strict generic
+inference cannot represent its heterogeneous expected-object union, including
+prototype-named keys. Explicitly selecting `unknown` for the assertion generic
+preserves every input, expected value and runtime assertion; TypeScript 5.9.3
+emits byte-identical JavaScript before and after this annotation. The focused
+parser test passes all 37 cases, maintained Bash typecheck passes all 26 current
+consumer groups and source/tests, and root lint passes with no errors or warnings.
+Receipts are `toml-type-fix-runtime-v1`, `toml-type-fix-emission-v1.json`,
+`typecheck-v2` and `lint-v2` under the integration evidence directory.

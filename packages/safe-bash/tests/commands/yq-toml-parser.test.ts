@@ -23,7 +23,7 @@ for (const [source, expected] of [
   ['a=1979-05-27 07:32:00.123456789Z\nb=07:32:00', { a: "1979-05-27 07:32:00.123456789Z", b: "07:32:00" }],
   ['__proto__.x=1\nconstructor=2', { ["__proto__"]: { x: 1 }, constructor: 2 }],
 ] as const) test(`bounded TOML parser accepts ${source.slice(0, 40)}`, async () => {
-  assert.deepEqual(await parse(source), expected);
+  assert.deepEqual<unknown>(await parse(source), expected);
 });
 
 for (const source of [
