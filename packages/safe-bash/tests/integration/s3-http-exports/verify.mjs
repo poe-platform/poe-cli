@@ -6,6 +6,7 @@ import { isBuiltin } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import typescript from "typescript";
+import { capturePeerRuntimeFacts } from "../../plugins/qualified-current-release/peer.mjs";
 import { assertAdmittedInputPath, assertLiteralInputPath, readRegularInput } from "../../../scripts/typecheck-integration-inputs.mjs";
 import { assertArchiveDependencies, assertArchiveDependencyArtifacts, assertCanonicalRoot, assertDistContinuity, assertTypeOrigins, authority, captureDistBaseline, contained, copyRegularTree, digest, inspectCommittedCandidate, packagePrefix, prepareArchiveDependencies, readArchive, readDistInventory, resolveTools, stageArchiveDependencies } from "./committed-archive.mjs";
 
@@ -53,6 +54,7 @@ export function committedPeerImports(committedFiles, compiler) {
 }
 
 export function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts, fileSystem, dependencies = []) {
+  const facts = Object.hasOwn(peer, "profile") ? capturePeerRuntimeFacts(peer, consumer) : undefined;
   const binding = { files: {}, metadata: ["node_modules/virtual-bash/package.json", "node_modules/poe-code/package.json"], entries: {
     "virtual-bash": "node_modules/virtual-bash/dist/index.js", "virtual-bash/fs/s3/http": "node_modules/virtual-bash/dist/fs/s3/http/index.js",
     ...Object.fromEntries(Object.entries(peer.entries).map(([specifier, path]) => [specifier, `node_modules/poe-code/${path}`])),
@@ -73,11 +75,13 @@ export function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts
     if (Object.hasOwn(binding.edges, local)) continue;
     assert.ok(Object.keys(binding.edges).length < 1024, "Runtime closure exceeds member bound");
     assert.ok(Object.hasOwn(binding.files, local), `Unbound runtime input: ${local}`);
-    const bytes = readRegularInput(consumer, local, 16 * 1024 * 1024, fileSystem);
+    const peerLocal = local.startsWith("node_modules/poe-code/") ? local.slice("node_modules/poe-code/".length) : undefined;
+    const admitted = peerLocal === undefined ? undefined : facts?.edges[peerLocal];
+    if (facts && peerLocal !== undefined) assert.ok(admitted, `Runtime importer is outside authenticated peer binding: ${local}`);
+    const maximum = facts?.nativeAssets.find(asset => asset.path === peerLocal)?.maxBytes ?? 16 * 1024 * 1024;
+    const bytes = readRegularInput(consumer, local, maximum, fileSystem);
     assert.equal(digest(bytes), binding.files[local], `Runtime input drift: ${local}`);
-    const source = ts.createSourceFile(local, bytes.toString(), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-    assert.equal(source.parseDiagnostics.length, 0, `Invalid runtime syntax: ${local}`);
-    const imports = new Set();
+    const imports = new Set(admitted ? Object.keys(admitted) : []);
     const visit = node => {
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.add(node.moduleSpecifier.text);
       if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === "require")) {
@@ -86,12 +90,20 @@ export function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts
       }
       ts.forEachChild(node, visit);
     };
-    visit(source);
+    if (!admitted) {
+      const source = ts.createSourceFile(local, bytes.toString(), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+      assert.equal(source.parseDiagnostics.length, 0, `Invalid runtime syntax: ${local}`);
+      visit(source);
+    }
     const edges = binding.edges[local] = {};
     for (const specifier of imports) {
       if (isBuiltin(specifier)) { edges[specifier] = specifier.startsWith("node:") ? specifier : `node:${specifier}`; continue; }
-      const target = specifier.startsWith(".") ? relative(consumer, resolve(consumer, dirname(local), specifier)) : binding.entries[specifier] ?? dependencyEntries[specifier];
+      const nativeEdge = facts?.nativeEdges.find(edge => edge.importer === peerLocal && edge.specifier === specifier);
+      if (specifier.startsWith("#")) assert.ok(nativeEdge, `Unbound runtime dependency: ${specifier}`);
+      const target = nativeEdge ? `node_modules/poe-code/${nativeEdge.target}` : specifier.startsWith(".") ? relative(consumer, resolve(consumer, dirname(local), specifier)) : binding.entries[specifier] ?? dependencyEntries[specifier];
       assert.equal(typeof target, "string", `Unbound runtime dependency: ${specifier}`);
+      if (facts?.nativeAssets.some(asset => target === `node_modules/poe-code/${asset.path}`)) assert.ok(nativeEdge, "Native peer assets require an authenticated private edge");
+      if (admitted) assert.equal(target, `node_modules/poe-code/${admitted[specifier]}`, `Runtime edge differs from authenticated peer binding: ${local}`);
       assert.ok(Object.hasOwn(binding.files, target), `Runtime dependency outside authenticated packages: ${target}`);
       if (local.startsWith("node_modules/poe-code/")) assert.ok(target.startsWith("node_modules/poe-code/"), "Canonical peer dependency escaped its package");
       for (const dependency of dependencies) {
@@ -102,6 +114,7 @@ export function bindPackedConsumer(consumer, packedFiles, peer, declarations, ts
       edges[specifier] = target; pending.push(target);
     }
   }
+  if (facts) capturePeerRuntimeFacts(peer, consumer);
   return binding;
 }
 

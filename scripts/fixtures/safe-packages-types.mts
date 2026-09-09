@@ -6,12 +6,33 @@ import { posixPath as contractPath, type CommandDefinition, type CommandInput } 
 import { posixPath as indexedPath, type CommandInput as IndexedCommandInput } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
 import { Budget, run, makeFsModule, type RunClock, type HostObjectIndexedDefinition, type HostObjectNamedDefinition, type CallbackInvocation } from "@poe-platform/safe-js";
-import { createMemoryFileSystem, type FileSystem } from "@poe-platform/safe-fs/core";
+import { createMemoryFileSystem, OverlayFileSystem, type CapabilityQueryOptions, type FileReadHandle, type FileResizeHandle, type FileSystem, type OpenReadFileOptions, type OpenResizeFileOptions } from "@poe-platform/safe-fs/core";
 import type { FileSystem as CompatibilityFileSystem } from "@poe-platform/safe-js/fs";
-import { Shell, evaluateCommandSupport, type CommandSupport, type CommandFileSystemRequirement } from "@poe-platform/safe-bash";
+import { Shell, evaluateCommandSupport, type CommandSupport, type CommandFileSystemRequirement, type FileReadHandle as ShellFileReadHandle, type OpenReadFileOptions as ShellOpenReadFileOptions, type FileResizeHandle as ShellFileResizeHandle, type OpenResizeFileOptions as ShellOpenResizeFileOptions } from "@poe-platform/safe-bash";
 import { createRealm, defineExtension, type HostObject, type GuestReference, type HostObjectIndexedDefinition as CoreIndexed, type HostObjectNamedDefinition as CoreNamed, type CallbackInvocation as CoreInvocation } from "@poe-platform/safe-js/core";
 
 const fs: FileSystem & CompatibilityFileSystem = createMemoryFileSystem();
+const readOptions: OpenReadFileOptions & ShellOpenReadFileOptions = { allowDirectory: true };
+const directoryQuery: CapabilityQueryOptions = readOptions;
+await new OverlayFileSystem({ upper: createMemoryFileSystem(), lower: createMemoryFileSystem() }).capabilitiesFor("/", { allowDirectory: true });
+void directoryQuery;
+const resizeOptions: OpenResizeFileOptions & ShellOpenResizeFileOptions = { create: true, mode: 0o640 };
+const capabilityQuery: CapabilityQueryOptions = { create: false };
+const retainedResize: boolean | undefined = (await fs.capabilitiesFor?.("/typed", capabilityQuery))?.retainedResize;
+const resizing: Promise<FileResizeHandle & ShellFileResizeHandle> | undefined = fs.openResizeFile?.("/typed", resizeOptions);
+const reading: Promise<FileReadHandle & ShellFileReadHandle> | undefined = fs.openReadFile?.("/typed");
+for (const acquired of [resizing, reading]) {
+  const handle = await acquired;
+  if (!handle) continue;
+  const hint: number | undefined = (await handle.stat()).preferredIoBlockSize;
+  const offset: bigint | undefined = await handle.seekEnd?.();
+  if ("truncate" in handle) await handle.truncate(0);
+  else await handle.read(0, 1);
+  await handle.close();
+  void hint;
+  void offset;
+}
+void retainedResize;
 const nodePaths: readonly (typeof posix)[] = [contractPath, indexedPath, directPath];
 for (const paths of nodePaths) {
   const formatted: string = paths.format(paths.parse(paths.resolve("/workspace", "file.txt")));

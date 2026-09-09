@@ -800,3 +800,539 @@
   and only revokes affirmative unsupported/readonly promises. All 90 helper,
   scoped-seek and quota-neighbor controls passed at that checkpoint. This
   uncommitted correction remains separate from the errno milestone.
+
+### Namespace review and actual-facade qualification
+
+- The approved local errno-only commit is `7483b924001aaf95ef1f2095bf2370126baced31`.
+  The original committed-archive S3 export gate now passes all 188 controls;
+  no archive inputs, profiles or diagnostics were substituted. This is a local
+  commit and local verification, not remote-main delivery or release publication.
+- Readonly now preserves namespace-symbol absence and exposes a detached,
+  frozen selector-only view when metadata exists. It does not expose backing
+  metadata, callbacks or attached native/delegate fields. Signal-aware capture
+  retains the original receiver, validates selected roots and fails closed on
+  malformed metadata, including across separately loaded module instances.
+  The owner passed 33 authority controls and 1359 owned/Device/Mount neighbors;
+  the 77-case Bash source-alias pass is explicitly not a built-facade pass.
+- Root review found another concrete ordering defect: a nonfrozen projection
+  can abort during `Object.isFrozen`, and the combined condition selected EIO
+  before checking that cancellation. Three direct/readonly/nested controls
+  failed before the repair; all six new cancellation/noncancellation controls
+  and the 59-case focused namespace gate now pass. Invalid metadata without
+  cancellation still fails EIO. Evidence and exact source hashes are retained
+  in `out/issue-678-tmp/namespace-integrity-abort-handoff-v1.json`.
+- The pipeline fixture now distinguishes budget admission from physical backend
+  entry. Sequential forms retain exact one-call/event-order assertions; a
+  deterministic pipeline waits for first backend entry before exhausting the
+  budget, and five falsey pre-entry cancellation controls require zero backend
+  calls. The original failing scheduling-dependent assertion remains in its
+  receipt; this is a disclosed fixture correction, not an unchanged-input pass.
+  All 26 named filesystem admissions now include `openResizeFile`. The scoped
+  and per-path capability identity assertions are unchanged.
+- A maintained SafeFS-only build passes but does not refresh the actual
+  `poe-code/safe-fs` facade: its runtime resolves to root-generated bundles in
+  `packages/safe-js/dist`. The subsequent direct readonly test therefore still
+  observed the old symbol behavior (76 passes, one failure). That failed receipt
+  is retained; no source alias is substituted for the required facade gate.
+  Normal root build v8 stopped at sandbox-denied local tsx IPC, before bundling.
+  Build v9 is the approved normal-root retry against the now-frozen helper.
+- Read-only release monitoring on September 9 still reports successful root,
+  scoped-package and schema workflows for remote commit `57a597de2c8e769420899b4230971fe252fbc49d`.
+  Those external releases do not deliver the six local commits. No push or issue
+  mutation has been retried without human approval.
+- Normal root build v9 completed all 70 declared builds across 71 workspaces and
+  the root bundle suffix. The five selected helper/readonly/capability/test hashes
+  remained unchanged. Actual-facade direct tests then passed readonly 77/77 and
+  filesystem-budget 59/59; no source aliases were used. The full SafeFS gate
+  passed 3030/3030 after the sandbox-denied loopback attempt was retained and
+  rerun with approval. Full uncached unit v6 and root lint v3 are now running;
+  neither is counted as passed before its terminal result. Current installed
+  artifacts still require a post-unit normal build and fresh packaging.
+- Root lint v3 completed with 10454 configured/linted inputs, zero errors and
+  zero warnings, followed by successful repository type and workflow checks.
+  Full unit v6 has passed the shared phase (21824 passes, one skip) and the
+  302-case Bash runner phase; the main Bash and later phases are still pending.
+- Full uncached unit v6 completed successfully on September 9. Recorded phases
+  are shared 21824 passes/one skip, Python 29 passes, Bash runner 302 passes,
+  main Bash 26307 passes/63 skips, SafeJS 21653 passes/37 skips, terminal 288
+  passes and native root posttest lint-stress two passes. The maintained graph
+  reports 71 workspaces, two required builds and 40 declared unit tasks, with
+  no exclusions and cache disabled. Unavailable tasks and skipped cases remain
+  explicitly not passes. `out/issue-678-tmp/full-development-unit-v6.exit` is zero.
+  This closes the six full-v5 regressions, not the separately documented native
+  nonregular-seek/large-value parity limits. Post-unit build v10 and fresh local
+  packed-consumer verification are the next artifact qualification steps.
+- Post-unit normal root build v10 passed, including the bundle suffix, with
+  nine selected source/test/consumer hashes unchanged. Fresh local development
+  artifacts `0.0.0-truncate-dev.20260909.2` pass installed Node 22.23.2, Bun 1.3.8,
+  strict NodeNext types, browser-platform bundling/runtime and legacy 14.0.4
+  coexistence checks. These are new tarballs, not a relabeling of the initial
+  failed browser profile. Their hashes and stage receipts are recorded in
+  `out/issue-678-tmp/current-public-qualification-v2.json`.
+- The initial standalone consumer under `/tmp` failed its exact dependency
+  absence assertion because pre-existing `/tmp/node_modules/@poe-platform/safe-js`
+  was visible through Node's ancestor lookup. No dependencies were deleted and
+  no assertion was broadened. The identical FS tarball and unchanged fixture
+  pass both Node and Bun in fresh owned `/var/tmp/truncate678-fs-only.xf0sCu`,
+  whose ancestors have no node_modules directories. The original failed
+  profile remains preserved separately. No issue closure or push is implied;
+  native nonregular-seek and backend large-value limits remain open.
+
+### Additional source-driven differential checks
+
+- A further original-source review covers GNU `truncate.c`, `stat-size.h`,
+  `system.h`, `xdectoint.c`, `xstrtol.c` and `quotearg.c`. The resulting 56-case
+  bounded regular-file cohort has no argv duplicates against the 1368 immutable
+  snapshot rows: 12 three-size chains, 12 reference/order cases, 12 ordered-target
+  cases, 12 option-order cases and eight suffix/sticky-modifier cases. All 56
+  match exact stdout/stderr bytes, status, complete file bytes, modes, creation
+  effects and within-backend retained/hardlink identity relationships, with no
+  skips. Native outcomes include 12 expected failures, not just successful calls.
+  Largest file is 8198 bytes and largest case including aliases is 32779 bytes.
+  Current command, tests, native sources and snapshots remain hash-identical.
+  This uses the current command and genuine public Memory backend, not another
+  packed/Shell gate. The initial invalid harness configuration remains preserved
+  separately and ran no targeted native cases. Evidence:
+  `out/issue-678-tmp/truncate-regular-sidecar-20260909-v1/capture-v2/report.json`.
+- Eight bounded native observations now distinguish directory reference behavior
+  on both local filesystems under GNU 8.30 and kernel `5.15.0-1084-aws`. On the
+  `0xef53` filesystem, empty/populated references have stat size 4096 but produce
+  a terminal seek offset of 9223372036854775807. On the `0x58465342` filesystem,
+  reference stat sizes are six/19 while the observed terminal offset is zero.
+  Offset observations use native truncation of null (EINVAL diagnostics), not
+  creation of huge files. Successful `-r reference '-s<1' target` cases create
+  one zero byte on the first filesystem and an empty file on the second.
+  Original absolute argv0 diagnostic prefixes are retained; no normalization
+  is used. These are observations, not eight product passes, and no mode-parity
+  claim is made for this separate cohort. Evidence:
+  `out/issue-678-tmp/directory-profiles-v1.LN7110/receipt.json`.
+- The four successful native cases were compared against the current installed
+  development tarballs through real Shell execution over both Memory and Real.
+  All eight comparisons still mismatch: the adapters reject the directory read
+  handle with EISDIR before creating the target. Exact Shell byte arrays, status,
+  target absence and each native expected result are retained in
+  `out/issue-678-tmp/directory-profiles-v1.LN7110/packed-comparison-v1.json`.
+  This rules out relabeling the gap as merely a large-allocation refusal: the
+  expected target is at most one byte. Neither a universal directory constant
+  nor a stat-size substitute supplies the demonstrated backend semantics.
+- Read-only remote refresh still observes main `57a597de2c8e769420899b4230971fe252fbc49d`
+  with successful root, scoped-package and schema workflows. No new local
+  commit, push, issue closure or publication occurred during this follow-up.
+- An approved, isolated install of pinned Koffi 3.2.1 at
+  `/tmp/truncate678-koffi-probe.jocHq9` explores a possible native seek route;
+  project manifests and lockfile are unchanged and install scripts were disabled.
+  Upstream docs describe exact large-integer returns and errno access, but that
+  is not a runtime compatibility result. Inspection found its Linux loader reads
+  and decodes `process.execPath` ELF metadata. No Koffi import, native probe or
+  production integration has been executed; the repository's prohibition on
+  executable decoding must be respected rather than bypassed through a private
+  binding or silent loader rewrite. This candidate remains unqualified.
+
+### Retained-read admission correction and native primitive investigation
+
+- Reviewing directory-aware read admission exposed a separate current violation
+  in `openRetainedReadFile`: it performed observable metadata/acquisition work
+  after cancellation during method or capability lookup, and awaited opaque
+  pre-acquisition metadata indefinitely after cancellation. Twenty-five new
+  controls fail before the correction (one receiver/options control passes).
+  They cover availability/query/capability/acquisition lookup phases and pending
+  metadata with false, null, zero, empty-string and NaN cancellation reasons.
+  Original red receipt: `out/issue-678-tmp/read-admission-red-v1.log`.
+- The helper now captures method receivers, checks cancellation after each
+  observable admission lookup, interrupts only opaque metadata and rechecks
+  before physical acquisition. It preserves the existing nullish query fallback
+  and original caller options. Actual admitted acquisition is still awaited;
+  late handles are closed and their close drains before the original cancellation
+  settles, including secondary close failures. All 33 new controls and 274
+  composition/capability/seek neighbors pass in the 307-case focused gate.
+  This is a code correction, not a change to expected native command output.
+- The previous full-unit v6, build v10 and packed-v2 receipts precede this helper
+  correction and are not relabeled current full qualification. Complete SafeFS
+  v7 passes 3,063 tests across 72 files; normal-root build v11 and full lint v4
+  both finish with exit zero. Actual built-facade gates pass separately:
+  readonly 77, budget 59, truncate 1,571 and registration 6. Four additional
+  public bundled ReadOnlyFileSystem getter-admission controls pass. These are
+  not a fresh full-unit or installed-consumer qualification of the helper.
+- A separate bounded worker investigates a minimal original C Node-API bridge
+  using the available Node 22.22.0 headers and the stable public Node-API surface.
+  It may compile only its isolated experimental addon and run bounded owned-fd
+  controls under Node 22.23.2 and Bun 1.3.8. It must not decode executables, load
+  Koffi, use private runtime bindings, change project dependencies/configuration,
+  or imply production integration. Exact bigint/cursor/errno observations,
+  directory profiles, cleanup and platform limits remain explicit acceptance
+  criteria; no native route is credited before actual results exist.
+
+### Native feasibility results and resolver review
+
+- The original synchronous Node-API experiment now passes 16 controls separately
+  on Node 22.23.2 and Bun 1.3.8. The separate async experiment passes 10 controls
+  on each runtime, with 23 native requests completed and all ten owned file
+  descriptors closed per runtime. Proofs remain isolated under
+  `out/issue-678-tmp/napi-seek-feasibility-v1/` and
+  `out/issue-678-tmp/napi-seek-async-feasibility-v1/`; no production native
+  integration or project dependency change follows from those results.
+- Do not treat the earlier normalized peer comparisons as exact raw equality.
+  The supplemental async audit retains all original records: complete raw
+  control traces differ in all ten cases (28 fields), and full stdout differs.
+  The actual 23 offset/errno return payloads match exactly; the cursor-read and
+  no-growth record also matches. Full validation-error message/code/stack
+  equality was not captured. The original 31 evidence records are unchanged.
+- Async native work does not establish hard cancellation, environment-shutdown
+  safety, injected allocation-failure recovery, minimum Node-engine coverage,
+  cross-platform support, or production handle retention. Those remain explicit
+  gates, as do the eight actual packed directory-reference mismatches.
+- Reading the original 399-line GNU utility and its size-usability, block-size
+  and decimal-conversion helpers confirms the relevant distinction: a directory
+  reference follows open/seek/close, not `st_size`. The reference close failure
+  is ignored while seek errno is preserved; target close errors are reported.
+  A zero/stat-size stand-in cannot supply the missing directory behavior.
+- The design-only native packaging plan had two experimentally validated
+  resolver defects. Both Node and Bun reject a private-import target escaping
+  its source package scope and a root-only mapping hidden by a nearer workspace
+  package scope. An explicit in-scope ESM forwarder succeeds on both. The plan
+  now names that route and the separate SafeJS worktree mapping; all six original
+  status/stdout/stderr receipts remain under
+  `out/issue-678-tmp/native-import-scope-proof-v1/`.
+
+### Explicit visible-parity exclusions
+
+- A source-level audit of the current four snapshot loops finds 1,368 captures
+  but only 1,359 rows requiring exact stdout/stderr/status triples. These are
+  assertion-policy counts, not a new test run or a new passing cohort.
+- One pure `--version` row is wholly excluded. Seven mixed-option version rows
+  still execute and compare status, stderr and target effects, but assert the
+  22-byte virtual banner instead of the captured 308-byte GNU banner. Twenty-one
+  version-option error cases retain exact comparisons. The broad native-loop
+  skip predicate is a future coverage risk; today's only excluded row is the
+  pure version invocation, not a hidden mixed-error workflow.
+- One separate directory-reference row replaces the native parity assertions
+  with a characterization of the current unsupported behavior. Three other
+  flagged seek rows compare exact output using custom null handles; those
+  fixtures do not establish real-backend directory acquisition support.
+- These nine rows cannot be credited as exact native-output parity. The test
+  label “intentional identity difference” is not a user waiver of the requested
+  1:1 comparison. Do not hide those differences, count their characterizations
+  as native matches, or claim the virtual implementation is GNU merely to make
+  an output assertion pass.
+- The audit reads the GNU version dispatch and its actual version-formatting
+  helpers from the authenticated archive. Original bytes, 33 relevant rows,
+  source/member hashes and precise assertion locations remain in
+  `out/issue-678-tmp/truncate-visible-parity-audit-v1/report.json` and its adjacent
+  `audit.md`. No product code, tests, snapshots or native captures changed.
+
+### Opt-in retained directory admission
+
+- Add `OpenReadFileOptions.allowDirectory` to the shared filesystem contract and
+  Safe Bash type re-export. Literal `true` permits an explicitly supported
+  directory handle; omitted/false preserves existing `EISDIR` behavior. This is
+  a read-only request, not writable creation intent or an end-seek promise.
+- Memory and Real readers now retain the acquired directory identity across
+  rename, removal and replacement. Valid byte reads reject `EISDIR`; invalid
+  positional bounds retain the ordinary `EINVAL` preflight. Closed operations
+  reject `EBADF`. Memory accounts for retained nodes/path references and releases
+  them once; Real close drains actual admitted operations and closes the native
+  handle once. Neither reader invents `seekEnd`, zero, stat-size or a directory
+  cookie. Existing path-based reads and streams keep their previous semantics.
+- The shared helper and readonly/mount/device/overlay/quota/scoped composition
+  preserve the request. Overlay's regular-only admission now permits real
+  backend directories when opted in. Synthetic Device/Mount directories are not
+  silently granted a retained identity. The command itself remains unchanged
+  until a genuine end-seek implementation can be connected.
+- Test-first evidence: composition 7 failed / 14 passed; Real 22 failed / 9
+  passed; Memory 30 failed / 31 passed, followed by five failing capability-getter
+  cancellation controls. Root review additionally reproduced five Device
+  getter-cancellation failures and five Memory bounds-precedence failures before
+  correcting them. The Device path now uses guarded retained-read admission
+  instead of dispatching a second, uncaptured method lookup after cancellation.
+- Integrated new directory tests pass 123/123. The initial complete SafeFS gate
+  v8 had three loopback failures due to sandbox `listen EPERM`; unchanged
+  maintained membership reran with approved loopback access as v9 and passed
+  3,207 tests across 76 files. That whole-suite pass precedes the final Memory
+  bounds-order refinement; its three-file post-refinement gate is the 123/123
+  result, not a relabeled whole-suite pass.
+- Normal root build v12 stopped at the github-workflows workspace because the
+  sandbox denied tsx's Unix IPC socket. The complete maintained route reran
+  successfully as v13 with approved IPC access, not a partial build. No native
+  production dependency/compiler integration, push or issue closure occurred.
+- Read-only GitHub observation v9 finds root release 34340847927, scoped release
+  34340847717, toolcraft release 34340847681 and schemas 34340847805 completed
+  successfully for external main `7618f3558a5f778e9920d522cff3bee48868c0a0`.
+  Those jobs do not deliver this worktree's local commits or directory changes.
+
+### Directory admission: current build and installed qualification
+
+- Complete SafeFS v10 passes 3,207 tests across 76 files after the Memory bounds
+  refinement. The subsequent strict public-declaration probe finds one concrete
+  Overlay query signature still typed as `FsOptions`; its fresh-literal
+  `allowDirectory` call fails TS2353. Change that signature to the already
+  declared `CapabilityQueryOptions`, retain the failing probe, add the case to
+  the maintained scoped-package type fixture, and rebuild through the normal
+  root route. The expanded, unchanged probe then passes.
+- Normal root build v14 completes all 70 declared builds in the 71-workspace
+  graph and the root suffix stages. Full lint v6 passes 10,458 configured inputs
+  with no errors or warnings, then passes types and workflow lint. Nine selected
+  source/consumer hashes remain unchanged through build and packaging; this is
+  not represented as a complete immutable repository inventory.
+- Fresh `0.0.0-truncate-dev.20260909.3` tarballs generated by maintained
+  `package-safe.mjs` pass Node 22.23.2 and Bun 1.3.8 smoke checks, strict installed
+  NodeNext/ES2022 types, the browser-condition bundle and its Node execution,
+  `poe-code@14.0.4` coexistence, and standalone SafeFS-only dependency checks.
+  Installs are offline with scripts disabled. Preserve the first empty-cache
+  `ENOTCACHED` failure; the same tarballs succeed in a new isolated `/var/tmp`
+  consumer using the already populated cache, without a registry fetch.
+- Actual built-facade, installed-scoped and installed-FS-only directory probes
+  each pass 24 controls independently on Node and Bun. Each run opens/closes all
+  24 retained handles across eight compositions on Memory and two native
+  filesystem locations. Raw metadata, inode relationships, entrypoint paths,
+  stdout/stderr and statuses are retained. These are operation assertions, not
+  cross-runtime trace equality or a fix for GNU directory seeking.
+- `out/issue-678-tmp/current-public-qualification-v3.json` records the precise
+  artifact roots, three tarball hashes, 25 successful exit receipts and remaining
+  limits. Its audit verifies every listed status, tarball digest and all six
+  directory-runtime reports. Full root `npm test` is still historical relative
+  to these edits; no issue completion or remote delivery is inferred.
+
+### Additional native runtime profiles
+
+- The unchanged async proof initially stops on its Node 22.23.2 admission guard
+  when invoked under installed Node 18.20.8 and 20.5.1: zero controls or native
+  requests execute. Keep that failed v1 profile; it is not an addon failure or
+  a passing compatibility result.
+- In a separate v2 copy, explicitly admit only those two exact Node versions by
+  changing one version assertion. The Bun guard, ten behavior controls, cleanup
+  and opaque addon bytes remain unchanged. Each initial sandbox run passes nine
+  controls with one FIFO unavailable due to `EPERM`, exit 2. Approved unchanged
+  retries pass all ten on each runtime, close ten descriptors, complete all 23
+  requests and leave no pending resources. Fifty prior records remain unchanged.
+- Exact source diff, raw failed/successful profiles and hashes remain in
+  `out/issue-678-tmp/napi-seek-async-runtime-extension-v2/`. This adds measured
+  Node 18 and 20 release-line evidence on the same Linux x64 host. It does not
+  substitute for testing the actual Node 18.18 engine minimum, establish general
+  raw-trace equality, or authorize production native integration by itself.
+
+### Production candidate and exact directory command audit
+
+- After directory admission/pinning qualification, the bounded production
+  candidate adds a private asynchronous END-only Node-API backend to Real
+  retained read and resize handles. Its Linux x64/glibc 2.31 profile is not a
+  promise of minimum-engine or other-platform coverage. The packaging plan
+  records the build-only header dependency, actual system-toolchain trust
+  boundary, binary byte integrity and remaining release gates.
+- The command now explicitly passes `allowDirectory: true` to both reference
+  capability lookup and retained acquisition. The original GNU utility and
+  helpers require nonregular reference open/seek/close, not directory stat size.
+  TDD records 47 initial failures followed by 54 passing new controls. The
+  superseded exact-options fixture is updated without altering snapshots;
+  1,571 existing command tests and six registration tests pass as well.
+- Maintained build v17 succeeds after the final cleanup changes. Full lint v8
+  passes all 10,470 configured inputs, types and workflows. Full unit v8 does
+  not pass: shared tests pass 22,358 with one existing skip, Python passes 29,
+  and the Bash runner passes 302, but Bash reports 26,340 passes, 21 failures
+  and 63 skips. Twenty failures reject the newly introduced private native
+  peer edge; one correctly refuses the uncommitted workspace lock when binding
+  a selected committed revision. Neither gate is bypassed or counted as green.
+- The fresh built-public command audit runs all eight bounded directory
+  workflows on both filesystem profiles for each backend and runtime. On both
+  Node 22.23.2 and Bun 1.3.8, Real matches GNU in all eight cases for exact
+  stdout/stderr/status and target existence, bytes, size, type and permission
+  bits. New and existing targets, empty and populated references, and EXT/XFS
+  are retained. Timestamp/inode equality is not asserted. All 16 shells per
+  runtime are disposed.
+- Memory still mismatches all eight cases on each runtime, reporting that
+  reference size is unsupported and leaving the target absent or unchanged.
+  Each complete audit deliberately exits 1 because parity is incomplete;
+  Memory rows are neither excluded nor counted as successful characterizations.
+  No universal zero, directory stat size or guessed INT64_MAX is introduced.
+- Reports and source hashes are under
+  `out/issue-678-tmp/truncate-directory-command-v1-{node,bun}.json` and
+  `truncate-directory-command-v1-inputs.sha256`. The v17 workspace/canonical
+  binary bytes equal the earlier installed candidate, but its loader source
+  changed; previous installed-consumer qualification is not transferred to the
+  new whole candidate. The version-banner differences and other published
+  qualification gaps remain unresolved. Nothing in this checkpoint is a push,
+  issue closure or release of the local candidate.
+
+### Peer-capture follow-up and final local checkpoint
+
+- Repair both peer capture layers without a blanket private-import allowance.
+  The first validates exact native mapping, finite asset membership, hashes,
+  fatal manifest UTF-8 and symbol-aware loader imports. The second consumes
+  immutable facts only from the original branded binding after fresh source
+  and staged-byte validation. Native bytes remain opaque; no executable native
+  edge is added to the unchanged cleanup worker. The new and neighboring
+  memfs gates pass 175 controls, and the actual public cleanup replay passes
+  all 20 controls with its owned snapshot removed afterward.
+- The final full lint v10 passes 10,472 configured files with no errors or
+  warnings, plus types and workflows. The separately run maintained SafeJS
+  workspace task passes 21,653 tests with 37 existing skips; it is not presented
+  as completion of the root unit route. That route has not passed the selected
+  committed-revision metadata/lock prerequisite. The earlier 21-failure full
+  receipt remains intact, followed by the successful targeted cleanup replay.
+- Fresh scoped v2 tarballs install offline with scripts disabled in an isolated
+  peer consumer. Node and Bun public smoke gates pass, and each runtime executes
+  eight Real directory-reference workflows matching the unchanged GNU captures.
+  Installed public NodeNext/ES2022 type fixtures and the native-free browser
+  bundle pass. Receipt audit:
+  `out/issue-678-tmp/native-scoped-v2-qualification.json`. This does not waive
+  the Memory/version differences or qualify a packed root artifact, FS-only
+  relocation of this new revision, other engines/platforms, or Worker-only
+  condition graphs.
+- Read-only monitoring verifies root release run 34352845497 for external
+  commit `2917f1b8622bfa4663f8edd3cf062bef6481ffa1` completed successfully on
+  September 9, 2026 at 13:08:19 UTC. It does not contain or deliver this local
+  uncommitted candidate. No new commit, push, issue closure or release is made
+  during this checkpoint.
+
+### Directory-reference baseline decision still required
+
+- A subsequent local inspection identifies `/tmp` as ext4 and the worktree as
+  XFS using `findmnt`. All ten source hashes in
+  `out/issue-678-tmp/truncate-directory-command-v1-inputs.sha256` still match.
+  This is a source/evidence revalidation, not a new command replay.
+- The same captured argv, `-r reference -s<1 target`, with an empty reference
+  directory and absent target succeeds natively on both filesystems, but creates
+  different contents: ext4 produces one NUL byte; XFS produces an empty file.
+  Both native captures have empty stdout/stderr, exit 0 and target mode 0644.
+  The Real rows match their respective native profiles. Both Memory rows instead
+  fail before target creation. The original report retains all four rows.
+- Reading original `src/truncate.c` reference handling and
+  `src/system.h:701` confirms that directory stat size is not the reference
+  size: `usable_st_size` excludes directories, so the utility opens the reference
+  and obtains its end with `lseek`. Therefore replacing the missing operation
+  with Memory's existing zero directory stat size is not source-equivalent.
+- Current Memory directories contain an entry map and metadata, with no native
+  filesystem profile or directory seek-position representation. Its options
+  configure only three allocation limits. Consequently an unconfigured fixed
+  Memory result cannot match both different native expectations for this same
+  logical input. This does not excuse either failed row or establish that one
+  filesystem's behavior is the universally correct replacement.
+- A decision about the native baseline Memory is meant to emulate is needed
+  before choosing directory seek semantics. Do not infer that decision from the
+  host running a test, add a public profile option merely to turn tests green,
+  substitute directory stat size, or discard the other profile's evidence.
+  The separate version-identity mismatch likewise remains unresolved; copying
+  GNU's identity banner is not authorized by a green-test target.
+- A read-only release check again reports root run 34352845497 successful at
+  external commit `2917f1b8622bfa4663f8edd3cf062bef6481ffa1`, completed on
+  September 9, 2026 at 13:08:19 UTC. Local commits and this candidate remain
+  undelivered; this observation is not release qualification of either.
+
+### Minimum-engine native qualification: Node 18.18.0
+
+- The installed scoped v2 SafeFS manifest declares Node `>=18.18`. Use exact
+  Node 18.18.0, not an installed earlier 18.17.1 or later 18.20.8, to check that
+  boundary. The private workspace's test-engine assumptions do not replace the
+  public artifact's declared minimum.
+- Download only the official Linux x64 runtime archive into an owned temporary
+  directory. Its SHA-256 matches the Node release page before bounded XZ/tar
+  admission. Extract/hash the single executable opaquely; do not decode it,
+  install globally, add dependencies, or run a package install script. This
+  checks the published checksum over HTTPS, not a verified release signature.
+  Admission receipt: `out/issue-678-tmp/node1818-runtime-admission.json`.
+- Execute from the existing isolated scoped v2 consumer with a minimal explicit
+  environment and only installed public SafeFS imports. Verify the manifest,
+  loader and binary bindings before testing; do not load workspace source or a
+  private native binding as a substitute for public consumer behavior.
+- On both observed ext4 and XFS roots, create small owned fixtures, retain a
+  writable regular file, seek/resize it across rename and pathname replacement,
+  and confirm the replacement bytes are untouched. Close each retained handle
+  and verify subsequent use fails with EBADF.
+- For empty and populated reference directories on both roots, acquire a public
+  directory read handle, get its bigint end position, and compare that position
+  with the exact bounded diagnostic from fresh GNU `truncate -r REFERENCE -s+0
+  /dev/null`. Preserve stdout, stderr and status without normalization. Verify
+  retained directory identity across rename/replacement and close every handle.
+- Keep this gate separate from Memory-directory parity, version identity, other
+  engines/platforms, process shutdown/fault injection, and remote delivery. A
+  passing minimum-engine slice does not complete the feature or qualify every
+  exported operation. Preserve failed setup/execution receipts separately.
+
+### Minimum-engine results and current FS-only relocation
+
+- Exact Node 18.18.0 reports Node-API 9 on Linux x64/glibc 2.31. The installed
+  scoped v2 consumer passes all six retained native controls: two regular-file
+  resize/pinning workflows and four directory-reference controls across ext4
+  and XFS, with empty and populated directories. The four fresh GNU diagnostics
+  match exactly. All six acquired handles close; closed use returns EBADF and
+  directory reads return EISDIR. Receipt: `node1818-public-v2.json` and `.exit`
+  under `out/issue-678-tmp`.
+- The first public attempt remains an incomplete failure: the sandbox reports
+  EPERM for the oracle subprocess after two handles are acquired; both close.
+  Its partial output is not relabeled a passing native comparison. Normal
+  escalation reruns the same controls and produces the successful v2 receipt.
+- A fresh filesystem-only consumer installs the checksum-verified scoped v2
+  SafeFS tarball offline with scripts disabled, then moves to
+  `/var/tmp/truncate678-node1818-fs-only.RbuVHH-relocated` before execution. It
+  contains SafeFS, `@types/node` and `undici-types`, not zero installed packages
+  beyond SafeFS. Root, SafeJS, SafeBash and build-header package absence is
+  checked explicitly. No repository dependency or global runtime is installed.
+- The maintained filesystem-only public fixture passes on Node 18.18.0 after
+  relocation. The same six native controls also pass there, including four more
+  fresh exact GNU diagnostics and six closed handles. Evidence:
+  `node1818-fs-only-{install-v1,smoke-v1}` and
+  `node1818-fs-only-native-v2` receipts under `out/issue-678-tmp`.
+- The first standalone native probe fails during its own setup because this
+  Node stdin-evaluation context has no `import.meta.url`. The maintained
+  file-based fixture already passes. Replacing only that probe argument with
+  the explicit absolute consumer package path makes `createRequire` and all
+  absence checks work; the empty v1 JSON and its stderr remain. No product
+  loader or native implementation is changed to accommodate the probe.
+- Root rechecks all successful receipts, both six-control cohorts, eight exact
+  fresh GNU diagnostics, twelve closed handles, relocation, and the temporary
+  runtime hash. Native source, loader and adapter hashes remain unchanged.
+  This closes the previously untested exact-minimum native slice and adds
+  FS-only relocation evidence for the current v2 loader, not the older v1
+  candidate. It does not qualify all SafeFS APIs, the SafeJS minimum, SafeBash
+  below its declared Node 22 minimum, arbitrary shutdown/fault injection,
+  Memory/version parity, the full unit gate, or remote delivery.
+
+### Independent retained-filesystem milestone, September 9
+
+- Prepare a separate local foundation commit containing the retained-read/resize
+  contracts, adapters, quota/cancellation handling, END-only native implementation,
+  authenticated build/packaging support and current peer-consumer validators.
+  Include the generic Playground handle bridge and quota integration: otherwise
+  its advertised retained capabilities would lack a corresponding bridge route
+  and retained resizing could bypass the previous path-only mutation guard.
+- Keep the `truncate` command, default registration, command fixtures and inventory
+  changes outside this milestone. The two command-dependent Playground test diffs
+  also remain outside; generic bridge, lifecycle and quota tests accompany the
+  foundation. This separation does not reduce issue #678's required behavior or
+  declare its known Memory-directory and version differences acceptable.
+- Root scope review includes the public retained-FS type consumer and excludes
+  command-specific smoke/browser/mixed-entry fixtures. The exact local candidate
+  path inventory is `out/issue-678-tmp/foundation-commit-paths-v1.txt`; generated
+  native binaries, output receipts and unrelated changes are not commit inputs.
+- Focused root filesystem/bundle checks pass 3,465 tests in 82 files after the
+  original loopback EPERM failure is rerun with approval. The separate maintained
+  package-lint workspace task passes 540 tests in 13 files. The maintained
+  Playground workspace task passes 220 tests in eight files; this live-worktree
+  run includes command tests that are deliberately not part of the foundation.
+- The first targeted Node runner reports six file-level passes without inner-case
+  counts; do not treat that output alone as 305 executed assertions. Direct
+  execution of the same six test files then reports 305 passing test cases,
+  zero failures and zero skips. Preserve both receipts under `out/issue-678-tmp`
+  as `foundation-bash-focused-v1` and `foundation-bash-direct-v1` respectively.
+- These focused results are not a full maintained unit pass or committed-artifact
+  qualification. The committed-source metadata/lock equality guard stays intact;
+  rerun that gate only against a matching local commit, then the normal full gate.
+  Local commit, verified remote-main delivery and publication remain separate.
+- The third consumer validator had a reproduced private-native-edge refusal:
+  initial controls report three failures and one pass, including two exact
+  `Unbound runtime dependency: #safe-fs-native-seek` failures. Its repair reuses
+  the original branded peer's authenticated runtime facts, freshly rechecks
+  source/staged inputs, and rejects foreign aliases and relative access to native
+  assets. Opaque binaries remain hash-only inputs. The metadata/lock guard and
+  existing member/read limits remain unchanged.
+- The validator's final direct controls pass 44 new cases plus four selected
+  archive controls, 68 existing peer cases and 42 required-peer cases. These 158
+  cases overlap the root's 305-case cohort; do not sum them as unique coverage.
+  Raw red/green receipts and hashes live in
+  `out/issue-678-tmp/s3-native-binding-v1/handoff.md`. Its actual committed-archive
+  gate remains pending. Add literal discovery assertions for all three new peer
+  test files; do not ship pending truncate assertions ahead of their command.
+- The literal discovery controls pass two selected inner tests; 672 discovered
+  files are membership evidence, not an executed-test count. Root no-emit types
+  pass, and the maintained guarded ESLint route completes all 10,474 configured
+  files with zero errors or warnings. These results qualify the reviewed live
+  inputs, not the pending commit's full unit or release gates.

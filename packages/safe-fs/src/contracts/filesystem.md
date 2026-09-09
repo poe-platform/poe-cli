@@ -161,11 +161,127 @@ same mount path rules, including symlinks and a missing final entry, without
 creating anything. Synthetic directories return a readonly profile. It is a
 point-in-time observation, not a lease, and can fail with normal resolution errors.
 
+`OpenReadFileOptions.allowDirectory` is an explicit retained-read admission
+request. Omission and `false` preserve regular-file admission and directory
+`EISDIR` failures. With `true`, a supporting backend may retain a directory for
+metadata operations without granting byte-read access: its handle returns the
+original directory's metadata across rename, removal and path replacement,
+rejects byte reads with `EISDIR`, and releases its retained resource on close.
+This option does not grant writes, create an entry, or promise end-seek support.
+`seekEnd` remains independently optional; neither directory stat size nor an
+invented offset is a substitute. Unsupported or synthetic directory backends
+may still reject acquisition. Normal path-based `readFile` and `readStream`
+semantics do not change.
+
+Retained-read capability queries carry the original `OpenReadFileOptions`,
+including `allowDirectory` when supplied. This is separate from writable-file
+creation intent; readonly views may forward it without enabling mutation.
+
+`CapabilityQueryOptions.create` optionally selects writable-file-open resolution.
+Omission retains the generic query above; explicit `false` selects an existing
+target and explicit `true` permits creation. The retained-resize admission helper
+always supplies this intent, including `false` for its default no-create mode.
+This query never creates anything or grants authority from a parent directory.
+Actual acquisition still requires the selected target's affirmative capability.
+
+For creation-enabled resolution, a terminal separator requires parent traversal
+and search checks, then fails EISDIR before following the final component. For
+no-create resolution, the final target must be a directory but the separator
+does not add a search-permission check inside that final directory. Literal
+`/.` and `/..` retain their traversal checks. Separator provenance must survive
+symlink expansion; checking only the original operand is insufficient. An early
+error is not permission to return parent-derived positive capabilities or skip
+mount confinement. These rules apply to backends implementing this open profile;
+the separate ReadOnly policy view retains its unconditional mutation denial,
+not native readonly-mount diagnostic ordering.
+
 Readonly and quota views preserve selected-path resolution. Quota stream flags
 describe its actual incremental append-based route, not the backing atomic
 writer's flags. Overlay declarations conservatively include upper staging and
 copy-up prerequisites; missing required declarations remain unknown. Wrappers
 must not manufacture support from delegated mandatory methods.
+
+## Retained writable resizing
+
+`openResizeFile(path, { create?, mode?, signal? })` is optional and requires
+affirmative selected-path `retainedResize` support plus a callable method.
+Readonly status overrides that support. It opens one supported file object for writing
+without truncation or append; read permission is not required. `create` defaults
+to false. When true, a missing referent is created without creating parents;
+`mode` applies only to that creation, with the backend's existing mode/umask
+rules. Symlink and trailing-directory resolution follow the backend contract.
+
+The returned `FileResizeHandle` exposes `stat`, `truncate(length)` and
+`close`, with optional `seekEnd` support described below. All operations address
+the acquired object after rename, unlink or
+pathname replacement. `truncate` accepts a nonnegative safe integer, preserves
+the retained prefix, and zero-fills extension within the backend's existing
+logical and allocation limits. Initial acquisition checks write permission even
+when the requested eventual size is unchanged. An acquired handle retains that
+write authority; a later chmod is not a new pathname open or a permission
+recheck. Same-size resizing retains the backend's timestamp semantics.
+
+An explicitly supported nonregular target may expose the same retained protocol
+with its native-equivalent operation failures. In particular, the virtual null
+device opens for writing, reports its character-device stat, and rejects a valid
+truncate operation with EINVAL; it is not rejected as an unsupported open or
+disguised as a regular zero-length file. Its explicit virtual preferred-I/O hint
+is 4,096 bytes. `retainedResize` promises retained acquisition and operations,
+not that every target/length combination can be resized successfully.
+
+Both `FileReadHandle` and `FileResizeHandle` may expose `seekEnd(options)`. When
+available, this performs the backend's end-seek operation on the already acquired
+object, including its cursor effects, and returns its exact nonnegative end
+position as a bigint. It is not a pathname stat, a reopen, a read-until-EOF
+approximation, or permission to invent a directory/device size. Missing or
+undefined means unsupported. Neither retained-read nor retained-resize support
+alone promises end-seeking or acquisition of every nonregular file type.
+
+End-seeking follows the same cancellation, operation-admission and draining-close
+contract as other retained operations. Wrappers preserve the original handle
+receiver, scope signals and operation charges; they must not erase available
+end-seeking or expose an unmetered operation. A consumer needing a nonregular
+reference must acquire and seek that object, while a consumer whose regular-file
+reference requires only stat must not introduce an unnecessary read-permission
+check. Concrete directory/device and native-runtime implementations require their
+own justified semantics; this optional protocol does not establish them.
+
+`RealFileSystem` provides retained end-seeking through a private asynchronous
+Node-API implementation, currently targeting Linux x64 with glibc 2.31 or newer.
+Other runtime/asset combinations fail explicitly with ENOTSUP; a missing or
+corrupt expected asset is a loading failure, not a stat-size fallback. Ordinary
+filesystem imports and handle acquisition do not load the addon. Lazy binding
+initialization is opaque metadata work, not a descriptor-retirement barrier;
+cancellation observes its late settlement without dispatching a later seek.
+Once native work is actually admitted, close retains the descriptor until that
+work finishes. Cancellation cannot forcibly stop a running native syscall.
+Memory directory admission does not invent an equivalent native end position.
+
+Close synchronously stops admission, returns one shared promise and drains
+already admitted resource work before releasing the handle. Later operations
+fail with EBADF. Caller cancellation does not undo completed effects. A late
+acquisition is closed before its canceled operation settles; preserve the
+original failure when cleanup also fails, including falsey rejection values.
+Opaque pre-acquisition capability queries are interruptible, cannot admit a
+later open after cancellation, and are not resource-retirement barriers.
+
+Wrappers must enforce path-specific support, readonly denial, operation charges
+and quota admission rather than forwarding an unmetered writable handle. Quota
+growth uses the pinned object's identity, not its potentially replaced opening
+pathname. Creation and resizing remain separately observable effects. Neither
+`truncate`, `randomAccessWrite` nor `descriptorWriteStream` alone implies this
+retained-resize promise. Object replacement is not an implementation of it.
+
+### Preferred I/O blocks
+
+`FileStat.preferredIoBlockSize?: number` is an optional positive safe-integer
+byte count for the same observed entry. Absence means unknown. It is a preferred
+transfer-size hint, not allocated bytes, allocation granularity or a reference
+file's block size. Real reports only valid native `Stats.blksize` observations.
+Memory's selected virtual policy is 4,096 bytes, consistent with its existing
+Node-stat bridge profile; this is an explicit virtual hint, not a measured host
+or physical-storage claim. The 64 KiB stream-read chunk default does not define
+this metadata. Wrappers preserve known observations and do not invent unknowns.
 
 ## Quota accounting
 

@@ -4,7 +4,7 @@ import {
   canonicalFsRoutes
 } from "../packages/package-lint/dist/bundle-policy.js";
 
-export function resolveCanonicalFsBuilds(rootDir, graph, nodeEntries = {}) {
+export function resolveCanonicalFsBuilds(rootDir, graph, nodeEntries = {}, nativeAssets) {
   return Object.fromEntries(
     Object.entries(canonicalFsProfiles).map(([profile, settings]) => {
       const entryPoints = profile === "node" ? { ...nodeEntries } : {};
@@ -30,7 +30,7 @@ export function resolveCanonicalFsBuilds(rootDir, graph, nodeEntries = {}) {
           format: "esm",
           outdir: path.join(rootDir, settings.outdir),
           chunkNames: "chunks/[name]-[hash]",
-          external: profile === "node" ? graph.external : [],
+          external: profile === "node" ? [...new Set([...graph.external, ...(nativeAssets ? [nativeAssets.specifier] : [])])] : [],
           sourcemap: true,
           metafile: true,
           write: false

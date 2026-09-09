@@ -559,6 +559,12 @@
     "vite": "6.4.3"
   },
   "imports": {
+    "#safe-fs-native-seek": {
+      "types": "./packages/safe-js/dist/native/fs-seek/loader.d.ts",
+      "workerd": null,
+      "browser": null,
+      "default": "./packages/safe-js/dist/native/fs-seek/loader.mjs"
+    },
     "#safe-fs-platform": {
       "types": {
         "browser": "./packages/safe-fs/dist/platform/browser.d.ts",

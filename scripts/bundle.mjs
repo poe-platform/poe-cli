@@ -1,12 +1,15 @@
 import * as esbuild from "esbuild";
+import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyFile, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, lstat, mkdir, open, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { versionGateSnippet } from "./node-version-gate.mjs";
 import { resolveGithubWorkflowAssetCopies } from "./bundle-assets.mjs";
 import { assertSafeBundleOutputs, assertSafeOutputDirectory } from "./guard-package-dist.mjs";
 import { resolveBundleGraph, resolveConsumerGraph } from "./bundle-graph.mjs";
 import { resolveCanonicalFsBuilds } from "./bundle-fs.mjs";
+import { copyNativeAssets, nativeImportMapping, readNativeRegistry } from "../packages/safe-fs/scripts/native-assets.mjs";
+import { collectCanonicalNativeAssets, readBoundedNativeBytes } from "../packages/package-lint/dist/native-assets.js";
 import { resolveBrowserShellBuild } from "./bundle-safe-bash.mjs";
 import {
   canonicalFs,
@@ -204,11 +207,19 @@ const safejsEntryPoints = {
   core: path.join(rootDir, "packages/safe-js/src/core.ts"),
   cli: path.join(rootDir, "packages/safe-js/src/cli.ts")
 };
+const nativeAssets = await readNativeRegistry({ rootDir });
 const fsBuildOptions = resolveCanonicalFsBuilds(
   rootDir,
   { alias: workspaceAliases, external: externalDeps },
-  safejsEntryPoints
+  safejsEntryPoints,
+  nativeAssets
 );
+const nativeRootPrefix = path.relative(rootDir, fsBuildOptions.node.outdir).split(path.sep).join("/");
+assert.equal(JSON.stringify(packageJson.imports?.[nativeAssets.specifier]),
+  JSON.stringify(nativeImportMapping(nativeAssets, nativeRootPrefix)), "Invalid root native private import mapping");
+const safejsScope = JSON.parse(await readFile(path.join(rootDir, "packages/safe-js/package.json"), "utf8"));
+assert.equal(JSON.stringify(safejsScope.imports?.[nativeAssets.specifier]),
+  JSON.stringify(nativeImportMapping(nativeAssets, "dist")), "Invalid worktree native private import mapping");
 const fsBuilds = {};
 for (const [profile, options] of Object.entries(fsBuildOptions)) {
   const result = await esbuild.build(options);
@@ -219,6 +230,7 @@ for (const [profile, options] of Object.entries(fsBuildOptions)) {
   });
   fsBuilds[profile] = result;
 }
+await copyNativeAssets({ rootDir, outDir: fsBuildOptions.node.outdir });
 await setBinExecutable(path.join(rootDir, "packages/safe-js"));
 
 const shellOptions = resolveBrowserShellBuild(rootDir);
@@ -434,6 +446,13 @@ const metafile = {
     ),
     metafile: fsBuilds.browser.metafile
   },
+  ...(await collectCanonicalNativeAssets(rootDir, {
+    readdir: (directory) => readdir(directory, { withFileTypes: true }),
+    readFile: (filename) => readFile(filename, "utf8"),
+    lstat,
+    realpath,
+    readBytes: (filename, maximum) => readBoundedNativeBytes(open, filename, maximum)
+  })),
   ...(await collectCanonicalDeclarations(rootDir, {
     readdir: (directory) => readdir(directory, { withFileTypes: true }),
     readFile: (filename) => readFile(filename, "utf8")

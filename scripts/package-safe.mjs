@@ -7,6 +7,7 @@ import semver from "semver";
 import ts from "typescript";
 import { build } from "esbuild";
 import { resolveBundleGraph } from "./bundle-graph.mjs";
+import { copyNativeAssets, nativeImportMapping, readBuiltNativeAssets } from "../packages/safe-fs/scripts/native-assets.mjs";
 
 export function rewriteModuleSpecifiers(filename, text, rewrite) {
   const source = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
@@ -68,6 +69,8 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
   }
   const results = [];
   const fsManifest = workspaces.find(workspace => workspace.dir === "safe-fs").pkg;
+  const nativeAssets = await exists(path.join(rootDir, "packages/safe-fs/native/assets.json"))
+    ? await readBuiltNativeAssets({ rootDir, files }) : undefined;
   for (const name of ["safe-fs", "safe-js", "safe-bash"]) {
     const packageDir = path.join(rootDir, "packages", name);
     const source = await readJson(path.join(packageDir, "package.json"));
@@ -76,6 +79,11 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
     await files.mkdir(directory);
     const pending = [];
     const copied = new Set();
+    if (name === "safe-fs" && nativeAssets) {
+      await copyNativeAssets({ rootDir, files,
+        outDir: path.join(directory, artifactPath(rootDir, path.join(rootDir, "packages/safe-fs/dist"))) });
+      for (const entry of nativeAssets.entries) copied.add(path.join(nativeAssets.directory, entry.name));
+    }
     const dependencies = {};
     const bundled = new Map();
     if (name === "safe-js") {
@@ -149,6 +157,10 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
             if (declaration && ranges["@types/node"]) addDependency("@types/node");
             return specifier;
           }
+          if (nativeAssets && specifier === nativeAssets.registry.specifier) {
+            if (name !== "safe-fs") throw new Error("Filesystem implementation leaked into " + name);
+            return specifier;
+          }
           if (specifier === "#safe-fs-platform") {
             if (name !== "safe-fs") throw new Error("Filesystem implementation leaked into " + name);
             for (const profile of ["node", "browser"]) pending.push(path.join(rootDir, "packages/safe-fs/dist/platform", profile + (declaration ? ".d.ts" : ".js")));
@@ -186,6 +198,8 @@ export async function packageSafeLibraries({ rootDir, outDir, version, files = f
       publishConfig: { access: "public" }, dependencies,
     };
     if (name === "safe-fs") manifest.imports = { "#safe-fs-platform": { types: { browser: "./dist/safe-fs/platform/browser.d.ts", default: "./dist/safe-fs/platform/node.d.ts" }, browser: "./dist/safe-fs/platform/browser.js", default: "./dist/safe-fs/platform/node.js" } };
+    if (name === "safe-fs" && nativeAssets) manifest.imports[nativeAssets.registry.specifier] = nativeImportMapping(nativeAssets.registry,
+      artifactPath(rootDir, path.join(rootDir, "packages/safe-fs/dist")));
     if (name === "safe-js") {
       if (source.bin) manifest.bin = Object.fromEntries(Object.entries(source.bin).map(([command, target]) => [command, "./" + artifactPath(rootDir, path.resolve(packageDir, target))]));
     }

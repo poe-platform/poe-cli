@@ -395,6 +395,9 @@ function assertSource7Discovery(files) {
   for (const path of added) assert.ok(files.includes(path), "retained filesystem test is missing: " + path);
   assert.ok(files.includes("tests/fs/conformance/provenance.test.ts"));
   assert.ok(files.includes("tests/integration/typecheck-consumer-resolution.test.ts"));
+  assert.ok(files.includes("tests/integration/s3-http-exports/native-peer.test.ts"));
+  assert.ok(files.includes("tests/plugins/qualified-native-peer.test.ts"));
+  assert.ok(files.includes("tests/plugins/qualified-native-required-peer.test.ts"));
   assert.ok(files.includes("tests/shell/redirect-limits.test.ts"));
   assert.ok(files.includes("tests/shell/opaque-errors.test.ts"));
   assert.ok(files.includes("tests/shell/filesystem-budget.test.ts"));

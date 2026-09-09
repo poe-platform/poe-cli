@@ -7,6 +7,7 @@ export {
   resolvePath,
   normalizePath,
   readBytes,
+  withFileSystemQuota,
   FsError
 } from "virtual:safe-bash-kernel";
 export type {

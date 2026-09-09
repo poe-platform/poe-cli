@@ -28,27 +28,38 @@ interface CapturedDependency {
   files: { path: string; sha256: string }[];
 }
 
-export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashes, tools: Hashes, checkoutBinding?: { profile: string; metadataSha256: string; entries: Record<string, string> }): Promise<RequiredPeer> {
+export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashes, tools: Hashes, peerBinding?: { profile: string; metadataSha256: string; entries: Record<string, string>; files: readonly { path: string; sha256: string }[] }): Promise<RequiredPeer> {
+  const { capturePeerRuntimeFacts } = await import(new URL("../../../plugins/qualified-current-release/peer.mjs", import.meta.url).href);
+  const facts: {
+    edges: Readonly<Record<string, Readonly<Record<string, string>>>>;
+    nativeEdges: readonly { importer: string; specifier: string; target: string }[];
+    nativeAssets: readonly { path: string; sha256: string; maxBytes: number }[];
+  } | undefined = peerBinding === undefined ? undefined : capturePeerRuntimeFacts(peerBinding, snapshot);
+  const checkoutBinding = peerBinding?.profile === "checkout-root" ? peerBinding : undefined;
+  if (peerBinding) assert.ok(checkoutBinding || peerBinding.profile === "registry-release", "Unreviewed required-peer binding profile");
   const root = JSON.parse(await readFile(join(snapshot, "package.json"), "utf8"));
   assert.equal(typeof root.peerDependencies?.["poe-code"], "string", "Canonical runtime must be a declared peer");
   assert.notEqual(root.peerDependenciesMeta?.["poe-code"]?.optional, true, "Canonical runtime peer must be required");
   const locked = JSON.parse(await readFile(join(snapshot, "package-lock.json"), "utf8")).packages["node_modules/poe-code"];
   const metadataPath = "node_modules/poe-code/package.json";
   let size = 0;
-  const readPeer = async (path: string): Promise<Buffer> => {
+  const readPeer = async (path: string, maxBytes = 8 * 1024 * 1024): Promise<Buffer> => {
     assert.ok(path.startsWith("node_modules/poe-code/") && !path.split("/").includes(".."), `Peer path escaped: ${path}`);
     const absolute = join(snapshot, path), stat = await lstat(absolute);
-    assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 8 * 1024 * 1024, `Peer input must be a bounded regular file: ${path}`);
+    assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= Math.min(maxBytes, 8 * 1024 * 1024), `Peer input must be a bounded regular file: ${path}`);
     assert.equal(await realpath(absolute), absolute, `Peer input must not traverse symlinks: ${path}`);
     const bytes = await readFile(absolute);
+    assert.equal(bytes.length, stat.size, `Peer input changed while reading: ${path}`);
     size += bytes.length;
     assert.ok(size <= 16 * 1024 * 1024, "Peer runtime closure exceeds byte bound");
     assert.equal(digest(bytes), tools[path.slice("node_modules/".length)], `Peer differs from captured tools: ${path}`);
+    if (peerBinding) assert.equal(digest(bytes), peerBinding.files.find(file => file.path === path.slice("node_modules/poe-code/".length))?.sha256, `Peer differs from authenticated binding: ${path}`);
     return bytes;
   };
   const metadata = await readPeer(metadataPath);
   const peer = JSON.parse(metadata.toString()) as { name: string; version: string; exports: Record<string, { import?: string }> };
   assert.equal(peer.name, "poe-code");
+  if (peerBinding) assert.equal(digest(metadata), peerBinding.metadataSha256, "Runtime peer differs from authenticated metadata");
   if (checkoutBinding) {
     assert.equal(checkoutBinding.profile, "checkout-root");
     assert.equal(root.devDependencies?.["poe-code"], "file:../..");
@@ -69,7 +80,7 @@ export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashe
       const target = peer.exports[`.${fileName.slice("poe-code".length)}`]?.import;
       assert.equal(typeof target, "string", "Canonical runtime requires an explicit public import target");
       assert.ok(target!.startsWith("./packages/") && target!.includes("/dist/") && !target!.split("/").includes(".."), "Canonical public target is not a built package entry");
-      if (checkoutBinding) assert.equal(target, `./${checkoutBinding.entries[fileName]}`, `Canonical runtime differs from authenticated public binding: ${fileName}`);
+      if (peerBinding) assert.equal(target, `./${peerBinding.entries[fileName]}`, `Canonical runtime differs from authenticated public binding: ${fileName}`);
       entries[fileName] = posix.join("node_modules/poe-code", target!);
     }
   }
@@ -81,19 +92,34 @@ export async function captureRequiredPeer(snapshot: string, emittedHashes: Hashe
     if (Object.hasOwn(files, path)) continue;
     assert.ok(Object.keys(files).length < 128, "Peer runtime closure exceeds file bound");
     assert.ok(path.startsWith("node_modules/poe-code/packages/") && path.includes("/dist/") && (path.endsWith(".js") || path.endsWith(".mjs")), `Peer closure requires built ESM: ${path}`);
-    const bytes = await readPeer(path);
+    const local = path.slice("node_modules/poe-code/".length);
+    const bytes = await readPeer(path, facts?.nativeAssets.find(asset => asset.path === local)?.maxBytes);
     files[path] = digest(bytes);
     const imports: Record<string, string> = {};
-    for (const { fileName } of ts.preProcessFile(bytes.toString(), true).importedFiles) {
+    const admitted = facts?.edges[local];
+    if (facts) assert.ok(admitted, `Runtime importer is outside authenticated binding: ${path}`);
+    const specifiers = admitted ? Object.keys(admitted) : ts.preProcessFile(bytes.toString(), true).importedFiles.map(entry => entry.fileName);
+    for (const fileName of specifiers) {
       if (isBuiltin(fileName)) continue;
-      assert.ok(fileName.startsWith("./") || fileName.startsWith("../"), `Unreviewed peer runtime dependency: ${fileName}`);
-      const target = posix.normalize(posix.join(posix.dirname(path), fileName));
+      const nativeEdge = facts?.nativeEdges.find(edge => edge.importer === local && edge.specifier === fileName);
+      assert.ok(nativeEdge || fileName.startsWith("./") || fileName.startsWith("../"), `Unreviewed peer runtime dependency: ${fileName}`);
+      const target = nativeEdge ? `node_modules/poe-code/${nativeEdge.target}` : posix.normalize(posix.join(posix.dirname(path), fileName));
       assert.ok(target.startsWith("node_modules/poe-code/packages/") && target.includes("/dist/"), `Peer runtime edge escapes built package: ${fileName}`);
+      if (admitted) assert.equal(target, `node_modules/poe-code/${admitted[fileName]}`, `Peer runtime edge differs from authenticated binding: ${fileName}`);
       imports[fileName] = target;
       pending.push(target);
     }
     edges[path] = imports;
   }
+  for (const asset of facts?.nativeAssets ?? []) {
+    const path = `node_modules/poe-code/${asset.path}`;
+    if (Object.hasOwn(files, path)) continue;
+    assert.ok(Object.keys(files).length < 128, "Peer runtime closure exceeds file bound");
+    const bytes = await readPeer(path, asset.maxBytes);
+    assert.equal(digest(bytes), asset.sha256, `Native asset differs from authenticated binding: ${path}`);
+    files[path] = digest(bytes);
+  }
+  if (peerBinding) capturePeerRuntimeFacts(peerBinding, snapshot);
   return { name: "poe-code", version: peer.version, integrity: checkoutBinding ? null : locked.integrity, profile: checkoutBinding ? "checkout-root" : "registry-release", metadataPath, metadataSha256: digest(metadata), entries, files, edges };
 }
 
@@ -252,7 +278,7 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
     assert.deepEqual((await captureInputs(snapshot)).files, captured.files, "Build changed captured inputs");
     assert.deepEqual(await census(join(snapshot, "node_modules")), tools, "Build changed compiler dependencies");
     const emitted = await census(join(snapshot, "dist"), snapshot);
-    const requiredPeer = await captureRequiredPeer(snapshot, emitted, tools, profile.profile === "checkout-root" ? peerBinding : undefined);
+    const requiredPeer = await captureRequiredPeer(snapshot, emitted, tools, peerBinding);
     const report = {
       runtimeCommit: expected?.revision ?? null,
       callbackCommit: null,
@@ -292,7 +318,7 @@ export async function preparePublicSnapshot(repository: string, expected?: Commi
         assert.deepEqual(await readFile(join(outer, path)), bytes, "Copied integrated root input changed after capture");
       }
       for (const { path, sha256 } of peerBinding.files) assert.equal(digest(await readFile(join(outer, path))), sha256, "Copied public peer input changed after capture");
-      assert.deepEqual(await captureRequiredPeer(snapshot, emitted, tools, profile.profile === "checkout-root" ? peerBinding : undefined), requiredPeer, "Required runtime peer changed after capture");
+      assert.deepEqual(await captureRequiredPeer(snapshot, emitted, tools, peerBinding), requiredPeer, "Required runtime peer changed after capture");
     };
     await verify();
     return { snapshot, manifestPath, probe: join(snapshot, probePath), manifest: report, verify, dispose };

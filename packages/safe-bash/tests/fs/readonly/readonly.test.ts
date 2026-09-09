@@ -332,7 +332,7 @@ test("capabilities are immutable, detached, conservative, and omit unknown exten
   assert.deepEqual(filesystem.capabilities, {
     readOnly: true, append: false, symlinks: true, hardlinks: false, permissions: false, timestamps: false,
     atomicRename: false, atomicRenameNoReplace: false, streamingRead: true, streamingWrite: false, retainedRead: false,
-    descriptorWriteStream: false,
+    descriptorWriteStream: false, retainedResize: false,
     write: false, exclusiveCreate: false, mkdir: false, recursiveMkdir: false,
     remove: false, removeDirectory: false, recursiveRemove: false, rename: false,
     copy: false, exclusiveCopy: false, truncate: false, streamingAppend: false, randomAccessWrite: false,

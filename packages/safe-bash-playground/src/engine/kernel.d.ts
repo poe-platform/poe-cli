@@ -1,4 +1,5 @@
 declare module "virtual:safe-bash-kernel" {
+  export { withFileSystemQuota } from "@poe-code/safe-fs/core";
   export {
     createMemoryFileSystem,
     resolvePath,

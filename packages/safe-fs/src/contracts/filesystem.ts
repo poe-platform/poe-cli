@@ -7,6 +7,7 @@ export interface FileStat {
   readonly type: FileType;
   readonly size: number;
   readonly allocatedBytes?: number;
+  readonly preferredIoBlockSize?: number;
   readonly mode: number;
   readonly mtimeMs: number;
   readonly atimeMs: number;
@@ -58,6 +59,7 @@ export interface FileSystemCapabilities {
   readonly snapshotRmdir?: boolean;
   readonly streamingRead?: boolean;
   readonly retainedRead?: boolean;
+  readonly retainedResize?: boolean;
   readonly streamingWrite?: boolean;
   readonly descriptorWriteStream?: boolean;
   readonly [capability: string]: boolean | undefined;
@@ -67,9 +69,30 @@ export interface FsOptions {
   readonly signal?: AbortSignal;
 }
 
+export interface OpenReadFileOptions extends FsOptions {
+  readonly allowDirectory?: boolean;
+}
+
+export interface CapabilityQueryOptions extends OpenReadFileOptions {
+  readonly create?: boolean;
+}
+
 export interface FileReadHandle {
   stat(options?: FsOptions): Promise<FileStat>;
   read(position: number, maxBytes: number, options?: FsOptions): Promise<Uint8Array>;
+  seekEnd?: ((options?: FsOptions) => Promise<bigint>) | undefined;
+  close(): Promise<void>;
+}
+
+export interface OpenResizeFileOptions extends FsOptions {
+  readonly create?: boolean;
+  readonly mode?: number;
+}
+
+export interface FileResizeHandle {
+  stat(options?: FsOptions): Promise<FileStat>;
+  truncate(length: number, options?: FsOptions): Promise<void>;
+  seekEnd?: ((options?: FsOptions) => Promise<bigint>) | undefined;
   close(): Promise<void>;
 }
 
@@ -123,9 +146,10 @@ export interface ReadStreamOptions extends FsOptions {
 
 export interface FileSystem {
   readonly capabilities: FileSystemCapabilities;
-  openReadFile?(path: string, options?: FsOptions): Promise<FileReadHandle>;
+  openReadFile?(path: string, options?: OpenReadFileOptions): Promise<FileReadHandle>;
+  openResizeFile?(path: string, options?: OpenResizeFileOptions): Promise<FileResizeHandle>;
   canonicalizeMissingTarget?(path: string, options?: FsOptions): string | undefined;
-  capabilitiesFor?(path: string, options?: FsOptions): Promise<FileSystemCapabilities>;
+  capabilitiesFor?(path: string, options?: CapabilityQueryOptions): Promise<FileSystemCapabilities>;
   readFile(path: string, options?: ReadFileOptions): Promise<Uint8Array>;
   writeFile(path: string, data: Uint8Array, options?: WriteFileOptions): Promise<void>;
   appendFile(path: string, data: Uint8Array, options?: AppendFileOptions): Promise<void>;

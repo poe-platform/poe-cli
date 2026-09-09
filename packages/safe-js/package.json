@@ -3,6 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "imports": {
+    "#safe-fs-native-seek": {
+      "types": "./dist/native/fs-seek/loader.d.ts",
+      "workerd": null,
+      "browser": null,
+      "default": "./dist/native/fs-seek/loader.mjs"
+    }
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

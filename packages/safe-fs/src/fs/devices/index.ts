@@ -1,6 +1,6 @@
 import { FsError, isFsError } from "../../contracts/errors.js";
 import type {
-  AppendFileOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileStat, FileSystem,
+  AppendFileOptions, CapabilityQueryOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileResizeHandle, FileStat, FileSystem, OpenReadFileOptions, OpenResizeFileOptions,
   FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
   ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
@@ -9,6 +9,8 @@ import { admitDirectoryEntries, directoryEntryLimit } from "../directory-admissi
 import { compareEntries, registerEntryView } from "../mount/comparison.js";
 import { deviceDirectory, lexicalDevicePath, nullPath, resolveDevicePath } from "./path.js";
 import { deviceReadStream, drainDeviceFile, drainDeviceInput } from "./stream.js";
+import { openRetainedReadFile, openRetainedResizeFile, retainedResizeCapabilities } from "../capabilities.js";
+import { pathNamespace } from "../path-namespace.js";
 
 const views = new WeakMap<FileSystem, DeviceFileSystem>();
 const deviceCapabilities: FileSystemCapabilities = Object.freeze({
@@ -18,14 +20,14 @@ const deviceCapabilities: FileSystemCapabilities = Object.freeze({
   remove: false, removeDirectory: false, recursiveRemove: false, rename: false,
   mkdir: false, recursiveMkdir: false, symlinks: false, hardlinks: false, readlink: false,
   permissions: false, timestamps: false, truncate: false, randomAccessWrite: false,
-  atomicRename: false, atomicRenameNoReplace: false, descriptorWriteStream: true,
+  atomicRename: false, atomicRenameNoReplace: false, descriptorWriteStream: true, retainedResize: true,
 });
 
 function globalCapabilities(filesystem: FileSystem): FileSystemCapabilities {
   const capabilities: Record<string, boolean | undefined> = { readOnly: false };
   const optional: Record<string, readonly (keyof FileSystem)[]> = {
     streamingRead: ["readStream"], streamingWrite: ["writeStream"], retainedRead: ["openReadFile"],
-    streamingAppend: ["writeStream"], descriptorWriteStream: ["writeStream"],
+    streamingAppend: ["writeStream"], descriptorWriteStream: ["writeStream"], retainedResize: ["openResizeFile"],
     symlinks: ["symlink", "readlink"], hardlinks: ["link"], permissions: ["chmod"],
     timestamps: ["utimes"], readlink: ["readlink"], truncate: ["truncate"], removeDirectory: ["rmdir"],
   };
@@ -35,6 +37,7 @@ function globalCapabilities(filesystem: FileSystem): FileSystemCapabilities {
       if (key === "copy" || key === "exclusiveCopy") return undefined;
       let declared = filesystem.capabilities[key];
       if (declared === true && optional[key]?.some(method => typeof filesystem[method] !== "function")) declared = false;
+      if (key === "retainedResize" && filesystem.capabilities.readOnly === true) declared = false;
       if (key === "descriptorWriteStream" && filesystem.capabilities.streamingWrite === false) declared = false;
       return declared === deviceCapabilities[key] ? declared : undefined;
     } });
@@ -55,11 +58,13 @@ export class DeviceFileSystem implements FileSystem {
 
   constructor(filesystem: FileSystem) {
     this.#filesystem = filesystem;
+    Object.defineProperty(this, pathNamespace, { get: () => Reflect.get(filesystem, pathNamespace) });
     this.capabilities = globalCapabilities(filesystem);
     const identityScope = Object.freeze({});
-    this.#nullStat = Object.freeze({ type: "character", mode: 0o020666, size: 0, allocatedBytes: 0,
-      mtimeMs: 0, atimeMs: 0, ctimeMs: 0, birthtimeMs: 0, identityScope, ino: 1, dev: 0, nlink: 1 });
-    this.#directoryStat = Object.freeze({ ...this.#nullStat, type: "directory", mode: 0o040755, ino: 2 });
+    const stat = { mode: 0o020666, size: 0, allocatedBytes: 0,
+      mtimeMs: 0, atimeMs: 0, ctimeMs: 0, birthtimeMs: 0, identityScope, ino: 1, dev: 0, nlink: 1 };
+    this.#nullStat = Object.freeze({ ...stat, type: "character", preferredIoBlockSize: 4096 });
+    this.#directoryStat = Object.freeze({ ...stat, type: "directory", mode: 0o040755, ino: 2 });
     const methods = new Map<PropertyKey, { backing: unknown; bound: unknown }>();
     const view = new Proxy(this, {
       set: (_target, property, value) => Reflect.set(filesystem, property, value, filesystem),
@@ -83,8 +88,8 @@ export class DeviceFileSystem implements FileSystem {
     return view;
   }
 
-  #resolve(path: string, options: FsOptions, followFinal = true) {
-    return resolveDevicePath(this.#filesystem, path, options, followFinal);
+  #resolve(path: string, options: FsOptions, followFinal = true, resizeCreate?: boolean) {
+    return resolveDevicePath(this.#filesystem, path, options, followFinal, resizeCreate);
   }
 
   async #mutable(path: string, options: FsOptions, followFinal = true): Promise<void> {
@@ -108,13 +113,21 @@ export class DeviceFileSystem implements FileSystem {
     return reserved(resolved) ? resolved : this.#filesystem.canonicalizeMissingTarget?.(path, options);
   }
 
-  async capabilitiesFor(path: string, options: FsOptions = {}): Promise<FileSystemCapabilities> {
-    const resolved = await this.#resolve(path, options);
+  async capabilitiesFor(path: string, options: CapabilityQueryOptions = {}): Promise<FileSystemCapabilities> {
+    const resolved = await this.#resolve(path, options, true, options.create);
+    options.signal?.throwIfAborted();
+    if (options.create !== undefined && (resolved === deviceDirectory || resolved === "/")) throw new FsError("EISDIR", { syscall: "capabilitiesFor", path });
     if (resolved === nullPath) return deviceCapabilities;
     if (resolved === deviceDirectory) return { ...deviceCapabilities, readdir: true, write: false, append: false,
       exclusiveCreate: false, streamingWrite: false, streamingAppend: false, descriptorWriteStream: false,
-      retainedRead: false, streamingRead: false, copy: false, exclusiveCopy: false };
-    const capabilities = await this.#filesystem.capabilitiesFor?.(path, options) ?? this.#filesystem.capabilities;
+      retainedRead: false, retainedResize: false, streamingRead: false, copy: false, exclusiveCopy: false };
+    const query = this.#filesystem.capabilitiesFor;
+    options.signal?.throwIfAborted();
+    const selected = query === undefined || query === null ? undefined : await Reflect.apply(query, this.#filesystem, [path, options]);
+    options.signal?.throwIfAborted();
+    const observed = selected ?? this.#filesystem.capabilities;
+    options.signal?.throwIfAborted();
+    const capabilities = observed.retainedResize === true ? retainedResizeCapabilities(this.#filesystem, observed) : observed;
     const unavailable: Record<string, false> = {};
     if (typeof this.#filesystem.readStream !== "function") unavailable.streamingRead = false;
     if (typeof this.#filesystem.writeStream !== "function") {
@@ -123,22 +136,34 @@ export class DeviceFileSystem implements FileSystem {
       unavailable.descriptorWriteStream = false;
     }
     if (typeof this.#filesystem.openReadFile !== "function") unavailable.retainedRead = false;
-    return Object.keys(unavailable).some(key => capabilities[key] !== false)
+    const result = Object.keys(unavailable).some(key => capabilities[key] !== false)
       ? { ...capabilities, ...unavailable } : capabilities;
+    options.signal?.throwIfAborted();
+    return result;
   }
 
   async stat(path: string, options: FsOptions = {}): Promise<FileStat> {
     const resolved = await this.#resolve(path, options);
+    options.signal?.throwIfAborted();
     if (resolved === nullPath) return { ...this.#nullStat };
     if (resolved === deviceDirectory) return { ...this.#directoryStat };
-    return this.#filesystem.stat(path, options);
+    const stat = this.#filesystem.stat;
+    options.signal?.throwIfAborted();
+    const result = await Reflect.apply(stat, this.#filesystem, [path, options]);
+    options.signal?.throwIfAborted();
+    return result;
   }
 
   async lstat(path: string, options: FsOptions = {}): Promise<FileStat> {
     const resolved = await this.#resolve(path, options, false);
+    options.signal?.throwIfAborted();
     if (resolved === nullPath) return { ...this.#nullStat };
     if (resolved === deviceDirectory) return { ...this.#directoryStat };
-    return this.#filesystem.lstat(path, options);
+    const lstat = this.#filesystem.lstat;
+    options.signal?.throwIfAborted();
+    const result = await Reflect.apply(lstat, this.#filesystem, [path, options]);
+    options.signal?.throwIfAborted();
+    return result;
   }
 
   compareEntry(path: string, peer: FileSystem, peerPath: string, options: FsOptions = {}) {
@@ -171,12 +196,11 @@ export class DeviceFileSystem implements FileSystem {
     });
   }
 
-  async openReadFile(path: string, options: FsOptions = {}): Promise<FileReadHandle> {
+  async openReadFile(path: string, options: OpenReadFileOptions = {}): Promise<FileReadHandle> {
     const resolved = await this.#resolve(path, options);
     if (resolved !== nullPath) {
       if (resolved === deviceDirectory) throw new FsError("EISDIR", { path });
-      if (!this.#filesystem.openReadFile) throw new FsError("ENOTSUP", { path });
-      return this.#filesystem.openReadFile(path, options);
+      return openRetainedReadFile(this.#filesystem, path, options);
     }
     const stat = this.#nullStat;
     let closed = false;
@@ -184,7 +208,41 @@ export class DeviceFileSystem implements FileSystem {
     return {
       async stat(settings = {}) { check(settings); return { ...stat }; },
       async read(position, maxBytes, settings = {}) { check(settings); nonnegative(position, path); nonnegative(maxBytes, path); return new Uint8Array(); },
+      async seekEnd(settings = {}) { check(settings); return 0n; },
       async close() { closed = true; },
+    };
+  }
+
+  async openResizeFile(path: string, options: OpenResizeFileOptions = {}): Promise<FileResizeHandle> {
+    options.signal?.throwIfAborted();
+    const resolution = this.#resolve(path, options, true, options.create ?? false);
+    const signal = options.signal;
+    const resolved = await (signal ? new Promise<string>((resolve, reject) => {
+      const abort = (): void => { signal.removeEventListener("abort", abort); reject(signal.reason); };
+      signal.addEventListener("abort", abort, { once: true });
+      resolution.then(
+        value => { signal.removeEventListener("abort", abort); resolve(value); },
+        error => { signal.removeEventListener("abort", abort); reject(error); },
+      );
+      if (signal.aborted) abort();
+    }) : resolution);
+    options.signal?.throwIfAborted();
+    if (resolved === deviceDirectory || resolved === "/") throw new FsError("EISDIR", { syscall: "openResizeFile", path });
+    if (resolved !== nullPath) return openRetainedResizeFile(this.#filesystem, path, options);
+    const stat = this.#nullStat;
+    let closing: Promise<void> | undefined;
+    const check = (settings: FsOptions, syscall: string): void => {
+      settings.signal?.throwIfAborted();
+      if (closing) throw new FsError("EBADF", { syscall, path });
+    };
+    return {
+      async stat(settings = {}) { check(settings, "fstat"); return { ...stat }; },
+      async seekEnd(settings = {}) { check(settings, "lseek"); return 0n; },
+      async truncate(_length, settings = {}) {
+        check(settings, "ftruncate");
+        throw new FsError("EINVAL", { syscall: "ftruncate", path });
+      },
+      close: () => closing ??= Promise.resolve(),
     };
   }
 

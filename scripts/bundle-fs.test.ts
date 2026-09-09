@@ -66,3 +66,12 @@ it("keeps Node SafeJS and all Node FS roots in one publisher-managed split build
     "safe-fs-core": "/repo/packages/safe-fs/src/core.ts"
   });
 });
+
+it("externalizes the registered native loader only in the Node canonical profile", async () => {
+  const { resolveCanonicalFsBuilds } = await import("./bundle-fs.mjs");
+  const builds = resolveCanonicalFsBuilds("/repo", { alias: {}, external: ["node:*"] }, {}, {
+    specifier: "#safe-fs-native-seek",
+  });
+  expect(builds.node.external).toEqual(["node:*", "#safe-fs-native-seek"]);
+  expect(builds.browser.external).toEqual([]);
+});

@@ -102,7 +102,7 @@ for (const adapter of ["Memory", "Real"] as const) {
       const handle = await open(filesystem);
       try {
         expect(filesystem.capabilities.retainedRead).toBe(true);
-        expect(Object.keys(handle).sort()).toEqual(["close", "read", "stat"]);
+        expect(Object.keys(handle).sort()).toEqual(adapter === "Real" ? ["close", "read", "seekEnd", "stat"] : ["close", "read", "stat"]);
         expect(await handle.stat()).toMatchObject({ size: 3, type: "file", identityScope: before.identityScope, dev: before.dev, ino: before.ino });
         expect(before.identityScope).toBeDefined();
       } finally { await handle.close(); }

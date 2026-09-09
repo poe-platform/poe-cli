@@ -3,7 +3,7 @@ import { test, type TestContext } from "node:test";
 import { CommandRegistry, type FileSystem, type FileReadHandle, type ByteSource } from "../../src/contracts/index.js";
 import { MemoryFileSystem } from "../../src/fs/memory/index.js";
 import { Shell, ShellLimitError } from "../../src/shell/index.js";
-import { resolveLimits } from "../../src/shell/runtime.js";
+import { Budget, resolveLimits } from "../../src/shell/runtime.js";
 import { cloudflareWorkerLimits } from "../../src/shell/worker-limits.js";
 import { MockS3Client, S3FileSystem, ReadOnlyFileSystem } from "poe-code/safe-fs";
 import { scopeFileSystem } from "poe-code/safe-fs";
@@ -27,6 +27,22 @@ function fixture(context: TestContext, maximum: number, filesystem: FileSystem =
   return { shell, commands, fs: filesystem };
 }
 
+function observeAdmissions(context: TestContext) {
+  const events: string[] = [];
+  const operation = Budget.prototype.fileSystemOperation;
+  const observed = new WeakSet<AbortSignal>();
+  context.mock.method(Budget.prototype, "fileSystemOperation", function(this: Budget) {
+    if (!observed.has(this.signal)) {
+      observed.add(this.signal);
+      this.signal.addEventListener("abort", () => { events.push("root-abort"); }, { once: true });
+    }
+    events.push("admission-attempt");
+    try { Reflect.apply(operation, this, []); events.push("admitted"); }
+    catch (error) { events.push("admission-rejected"); throw error; }
+  });
+  return events;
+}
+
 test("filesystem operation profiles and nonnegative safe-integer validation", () => {
   assert.equal(Reflect.get(resolveLimits(), "maxFileSystemOperations"), 100_000);
   assert.equal(Reflect.get(cloudflareWorkerLimits, "maxFileSystemOperations"), 10_000);
@@ -45,14 +61,86 @@ test("zero rejects metadata before dispatch but permits filesystem-free commands
 });
 
 for (const source of [
-  "probe; probe", "probe | probe", "probe; : $(probe)", "probe; (probe)",
+  "probe; probe", "probe; : $(probe)", "probe; (probe)",
   "probe; invoke", "probe; eval probe", "function nested { probe; }; probe; nested",
 ]) {
   test(`filesystem operations share admission across ${source}`, async context => {
+    const events = observeAdmissions(context);
     const { shell, fs } = fixture(context, 1);
-    const stat = context.mock.method(fs, "stat");
+    const original = fs.stat;
+    const stat = context.mock.method(fs, "stat", function(this: FileSystem, ...args: Parameters<FileSystem["stat"]>) {
+      events.push("backend-stat");
+      return Reflect.apply(original, this, args);
+    });
     await assert.rejects(shell.exec(source), operationLimit);
+    context.diagnostic(JSON.stringify({ source, events }));
     assert.equal(stat.mock.callCount(), 1);
+    assert.deepEqual(events, ["admission-attempt", "admitted", "backend-stat", "admission-attempt", "root-abort", "admission-rejected"]);
+  });
+}
+
+test("filesystem operations share admission across probe | probe after backend entry", async context => {
+  const events = observeAdmissions(context);
+  const { shell, commands, fs } = fixture(context, 1);
+  const entered = deferred<void>();
+  let probes = 0;
+  commands.register({ name: "probe", async execute({ fs, signal }) {
+    if (probes++ > 0) await entered.promise;
+    await fs.stat("/", { signal });
+    return { exitCode: 0 };
+  } }, { replace: true });
+  const original = fs.stat;
+  const stat = context.mock.method(fs, "stat", function(this: FileSystem, ...args: Parameters<FileSystem["stat"]>) {
+    events.push("backend-stat");
+    entered.resolve();
+    return Reflect.apply(original, this, args);
+  });
+  try {
+    await assert.rejects(shell.exec("probe | probe"), operationLimit);
+    assert.equal(probes, 2);
+    assert.equal(stat.mock.callCount(), 1);
+    assert.deepEqual(events, ["admission-attempt", "admitted", "backend-stat", "admission-attempt", "root-abort", "admission-rejected"]);
+  } finally {
+    entered.resolve();
+    context.diagnostic(JSON.stringify({ events }));
+  }
+});
+
+for (const reason of [null, false, 0, "", NaN]) {
+  test(`pipeline root cancellation before backend entry prevents dispatch: ${String(reason)}`, async context => {
+    const events = observeAdmissions(context);
+    const { shell, commands, fs } = fixture(context, 1);
+    const controller = new AbortController();
+    const lookedUp = deferred<void>();
+    const original = fs.stat;
+    let probes = 0;
+    let calls = 0;
+    Object.defineProperty(fs, "stat", { configurable: true, get() {
+      if (events.includes("admitted") && !controller.signal.aborted) {
+        events.push("backend-stat-lookup");
+        controller.abort(reason);
+        lookedUp.resolve();
+      }
+      return function(this: FileSystem, ...args: Parameters<FileSystem["stat"]>) {
+        calls++;
+        events.push("backend-stat");
+        return Reflect.apply(original, this, args);
+      };
+    } });
+    commands.register({ name: "probe", async execute({ fs, signal }) {
+      if (probes++ > 0) await lookedUp.promise;
+      await fs.stat("/", { signal });
+      return { exitCode: 0 };
+    } }, { replace: true });
+    try {
+      await assert.rejects(shell.exec("probe | probe", { signal: controller.signal }), error => Object.is(error, reason));
+      assert.equal(calls, 0);
+      assert.equal(probes, 2);
+      assert.deepEqual(events, ["admission-attempt", "admitted", "backend-stat-lookup", "root-abort"]);
+    } finally {
+      lookedUp.resolve();
+      context.diagnostic(JSON.stringify({ events }));
+    }
   });
 }
 
@@ -413,7 +501,7 @@ test("stock descriptor stream capability and storage semantics survive the scope
 
 test("all filesystem API admissions, including optional methods, charge before dispatch", async () => {
   const names = ["access", "appendFile", "canonicalizeMissingTarget", "capabilitiesFor", "chmod", "compareEntry",
-    "copyFile", "link", "lstat", "mkdir", "openReadFile", "readFile", "readStream", "readdir", "readlink",
+    "copyFile", "link", "lstat", "mkdir", "openReadFile", "openResizeFile", "readFile", "readStream", "readdir", "readlink",
     "realpath", "rename", "rm", "rmdir", "stat", "symlink", "truncate", "utimes", "writeFile", "writeStream"];
   await Promise.all(names.map(async name => {
     let calls = 0;

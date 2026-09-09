@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import ts from "typescript";
 import type { BuildOptions, BuildResult, Metafile, OutputFile } from "esbuild";
 import { createFsFromVolume, Volume } from "memfs";
@@ -13,9 +14,50 @@ afterEach(() => {
   vi.doUnmock("node:fs/promises");
   vi.doUnmock("esbuild");
   vi.doUnmock("../packages/package-lint/dist/bundle-policy.js");
+  vi.doUnmock("../packages/package-lint/dist/native-assets.js");
   vi.doUnmock("./bundle-assets.mjs");
   vi.resetModules();
 });
+
+function addNativeFixture(root: string, volume: Volume) {
+  const registry = {
+    version: 1, specifier: "#safe-fs-native-seek", directory: "native/fs-seek", source: "native/seek.c",
+    loader: "native/loader.mjs", declaration: "src/native/loader.d.ts", napi: 6, maxBinaryBytes: 1048576,
+    targets: [{ platform: "linux", arch: "x64", libc: "glibc", minimumLibc: "2.31" }]
+  };
+  const source = "int seek_fixture(void) { return 0; }\n";
+  const loader = "export async function loadBinding() { throw new Error('unsupported fixture'); }\n";
+  const declaration = "export declare function loadBinding(): Promise<unknown>;\n";
+  const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+  const manifest = {
+    version: 1, napi: 6, maxBinaryBytes: 1048576, targets: [], build: {
+      sourceSha256: digest(source), loaderSha256: digest(loader), declarationSha256: digest(declaration),
+      headers: null, compiler: null
+    }
+  };
+  const entries = {
+    "packages/safe-fs/native/assets.json": JSON.stringify(registry),
+    "packages/safe-fs/native/seek.c": source,
+    "packages/safe-fs/native/loader.mjs": loader,
+    "packages/safe-fs/src/native/loader.d.ts": declaration,
+    "packages/safe-fs/dist/native/fs-seek/loader.mjs": loader,
+    "packages/safe-fs/dist/native/fs-seek/loader.d.ts": declaration,
+    "packages/safe-fs/dist/native/fs-seek/manifest.json": JSON.stringify(manifest)
+  };
+  for (const [filename, contents] of Object.entries(entries)) {
+    volume.mkdirSync(path.dirname(path.join(root, filename)), { recursive: true });
+    volume.writeFileSync(path.join(root, filename), contents);
+  }
+  for (const [filename, directory] of [["package.json", "packages/safe-js/dist"], ["packages/safe-js/package.json", "dist"]]) {
+    const absolute = path.join(root, filename!);
+    const scope = JSON.parse(volume.readFileSync(absolute, "utf8") as string);
+    scope.imports = { ...scope.imports, [registry.specifier]: {
+      types: `./${directory}/${registry.directory}/loader.d.ts`, workerd: null, browser: null,
+      default: `./${directory}/${registry.directory}/loader.mjs`
+    } };
+    volume.writeFileSync(absolute, JSON.stringify(scope));
+  }
+}
 
 it.each([
   { external: "poe-code/safe-fs", invalidExternal: false },
@@ -52,6 +94,7 @@ it.each([
         JSON.stringify({ name: `@poe-code/${name}` })
       );
     }
+    addNativeFixture(root, volume);
     const files = createFsFromVolume(volume).promises;
     const build = vi.fn(async (options: BuildOptions) => {
       const entries = Array.isArray(options.entryPoints)
@@ -114,6 +157,7 @@ it.each([
       "../packages/package-lint/dist/bundle-policy.js",
       () => import("../packages/package-lint/src/bundle-policy.js")
     );
+    vi.doMock("../packages/package-lint/dist/native-assets.js", () => import("../packages/package-lint/src/native-assets.js"));
     if (invalidExternal) {
       await expect(import("./bundle.mjs")).rejects.toThrow("invalid-external");
       expect(volume.existsSync(path.join(root, "dist/metafile.json"))).toBe(false);
@@ -130,6 +174,11 @@ it.each([
         external
       );
       expect(volume.existsSync(path.join(root, "packages/safe-js/dist/safe-fs.js"))).toBe(true);
+      expect(evidence.canonicalNativeAssets.assets.map((asset: { path: string }) => asset.path).sort()).toEqual([
+        "packages/safe-js/dist/native/fs-seek/loader.d.ts",
+        "packages/safe-js/dist/native/fs-seek/loader.mjs",
+        "packages/safe-js/dist/native/fs-seek/manifest.json"
+      ]);
     }
     for (const [options] of build.mock.calls) {
       if (options.splitting) continue;
@@ -162,6 +211,7 @@ it("preserves the previous SafeJS bundle when compilation fails", async () => {
     [path.join(root, "dist/metafile.json")]: "{}"
   });
   volume.mkdirSync(path.join(root, "src/providers"), { recursive: true });
+  addNativeFixture(root, volume);
   const failure = new Error("SafeJS compilation failed");
   const build = vi.fn(async (options: BuildOptions) => {
     if (options.outdir === path.join(root, "packages/safe-js/dist")) throw failure;

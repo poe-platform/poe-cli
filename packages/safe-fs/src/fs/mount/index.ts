@@ -1,16 +1,17 @@
 import { FsError, isFsError, toFsError } from "../../contracts/errors.js";
 import type { ErrnoCode } from "../../contracts/errors.js";
 import type {
-  AppendFileOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileStat, FileSystem,
+  AppendFileOptions, CapabilityQueryOptions, CopyFileOptions, DirectoryEntry, FileReadHandle, FileResizeHandle, FileStat, FileSystem, OpenReadFileOptions, OpenResizeFileOptions,
   FileSystemCapabilities, FsOptions, RenameOptions, MkdirOptions, ReadDirectoryOptions, ReadFileOptions,
   ReadStreamOptions, RemoveOptions, WriteFileOptions,
 } from "../../contracts/filesystem.js";
 import type { ByteSource } from "../../contracts/io.js";
 import { readBytes } from "../../contracts/io.js";
 import { finishCleanup } from "../../contracts/cleanup.js";
-import { openRetainedReadFile, readOnlyCapabilities, retainedReadCapabilities } from "../capabilities.js";
+import { openRetainedReadFile, openRetainedResizeFile, readOnlyCapabilities, retainedReadCapabilities, retainedResizeCapabilities } from "../capabilities.js";
 import { admitDirectoryEntries, directoryEntryLimit } from "../directory-admission.js";
 import { normalizePath, validatePath } from "../../contracts/virtual-path.js";
+import { pathNamespace } from "../path-namespace.js";
 import { compareIdentity } from "./identity.js";
 import { compareEntries, registerEntryAuthority, registerEntryView } from "./comparison.js";
 
@@ -38,6 +39,7 @@ interface Component {
 }
 
 interface ResolveOptions {
+  readonly resizeCreate?: boolean;
   readonly followFinal?: boolean;
   readonly entry?: boolean;
   readonly allowMissing?: boolean;
@@ -63,10 +65,11 @@ function fail(code: ErrnoCode): never {
 }
 
 function snapshotStat(stat: FileStat): FileStat {
-  const { type, size, allocatedBytes, mode, mtimeMs, atimeMs, ctimeMs, birthtimeMs, identityScope, ino, dev, nlink, uid, gid } = stat;
+  const { type, size, allocatedBytes, preferredIoBlockSize, mode, mtimeMs, atimeMs, ctimeMs, birthtimeMs, identityScope, ino, dev, nlink, uid, gid } = stat;
   return {
     type, size, mode, mtimeMs, atimeMs, ctimeMs,
     ...(allocatedBytes === undefined ? {} : { allocatedBytes }),
+    ...(preferredIoBlockSize === undefined ? {} : { preferredIoBlockSize }),
     ...(birthtimeMs === undefined ? {} : { birthtimeMs }),
     ...(identityScope === undefined ? {} : { identityScope }),
     ...(ino === undefined ? {} : { ino }),
@@ -109,6 +112,10 @@ export class MountFileSystem implements FileSystem {
       add(path, backend);
     }
     this.mounts = mounts.sort((left, right) => right.path.length - left.path.length);
+    const selectNamespace = this.select.bind(this);
+    Object.defineProperty(this, pathNamespace, {
+      value: Object.freeze({ select: (path: string) => selectNamespace(path).path }),
+    });
     registerEntryView(this, (path, options) => this.operation("compareEntry", path, options, async () => {
       const location = await this.resolve(path, options);
       if (location.synthetic) return { filesystem: this, path, stat: syntheticStat, readOnly: true };
@@ -129,7 +136,7 @@ export class MountFileSystem implements FileSystem {
     const common = (capability: string): boolean | undefined => {
       const optional: Record<string, readonly (keyof FileSystem)[]> = {
         symlinks: ["symlink", "readlink"], hardlinks: ["link"], permissions: ["chmod"], timestamps: ["utimes"], readlink: ["readlink"],
-        descriptorWriteStream: ["writeStream"],
+        descriptorWriteStream: ["writeStream"], retainedResize: ["openResizeFile"],
       };
       const values = mounts.map(({ backend }) => {
         if (backend.capabilities.readOnly === true
@@ -145,7 +152,7 @@ export class MountFileSystem implements FileSystem {
       "read", "stat", "readdir", "realpath", "access",
       "write", "append", "exclusiveCreate", "explicitDirectories", "implicitDirectories", "mkdir", "recursiveMkdir",
       "remove", "removeDirectory", "recursiveRemove", "rename", "atomicRenameNoReplace", "copy", "exclusiveCopy", "readlink", "truncate",
-      "streamingAppend", "randomAccessWrite", "descriptorWriteStream", "symlinks", "hardlinks", "permissions", "timestamps",
+      "streamingAppend", "randomAccessWrite", "descriptorWriteStream", "retainedResize", "symlinks", "hardlinks", "permissions", "timestamps",
     ].map(capability => [capability, common(capability)]).filter(([, value]) => value !== undefined));
     this.capabilities = Object.freeze({
       get snapshotRmdir() { return mounts.some(({ backend }) => backend.capabilities.snapshotRmdir === true); },
@@ -163,16 +170,19 @@ export class MountFileSystem implements FileSystem {
     return this.mounts.find((mount) => within(mount.path, path))!;
   }
 
-  async capabilitiesFor(path: string, options: FsOptions = {}): Promise<FileSystemCapabilities> {
+  async capabilitiesFor(path: string, options: CapabilityQueryOptions = {}): Promise<FileSystemCapabilities> {
     return this.operation("capabilitiesFor", path, options, async () => {
-      const location = await this.resolve(path, options, { allowMissing: true });
+      const location = await this.resolve(path, options, {
+        allowMissing: options.create ?? true,
+        ...(options.create === undefined ? {} : { resizeCreate: options.create }),
+      });
       const observed = await location.mount.backend.capabilitiesFor?.(location.local, options)
         ?? location.mount.backend.capabilities;
       const declared = observed.descriptorWriteStream === true
         && (typeof location.mount.backend.writeStream !== "function" || observed.readOnly === true || observed.streamingWrite === false)
         ? { ...observed, descriptorWriteStream: false } : observed;
       const capabilities = location.synthetic ? { ...declared, retainedRead: false }
-        : retainedReadCapabilities(location.mount.backend, declared);
+        : retainedResizeCapabilities(location.mount.backend, retainedReadCapabilities(location.mount.backend, declared));
       if (location.synthetic) return readOnlyCapabilities(capabilities);
       if (this.mounts.length === 1 || capabilities.readOnly === true) return Object.freeze({ ...capabilities });
       const { rename: ignoredRename, copy: ignoredCopy, exclusiveCopy: ignoredExclusiveCopy, ...selected } = capabilities;
@@ -189,7 +199,7 @@ export class MountFileSystem implements FileSystem {
     return path === "/" || this.mounts.some((mount) => within(path, mount.path));
   }
 
-  async openReadFile(path: string, options: FsOptions = {}): Promise<FileReadHandle> {
+  async openReadFile(path: string, options: OpenReadFileOptions = {}): Promise<FileReadHandle> {
     try {
       options.signal?.throwIfAborted();
       const location = await this.resolve(path, options);
@@ -197,6 +207,28 @@ export class MountFileSystem implements FileSystem {
       return await openRetainedReadFile(location.mount.backend, location.local, options);
     } catch (error) {
       throw error ? this.error(error, "openReadFile", path, options) : error;
+    }
+  }
+
+  async openResizeFile(path: string, options: OpenResizeFileOptions = {}): Promise<FileResizeHandle> {
+    try {
+      options.signal?.throwIfAborted();
+      const resolution = this.resolve(path, options, { allowMissing: options.create === true, resizeCreate: options.create ?? false });
+      const signal = options.signal;
+      const location = await (signal ? new Promise<Location>((resolve, reject) => {
+        const abort = (): void => { signal.removeEventListener("abort", abort); reject(signal.reason); };
+        signal.addEventListener("abort", abort, { once: true });
+        resolution.then(
+          value => { signal.removeEventListener("abort", abort); resolve(value); },
+          error => { signal.removeEventListener("abort", abort); reject(error); },
+        );
+        if (signal.aborted) abort();
+      }) : resolution);
+      options.signal?.throwIfAborted();
+      if (location.synthetic) fail("EROFS");
+      return await openRetainedResizeFile(location.mount.backend, location.local, options);
+    } catch (error) {
+      throw error ? this.error(error, "openResizeFile", path, options) : error;
     }
   }
 
@@ -252,21 +284,24 @@ export class MountFileSystem implements FileSystem {
     const stack = [await this.lookup("/", options)];
     let boundary: Mount | undefined;
     let verification: { mount: Mount; path: string; finalName: string | undefined } | undefined;
+    let creationVerification: typeof verification;
     const verified = async (location: Location): Promise<Location> => {
-      if (verification) {
-        const canonical = await verification.mount.backend.realpath(verification.path, options);
+      const inspection = !location.stat && settings.resizeCreate === true ? creationVerification : verification;
+      if (inspection) {
+        const canonical = await inspection.mount.backend.realpath(inspection.path, options);
         validatePath(canonical);
         if (!canonical.startsWith("/") || normalizePath(canonical) !== canonical) fail("EIO");
-        if (verification.finalName !== undefined) {
+        if (inspection.finalName !== undefined) {
           try {
-            await verification.mount.backend.lstat(`${verification.path}/${verification.finalName}`, options);
+            await inspection.mount.backend.lstat(`${inspection.path}/${inspection.finalName}`, options);
+            if (!location.stat && settings.resizeCreate === true) fail("ENOTSUP");
           } catch (error) {
             if (location.stat || toFsError(error).code !== "ENOENT") throw error;
           }
         }
-        const expected = verification.finalName === undefined ? canonical
-          : `${canonical === "/" ? "" : canonical}/${verification.finalName}`;
-        if (location.mount !== verification.mount || location.local !== expected) fail("ENOTSUP");
+        const expected = inspection.finalName === undefined ? canonical
+          : `${canonical === "/" ? "" : canonical}/${inspection.finalName}`;
+        if (location.mount !== inspection.mount || location.local !== expected) fail("ENOTSUP");
       }
       return location;
     };
@@ -276,8 +311,9 @@ export class MountFileSystem implements FileSystem {
       const component = pending.shift()!;
       const current = stack[stack.length - 1]!;
       if (current.stat?.type !== "directory") fail("ENOTDIR");
+      if (component.trailing && pending.length === 0 && settings.resizeCreate !== undefined) fail("EISDIR");
       if (!current.synthetic && !settings.createDirectories?.has(current.path)) {
-        const mode = current.mount.backend.capabilities.permissions === false ? 0 : 1;
+        const mode = settings.resizeCreate === undefined && current.mount.backend.capabilities.permissions === false ? 0 : 1;
         await current.mount.backend.access(current.local, mode, options);
       }
       if (component.name === ".") continue;
@@ -289,6 +325,7 @@ export class MountFileSystem implements FileSystem {
       }
       const nextPath = `${current.path === "/" ? "" : current.path}/${component.name}`;
       if (boundary && this.select(nextPath) !== boundary) fail("EACCES");
+      if (settings.resizeCreate === true && pending.length === 1 && pending[0]!.trailing) fail("EISDIR");
       let next = settings.createDirectories?.get(nextPath)
         ?? await this.lookup(nextPath, options, current, settings.createDirectories?.has(current.path));
       if (!next.stat) {
@@ -325,6 +362,19 @@ export class MountFileSystem implements FileSystem {
         const readlink = this.optional(next, "readlink", "symlinks");
         const target = await readlink.call(next.mount.backend, next.local, options);
         const targetParts = this.components(target);
+        if (settings.resizeCreate !== undefined && targetParts.at(-1)?.trailing && pending[0]?.trailing) targetParts.pop();
+        if (settings.resizeCreate === true) {
+          const remainder = [...targetParts, ...pending];
+          const finalName = remainder.at(-1)?.name;
+          if (finalName !== undefined && finalName !== "." && finalName !== "..") {
+            const parent = target.startsWith("/") ? "" : next.local.slice(0, next.local.lastIndexOf("/"));
+            creationVerification = {
+              mount: next.mount,
+              path: `${parent}/${remainder.slice(0, -1).map(part => part.name).join("/")}`,
+              finalName,
+            };
+          }
+        }
         if (target.startsWith("/")) {
           const rootIndex = stack.findIndex((entry) => entry.path === next.mount.path);
           if (rootIndex < 0) fail("EACCES");
