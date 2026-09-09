@@ -103,6 +103,37 @@ Evidence: `/tmp/issue-678-memory-retained-neighbors-types-v2.log`,
 `/tmp/issue-678-memory-retained-neighbors-types-v3.log`, and
 `/tmp/issue-678-memory-retained-neighbors-v3.log`.
 
+### Final maintained gates at the committed candidate
+
+At `7adeeb39333d9c41804990172d11350a44378be3`, the complete uncached `npm test`
+route succeeds, including native npm pre/post hooks, required build dependencies
+and all 40 declared logical unit stages across 71 workspaces. The shared phase
+passes 22,358 tests with one skip; Python passes 29; runner checks pass 302;
+Bash passes 26,736 with 63 skips; SafeJS passes 21,653 with 37 skips;
+terminal-pilot passes 288; and posttest lint stress passes two. Missing declared
+workspace tasks and skipped tests are not credited as passes. No optional unit
+profile or selector is synthesized, and repository-local hook variables are
+cleared only inside the unit child environment.
+
+The repository `npm run lint` route also succeeds: guarded ESLint checks all
+10,477 configured inputs with zero errors/warnings, followed by root TypeScript
+and workflow lint. The maintained Bash typecheck succeeds for source/tests and
+26 current consumer groups, retaining the three expected negative exits and
+not counting four held evidence inputs as runtime passes.
+
+Bun's required `bun test` runner separately passes all 74 ext4 command cases.
+The first `bun run` invocation fails before testing because that launcher cannot
+execute `node:test`; its failure is preserved rather than counted as a product
+test or silently replaced. The corrected runner is bounded to 30 seconds.
+
+All final receipts are under `out/issue-678-ext4-profile/`. Before/after tracked
+worktree status is clean, HEAD remains the tested candidate, and the Memory,
+truncate and new public-ext4-test source hashes match at both gate boundaries.
+The local functional fix and integration gates are complete. The latest
+read-only release observation remains the successful external run `34378014482`
+for `70388ee3`; it does not deliver these local commits. No push or issue closure
+is performed, and the explicit version-identity/profile limits remain visible.
+
 ## Root implementation decision: September 9, 2026
 
 - Add `preferredIoBlockSize`, `OpenResizeFileOptions`, `FileResizeHandle`,
