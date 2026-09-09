@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { posixPath as contractPath } from "@poe-platform/safe-bash/contracts";
 import { posixPath as indexedPath } from "@poe-platform/safe-bash/contracts/index";
 import { posixPath as directPath } from "@poe-platform/safe-bash/contracts/path";
-import { checksumWorkflows, defaultEntry, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, defaultEntry, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
 import * as nodeEntry from "@poe-platform/safe-bash/node";
 import { createNodeRegexProvider } from "@poe-platform/safe-bash/node";
 import "./safe-packages-realms.mjs";
@@ -86,6 +86,8 @@ for (const provider of [undefined, createNodeRegexProvider()]) {
 }
 await verifyCmpCommands(defaultEntry);
 await verifyCmpCommands(nodeEntry);
+await verifyFmtCommands(defaultEntry);
+await verifyFmtCommands(nodeEntry);
 assert.deepEqual(createAgentCommands().map(command => command.name).sort(), expectedAgentCommandNames);
 const boundedShell = new Shell({ fs: createMemoryFileSystem() }).use(
   agentCommands({ regexExecutor: createBoundedRegexProvider() }),

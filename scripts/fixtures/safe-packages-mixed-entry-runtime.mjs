@@ -5,7 +5,7 @@ export const expectedAgentCommandNames = Object.freeze([
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
   "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
-  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "diff", "patch", "chmod", "stat", "mktemp", "tar",
+  "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "diff", "patch", "chmod", "stat", "mktemp", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
   "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch",
 ].sort());
@@ -67,6 +67,34 @@ export async function verifyCmpCommands(entry = defaultEntry) {
       if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
         throw new Error(`Public cmp failed: ${script}: ${JSON.stringify(result)}`);
       }
+    }
+  } finally { await shell.dispose(); }
+}
+
+export async function verifyFmtCommands(entry = defaultEntry) {
+  const filesystem = new entry.MemoryFileSystem();
+  await filesystem.writeFile("/fmt-paragraph", new TextEncoder().encode("alpha beta gamma delta epsilon zeta eta theta\n"));
+  const shell = new entry.Shell({ fs: filesystem, env: { LC_ALL: "C" } }).use(entry.agentCommands());
+  try {
+    for (const [script, stdin, exitCode, stdout, stderr = ""] of [
+      ["fmt -w20 /fmt-paragraph", "", 0, "alpha beta gamma\ndelta epsilon zeta\neta theta\n"],
+      ["cat /fmt-paragraph | fmt -w20", "", 0, "alpha beta gamma\ndelta epsilon zeta\neta theta\n"],
+      ["env fmt -w20 /fmt-paragraph", "", 0, "alpha beta gamma\ndelta epsilon zeta\neta theta\n"],
+      ["printf /fmt-paragraph | xargs fmt -w20", "", 0, "alpha beta gamma\ndelta epsilon zeta\neta theta\n"],
+      ["fmt -w20 </fmt-paragraph >/fmt-output; cat /fmt-output", "", 0, "alpha beta gamma\ndelta epsilon zeta\neta theta\n"],
+      ["fmt -u -w24", "First sentence.    Second sentence.\n\n  indented words continue here\n", 0, "First sentence.\nSecond sentence.\n\n  indented words\n  continue here\n"],
+      ["fmt -p '> ' -w16", "> alpha beta gamma delta epsilon\nuntouched text here\n", 0, "> alpha beta\n> gamma delta\n> epsilon\nuntouched text here\n"],
+      ["fmt -w2501", "unchanged\n", 1, "", "fmt: invalid width: '2501': Numerical result out of range\n"],
+      ["fmt \"'?\"", "", 1, "", "fmt: cannot open ''\\''?' for reading: No such file or directory\n"],
+    ]) {
+      const result = await shell.exec(script, { stdin });
+      if (result.exitCode !== exitCode || result.stdout !== stdout || result.stderr !== stderr) {
+        throw new Error(`Public fmt failed: ${script}: ${JSON.stringify(result)}`);
+      }
+    }
+    const binary = await shell.exec("fmt -u -w10", { stdin: new Uint8Array([255, 32, 32, 97, 10]) });
+    if (binary.exitCode !== 0 || binary.stderr !== "" || JSON.stringify(Array.from(binary.stdoutBytes)) !== "[255,32,97,10]") {
+      throw new Error(`Public fmt binary output changed: ${JSON.stringify(binary)}`);
     }
   } finally { await shell.dispose(); }
 }

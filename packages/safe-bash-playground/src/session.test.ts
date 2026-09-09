@@ -57,7 +57,7 @@ describe("PlaygroundSession", () => {
     expect(result.stdout).toContain("64 KiB");
     expect(result.stdout).toContain("5-second deadline terminates the dedicated shell worker");
     expect(result.stdout).toContain("not installed");
-    expect(result.stdout).toContain("All 83 agent commands");
+    expect(result.stdout).toContain("All 84 agent commands");
     expect(result.stdout).toContain("Web Workers");
     expect(result.stdout).toContain("Regex/ERE workers use protocol work/byte budgets and timeouts.");
     expect(result.stdout).toContain("Node resourceLimits heap/stack caps are not enforced in browser workers.");

@@ -16,7 +16,7 @@ const declarationPath = "packages/safe-fs/dist/index.d.ts";
 const expectedCurrentCommands = [
   "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
   "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
-  "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find", "cmp",
+  "wc", "tee", "tr", "sort", "uniq", "cut", "grep", "test", "[", "env", "xargs", "find", "cmp", "fmt",
   "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
   "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "tar",
   "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
@@ -45,8 +45,8 @@ async function generatedCatalogGuards() {
   assert.ok(initializer && ts.isArrayLiteralExpression(initializer));
   assert.ok(initializer.elements.every(ts.isStringLiteral));
   assert.deepEqual(initializer.elements.map(element => (element as ts.StringLiteral).text), expectedCurrentCommands);
-  assert.equal(expectedCurrentCommands.length, 83);
-  assert.equal(new Set(expectedCurrentCommands).size, 83);
+  assert.equal(expectedCurrentCommands.length, 84);
+  assert.equal(new Set(expectedCurrentCommands).size, 84);
   assert.equal(guards.length, 3, "factory, registered dispatch, and final factory each verify the full catalog");
   return guards.map(guard => {
     const script = `const expectedCurrentCommands = ${initializer.getText(parsed)};\n${guard.getText(parsed)}`;
@@ -55,7 +55,7 @@ async function generatedCatalogGuards() {
   });
 }
 
-test("generated current stream catalog accepts the independent exact 83 names at all three boundaries", async () => {
+test("generated current stream catalog accepts the independent exact 84 names at all three boundaries", async () => {
   assert.deepEqual(createAgentCommands().map(command => command.name), expectedCurrentCommands);
   for (const guard of await generatedCatalogGuards()) {
     const definitions = expectedCurrentCommands.map(name => ({ name }));

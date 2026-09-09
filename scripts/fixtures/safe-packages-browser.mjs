@@ -1,5 +1,5 @@
 import { Shell, agentCommands, createAgentCommands, createMemoryFileSystem, evaluateCommandSupport, FsError, createBoundedRegexProvider } from "@poe-platform/safe-bash";
-import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
+import { checksumWorkflows, expectedAgentCommandNames, nullDeviceWorkflows, runNestedCommands, verifyCmpCommands, verifyFmtCommands, verifyNullDeviceView } from "./safe-packages-mixed-entry-runtime.mjs";
 import { FsError as CoreFsError, createDeviceFileSystem } from "@poe-platform/safe-fs/core";
 import { FsError as CompatibilityFsError } from "@poe-platform/safe-js/fs/core";
 
@@ -7,13 +7,14 @@ if (FsError !== CoreFsError) throw new Error("Browser filesystem identity diverg
 if (FsError !== CompatibilityFsError) throw new Error("Compatibility filesystem identity diverged");
 await verifyNullDeviceView({ createMemoryFileSystem, createDeviceFileSystem });
 await verifyCmpCommands();
+await verifyFmtCommands();
 const definitions = createAgentCommands();
 const commandNames = definitions.map(command => command.name).sort();
 if (JSON.stringify(commandNames) !== JSON.stringify(expectedAgentCommandNames)) {
   throw new Error(`Default browser command inventory differs: ${JSON.stringify(commandNames)}`);
 }
 const declaredCommands = [
-  "[", "basename", "cat", "cmp", "cp", "cut", "dirname", "echo", "false", "grep", "head", "ln", "ls",
+  "[", "basename", "cat", "cmp", "cp", "cut", "dirname", "echo", "false", "fmt", "grep", "head", "ln", "ls",
   "mkdir", "mv", "printf", "pwd", "readlink", "realpath", "rg", "rm", "rmdir", "sed", "sort",
   "tail", "tee", "test", "touch", "tr", "true", "uniq", "wc",
 ];

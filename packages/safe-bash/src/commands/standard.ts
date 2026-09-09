@@ -8,6 +8,7 @@ import { predicateCommands } from "./predicates.js";
 import { directExecutor, executionCommands, type ExecutionCommandsOptions } from "./execution.js";
 import { findCommands } from "./find.js";
 import { cmpCommand } from "./cmp.js";
+import { fmtCommand } from "./fmt.js";
 import { diagnostic } from "./internal.js";
 import type { RegexExecutionOptions } from "./regex-execution/protocol.js";
 import type { BoundedRegexProvider } from "./regex-execution/provider.js";
@@ -34,6 +35,6 @@ export function createStandardCommandsWithGrep(options: StandardCommandsOptions,
     return { exitCode: 127 };
   }));
   commands.push(...basicCommands(), ...filesystemCommands(options.maxDirectoryEntries), ...streamCommands(options.maxTeeTargets, options.maxTailFollowHandles), ...textCommands(), ...grep, ...predicateCommands(), ...executionCommands(execute, options.execution), ...findCommands(execute, options.maxDirectoryEntries));
-  commands.push(cmpCommand());
+  commands.push(cmpCommand(), fmtCommand());
   return commands;
 }
