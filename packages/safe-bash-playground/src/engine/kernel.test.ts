@@ -13,6 +13,7 @@ describe("real safe-bash browser kernel", () => {
   const activeWorkers = new Set<{ terminate(): void }>();
 
   beforeAll(async () => {
+    vi.stubGlobal("navigator", { language: "en-US" });
     vi.stubGlobal(
       "Worker",
       class extends EventTarget {
@@ -28,6 +29,7 @@ describe("real safe-bash browser kernel", () => {
             const worker = new NodeWorker(
               `
             const { parentPort } = require('node:worker_threads');
+            Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { language: 'en-US' } });
             globalThis.addEventListener = (event, handler) => parentPort.on(event, data => handler({ data }));
             globalThis.postMessage = (value, transfer) => parentPort.postMessage(value, transfer);
             ${code}

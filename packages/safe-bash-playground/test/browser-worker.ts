@@ -18,6 +18,7 @@ export function browserWorkerFixture(executionSource: string) {
       this.worker = source.then((code) => {
         const worker = new NodeWorker(`
           const { parentPort } = require("node:worker_threads");
+          Object.defineProperty(globalThis, "navigator", { configurable: true, value: { language: "en-US" } });
           globalThis.addEventListener = (event, handler) => parentPort.on(event, data => handler({ data }));
           globalThis.postMessage = value => parentPort.postMessage(value);
           (() => { ${code} })();
