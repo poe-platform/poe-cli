@@ -26,7 +26,7 @@ import { defaultMaxParseUnits, ParseBudget } from "./parse-budget.js";
 import { BraceExpansionFailure, expandBraces } from "./brace-expansion.js";
 import { evaluatePositionalArithmetic } from "./arithmetic-parameters.js";
 import { compilePattern, compilePatternBoundaries, matchesPattern } from "./pattern.js";
-import { nextCodePointOffset, previousCodePointOffset, scanString, stringCheckpoint } from "./string-operations.js";
+import { nextCodePointOffset, scanString, stringCheckpoint } from "./string-operations.js";
 import { selectMenu } from "./select-menu.js";
 import type { StringWork } from "./string-operations.js";
 import { byteLocale } from "./locale.js";
