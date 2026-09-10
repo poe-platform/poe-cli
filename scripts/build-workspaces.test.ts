@@ -67,7 +67,7 @@ describe("maintained literal workspace test selectors", () => {
       for (const enumeration of ["unavailable", "empty", "nonempty"] as const) {
         it(`${workspace} ${event} keeps its directory filter when rg is ${enumeration}`, () => {
           expect(captureArguments(workspace, event, enumeration)).toEqual({
-            arguments: ["run", `packages/${workspace}/src/`],
+            arguments: ["run", `packages/${workspace}/src/`, ...(workspace === "terminal-pilot" ? ["--pool=forks"] : [])],
             stderr: ""
           });
         });

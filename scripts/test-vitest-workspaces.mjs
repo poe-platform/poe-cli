@@ -13,7 +13,7 @@ export function sharedVitestStages(plan, fileSystem = fs) {
     return plan.testStages;
   }
   const selections = new Map(workspaceUnitSelections(plan.root, fileSystem)
-    .filter(selection => !selection.hasHooks).map(selection => [selection.path, selection]));
+    .filter(selection => !selection.hasHooks && !selection.requiresNativePool).map(selection => [selection.path, selection]));
   const compatible = plan.testStages.filter(stage => stage.path === null || selections.has(stage.path));
   if (compatible.length < 2) return plan.testStages;
   const root = compatible.find(stage => stage.path === null)

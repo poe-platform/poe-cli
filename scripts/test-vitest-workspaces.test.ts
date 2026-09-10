@@ -67,6 +67,16 @@ describe("shared Vitest task selection", () => {
     expect(plan).toEqual(before);
   });
 
+  it("keeps explicit worker pools on the native workspace route even without hooks", () => {
+    const { fileSystem, plan } = fixture();
+    fileSystem.writeFileSync("/repo/packages/alpha/package.json", JSON.stringify({
+      scripts: { "test:unit": "cd ../.. && vitest run packages/alpha/src --pool=forks" }
+    }));
+    const stages = sharedVitestStages(plan, fileSystem);
+    expect(stages[0].phases.map(phase => phase.name)).toEqual(["root", "beta"]);
+    expect(stages[1]).toBe(plan.testStages[1]);
+  });
+
   for (const hook of ["pretest:unit", "posttest:unit"]) {
     it(`keeps a workspace ${hook} on its native npm route`, () => {
       const { fileSystem, plan } = fixture();
