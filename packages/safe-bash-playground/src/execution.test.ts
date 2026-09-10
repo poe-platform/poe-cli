@@ -7,6 +7,8 @@ import type { ExecutionMessage } from "./execution-protocol.js";
 import { browserWorkerFixture } from "../test/browser-worker.js";
 import { setTimeout as delay } from "node:timers/promises";
 
+vi.hoisted(() => vi.stubGlobal("navigator", { language: "en-US" }));
+
 vi.mock("virtual:safe-bash-worker-sources", async () => {
   const { buildBrowserEngine } = await import("./engine/build-plugin.mjs");
   return { sources: (await buildBrowserEngine({ workersOnly: true })).workerSources };
