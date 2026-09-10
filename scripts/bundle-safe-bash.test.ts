@@ -38,7 +38,7 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
     plugins: [{
       name: "public-built-shell-entries",
       setup(builder) {
-        builder.onResolve({ filter: /^@poe-platform\/safe-bash(?:\/commands\/(?:xml|yq|network|csplit|pr|tsort|factor))?$/ }, args => ({
+        builder.onResolve({ filter: /^@poe-platform\/safe-bash(?:\/commands\/(?:xml|yq|network|csplit|pr|tsort|factor|getopt))?$/ }, args => ({
           path: path.resolve(directory, manifest.exports[args.path === "@poe-platform/safe-bash" ? "." : `.${args.path.slice("@poe-platform/safe-bash".length)}`].browser),
           namespace: "built-shell",
         }));
@@ -54,7 +54,7 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   return consumer.outputFiles![0]!.text;
 }
 
-it.each([["xml", "createXmlCommands"], ["yq", "createYqCommands"], ["network", "createNetworkCommands"], ["csplit", "createCsplitCommands"], ["pr", "createPrCommands"], ["tsort", "createTsortCommands"], ["factor", "createFactorCommands"]])("shares the public %s command factory across portable root and subpath entries", async (command, factory) => {
+it.each([["xml", "createXmlCommands"], ["yq", "createYqCommands"], ["network", "createNetworkCommands"], ["csplit", "createCsplitCommands"], ["pr", "createPrCommands"], ["tsort", "createTsortCommands"], ["factor", "createFactorCommands"], ["getopt", "createGetoptCommands"]])("shares the public %s command factory across portable root and subpath entries", async (command, factory) => {
   const manifest = JSON.parse(await readFile(path.join(root, "packages/safe-bash/package.json"), "utf8"));
   expect(manifest.exports[`./commands/${command}`]?.browser).toBe(`./dist/commands/${command}/index.browser.js`);
   expect(manifest.exports[`./commands/${command}`]?.workerd).toBe(`./dist/commands/${command}/index.browser.js`);
@@ -76,11 +76,11 @@ it.each([["xml", "createXmlCommands"], ["yq", "createYqCommands"], ["network", "
   expect(consumer.shared).toBe(true);
 });
 
-it("runs nested env/xargs, truncate, csplit, pr, tsort and factor through the public default browser entry", async () => {
+it("runs nested env/xargs, truncate, csplit, pr, tsort, factor and getopt through the public default browser entry", async () => {
   const result = await build(resolveBrowserShellBuild(root));
   const consumer = await bundlePublicConsumer(result.outputFiles!, await readFile(path.join(root, "scripts/fixtures/safe-packages-mixed-entry-runtime.mjs"), "utf8"));
   const sandbox = createContext({
-    TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
+    TextEncoder, TextDecoder, TypeError, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
     AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance,
     require(name: string) {
       if (name !== "@poe-platform/safe-fs/core") throw new Error(name);
@@ -104,6 +104,7 @@ it("runs nested env/xargs, truncate, csplit, pr, tsort and factor through the pu
   await publicConsumer.verifyPrCommands(entry);
   await publicConsumer.verifyTsortCommands(entry);
   await publicConsumer.verifyFactorCommands(entry);
+  await publicConsumer.verifyGetoptCommands(entry);
   const argumentsFromBrowser = entry.createCommandArguments(["nested"]);
   expect(entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: argumentsFromBrowser })).toBe(argumentsFromBrowser);
   expect(() => entry.getCommandArguments({ args: argumentsFromBrowser.args, argumentValues: { ...argumentsFromBrowser } })).toThrow("Expected owned command arguments");
@@ -147,6 +148,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     "commands/pr/index.browser": path.join(root, "packages/safe-bash/src/commands/pr/index.ts"),
     "commands/tsort/index.browser": path.join(root, "packages/safe-bash/src/commands/tsort/index.ts"),
     "commands/factor/index.browser": path.join(root, "packages/safe-bash/src/commands/factor/index.ts"),
+    "commands/getopt/index.browser": path.join(root, "packages/safe-bash/src/commands/getopt/index.ts"),
   });
   const result = await build(options);
   const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
@@ -166,7 +168,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
   expect(portable.posixPath).toBe(filesystem.posixPath);
   expect(portable.posixPath.join("/a", "..", "b")).toBe("/b");
   const names = portable.createAgentCommands().map(command => command.name).sort();
-  expect(names).toHaveLength(95);
+  expect(names).toHaveLength(96);
   expect(names).toEqual([
     "true", "false", "echo", "pwd", "basename", "dirname", "printf", "mkdir", "touch",
     "cp", "mv", "rm", "rmdir", "ln", "readlink", "realpath", "ls", "cat", "head", "tail",
@@ -174,7 +176,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     "sed", "awk", "jq", "rg", "base64", "base32", "xxd", "od", "sha512sum", "sha384sum", "sha256sum", "sha224sum", "sha1sum",
     "md5sum", "cksum", "gzip", "gunzip", "zcat", "cmp", "fmt", "shuf", "numfmt", "diff", "patch", "chmod", "stat", "mktemp", "truncate", "tar", "zip", "unzip",
     "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
-    "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch", "xq", "xmllint", "csplit", "pr", "tsort", "factor",
+    "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr", "which", "timeout", "apply_patch", "xq", "xmllint", "csplit", "pr", "tsort", "factor", "getopt",
   ].sort());
   const commands = new portable.CommandRegistry();
   const plugin = portable.agentCommands({ regexExecutor: portable.createBoundedRegexProvider() });
