@@ -177,9 +177,9 @@ test("DU standalone and aggregate replacement remain explicit with limit forward
       "md5sum", "cksum", "gzip", "gunzip", "zcat", "diff", "patch", "chmod", "stat", "mktemp", "truncate", "tar", "zip", "unzip",
       "paste", "comm", "join", "tac", "expand", "fold", "strings", "seq", "nl", "rev", "unexpand", "split",
       "date", "sleep", "printenv", "tree", "file", "egrep", "fgrep", "column", "html-to-markdown", "du", "expr",
-      "which", "timeout", "apply_patch", "xq", "xmllint", "csplit", "pr", "tsort",
+      "which", "timeout", "apply_patch", "xq", "xmllint", "csplit", "pr", "tsort", "factor",
     ];
-    assert.equal(expected.length, 94); assert.equal(new Set(expected).size, 94);
+    assert.equal(expected.length, 95); assert.equal(new Set(expected).size, 95);
     assert.deepEqual(shell.commands.list().map(command => command.name).sort(), expected.sort());
     assert.equal(shell.commands.has("html-to-markdown"), true); assert.equal(shell.commands.has("expr"), true);
     for (const name of ["curl", "safejs", "node", "npm", "npx"]) assert.equal(shell.commands.has(name), false);

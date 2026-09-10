@@ -466,10 +466,11 @@ describe("real safe-bash browser kernel", () => {
         "xmllint",
         "csplit",
         "pr",
-        "tsort"
+        "tsort",
+        "factor"
       ])
     );
-    expect(kernel.supportedCommands).toHaveLength(94);
+    expect(kernel.supportedCommands).toHaveLength(95);
     expect(kernel.supportedCommands).toEqual(expect.arrayContaining(["sha512sum", "sha384sum", "sha224sum"]));
   });
 });
