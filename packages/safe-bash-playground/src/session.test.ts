@@ -3,6 +3,8 @@ import { createSession, SESSION_LIMITS } from "./session.js";
 import { sampleFiles } from "./samples.js";
 import { browserWorkerFixture } from "../test/browser-worker.js";
 
+vi.hoisted(() => vi.stubGlobal("navigator", { language: "en-US" }));
+
 vi.mock("virtual:safe-bash-worker-sources", async () => {
   const { buildBrowserEngine } = await import("./engine/build-plugin.mjs");
   return { sources: (await buildBrowserEngine({ workersOnly: true })).workerSources };
