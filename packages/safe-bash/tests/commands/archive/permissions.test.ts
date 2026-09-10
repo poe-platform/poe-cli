@@ -15,7 +15,8 @@ const profiles = [
 for (const streaming of [true, false]) for (const profile of profiles) {
   test(`tar publication honors ${profile.name} through ${streaming ? "streaming" : "buffered"} writes`, async () => {
     const base = createMemoryFileSystem();
-    const capabilities: FileSystemCapabilities = { ...base.capabilities, permissions: profile.global, streamingWrite: streaming };
+    const { permissions: ignoredPermissions, ...baseCapabilities } = base.capabilities;
+    const capabilities: FileSystemCapabilities = { ...baseCapabilities, ...(profile.global === undefined ? {} : { permissions: profile.global }), streamingWrite: streaming };
     const writes: WriteFileOptions[] = [];
     const admission = (options: WriteFileOptions | undefined) => {
       assert.ok(options);
@@ -24,9 +25,9 @@ for (const streaming of [true, false]) for (const profile of profiles) {
     };
     const overrides: Partial<FileSystem> = {
       capabilities,
-      capabilitiesFor: profile.scoped ? async () => ({ ...capabilities, permissions: profile.path }) : undefined,
+      ...(profile.scoped ? { capabilitiesFor: async () => ({ ...baseCapabilities, ...(profile.path === undefined ? {} : { permissions: profile.path }), streamingWrite: streaming }) } : {}),
       writeFile: async (path, bytes, options) => { admission(options); await base.writeFile(path, bytes, options); },
-      writeStream: streaming ? async (path, bytes, options) => { admission(options); await base.writeStream(path, bytes, options); } : undefined,
+      ...(streaming ? { writeStream: async (path, bytes, options) => { admission(options); await base.writeStream(path, bytes, options); } } : {}),
     };
     const { shell } = await fixture({}, wrapped(base, overrides));
     try {
