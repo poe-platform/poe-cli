@@ -12,15 +12,11 @@ const profiles = [
   { name: "unknown permissions", global: undefined, path: undefined, scoped: false, expected: 0o600 },
 ] as const;
 
-function withPermissions(capabilities: FileSystemCapabilities, permissions: boolean | undefined): FileSystemCapabilities {
-  const { permissions: ignored, ...rest } = capabilities;
-  return { ...rest, ...(permissions === undefined ? {} : { permissions }) };
-}
-
 for (const streaming of [true, false]) for (const profile of profiles) {
   test(`tar publication honors ${profile.name} through ${streaming ? "streaming" : "buffered"} writes`, async () => {
     const base = createMemoryFileSystem();
-    const capabilities: FileSystemCapabilities = { ...withPermissions(base.capabilities, profile.global), streamingWrite: streaming };
+    const { permissions: ignoredPermissions, ...baseCapabilities } = base.capabilities;
+    const capabilities: FileSystemCapabilities = { ...baseCapabilities, ...(profile.global === undefined ? {} : { permissions: profile.global }), streamingWrite: streaming };
     const writes: WriteFileOptions[] = [];
     const admission = (options: WriteFileOptions | undefined) => {
       assert.ok(options);
@@ -29,11 +25,10 @@ for (const streaming of [true, false]) for (const profile of profiles) {
     };
     const overrides: Partial<FileSystem> = {
       capabilities,
+      ...(profile.scoped ? { capabilitiesFor: async () => ({ ...baseCapabilities, ...(profile.path === undefined ? {} : { permissions: profile.path }), streamingWrite: streaming }) } : {}),
       writeFile: async (path, bytes, options) => { admission(options); await base.writeFile(path, bytes, options); },
+      ...(streaming ? { writeStream: async (path, bytes, options) => { admission(options); await base.writeStream(path, bytes, options); } } : {}),
     };
-    const capabilitiesFor: FileSystem["capabilitiesFor"] = profile.scoped ? async () => withPermissions(capabilities, profile.path) : undefined;
-    const writeStream: FileSystem["writeStream"] = streaming ? async (path, bytes, options) => { admission(options); await base.writeStream(path, bytes, options); } : undefined;
-    Object.defineProperties(overrides, { capabilitiesFor: { value: capabilitiesFor }, writeStream: { value: writeStream } });
     const { shell } = await fixture({}, wrapped(base, overrides));
     try {
       await base.writeFile("/work/image.bin", binary);
