@@ -1890,6 +1890,7 @@ test("default normal runner passes every discovered active file to serial Node e
   assert.ok(files.includes("tests/plugins/zip-commands.test.ts"));
   assert.ok(files.includes("tests/plugins/zip-safety.test.ts"));
   assert.ok(files.includes("tests/plugins/csplit-commands.test.ts"));
+  assert.ok(files.includes("tests/shell/owned-output-drain.test.ts"));
   assert.ok(files.includes("tests/commands/csplit/numeric.test.ts"));
   assert.ok(files.includes("tests/commands/csplit/regex.test.ts"));
   assert.ok(files.includes("tests/commands/csplit/diagnostics.test.ts"));
