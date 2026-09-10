@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem, FsError } from "./engine/index.js";
 import type { FileSystem } from "./engine/index.js";
 import { decodeError, encodeError, hostFileSystem, remoteFileSystem } from "./execution-filesystem.js";
+
+vi.hoisted(() => vi.stubGlobal("navigator", { language: "en-US" }));
+afterAll(() => vi.unstubAllGlobals());
 
 vi.mock("./engine/index.js", async () => {
   const { buildBrowserEngine } = await import("./engine/build-plugin.mjs");
