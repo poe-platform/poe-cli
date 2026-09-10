@@ -473,6 +473,9 @@ export async function verifyGetoptCommands(entry = defaultEntry) {
   await filesystem.writeFile("/getopt-work/raw.sh", encoder.encode(
     'raw=$(cat raw-second; printf .)\nraw=${raw%.}\ngetopt -o "" -- "$(cat raw-first)" "$raw"\n',
   ));
+  await filesystem.writeFile("/getopt-work/mapfile.sh", encoder.encode(
+    'callback() { sh roundtrip.sh "$2"; }\nmapfile -t -C callback -c 1 rows < raw-first\n',
+  ));
   await filesystem.writeFile("/getopt-work/raw-first", Uint8Array.of(128, 255));
   await filesystem.writeFile("/getopt-work/raw-second", Uint8Array.of(97, 39, 255, 92, 10));
   const quotedArguments = "'' 'a b' \"O'Reilly\" 'line\nnext' 'tab\there' '\\$`!\";$(nothing)'";
@@ -504,6 +507,8 @@ export async function verifyGetoptCommands(entry = defaultEntry) {
     if (rawRoundtrip.exitCode !== 0 || rawRoundtrip.stderrBytes.length !== 0 || rawRoundtrip.stdoutBytes.length !== roundtripExpected.length || rawRoundtrip.stdoutBytes.some((value, index) => value !== roundtripExpected[index])) throw new Error(`Public getopt eval roundtrip changed raw operand bytes: ${JSON.stringify({ status: rawRoundtrip.exitCode, stdout: Array.from(rawRoundtrip.stdoutBytes), stderr: Array.from(rawRoundtrip.stderrBytes) })}`);
     const rawForwarded = await shell.exec("cat raw-first | xargs -0 sh roundtrip.sh");
     if (rawForwarded.exitCode !== 0 || rawForwarded.stderrBytes.length !== 0 || rawForwarded.stdoutBytes.length !== roundtripExpected.length || rawForwarded.stdoutBytes.some((value, index) => value !== roundtripExpected[index])) throw new Error(`Public getopt xargs roundtrip changed raw operand bytes: ${JSON.stringify({ status: rawForwarded.exitCode, stdout: Array.from(rawForwarded.stdoutBytes), stderr: Array.from(rawForwarded.stderrBytes) })}`);
+    const rawCallback = await shell.exec("sh mapfile.sh");
+    if (rawCallback.exitCode !== 0 || rawCallback.stderrBytes.length !== 0 || rawCallback.stdoutBytes.length !== roundtripExpected.length || rawCallback.stdoutBytes.some((value, index) => value !== roundtripExpected[index])) throw new Error(`Public getopt mapfile roundtrip changed raw operand bytes: ${JSON.stringify({ status: rawCallback.exitCode, stdout: Array.from(rawCallback.stdoutBytes), stderr: Array.from(rawCallback.stderrBytes) })}`);
     shell.use(entry.getoptCommands({ replace: true, limits: { maxWork: 1 } }));
     const limited = await shell.exec("sh normalize.sh -o ''");
     if (limited.exitCode !== 3 || limited.stdoutBytes.length !== 0 || limited.stderr !== "getopt: work limit exceeded\n") throw new Error(`Public getopt work cap failed: ${JSON.stringify(limited)}`);

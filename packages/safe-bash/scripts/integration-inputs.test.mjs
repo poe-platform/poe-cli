@@ -395,6 +395,7 @@ function assertSource7Discovery(files) {
     "tests/shell/select.test.ts",
     "tests/shell/arithmetic-for.test.ts",
     "tests/shell/mapfile.test.ts",
+    "tests/shell/mapfile-eval-arguments.test.ts",
     "tests/shell/associative-arrays.test.ts",
     "tests/commands/network/wget.test.ts",
     "tests/shell/network-execution-deadline.test.ts",

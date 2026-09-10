@@ -4276,8 +4276,9 @@ export class Runtime {
           try {
             const quoted = shellValueText(await transformParameter(value, "Q", { maximumBytes: this.budget.limits.maxExpansionBytes, byteLocale: byteLocale(state.variables), work, allocation: callbackAllocation }));
             if (Buffer.byteLength(source) + Buffer.byteLength(quoted) + String(index).length + 2 > this.budget.limits.maxExpansionBytes) this.budget.fail("maxExpansionBytes");
+            const argumentValues = createCommandArguments([source, String(index), quoted], callbackAllocation);
             mapfileCallbackStates.add(state);
-            await this.evalBuiltin({ ...context, args: [source, String(index), quoted] }, state, context, false);
+            await this.evalBuiltin({ ...context, args: argumentValues.args, argumentValues }, state, context, false);
           } catch (error) {
             if (error instanceof Flow && (error.kind === "break" || error.kind === "continue")) pendingFlow = error;
             else throw error;
