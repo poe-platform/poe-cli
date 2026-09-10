@@ -38,7 +38,7 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
     plugins: [{
       name: "public-built-shell-entries",
       setup(builder) {
-        builder.onResolve({ filter: /^@poe-platform\/safe-bash(?:\/commands\/(?:xml|yq))?$/ }, args => ({
+        builder.onResolve({ filter: /^@poe-platform\/safe-bash(?:\/commands\/(?:xml|yq|network))?$/ }, args => ({
           path: path.resolve(directory, manifest.exports[args.path === "@poe-platform/safe-bash" ? "." : `.${args.path.slice("@poe-platform/safe-bash".length)}`].browser),
           namespace: "built-shell",
         }));
@@ -54,7 +54,7 @@ async function bundlePublicConsumer(outputs: readonly OutputFile[], contents: st
   return consumer.outputFiles![0]!.text;
 }
 
-it.each([["xml", "createXmlCommands"], ["yq", "createYqCommands"]])("shares the public %s command factory across portable root and subpath entries", async (command, factory) => {
+it.each([["xml", "createXmlCommands"], ["yq", "createYqCommands"], ["network", "createNetworkCommands"]])("shares the public %s command factory across portable root and subpath entries", async (command, factory) => {
   const manifest = JSON.parse(await readFile(path.join(root, "packages/safe-bash/package.json"), "utf8"));
   expect(manifest.exports[`./commands/${command}`]?.browser).toBe(`./dist/commands/${command}/index.browser.js`);
   expect(manifest.exports[`./commands/${command}`]?.workerd).toBe(`./dist/commands/${command}/index.browser.js`);
@@ -138,6 +138,7 @@ it("bundles the complete portable preset with one owned-argument identity", asyn
     "core.browser": path.join(root, "packages/safe-bash/src/core.browser.ts"),
     "commands/xml/index.browser": path.join(root, "packages/safe-bash/src/commands/xml/index.ts"),
     "commands/yq/index.browser": path.join(root, "packages/safe-bash/src/commands/yq/index.ts"),
+    "commands/network/index.browser": path.join(root, "packages/safe-bash/src/commands/network/public.ts"),
   });
   const result = await build(options);
   const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports);
@@ -309,4 +310,37 @@ it("cancels active custom commands and disposes the shell", async () => {
   controller.abort(stopped);
   await rejected;
   await shell.dispose();
+});
+
+it("portable network factories require transport injection and preserve HTTP header validation", async () => {
+  const built = await build(resolveBrowserShellBuild(root));
+  const compiled = await bundlePublicConsumer(built.outputFiles!, `
+    import { createNetworkCommands, createMemoryFileSystem, toByteSource } from "@poe-platform/safe-bash";
+    export async function probe() {
+      let refused = false;
+      try { createNetworkCommands({ authorize: () => true }); } catch { refused = true; }
+      const fs = createMemoryFileSystem();
+      const requests = [];
+      const commands = createNetworkCommands({ authorize: () => true, transport: async request => {
+        requests.push(request);
+        return { status: 200, statusText: "OK", headers: [], body: toByteSource("ok"), async dispose() {} };
+      } });
+      const output = [];
+      const context = { command: "curl", args: ["-H", "X-Test: allowed", "https://example.test/file"], fs, cwd: "/", env: {},
+        stdin: toByteSource(""), signal: new AbortController().signal,
+        stdout: { async write(bytes) { output.push(...bytes); } }, stderr: { async write() {} } };
+      const valid = await commands[0].execute(context);
+      const invalid = await commands[0].execute({ ...context, args: ["-H", "Bad Name: nope", "https://example.test/file"] });
+      const value = await commands[0].execute({ ...context, args: ["-H", "X-Test: bad\\u0001", "https://example.test/file"] });
+      const multipart = await commands[0].execute({ ...context, args: ["-F", "field=value", "https://example.test/file"] });
+      return { refused, valid: valid.exitCode, invalid: invalid.exitCode, value: value.exitCode, multipart: multipart.exitCode, requests: requests.length, output };
+    }
+  `);
+  const sandbox = createContext({
+    TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, TransformStream, ReadableStream, WritableStream,
+    AbortController, AbortSignal, setTimeout, clearTimeout, queueMicrotask, crypto: globalThis.crypto, performance, URL,
+    require(name: string) { if (name !== "@poe-platform/safe-fs/core") throw new Error(name); return filesystem; },
+  });
+  const consumer = runInContext(`(function(){ const module = { exports: {} }; ${compiled}; return module.exports; })()`, sandbox);
+  expect(await consumer.probe()).toEqual({ refused: true, valid: 0, invalid: 2, value: 2, multipart: 0, requests: 2, output: [111, 107, 111, 107] });
 });

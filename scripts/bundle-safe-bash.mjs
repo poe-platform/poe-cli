@@ -10,6 +10,7 @@ export function resolveBrowserShellBuild(rootDir) {
       "core.browser": path.join(directory, "src/core.browser.ts"),
       "commands/xml/index.browser": path.join(directory, "src/commands/xml/index.ts"),
       "commands/yq/index.browser": path.join(directory, "src/commands/yq/index.ts"),
+      "commands/network/index.browser": path.join(directory, "src/commands/network/public.ts"),
     },
     outdir: path.join(directory, "dist"),
     splitting: true,
@@ -28,6 +29,10 @@ export function resolveBrowserShellBuild(rootDir) {
     plugins: [{
       name: "portable-shell-capabilities",
       setup(builder) {
+        builder.onResolve({ filter: /platform\.js$/ }, args =>
+          path.resolve(args.resolveDir, args.path) === path.join(directory, "src/commands/network/platform.js")
+            ? { path: path.join(directory, "browser/network.mjs") }
+            : undefined);
         builder.onResolve({ filter: /regex-execution\/ere\/transport\/root\.js$/ }, args =>
           path.resolve(args.resolveDir, args.path) === transport
             ? { path: path.join(directory, "browser/regex.mjs") }

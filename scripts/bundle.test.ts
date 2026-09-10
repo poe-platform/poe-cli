@@ -196,6 +196,7 @@ it.each([
         "core.browser": path.join(root, "packages/safe-bash/src/core.browser.ts"),
         "commands/xml/index.browser": path.join(root, "packages/safe-bash/src/commands/xml/index.ts"),
         "commands/yq/index.browser": path.join(root, "packages/safe-bash/src/commands/yq/index.ts"),
+    "commands/network/index.browser": path.join(root, "packages/safe-bash/src/commands/network/public.ts"),
       },
     ]);
   }

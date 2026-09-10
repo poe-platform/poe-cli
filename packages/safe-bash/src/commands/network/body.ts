@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { posix } from "node:path";
+import { randomBytes } from "./platform.js";
+import { posixPath as posix } from "../../contracts/path.js";
 import { yieldTurn } from "../../contracts/yield.js";
 import { collectBytes, readBytes, type ByteSource, type CommandContext } from "../../contracts/index.js";
 import { pathOf } from "../internal.js";

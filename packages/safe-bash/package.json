@@ -50,7 +50,13 @@
       "import": "./dist/contracts/*.js"
     },
     "./commands/network": {
-      "types": "./dist/commands/network/index.d.ts",
+      "types": {
+        "workerd": "./dist/commands/network/public.d.ts",
+        "browser": "./dist/commands/network/public.d.ts",
+        "default": "./dist/commands/network/index.d.ts"
+      },
+      "workerd": "./dist/commands/network/index.browser.js",
+      "browser": "./dist/commands/network/index.browser.js",
       "import": "./dist/commands/network/index.js"
     },
     "./commands/node": {
