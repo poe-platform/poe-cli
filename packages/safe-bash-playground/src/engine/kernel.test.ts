@@ -466,7 +466,7 @@ describe("real safe-bash browser kernel", () => {
         "xmllint"
       ])
     );
-    expect(kernel.supportedCommands).toHaveLength(89);
+    expect(kernel.supportedCommands).toHaveLength(91);
     expect(kernel.supportedCommands).toEqual(expect.arrayContaining(["sha512sum", "sha384sum", "sha224sum"]));
   });
 });
